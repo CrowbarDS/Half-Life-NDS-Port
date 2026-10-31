@@ -70,6 +70,9 @@ namespace hldata
         /// moment the sound `e` (a token) ends -- in the same block, no gap:
         /// a line's next word. If `e` has already ended, it begins at once.
         Chain,
+        /// The program is leaving: every channel silent, the capture off, the
+        /// blocks' timer stopped -- nothing left running for what is started next.
+        Shutdown,
         Count
     };
 

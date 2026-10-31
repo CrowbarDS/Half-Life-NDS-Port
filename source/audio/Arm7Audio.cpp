@@ -189,6 +189,18 @@ namespace hlrt
         push(c);
     }
 
+    void Arm7Audio::shutdown()
+    {
+        if (link_ == nullptr)
+            return;
+        AudioCommand c;
+        c.op = AudioOp::Shutdown;
+        push(c);
+        // (Taken within 2 ms; a few frames at the most.)
+        for (int frame = 0; frame < 10 && link_->commandRead != link_->commandWrite; ++frame)
+            swiWaitForVBlank();
+    }
+
     void Arm7Audio::stopAll()
     {
         for (std::uint16_t &live : live_)

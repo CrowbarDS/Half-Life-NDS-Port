@@ -315,6 +315,22 @@ namespace hlaudio
                 case AudioOp::MusicVolume:
                     musicVolume(static_cast<int>(command.a));
                     break;
+                case AudioOp::Shutdown:
+                    for (int c = 0; c < kChannelCount; ++c)
+                    {
+                        if (channels[c].token != 0)
+                            release(c, true);
+                    }
+                    pipelineStop(l);
+                    musicStop(l);
+                    REG_SNDCAP0CNT = 0;
+                    REG_SNDCAP1CNT = 0;
+                    for (int n = 0; n < 16; ++n)
+                        SCHANNEL_CR(n) = 0;
+                    TIMER_CR(0) = 0;
+                    TIMER_CR(1) = 0;
+                    TIMER_CR(2) = 0;
+                    break;
                 case AudioOp::StopAll:
                     for (int c = 0; c < kChannelCount; ++c)
                     {

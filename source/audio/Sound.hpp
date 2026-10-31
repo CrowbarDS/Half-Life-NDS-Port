@@ -47,6 +47,8 @@ namespace hlrt
         /// Every pass of the main loop: plays what the game has queued, keeps
         /// the loops and the spoken line going, and feeds the music.
         void frame();
+        /// The program is leaving: nothing of the sound left running.
+        void quit();
         /// The words of a match's last minute: read as a match with a time
         /// limit begins (if they are on the card; a console sent the game
         /// never has them), said, and let go of as it is left.

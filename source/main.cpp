@@ -1532,6 +1532,10 @@ int main(int argc, char *argv[])
                 settings.save();
                 achievements.flush();
                 hlrt::screenFade.curtainDown();
+                // (Nothing left running for what is started next: the sound's
+                // channels and timers go on by themselves otherwise.)
+                hlrt::netGame.leave();
+                hlrt::sound.quit();
                 std::exit(0);
             }
             // A match: its host has said which map (on the host's own

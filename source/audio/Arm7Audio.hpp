@@ -42,6 +42,8 @@ namespace hlrt
         void setPanning(std::uint16_t token, int pan);
         void setRate(std::uint16_t token, int pitch);
         void stopAll();
+        /// Everything silent and stopped, for good: the program is leaving.
+        void shutdown();
         /// Whether a sound is still being played (not ended, not stopped),
         /// or queued to be.
         bool playing(std::uint16_t token) const;

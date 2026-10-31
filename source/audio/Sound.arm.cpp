@@ -1288,6 +1288,13 @@ namespace hlrt
         start(SoundLayer::Ui, ui_[which], volume, 64, false);
     }
 
+    void Sound::quit()
+    {
+        stopMusic();
+        dspAudio.stop();
+        arm7Audio.shutdown();
+    }
+
     void Sound::loadMatchWarning()
     {
 #ifndef HLDS_CHILD
