@@ -166,6 +166,8 @@ namespace hlrt
         void voteRedrawn();
         /// Its page is on the screen (what has come may be drawn on it).
         void setVoteShown(bool shown) { voteShown_ = shown; }
+        /// It is over: its pictures let go of, and their colours off the screen.
+        void voteLetGo();
         /// A vote before the first match is going on (in the lobby).
         bool voteOn() const;
 #ifndef HLDS_CHILD
@@ -313,7 +315,6 @@ namespace hlrt
         bool voteSaidReady_ = false, voteShown_ = false;
         int voteMs_ = 0, voteOpenedAt_ = 0;
         void voteFrame(int ms);
-        void voteLetGo();
         unsigned ready_ = 0;
         std::uint32_t rooms_[hldata::kNetPlayers] = {}; ///< (the host's: KB, by client; 0 not said)
         std::uint32_t frees_[hldata::kNetPlayers] = {};

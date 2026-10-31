@@ -17,6 +17,7 @@
 #include "game/GameApi.hpp"
 #include "game/Player.hpp"
 #include "render/BottomScreen.hpp"
+#include "ui/TouchCanvas.hpp"
 #include "render/Camera.hpp"
 #include "net/NetLink.hpp"
 #include "HlManifest.hpp"
@@ -1931,6 +1932,10 @@ namespace hlrt
 
     void NetGame::voteLetGo()
     {
+        // (Its pictures' colours are not for what comes next on those cells.)
+        if (voteShown_)
+            touchCanvas.untintAll();
+        voteShown_ = false;
         for (int s = 0; s < NetVote::kMost; ++s)
         {
             std::free(voteData_[s]);

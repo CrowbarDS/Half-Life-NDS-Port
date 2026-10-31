@@ -1493,6 +1493,7 @@ int main(int argc, char *argv[])
                 if (voteWas)
                 {
                     voteWas = false;
+                    hlrt::netGame.voteLetGo();
                     endScreensReset();
                     if (hlrt::netGame.on())
                         hlrt::menu.openLobby();
