@@ -154,10 +154,33 @@ namespace
             pixels[n] = n < 70 ? red : blue;
         std::uint16_t palette[16];
         previewPalette(pixels, 100, palette);
-        const std::uint16_t nearRed = palette[previewNearest(palette, red)], nearBlue = palette[previewNearest(palette, blue)];
-        check((nearRed & 31) >= 28 && (nearRed >> 10 & 31) <= 3, "red is drawn red");
-        check((nearBlue >> 10 & 31) >= 28 && (nearBlue & 31) <= 3, "blue is drawn blue");
-        check(palette[0] == nearRed, "the commonest colour comes first");
+        const int atRed = previewNearest(palette, red), atBlue = previewNearest(palette, blue);
+        check(palette[atRed] == red && palette[atBlue] == blue, "a colour of the picture is kept as it is");
+        check(atRed >= 1 && atBlue >= 1 && atRed != atBlue, "... and never as colour 0, which is see-through");
+
+        // A picture with many colours: every pixel stays near its own.
+        std::uint16_t ramp[1024];
+        for (int n = 0; n < 1024; ++n)
+            ramp[n] = static_cast<std::uint16_t>(0x8000 | (n & 31) | ((n >> 5) & 31) << 10 | ((n * 3) & 31) << 5);
+        previewPalette(ramp, 1024, palette);
+        int worst = 0;
+        bool none = true;
+        for (const std::uint16_t c : ramp)
+        {
+            const int p = previewNearest(palette, c);
+            none = none && p >= 1;
+            const int r = (c & 31) - (palette[p] & 31), g = (c >> 5 & 31) - (palette[p] >> 5 & 31),
+                      b = (c >> 10 & 31) - (palette[p] >> 10 & 31);
+            const int far = r * r + g * g + b * b;
+            worst = far > worst ? far : worst;
+        }
+        check(none && worst < 500, "many colours: none far from what it is drawn in");
+        // A flat picture: no harm.
+        std::uint16_t flat[16];
+        for (std::uint16_t &c : flat)
+            c = 0x8000 | 9 | 9 << 5 | 9 << 10;
+        previewPalette(flat, 16, palette);
+        check(palette[previewNearest(palette, flat[0])] == flat[0], "one colour alone");
     }
 
     void testEditing()

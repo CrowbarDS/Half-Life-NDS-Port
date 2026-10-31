@@ -65,32 +65,16 @@ namespace hldata
         return 0;
     }
 
-    /// Sixteen colours for a picture, for the touch screen (a cell has no more):
-    /// the commonest, each to three bits of red, green and blue.
-    inline void previewPalette(const std::uint16_t *pixels, int count, std::uint16_t *palette)
-    {
-        std::uint16_t uses[512] = {};
-        for (int n = 0; n < count; ++n)
-        {
-            const std::uint32_t c = pixels[n];
-            std::uint16_t &use = uses[(c >> 2 & 7) | (c >> 7 & 7) << 3 | (c >> 12 & 7) << 6];
-            use = static_cast<std::uint16_t>(use < 65535 ? use + 1 : use);
-        }
-        for (int p = 0; p < 16; ++p)
-        {
-            int best = 0;
-            for (int b = 1; b < 512; ++b)
-                best = uses[b] > uses[best] ? b : best;
-            uses[best] = 0;
-            palette[p] = static_cast<std::uint16_t>(0x8000 | ((best & 7) << 2 | 2) | ((best >> 3 & 7) << 2 | 2) << 5 |
-                                                    ((best >> 6 & 7) << 2 | 2) << 10);
-        }
-    }
-    /// Which of them is nearest.
+    /// Fifteen colours for a picture, for the touch screen (a cell has sixteen,
+    /// and its colour 0 is see-through: palette[0] is not one of them). A median
+    /// cut over the picture's colours to three bits each, then each colour
+    /// moved to the middle of the pixels nearest it.
+    inline constexpr int kPreviewColours = 15;
+    /// Which of them is nearest: 1..kPreviewColours.
     inline int previewNearest(const std::uint16_t *palette, std::uint16_t colour)
     {
-        int best = 0, bestFar = 1 << 30;
-        for (int p = 0; p < 16; ++p)
+        int best = 1, bestFar = 1 << 30;
+        for (int p = 1; p <= kPreviewColours; ++p)
         {
             const int r = (colour & 31) - (palette[p] & 31), g = (colour >> 5 & 31) - (palette[p] >> 5 & 31),
                       b = (colour >> 10 & 31) - (palette[p] >> 10 & 31);
@@ -102,6 +86,124 @@ namespace hldata
             }
         }
         return best;
+    }
+    inline void previewPalette(const std::uint16_t *pixels, int count, std::uint16_t *palette)
+    {
+        std::uint16_t uses[512] = {};
+        for (int n = 0; n < count; ++n)
+        {
+            const std::uint32_t c = pixels[n];
+            std::uint16_t &use = uses[(c >> 2 & 7) | (c >> 7 & 7) << 3 | (c >> 12 & 7) << 6];
+            use = static_cast<std::uint16_t>(use < 65535 ? use + 1 : use);
+        }
+        struct Box
+        {
+            std::uint8_t low[3], high[3];
+            std::int32_t pixels;
+        };
+        const auto weigh = [&uses](Box &box)
+        {
+            // (Shrunk to what it holds.)
+            std::uint8_t low[3] = {7, 7, 7}, high[3] = {0, 0, 0};
+            box.pixels = 0;
+            for (int b = box.low[2]; b <= box.high[2]; ++b)
+                for (int g = box.low[1]; g <= box.high[1]; ++g)
+                    for (int r = box.low[0]; r <= box.high[0]; ++r)
+                    {
+                        const int use = uses[r | g << 3 | b << 6];
+                        if (use == 0)
+                            continue;
+                        box.pixels += use;
+                        const int at[3] = {r, g, b};
+                        for (int i = 0; i < 3; ++i)
+                        {
+                            low[i] = at[i] < low[i] ? static_cast<std::uint8_t>(at[i]) : low[i];
+                            high[i] = at[i] > high[i] ? static_cast<std::uint8_t>(at[i]) : high[i];
+                        }
+                    }
+            for (int i = 0; i < 3 && box.pixels > 0; ++i)
+            {
+                box.low[i] = low[i];
+                box.high[i] = high[i];
+            }
+        };
+        Box boxes[kPreviewColours];
+        boxes[0] = Box{{0, 0, 0}, {7, 7, 7}, 0};
+        weigh(boxes[0]);
+        int made = 1;
+        while (made < kPreviewColours)
+        {
+            // The one with the most in it that can still be cut, along its longest side.
+            int which = -1, axis = 0;
+            for (int n = 0; n < made; ++n)
+            {
+                int side = 0, along = 0;
+                for (int i = 0; i < 3; ++i)
+                {
+                    if (boxes[n].high[i] - boxes[n].low[i] > side)
+                    {
+                        side = boxes[n].high[i] - boxes[n].low[i];
+                        along = i;
+                    }
+                }
+                if (side > 0 && (which < 0 || boxes[n].pixels > boxes[which].pixels))
+                {
+                    which = n;
+                    axis = along;
+                }
+            }
+            if (which < 0)
+                break;
+            // Cut where half its pixels are on either side.
+            Box &box = boxes[which];
+            int seen = 0, cut = box.low[axis];
+            for (int v = box.low[axis]; v < box.high[axis]; ++v)
+            {
+                Box slice = box;
+                slice.low[axis] = slice.high[axis] = static_cast<std::uint8_t>(v);
+                std::int32_t inSlice = 0;
+                for (int b = slice.low[2]; b <= slice.high[2]; ++b)
+                    for (int g = slice.low[1]; g <= slice.high[1]; ++g)
+                        for (int r = slice.low[0]; r <= slice.high[0]; ++r)
+                            inSlice += uses[r | g << 3 | b << 6];
+                seen += inSlice;
+                cut = v;
+                if (seen * 2 >= box.pixels)
+                    break;
+            }
+            Box other = box;
+            other.low[axis] = static_cast<std::uint8_t>(cut + 1);
+            box.high[axis] = static_cast<std::uint8_t>(cut);
+            weigh(box);
+            weigh(other);
+            boxes[made++] = other;
+        }
+        palette[0] = 0;
+        for (int p = 1; p <= kPreviewColours; ++p)
+        {
+            const Box &box = boxes[p - 1 < made ? p - 1 : made - 1];
+            palette[p] = static_cast<std::uint16_t>(0x8000 | ((box.low[0] + box.high[0]) * 2 + 2) |
+                                                    ((box.low[1] + box.high[1]) * 2 + 2) << 5 |
+                                                    ((box.low[2] + box.high[2]) * 2 + 2) << 10);
+        }
+        // Each moved to the middle of what is nearest it.
+        std::int32_t sums[kPreviewColours + 1][4] = {};
+        for (int n = 0; n < count; ++n)
+        {
+            const std::uint32_t c = pixels[n];
+            std::int32_t *sum = sums[previewNearest(palette, pixels[n])];
+            sum[0] += c & 31;
+            sum[1] += c >> 5 & 31;
+            sum[2] += c >> 10 & 31;
+            ++sum[3];
+        }
+        for (int p = 1; p <= kPreviewColours; ++p)
+        {
+            const std::int32_t *sum = sums[p];
+            if (sum[3] > 0)
+                palette[p] = static_cast<std::uint16_t>(0x8000 | (sum[0] / sum[3]) | (sum[1] / sum[3]) << 5 |
+                                                        (sum[2] / sum[3]) << 10);
+        }
     }
 
     /// Whether `bytes` is a picture of this version and size.
