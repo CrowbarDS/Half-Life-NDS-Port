@@ -1295,8 +1295,8 @@ namespace hlrt
                 {
                 case kNextRotation: return "The maps of a list you make, in order, round and round.";
                 case kNextVote: return "Everyone votes between maps drawn at random.";
-                case kNextWinner: return "The winner chooses the next map.";
-                case kNextTurns: return "Each player in turn chooses the next map.";
+                case kNextWinner: return "The winner of each match chooses the next map, within 10 seconds.";
+                case kNextTurns: return "Each player in turn chooses the next map, within 10 seconds.";
                 default: return "Everyone comes back to this lobby, and you choose.";
                 }
             case kRotPick: return "Touch to go through the maps; ADD IT puts this one at the end of the list.";
@@ -1477,8 +1477,7 @@ namespace hlrt
             }
             case kNetTotals: settings.sessionTotals = !settings.sessionTotals; netGame.hostChanged(); return true;
             case kNetNext:
-                // (The winner's choice and turns are not built yet.)
-                settings.nextMode = static_cast<std::uint8_t>((settings.nextMode + 3 + (step < 0 ? -1 : 1)) % 3);
+                settings.nextMode = static_cast<std::uint8_t>((settings.nextMode + kNextChoices + (step < 0 ? -1 : 1)) % kNextChoices);
                 netGame.hostChanged();
                 return true;
             case kRotPick:

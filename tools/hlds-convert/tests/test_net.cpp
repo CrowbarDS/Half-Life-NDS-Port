@@ -1194,6 +1194,29 @@ namespace
         check(!client.over, "only the host ends a match");
     }
 
+    void testWinnerChooser()
+    {
+        NetFinal final;
+        final.count = 3;
+        final.order[0] = 2;
+        final.order[1] = 0;
+        final.order[2] = 1;
+        final.rows[2].team = 1;
+        final.rows[0].team = 2;
+        final.rows[1].team = 2;
+        check(netWinnerChooser(final, false) == 2, "the top player chooses");
+        final.winnerTeam = 2;
+        check(netWinnerChooser(final, true) == 0, "in teamplay, the top player of the winning team");
+        final.rows[0].gone = true;
+        check(netWinnerChooser(final, true) == 1, "... the next of them, if that one has left");
+        final.rows[1].gone = true;
+        check(netWinnerChooser(final, true) == 2, "... and all of them gone: whoever is first");
+        final.winnerTeam = 0;
+        check(netWinnerChooser(final, true) == 2, "teams level: the top player");
+        final.rows[2].gone = true;
+        check(netWinnerChooser(final, false) == -1, "nobody left: nobody");
+    }
+
     void testFinalScores()
     {
         NetMatch match;
@@ -1730,6 +1753,7 @@ int main()
     testTeamScore();
     testMatchEnd();
     testFinalScores();
+    testWinnerChooser();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir == nullptr)
         std::printf("test_net: HLDS_VALVE_DIR not set, no match was played\n");

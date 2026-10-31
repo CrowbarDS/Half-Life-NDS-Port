@@ -663,7 +663,14 @@ namespace hlrt
         shown_ = Shown::Message;
         padPending_ = false;
         const FontView &medium = touchCanvas.font(kFontMedium);
-        drawText(canvas, medium, 6, 4, "VOTE: THE NEXT MAP", inkFor(medium, kUiOrange));
+        // (Everyone, or one who chooses alone while the others look on.)
+        const NetMatch &match = netGame.match();
+        char heading[32] = "VOTE: THE NEXT MAP";
+        if (match.vote.chooser == match.me)
+            std::snprintf(heading, sizeof(heading), "CHOOSE THE NEXT MAP");
+        else if (match.vote.chooser >= 0)
+            std::snprintf(heading, sizeof(heading), "%s CHOOSES", match.final.rows[match.vote.chooser].name);
+        drawText(canvas, medium, 6, 4, heading, inkFor(medium, kUiOrange));
         drawLobbyButton(canvas);
         voteClock_ = -1;
         const NetVote &vote = netGame.match().vote;
@@ -802,7 +809,8 @@ namespace hlrt
             return;
         }
         // (A vote made is made: the list is there to look at.)
-        if (vote.choice[netGame.match().me] >= 0 || voteDownY_ < voteRowY(0) - 3)
+        if (vote.choice[netGame.match().me] >= 0 || voteDownY_ < voteRowY(0) - 3 ||
+            (vote.chooser >= 0 && vote.chooser != netGame.match().me))
             return;
         const int row = (voteDownY_ - (voteRowY(0) - 3)) / (kVoteCellsDown * 8);
         const int map = voteRowMap(row);

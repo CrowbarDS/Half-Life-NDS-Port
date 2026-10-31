@@ -735,6 +735,13 @@ namespace hldata
                     ++match.vote.stamp;
                 }
                 break;
+            case NetEventType::NextTurn:
+                if (!host)
+                {
+                    match.vote.chooser = static_cast<std::int8_t>(event.a);
+                    ++match.vote.stamp;
+                }
+                break;
             case NetEventType::NextOpen:
                 if (!host)
                 {
@@ -1324,6 +1331,25 @@ namespace hldata
             }
         }
         return nullptr;
+    }
+
+    /// Who chooses the next map when the winner does: the top player still
+    /// here -- in teamplay, of the winning team, if there is one. -1: nobody.
+    inline int netWinnerChooser(const NetFinal &final, bool teams)
+    {
+        for (int pass = 0; pass < 2; ++pass)
+        {
+            for (int n = 0; n < final.count; ++n)
+            {
+                const NetFinal::Row &row = final.rows[final.order[n]];
+                if (row.gone)
+                    continue;
+                // (The winners first; if all of them have left, whoever is first.)
+                if (pass == 1 || !teams || final.winnerTeam == 0 || row.team == final.winnerTeam)
+                    return final.order[n];
+            }
+        }
+        return -1;
     }
 
     /// What the top of the final scores says.

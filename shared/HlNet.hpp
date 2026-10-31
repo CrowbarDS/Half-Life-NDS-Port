@@ -124,6 +124,7 @@ namespace hldata
         NextPick, ///< client: I vote for its map `a`
         NextTally,///< host: v[0] have chosen the vote's map `a`
         NextOpen, ///< host: the vote is open
+        NextTurn, ///< host: player `a` alone chooses the next map, from the vote's list
     };
 
     /// The rules' flags (Rules' v[1]): the game's mp_weaponstay,

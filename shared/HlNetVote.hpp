@@ -20,6 +20,9 @@ namespace hldata
     inline constexpr int kNetVoteNameRest = 0x40;
     /// What the vote came to is shown this long.
     inline constexpr int kNetVoteResultMs = 4000;
+    /// How long a player has who chooses alone (the winner, or whose turn it
+    /// is): then a draw.
+    inline constexpr int kNetChooseSeconds = 10;
 
     struct NetVote
     {
@@ -33,6 +36,7 @@ namespace hldata
         std::int8_t decided = -1; ///< the map it came to
         std::uint16_t stamp = 0;  ///< changes with whatever is shown of it
         bool open = false;        ///< its time has come: voting
+        std::int8_t chooser = -1; ///< the player who alone chooses (-1: everyone votes)
 
         /// Player `p` chooses `slot`, once and for all.
         bool cast(int p, int slot)
@@ -123,6 +127,19 @@ namespace hldata
             ++stamp;
         }
     };
+
+    /// Whose turn it is to choose after player `last` (-1: nobody yet): the next
+    /// seat that has someone (bit p of `here`), round and round. -1: nobody.
+    inline int netNextSeat(int last, unsigned here)
+    {
+        for (int n = 1; n <= kNetPlayers; ++n)
+        {
+            const int seat = (last + n + kNetPlayers) % kNetPlayers;
+            if ((here >> seat) & 1)
+                return seat;
+        }
+        return -1;
+    }
 
     /// `most` of the `count` in `list`, drawn at random by `seed`, into their
     /// first places. How many.

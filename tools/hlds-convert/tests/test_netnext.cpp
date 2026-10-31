@@ -188,6 +188,38 @@ namespace
         check(netVoteWanted(ends, 3, 0, 2, 3u) == -1, "nothing more: nothing wanted");
     }
 
+    void testChoosers()
+    {
+        // Take turns: round the seats, past those empty.
+        const unsigned here = 1u << 0 | 1u << 2 | 1u << 5;
+        check(netNextSeat(-1, here) == 0, "the first turn is the first seat's");
+        check(netNextSeat(0, here) == 2, "the next seat with someone");
+        check(netNextSeat(2, here) == 5, "... past those empty");
+        check(netNextSeat(5, here) == 0, "... and round again");
+        check(netNextSeat(2, 1u << 2) == 2, "alone: their turn every time");
+        check(netNextSeat(0, 0) == -1, "nobody: nobody's");
+        check(netNextSeat(2, here & ~(1u << 5)) == 0, "who has left is passed over");
+
+        // One who chooses alone: their vote ends it; nobody else has one.
+        NetVote alone;
+        alone.count = 3;
+        alone.chooser = 2;
+        alone.voters = 1u << 2;
+        check(!alone.cast(0, 1), "only the one who chooses");
+        check(!alone.allVoted(), "... has yet to");
+        check(alone.cast(2, 1) && alone.allVoted() && alone.winner(0) == 1, "... and their choice is what it comes to");
+        NetVote gone;
+        gone.count = 3;
+        gone.chooser = 2;
+        gone.voters = 1u << 2;
+        gone.drop(2);
+        check(gone.voters == 0, "the one who chooses gone: nobody can");
+        bool any[3] = {};
+        for (std::uint32_t draw = 0; draw < 3; ++draw)
+            any[gone.winner(draw)] = true;
+        check(any[0] && any[1] && any[2], "... and it is drawn from them all");
+    }
+
     void testPalette()
     {
         std::uint16_t pixels[100];
@@ -246,6 +278,7 @@ int main()
     testEditing();
     testVote();
     testList();
+    testChoosers();
     testPalette();
     if (g_failures == 0)
         std::printf("test_netnext: ok\n");

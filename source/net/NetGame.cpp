@@ -186,6 +186,9 @@ namespace hlrt
 
     bool NetGame::host()
     {
+#ifndef HLDS_CHILD
+        turn_ = -1;
+#endif
         char name[kNetTextBytes];
         std::snprintf(name, sizeof(name), "%s", settings.playerName());
         // (The radio for as many as a match can have: how many may play is the
@@ -1926,9 +1929,14 @@ namespace hlrt
             drawn = -1;
     }
 
+    int NetGame::voteLastsMs() const
+    {
+        return (match_.vote.chooser >= 0 ? kNetChooseSeconds : match_.rules.voteSeconds) * 1000;
+    }
+
     int NetGame::voteSecondsLeft() const
     {
-        const int left = voteOpenedAt_ + match_.rules.voteSeconds * 1000 - voteMs_;
+        const int left = voteOpenedAt_ + voteLastsMs() - voteMs_;
         return left > 0 ? (left + 999) / 1000 : 0;
     }
 
@@ -2027,6 +2035,8 @@ namespace hlrt
             return;
         // The maps' names, a few a frame: the last first, so that who hears
         // the first knows how many there are.
+        if (voteSent_ == 0 && vote.chooser >= 0)
+            netSay(match_, netEvent(NetEventType::NextTurn, vote.chooser));
         for (int n = 0; n < 4 && voteSent_ < vote.count; ++n, ++voteSent_)
         {
             const int s = vote.count - 1 - voteSent_;
@@ -2056,7 +2066,8 @@ namespace hlrt
         }
         if (!vote.open)
             return;
-        if (vote.decided < 0 && (voteMs_ >= voteOpenedAt_ + match_.rules.voteSeconds * 1000 || vote.allVoted()))
+        // (The one who chooses gone: a draw, at once.)
+        if (vote.decided < 0 && (voteMs_ >= voteOpenedAt_ + voteLastsMs() || vote.allVoted() || vote.voters == 0))
         {
             decideVote();
             voteDecidedAt_ = voteMs_;
@@ -2138,12 +2149,12 @@ namespace hlrt
         nextMap_.clear();
         match_.endDraw = static_cast<std::uint16_t>(Global::vblanks());
         pendingMap_.clear();
-        startVote();
+        startVote(-1);
         // (Only the one map it could be: at once.)
         nextAt_ = Global::vblanks() - kNextWaitVblanks;
     }
 
-    void NetGame::startVote()
+    void NetGame::startVote(int chooser)
     {
         voteLetGo();
         int candidates[64];
@@ -2166,8 +2177,9 @@ namespace hlrt
         vote.count = static_cast<std::uint8_t>(count <= NetVote::kMost
                                                    ? count
                                                    : netDrawSome(candidates, count, match_.endDraw * 40503u + 1u, NetVote::kMost));
+        vote.chooser = static_cast<std::int8_t>(chooser);
         for (int p = 0; p < kNetPlayers; ++p)
-            vote.voters = static_cast<std::uint8_t>(vote.voters | (netHere(match_, p) ? 1u << p : 0u));
+            vote.voters = static_cast<std::uint8_t>(vote.voters | (netHere(match_, p) && (chooser < 0 || p == chooser) ? 1u << p : 0u));
         for (int s = 0; s < vote.count; ++s)
         {
             voteMaps_[s] = mapInfo_[static_cast<std::size_t>(candidates[s])].name;
@@ -2184,7 +2196,21 @@ namespace hlrt
         netlink::admit(true);
         if (match_.rules.nextMode == kNextVote)
         {
-            startVote();
+            startVote(-1);
+            return;
+        }
+        if (match_.rules.nextMode == kNextWinner)
+        {
+            startVote(netWinnerChooser(match_.final, match_.rules.teams()));
+            return;
+        }
+        if (match_.rules.nextMode == kNextTurns)
+        {
+            unsigned here = 0;
+            for (int p = 0; p < kNetPlayers; ++p)
+                here |= netHere(match_, p) ? 1u << p : 0u;
+            turn_ = netNextSeat(turn_, here);
+            startVote(turn_);
             return;
         }
         if (match_.rules.nextMode != kNextRotation)

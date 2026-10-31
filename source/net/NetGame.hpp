@@ -318,6 +318,7 @@ namespace hlrt
         bool voteShown_ = false;
         int voteSent_ = 0;               ///< (the host's) of the maps' names
         int voteMs_ = 0, voteOpenedAt_ = 0, voteDecidedAt_ = 0;
+        int voteLastsMs() const;
         void voteKeep(int map, std::uint8_t *data, std::uint32_t bytes);
         void voteFrame(int ms);
         unsigned ready_ = 0;
@@ -339,7 +340,8 @@ namespace hlrt
         /// left the map too.
         static constexpr std::uint32_t kNextWaitVblanks = 3 * 60;
         void chooseNext();
-        void startVote();
+        void startVote(int chooser); ///< (-1: everyone votes)
+        int turn_ = -1;              ///< whose turn it was to choose
         void decideVote();
         void sayNext(const std::string &map, int slot);
         void goBackToLobby();
