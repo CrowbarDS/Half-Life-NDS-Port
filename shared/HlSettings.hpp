@@ -38,11 +38,14 @@ namespace hldata
         {255, 120, 24}, {225, 180, 24}, {0, 60, 255}, {0, 167, 255}, {0, 167, 0},
         {255, 43, 0},   {123, 73, 0},   {100, 100, 100}, {36, 36, 36}};
 
-    inline constexpr std::uint8_t kChatLeast = 5, kChatMost = 30, kChatDefault = 10, kVoteDefault = 10;
+    inline constexpr std::uint8_t kChatLeast = 5, kChatMost = 30, kChatDefault = 10, kVoteDefault = 10, kVoteMost = 150;
     inline constexpr int kRotationMost = 16;
     /// How the next map of a game between consoles is chosen.
     inline constexpr std::uint8_t kNextHost = 0, kNextRotation = 1, kNextVote = 2, kNextWinner = 3, kNextTurns = 4,
                                   kNextChoices = 5;
+
+    /// What a vote's time may be set to.
+    inline constexpr std::uint8_t kVoteSteps[] = {5, 10, 15, 20, 30, 45, 60, 90, 120, 150};
 
     struct SettingsData
     {
@@ -136,7 +139,7 @@ namespace hldata
         std::uint8_t nextMode = 0;
         std::uint8_t rotationCount = 0;
         std::uint32_t rotation[kRotationMost] = {};
-        /// How long a vote for the next map stays open (kChatLeast..kChatMost).
+        /// How long a vote for the next map stays open, in seconds (kVoteSteps).
         std::uint8_t voteSeconds = kVoteDefault;
 
         /// What a file of version 8 held: all but the controls.
@@ -354,7 +357,7 @@ namespace hldata
             read.maxPlayers < kPlayersLeast || read.maxPlayers > kPlayersMost || read.allowGuests > 1 ||
             read.chatSeconds < kChatLeast || read.chatSeconds > kChatMost || read.sessionTotals > 1 ||
             read.nextMode >= kNextChoices || read.rotationCount > kRotationMost ||
-            read.voteSeconds < kChatLeast || read.voteSeconds > kChatMost)
+            read.voteSeconds < kChatLeast || read.voteSeconds > kVoteMost)
             return false;
         out = read;
         return true;

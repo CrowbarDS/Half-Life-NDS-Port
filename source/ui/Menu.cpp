@@ -1131,7 +1131,14 @@ namespace hlrt
             case kNetMost: std::snprintf(out, size, "up to %d", settings.maxPlayers); break;
 #ifndef HLDS_CHILD
             case kNetChat: std::snprintf(out, size, "%d seconds", settings.chatSeconds); break;
-            case kNetVoteTime: std::snprintf(out, size, "%d seconds", settings.voteSeconds); break;
+            case kNetVoteTime:
+                if (settings.voteSeconds < 60)
+                    std::snprintf(out, size, "%d seconds", settings.voteSeconds);
+                else if (settings.voteSeconds % 60 == 0)
+                    std::snprintf(out, size, "%d minute%s", settings.voteSeconds / 60, settings.voteSeconds == 60 ? "" : "s");
+                else
+                    std::snprintf(out, size, "%d min %d", settings.voteSeconds / 60, settings.voteSeconds % 60);
+                break;
             case kNetTotals: std::snprintf(out, size, "%s", settings.sessionTotals ? "on" : "off"); break;
             case kNetNext:
             {
@@ -1450,10 +1457,19 @@ namespace hlrt
                 return true;
             }
 #ifndef HLDS_CHILD
-            case kNetChat:
             case kNetVoteTime:
             {
-                std::uint8_t &value = id == kNetChat ? settings.chatSeconds : settings.voteSeconds;
+                constexpr int kSteps = static_cast<int>(sizeof(kVoteSteps));
+                int at = 0;
+                for (int i = 0; i < kSteps; ++i)
+                    at = kVoteSteps[i] <= settings.voteSeconds ? i : at;
+                settings.voteSeconds = kVoteSteps[(at + kSteps + step) % kSteps];
+                netGame.hostChanged();
+                return true;
+            }
+            case kNetChat:
+            {
+                std::uint8_t &value = settings.chatSeconds;
                 const int next = value + step * 5;
                 value = static_cast<std::uint8_t>(next > kChatMost ? kChatLeast : (next < kChatLeast ? kChatMost : next));
                 netGame.hostChanged();

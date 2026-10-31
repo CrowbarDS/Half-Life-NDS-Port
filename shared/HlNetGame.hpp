@@ -777,7 +777,7 @@ namespace hldata
                     match.rules.chatSeconds = static_cast<std::uint8_t>(event.v[0] < 5 ? 5 : (event.v[0] > 30 ? 30 : event.v[0]));
                     match.rules.nextMode = static_cast<std::uint8_t>(event.v[1]);
                     match.rules.totals = event.v[2] != 0;
-                    match.rules.voteSeconds = static_cast<std::uint8_t>(event.v[3] < 5 ? 5 : (event.v[3] > 30 ? 30 : event.v[3]));
+                    match.rules.voteSeconds = static_cast<std::uint8_t>(event.v[3] < 5 ? 5 : (event.v[3] > 150 ? 150 : event.v[3]));
                 }
                 break;
             case NetEventType::Profile:
