@@ -591,11 +591,10 @@ namespace hlrt
 
     namespace
     {
-        // The vote's cards: its picture on whole cells, its name under it, how
-        // many chose it beside it.
-        constexpr int kVoteTop = 3, kVoteCellsDown = 10;
-        int voteCellX(int slot) { return 1 + (slot % 2) * 16; }
-        int voteCellY(int slot) { return kVoteTop + (slot / 2) * kVoteCellsDown; }
+        // The vote's big buttons, three to the screen: its picture on whole
+        // cells, its name and its votes beside it.
+        constexpr int kVoteTop = 3, kVoteCellsDown = 7, kVoteX = 3, kVoteW = 240;
+        int voteRowY(int row) { return (kVoteTop + row * kVoteCellsDown) * 8; }
         constexpr int kLobbyX = 204, kLobbyY = 1, kLobbyW = 50, kLobbyH = 15;
 
         void drawLobbyButton(Canvas &canvas)
@@ -618,78 +617,215 @@ namespace hlrt
         return x >= kLobbyX && x < kLobbyX + kLobbyW && y >= kLobbyY && y < kLobbyY + kLobbyH;
     }
 
-    int BottomScreen::voteCardAt(int x, int y) const
+    int BottomScreen::voteRowMap(int row) const
     {
-        const NetVote &vote = netGame.match().vote;
-        for (int s = 0; s < vote.count; ++s)
+        if (row < 0 || row >= kNetVoteRows)
+            return -1;
+        switch (votePage_)
         {
-            const int cx = voteCellX(s) * 8, cy = voteCellY(s) * 8;
-            if (x >= cx - 4 && x < cx + 116 && y >= cy - 4 && y < cy + 68)
-                return s;
+        case VotePage::Confirm: return row == 1 ? voteAsked_ : -1;
+        case VotePage::Result: return row == 0 ? netGame.match().vote.decided : -1;
+        default: return voteTop_ + row < netGame.match().vote.count ? voteTop_ + row : -1;
         }
-        return -1;
     }
 
-    void BottomScreen::voteUpdate()
+    void BottomScreen::voteRow(int row)
     {
         Canvas &canvas = touchCanvas.canvas();
         const NetMatch &match = netGame.match();
         const NetVote &vote = match.vote;
-        const FontView &title = touchCanvas.font(kFontTitle);
-        char text[8];
-        for (int s = 0; s < vote.count; ++s)
-        {
-            const int x = voteCellX(s) * 8, y = voteCellY(s) * 8;
-            const bool lit = vote.decided >= 0 ? vote.decided == s : match.vote.choice[match.me] == s;
-            const int edge = lit ? kUiOrange + 2 : kUiEdge;
-            canvas.fill(x - 4, y - 4, 120, 2, edge);
-            canvas.fill(x - 4, y + 66, 120, 2, edge);
-            canvas.fill(x - 4, y - 4, 2, 72, edge);
-            canvas.fill(x + 114, y - 4, 2, 72, edge);
-            canvas.fill(x + 66, y + 8, 46, title.height() + 2, kUiBack);
-            std::snprintf(text, sizeof(text), "%d", vote.tally[s]);
-            drawTextCentred(canvas, title, x + 89, y + 9, text, inkFor(title, lit ? kUiWhite : kUiOrange));
-        }
+        const int map = voteRowMap(row), y = voteRowY(row);
+        const FontView &medium = touchCanvas.font(kFontMedium), &small = touchCanvas.font(kFontSmall);
+        // (Not over its picture, which stays as it is: only what is beside it.)
+        canvas.fill(kVoteX + 72, y - 3, kVoteW - 72, 54, kUiBack);
+        if (map < 0)
+            return;
+        const bool mine = vote.choice[match.me] == map;
+        const bool won = vote.decided == map;
+        const int edge = mine || won ? kUiOrange + 2 : kUiEdge;
+        canvas.fill(kVoteX, y - 3, kVoteW, 1, edge);
+        canvas.fill(kVoteX, y + 50, kVoteW, 1, edge);
+        canvas.fill(kVoteX, y - 3, 1, 54, edge);
+        canvas.fill(kVoteX + kVoteW - 1, y - 3, 1, 54, edge);
+        drawText(canvas, medium, kVoteX + 72, y + 8, vote.names[map], inkFor(medium, mine || won ? kUiWhite : kUiOrange));
+        char text[24];
+        std::snprintf(text, sizeof(text), "%d vote%s%s", vote.tally[map], vote.tally[map] == 1 ? "" : "s", mine ? " - YOURS" : "");
+        drawText(canvas, small, kVoteX + 72, y + 28, text, inkFor(small, mine ? kUiOrange : kUiGrey));
     }
 
-    void BottomScreen::showVote()
+    void BottomScreen::voteList()
     {
+        votePage_ = VotePage::List;
         stopShown = false;
-        touchCanvas.pageOff();
         Canvas &canvas = touchCanvas.canvas();
         canvas.clear();
         touchCanvas.untintAll();
         shown_ = Shown::Message;
         padPending_ = false;
-        const FontView &medium = touchCanvas.font(kFontMedium), &small = touchCanvas.font(kFontSmall);
-        drawTextCentred(canvas, medium, 104, 4, "VOTE: THE NEXT MAP", inkFor(medium, kUiOrange));
+        const FontView &medium = touchCanvas.font(kFontMedium);
+        drawText(canvas, medium, 6, 4, "VOTE: THE NEXT MAP", inkFor(medium, kUiOrange));
         drawLobbyButton(canvas);
+        voteClock_ = -1;
         const NetVote &vote = netGame.match().vote;
-        for (int s = 0; s < vote.count; ++s)
+        for (int r = 0; r < kNetVoteRows; ++r)
         {
-            const int x = voteCellX(s) * 8, y = voteCellY(s) * 8;
-            canvas.fill(x, y, 64, 48, kUiPanel);
-            drawText(canvas, small, x, y + 50, vote.names[s], inkFor(small, kUiWhite));
+            if (voteRowMap(r) < 0)
+                continue;
+            canvas.fill(kVoteX + 4, voteRowY(r), 64, 48, kUiPanel);
+            voteRow(r);
         }
-        touchCanvas.pageOn();
-        voteUpdate();
+        // Where it is in the list.
+        if (vote.count > kNetVoteRows)
+        {
+            const int height = 168 * kNetVoteRows / vote.count;
+            canvas.fill(249, 24, 3, 168, kUiPanel);
+            canvas.fill(249, 24 + (168 - height) * voteTop_ / (vote.count - kNetVoteRows), 3, height, kUiOrange + 2);
+        }
+        netGame.voteRedrawn();
     }
 
-    void BottomScreen::voteCard(int slot, const std::uint8_t *file, std::size_t size)
+    void BottomScreen::showVote()
     {
-        if (slot < 0 || slot >= NetVote::kMost || previewWidthOf(file, size) != kPreviewSmallWidth)
+        voteTop_ = 0;
+        voteHeld_ = false;
+        voteList();
+        netGame.setVoteShown(true);
+    }
+
+    void BottomScreen::voteConfirm(int map)
+    {
+        votePage_ = VotePage::Confirm;
+        voteAsked_ = map;
+        Canvas &canvas = touchCanvas.canvas();
+        canvas.clear();
+        touchCanvas.untintAll();
+        const FontView &medium = touchCanvas.font(kFontMedium);
+        drawTextCentred(canvas, medium, 128, 28, "VOTE FOR THIS MAP?", inkFor(medium, kUiOrange));
+        canvas.fill(kVoteX + 4, voteRowY(1), 64, 48, kUiPanel);
+        voteRow(1);
+        canvas.button(8, 140, 116, 46, false);
+        drawTextCentred(canvas, medium, 66, 140 + (46 - medium.height()) / 2, "YES", inkFor(medium, kUiOrange));
+        canvas.button(132, 140, 116, 46, false);
+        drawTextCentred(canvas, medium, 190, 140 + (46 - medium.height()) / 2, "NO", inkFor(medium, kUiOrange));
+        netGame.voteRedrawn();
+    }
+
+    void BottomScreen::showVoteResult()
+    {
+        votePage_ = VotePage::Result;
+        Canvas &canvas = touchCanvas.canvas();
+        canvas.clear();
+        touchCanvas.untintAll();
+        const NetVote &vote = netGame.match().vote;
+        const FontView &medium = touchCanvas.font(kFontMedium), &small = touchCanvas.font(kFontSmall);
+        drawTextCentred(canvas, medium, 128, 4, "NEXT MAP", inkFor(medium, kUiOrange));
+        canvas.fill(kVoteX + 4, voteRowY(0), 64, 48, kUiPanel);
+        voteRow(0);
+        int top[3];
+        const int found = vote.top(top, 3);
+        char text[40];
+        int y = 92;
+        for (int n = 0; n < found; ++n, y += 26)
+        {
+            std::snprintf(text, sizeof(text), "%d. %s", n + 1, vote.names[top[n]]);
+            drawText(canvas, medium, 12, y, text, inkFor(medium, n == 0 ? kUiWhite : kUiOrange));
+            std::snprintf(text, sizeof(text), "%d", vote.tally[top[n]]);
+            drawTextCentred(canvas, medium, 232, y, text, inkFor(medium, n == 0 ? kUiWhite : kUiOrange));
+        }
+        if (vote.tally[vote.decided] == 0)
+            drawTextCentred(canvas, small, 128, 170, "No votes: drawn at random", inkFor(small, kUiGrey));
+        netGame.voteRedrawn();
+    }
+
+    void BottomScreen::voteUpdate()
+    {
+        if (votePage_ == VotePage::List)
+        {
+            for (int r = 0; r < kNetVoteRows; ++r)
+                voteRow(r);
+        }
+    }
+
+    void BottomScreen::voteClock(int seconds)
+    {
+        if (votePage_ != VotePage::List || seconds == voteClock_)
+            return;
+        voteClock_ = seconds;
+        Canvas &canvas = touchCanvas.canvas();
+        const FontView &small = touchCanvas.font(kFontSmall);
+        char text[8];
+        std::snprintf(text, sizeof(text), "%d:%02d", seconds / 60, seconds % 60);
+        canvas.fill(166, 3, 36, small.height() + 2, kUiBack);
+        drawTextCentred(canvas, small, 184, 5, text, inkFor(small, kUiGrey));
+    }
+
+    void BottomScreen::voteTouch(bool down, int x, int y)
+    {
+        const NetVote &vote = netGame.match().vote;
+        if (votePage_ == VotePage::Result)
+            return;
+        if (down && !voteHeld_)
+        {
+            voteHeld_ = true;
+            voteMoved_ = false;
+            voteFromY_ = voteDownY_ = y;
+            voteDownX_ = x;
+            return;
+        }
+        if (down)
+        {
+            // A slide: a button at a time.
+            if (votePage_ == VotePage::List && (y - voteFromY_ >= 28 || voteFromY_ - y >= 28))
+            {
+                const int to = netVoteScrolled(voteTop_, y < voteFromY_ ? 1 : -1, vote.count);
+                voteFromY_ = y;
+                voteMoved_ = true;
+                if (to != voteTop_)
+                {
+                    voteTop_ = to;
+                    voteList();
+                }
+            }
+            return;
+        }
+        if (!voteHeld_)
+            return;
+        voteHeld_ = false;
+        if (voteMoved_)
+            return;
+        if (votePage_ == VotePage::Confirm)
+        {
+            if (voteDownY_ >= 140 && voteDownY_ < 186 && voteDownX_ >= 8 && voteDownX_ < 124)
+                netGame.vote(voteAsked_);
+            if (voteDownY_ >= 140 && voteDownY_ < 186)
+                voteList();
+            return;
+        }
+        // (A vote made is made: the list is there to look at.)
+        if (vote.choice[netGame.match().me] >= 0 || voteDownY_ < voteRowY(0) - 3)
+            return;
+        const int row = (voteDownY_ - (voteRowY(0) - 3)) / (kVoteCellsDown * 8);
+        const int map = voteRowMap(row);
+        if (map >= 0)
+            voteConfirm(map);
+    }
+
+    void BottomScreen::voteCard(int row, const std::uint8_t *file, std::size_t size)
+    {
+        if (row < 0 || row >= kNetVoteRows || previewWidthOf(file, size) != kPreviewSmallWidth)
             return;
         const auto *pixels = reinterpret_cast<const std::uint16_t *>(file + sizeof(PreviewHeader));
         std::uint16_t palette[16];
         previewPalette(pixels, kPreviewSmallWidth * kPreviewSmallHeight, palette);
         Canvas &canvas = touchCanvas.canvas();
-        const int x = voteCellX(slot) * 8, y = voteCellY(slot) * 8;
+        const int x = kVoteX + 5, y = voteRowY(row);
+        const int px0 = (x + 7) / 8 * 8;
         for (int py = 0; py < kPreviewSmallHeight; ++py)
         {
             for (int px = 0; px < kPreviewSmallWidth; ++px)
-                canvas.fill(x + px, y + py, 1, 1, previewNearest(palette, pixels[py * kPreviewSmallWidth + px]));
+                canvas.fill(px0 + px, y + py, 1, 1, previewNearest(palette, pixels[py * kPreviewSmallWidth + px]));
         }
-        touchCanvas.tintWhole(voteCellX(slot), voteCellY(slot), kPreviewSmallWidth / 8, kPreviewSmallHeight / 8, palette, 12 + slot);
+        touchCanvas.tintWhole(px0 / 8, y / 8, kPreviewSmallWidth / 8, kPreviewSmallHeight / 8, palette, 12 + row);
     }
 
     void BottomScreen::showScores()

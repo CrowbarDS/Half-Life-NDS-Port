@@ -60,14 +60,23 @@ namespace hlrt
         void drawScores(int top);
         /// The scores as the match ended (NetFinal), from `top` down.
         void drawFinal(int top);
-        /// The vote for the next map, all of the screen: its cards, and how it
-        /// stands (voteUpdate: drawn over, its pictures left as they are).
+        /// The vote for the next map, all of the screen: every map, on big
+        /// buttons in a list that slides; touched, one asks to be confirmed.
         void showVote();
+        /// How it stands, drawn over: its pictures are left as they are.
         void voteUpdate();
-        /// A vote's map's small picture (HlPreview.hpp), into its card.
-        void voteCard(int slot, const std::uint8_t *file, std::size_t size);
-        /// Which of the vote's cards is at this place on the screen; -1: none.
-        int voteCardAt(int x, int y) const;
+        /// How long it has to go.
+        void voteClock(int seconds);
+        /// It is over: what it came to, and the maps with the most votes.
+        void showVoteResult();
+        /// The stylus, on those pages: on the screen at (x, y), or lifted.
+        void voteTouch(bool down, int x, int y);
+        /// A map's small picture (HlPreview.hpp), onto row `row`'s button.
+        void voteCard(int row, const std::uint8_t *file, std::size_t size);
+        /// Which map is on row `row` of what is shown (-1: none), and the first
+        /// of the list.
+        int voteRowMap(int row) const;
+        int voteTop() const { return voteTop_; }
         /// Whether the host's LOBBY button is there.
         bool lobbyButtonAt(int x, int y) const;
         /// A match over: that table, all of the screen, until showPad().
@@ -102,6 +111,19 @@ namespace hlrt
         void loadIcons();
 
     private:
+        enum class VotePage
+        {
+            List,
+            Confirm,
+            Result,
+        };
+        void voteList();
+        void voteRow(int row);
+        void voteConfirm(int map);
+        VotePage votePage_ = VotePage::List;
+        int voteTop_ = 0, voteAsked_ = -1, voteClock_ = -1;
+        bool voteHeld_ = false, voteMoved_ = false;
+        int voteFromY_ = 0, voteDownX_ = 0, voteDownY_ = 0;
         enum class Shown
         {
             Nothing,

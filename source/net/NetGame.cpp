@@ -312,7 +312,7 @@ namespace hlrt
         {
             // (None there is a card with its name alone; no answer: asked again.)
             if (none && taking_.what < NetVote::kMost)
-                voteHave_[taking_.what] = true;
+                voteNone_ |= 1u << taking_.what;
         }
         else if (from == FetchFrom::Picture || from == FetchFrom::PictureFull)
             pictureNext_ = -1;
@@ -475,12 +475,8 @@ namespace hlrt
         if (from == FetchFrom::VotePicture)
         {
             const std::uint32_t slot = taking_.what;
-            if (slot < NetVote::kMost && match_.vote.count > 1 && voteData_[slot] == nullptr)
-            {
-                voteData_[slot] = data;
-                voteBytes_[slot] = raw > kAirNameBytes ? raw - kAirNameBytes : 0;
-                voteHave_[slot] = true;
-            }
+            if (slot < NetVote::kMost && match_.vote.count > 1)
+                voteKeep(static_cast<int>(slot), data, raw > kAirNameBytes ? raw - kAirNameBytes : 0);
             else
                 std::free(data);
             return;
@@ -1926,8 +1922,14 @@ namespace hlrt
 
     void NetGame::voteRedrawn()
     {
-        for (bool &drawn : voteDrawn_)
-            drawn = false;
+        for (int &drawn : voteRowDrawn_)
+            drawn = -1;
+    }
+
+    int NetGame::voteSecondsLeft() const
+    {
+        const int left = voteOpenedAt_ + match_.rules.voteSeconds * 1000 - voteMs_;
+        return left > 0 ? (left + 999) / 1000 : 0;
     }
 
     void NetGame::voteLetGo()
@@ -1936,15 +1938,35 @@ namespace hlrt
         if (voteShown_)
             touchCanvas.untintAll();
         voteShown_ = false;
-        for (int s = 0; s < NetVote::kMost; ++s)
+        for (int n = 0; n < NetVotePictures::kPlaces; ++n)
         {
-            std::free(voteData_[s]);
-            voteData_[s] = nullptr;
-            voteBytes_[s] = 0;
-            voteHave_[s] = voteDrawn_[s] = false;
+            std::free(voteData_[n]);
+            voteData_[n] = nullptr;
+            voteBytes_[n] = 0;
         }
-        voteSaidReady_ = false;
-        voteMs_ = 0;
+        votePictures_ = NetVotePictures();
+        voteNone_ = 0;
+        voteRedrawn();
+        voteSent_ = 0;
+        voteMs_ = voteOpenedAt_ = 0;
+    }
+
+    void NetGame::voteKeep(int map, std::uint8_t *data, std::uint32_t bytes)
+    {
+        int shown[kNetVoteRows];
+        for (int r = 0; r < kNetVoteRows; ++r)
+            shown[r] = bottomScreen.voteRowMap(r);
+        const int place = votePictures_.room(shown, kNetVoteRows);
+        if (place < 0 || votePictures_.find(map) >= 0)
+        {
+            std::free(data);
+            return;
+        }
+        std::free(voteData_[place]);
+        voteData_[place] = data;
+        voteBytes_[place] = bytes;
+        votePictures_.slot[place] = static_cast<std::int8_t>(map);
+        votePictures_.touch(place);
     }
 
     void NetGame::voteFrame(int ms)
@@ -1953,47 +1975,49 @@ namespace hlrt
         if (vote.count <= 1)
             return;
         voteMs_ += ms;
-        // Each picture, until it has come or the host says it has none. (They
-        // come whole and right, or they are asked for again: HlAirBank.hpp.)
-        int missing = -1;
-        for (int s = vote.count - 1; s >= 0; --s)
-            missing = voteHave_[s] ? missing : s;
-        if (missing >= 0)
+        if (!isHost() && !vote.open)
+            voteOpenedAt_ = voteMs_;
+        // The pictures of what is on the screen, and of what is a slide away:
+        // asked for until they come, or the host says there is none.
+        if (vote.open && voteShown_)
         {
+            int shown[kNetVoteRows];
+            std::uint32_t known = voteNone_;
+            for (int r = 0; r < kNetVoteRows; ++r)
+                shown[r] = bottomScreen.voteRowMap(r);
+            for (int n = 0; n < NetVotePictures::kPlaces; ++n)
+                known |= votePictures_.slot[n] >= 0 ? 1u << votePictures_.slot[n] : 0u;
+            const int wanted = netVoteWanted(shown, kNetVoteRows, bottomScreen.voteTop(), vote.count, known);
+            if (wanted >= 0)
+            {
 #ifndef HLDS_CHILD
-            if (isHost())
-            {
-                FetchHost::Asked asked;
-                asked.from = FetchFrom::VotePicture;
-                asked.what = static_cast<std::uint32_t>(missing);
-                std::uint8_t *data = nullptr;
-                std::uint32_t packed = 0, raw = 0, name = 0;
-                if (fetchFind(asked, data, packed, raw, name))
+                if (isHost())
                 {
-                    voteData_[missing] = data;
-                    voteBytes_[missing] = raw > kAirNameBytes ? raw - kAirNameBytes : 0;
+                    FetchHost::Asked asked;
+                    asked.from = FetchFrom::VotePicture;
+                    asked.what = static_cast<std::uint32_t>(wanted);
+                    std::uint8_t *data = nullptr;
+                    std::uint32_t packed = 0, raw = 0, name = 0;
+                    if (fetchFind(asked, data, packed, raw, name))
+                        voteKeep(wanted, data, raw > kAirNameBytes ? raw - kAirNameBytes : 0);
+                    else
+                        voteNone_ |= 1u << wanted;
                 }
-                voteHave_[missing] = true;
-            }
-            else
+                else
 #endif
-            if (!fetchBusy())
-                fetchAsk(FetchFrom::VotePicture, static_cast<std::uint32_t>(missing));
-        }
-        else if (!isHost() && !voteSaidReady_)
-        {
-            voteSaidReady_ = true;
-            netSay(match_, netEvent(NetEventType::NextReady));
-        }
-        // What has come, on the screen, once its page is up.
-        if (vote.open)
-        {
-            for (int s = 0; s < vote.count; ++s)
+                if (!fetchBusy())
+                    fetchAsk(FetchFrom::VotePicture, static_cast<std::uint32_t>(wanted));
+            }
+            // What has come, on the screen: one a frame.
+            for (int r = 0; r < kNetVoteRows; ++r)
             {
-                if (voteData_[s] != nullptr && !voteDrawn_[s] && voteShown_)
+                const int map = shown[r];
+                const int place = map >= 0 ? votePictures_.find(map) : -1;
+                if (place >= 0 && voteRowDrawn_[r] != map)
                 {
-                    voteDrawn_[s] = true;
-                    bottomScreen.voteCard(s, voteData_[s], voteBytes_[s]);
+                    voteRowDrawn_[r] = map;
+                    votePictures_.touch(place);
+                    bottomScreen.voteCard(r, voteData_[place], voteBytes_[place]);
                     break;
                 }
             }
@@ -2001,17 +2025,29 @@ namespace hlrt
 #ifndef HLDS_CHILD
         if (!isHost())
             return;
+        // The maps' names, a few a frame: the last first, so that who hears
+        // the first knows how many there are.
+        for (int n = 0; n < 4 && voteSent_ < vote.count; ++n, ++voteSent_)
+        {
+            const int s = vote.count - 1 - voteSent_;
+            NetEvent offered = netEvent(NetEventType::NextMap, s);
+            std::memcpy(offered.text, vote.names[s], kNetTextBytes - 1);
+            netSay(match_, offered);
+            if (vote.names[s][kNetTextBytes - 1] != 0)
+            {
+                NetEvent rest = netEvent(NetEventType::NextMap, s | kNetVoteNameRest);
+                std::memcpy(rest.text, vote.names[s] + kNetTextBytes - 1, kNetTextBytes - 1);
+                netSay(match_, rest);
+            }
+        }
         // Who has gone has no vote.
         for (int p = 0; p < kNetPlayers; ++p)
         {
             if (((vote.voters >> p) & 1) && !netHere(match_, p))
-            {
-                vote.drop(p);
-                hldata::detail::netSayTally(match_);
-            }
+                hldata::detail::netSayTally(match_, vote.drop(p));
         }
         const int scores = match_.playing ? match_.rules.chatSeconds * 1000 : 0;
-        if (!vote.open && voteMs_ >= scores && ((missing < 0 && vote.allReady(match_.me)) || voteMs_ >= kNetVotePicturesMs))
+        if (!vote.open && voteMs_ >= scores && voteSent_ >= vote.count)
         {
             vote.open = true;
             ++vote.stamp;
@@ -2020,10 +2056,12 @@ namespace hlrt
         }
         if (!vote.open)
             return;
-        const int closes = voteOpenedAt_ + match_.rules.voteSeconds * 1000;
-        if (vote.decided < 0 && voteMs_ >= closes)
+        if (vote.decided < 0 && (voteMs_ >= voteOpenedAt_ + match_.rules.voteSeconds * 1000 || vote.allVoted()))
+        {
             decideVote();
-        if (vote.decided >= 0 && voteMs_ >= closes + kNetVoteResultMs)
+            voteDecidedAt_ = voteMs_;
+        }
+        if (vote.decided >= 0 && voteMs_ >= voteDecidedAt_ + kNetVoteResultMs)
         {
             if (match_.playing)
                 goBackToLobby();
@@ -2077,7 +2115,7 @@ namespace hlrt
         NetEvent said = netEvent(NetEventType::NextDecided, slot + 1);
         std::snprintf(said.text, sizeof(said.text), "%s", nextMap_.c_str());
         netSay(match_, said);
-        std::memcpy(match_.nextName, said.text, kNetTextBytes);
+        std::snprintf(match_.nextName, sizeof(match_.nextName), "%s", map.c_str());
         ++match_.final.stamp;
     }
 
@@ -2089,6 +2127,7 @@ namespace hlrt
         match_.vote.decided = static_cast<std::int8_t>(slot);
         ++match_.vote.stamp;
         sayNext(voteMaps_[slot], slot);
+        std::snprintf(match_.nextName, sizeof(match_.nextName), "%s", voteMaps_[slot].c_str());
     }
 
     void NetGame::startFirstVote(int skill)
@@ -2123,17 +2162,16 @@ namespace hlrt
         }
         NetVote &vote = match_.vote;
         vote = NetVote();
-        vote.count = static_cast<std::uint8_t>(netDrawSome(candidates, count, match_.endDraw * 40503u + 1u, NetVote::kMost));
+        // (Every map there is -- more than it can hold, as many drawn at random.)
+        vote.count = static_cast<std::uint8_t>(count <= NetVote::kMost
+                                                   ? count
+                                                   : netDrawSome(candidates, count, match_.endDraw * 40503u + 1u, NetVote::kMost));
         for (int p = 0; p < kNetPlayers; ++p)
             vote.voters = static_cast<std::uint8_t>(vote.voters | (netHere(match_, p) ? 1u << p : 0u));
-        // (The last first: who hears the first knows how many there are.)
-        for (int s = vote.count - 1; s >= 0; --s)
+        for (int s = 0; s < vote.count; ++s)
         {
             voteMaps_[s] = mapInfo_[static_cast<std::size_t>(candidates[s])].name;
-            NetEvent offered = netEvent(NetEventType::NextMap, s);
-            std::snprintf(offered.text, sizeof(offered.text), "%s", voteMaps_[s].c_str());
-            netSay(match_, offered);
-            std::memcpy(vote.names[s], offered.text, kNetTextBytes);
+            std::snprintf(vote.names[s], sizeof(vote.names[s]), "%s", voteMaps_[s].c_str());
         }
         ++vote.stamp;
     }

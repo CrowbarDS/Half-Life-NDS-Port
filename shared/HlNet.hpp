@@ -119,10 +119,10 @@ namespace hldata
                   ///< v[2] 1 = a lobby's matches added up, v[3] seconds of a vote
         NextDecided,///< host: the map that comes next, for the scores to say: text = its name, cut to fit;
                   ///< `a` = which of the vote's, and 1 (0: not by a vote)
-        NextMap,  ///< host: the vote offers this as its map `a`: text = its name, cut to fit
+        NextMap,  ///< host: the vote offers this as its map `a`: text = its name, or the rest of it
+                  ///< (HlNetVote.hpp's kNetVoteNameRest, kNetVoteCancel)
         NextPick, ///< client: I vote for its map `a`
-        NextTally,///< host: how many have chosen each of the vote's maps: v[0..3]
-        NextReady,///< client: I have all the vote's pictures
+        NextTally,///< host: v[0] have chosen the vote's map `a`
         NextOpen, ///< host: the vote is open
     };
 

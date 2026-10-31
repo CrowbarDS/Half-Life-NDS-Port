@@ -160,7 +160,9 @@ namespace hlrt
         const char *nextName() const;
         /// The match over, and the time for the vote: its page is up.
         bool votePage() const;
-        /// This console's player chooses the vote's map `slot`.
+        /// How long it has to go (as well as it is known here).
+        int voteSecondsLeft() const;
+        /// This console's player chooses the vote's map `slot`, for good.
         void vote(int slot);
         /// The vote's page was drawn afresh: its pictures are to be had again.
         void voteRedrawn();
@@ -307,13 +309,16 @@ namespace hlrt
         void fetchHostFrame();
         void fetchHostStop();
 #endif
-        // The vote's pictures: had as they come, kept until it is over.
-        std::uint8_t *voteData_[hldata::NetVote::kMost] = {};
-        std::uint32_t voteBytes_[hldata::NetVote::kMost] = {};
-        bool voteHave_[hldata::NetVote::kMost] = {};  ///< come, or there is none
-        bool voteDrawn_[hldata::NetVote::kMost] = {};
-        bool voteSaidReady_ = false, voteShown_ = false;
-        int voteMs_ = 0, voteOpenedAt_ = 0;
+        // The vote's pictures: had as they are wanted, a few kept.
+        std::uint8_t *voteData_[hldata::NetVotePictures::kPlaces] = {};
+        std::uint32_t voteBytes_[hldata::NetVotePictures::kPlaces] = {};
+        hldata::NetVotePictures votePictures_;
+        std::uint32_t voteNone_ = 0;     ///< bit: the host has no picture of that map
+        int voteRowDrawn_[hldata::kNetVoteRows] = {-1, -1, -1};
+        bool voteShown_ = false;
+        int voteSent_ = 0;               ///< (the host's) of the maps' names
+        int voteMs_ = 0, voteOpenedAt_ = 0, voteDecidedAt_ = 0;
+        void voteKeep(int map, std::uint8_t *data, std::uint32_t bytes);
         void voteFrame(int ms);
         unsigned ready_ = 0;
         std::uint32_t rooms_[hldata::kNetPlayers] = {}; ///< (the host's: KB, by client; 0 not said)

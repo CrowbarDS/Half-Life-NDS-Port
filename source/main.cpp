@@ -373,7 +373,7 @@ namespace
     // What is on the touch screen when a match is over, and for a vote before
     // the first: the scores, the vote, and what is touched of them.
     int scoresShown = -1, voteShown = -1;
-    bool touchWas = false, voteWaitShown = false;
+    bool touchWas = false, voteWaitShown = false, voteResultShown = false;
     void endScreensReset()
     {
         scoresShown = voteShown = -1;
@@ -383,33 +383,39 @@ namespace
     void endScreens()
     {
         const hldata::NetMatch &match = hlrt::netGame.match();
-        // A touch begun now: a card of the vote, or the host's LOBBY.
+        // The stylus: the host's LOBBY, or what is on the vote's pages.
         const bool touch = (keysHeld() & KEY_TOUCH) != 0;
-        if (touch && !touchWas)
-        {
-            touchPosition at;
+        touchPosition at{};
+        if (touch)
             touchRead(&at);
 #ifndef HLDS_CHILD
-            if (hlrt::netGame.isHost() && hlrt::bottomScreen.lobbyButtonAt(at.px, at.py))
-                hlrt::netGame.sendAllToLobby();
+        if (touch && !touchWas && hlrt::netGame.isHost() && hlrt::bottomScreen.lobbyButtonAt(at.px, at.py))
+            hlrt::netGame.sendAllToLobby();
 #endif
-            if (hlrt::netGame.votePage())
-                hlrt::netGame.vote(hlrt::bottomScreen.voteCardAt(at.px, at.py));
-        }
         touchWas = touch;
         if (hlrt::netGame.votePage())
         {
             if (voteShown == -1)
             {
                 hlrt::bottomScreen.showVote();
-                hlrt::netGame.voteRedrawn();
-                hlrt::netGame.setVoteShown(true);
+                voteResultShown = false;
                 voteShown = match.vote.stamp;
             }
-            else if (voteShown != match.vote.stamp)
+            else if (match.vote.decided >= 0)
             {
-                hlrt::bottomScreen.voteUpdate();
-                voteShown = match.vote.stamp;
+                if (!voteResultShown)
+                    hlrt::bottomScreen.showVoteResult();
+                voteResultShown = true;
+            }
+            else
+            {
+                hlrt::bottomScreen.voteTouch(touch, at.px, at.py);
+                if (voteShown != match.vote.stamp)
+                {
+                    hlrt::bottomScreen.voteUpdate();
+                    voteShown = match.vote.stamp;
+                }
+                hlrt::bottomScreen.voteClock(hlrt::netGame.voteSecondsLeft());
             }
         }
         else if (match.over)

@@ -158,7 +158,7 @@ namespace hldata
         bool warnDue = false; ///< ... and not yet said (whoever runs the screens clears it)
         NetFinal final;
         NetVote vote;
-        char nextName[kNetTextBytes] = {}; ///< the map that comes next, if it is known
+        char nextName[NetVote::kNameBytes] = {}; ///< the map that comes next, if it is known
         std::uint16_t endDraw = 0; ///< (the host's, said by End) which of a map's places to show it from
         // Counted from the deaths every console hears, for the match's facts.
         std::uint8_t kills[kNetPlayers] = {}, streaks[kNetPlayers] = {}, bestStreaks[kNetPlayers] = {},
@@ -453,11 +453,11 @@ namespace hldata
                 final.winnerTeam = final.teamFrags[1] > final.teamFrags[2] ? 1 : 2;
         }
 
-        /// The host: how the vote stands, to everyone.
-        inline void netSayTally(NetMatch &match)
+        /// The host: how many have chosen map `slot`, to everyone.
+        inline void netSayTally(NetMatch &match, int slot)
         {
-            const std::uint8_t *t = match.vote.tally;
-            match.host.out.add(netEvent(NetEventType::NextTally, 0, t[0], t[1], t[2], t[3]));
+            if (slot >= 0)
+                match.host.out.add(netEvent(NetEventType::NextTally, slot, match.vote.tally[slot]));
         }
 
         /// Who has gone since it ended: greyed where they are.
@@ -471,11 +471,6 @@ namespace hldata
                 {
                     row.gone = true;
                     ++final.stamp;
-                    if (match.role == NetMatch::Role::Host)
-                    {
-                        match.vote.drop(final.order[n]);
-                        netSayTally(match);
-                    }
                 }
             }
         }
@@ -547,6 +542,8 @@ namespace hldata
             NetEvent rules = netEvent(NetEventType::Rules, 0, match.rules.mode, match.rules.flags, match.rules.most,
                                     static_cast<int>(match.rules.mapHash & 0xFFFF), static_cast<int>(match.rules.mapHash >> 16),
                                     match.rules.frags | match.rules.minutes << 8);
+            match.host.out.add(netEvent(NetEventType::RulesMore, 0, match.rules.chatSeconds, match.rules.nextMode,
+                                        match.rules.totals ? 1 : 0, match.rules.voteSeconds));
             match.host.out.add(rules);
             for (int p = 0; p < kNetPlayers; ++p)
             {
@@ -730,14 +727,13 @@ namespace hldata
                 {
                     std::memcpy(match.nextName, event.text, kNetTextBytes);
                     match.nextName[kNetTextBytes - 1] = 0;
+                    // (By a vote: all of its name is known.)
+                    if (event.a >= 1 && event.a <= match.vote.count)
+                        std::memcpy(match.nextName, match.vote.names[event.a - 1], NetVote::kNameBytes);
                     ++match.final.stamp;
                     match.vote.decided = static_cast<std::int8_t>(event.a - 1);
                     ++match.vote.stamp;
                 }
-                break;
-            case NetEventType::NextReady:
-                if (host && from < kNetPlayers)
-                    match.vote.ready = static_cast<std::uint8_t>(match.vote.ready | 1u << from);
                 break;
             case NetEventType::NextOpen:
                 if (!host)
@@ -750,24 +746,18 @@ namespace hldata
                 // (The vote given up, before it came to anything.)
                 if (!host && event.a == kNetVoteCancel)
                     match.vote = NetVote();
-                if (!host && event.a < NetVote::kMost)
-                {
-                    std::memcpy(match.vote.names[event.a], event.text, kNetTextBytes);
-                    match.vote.names[event.a][kNetTextBytes - 1] = 0;
-                    if (event.a >= match.vote.count)
-                        match.vote.count = static_cast<std::uint8_t>(event.a + 1);
-                    ++match.vote.stamp;
-                }
+                else if (!host)
+                    match.vote.setName(event.a & ~kNetVoteNameRest, (event.a & kNetVoteNameRest) != 0, event.text);
                 break;
             case NetEventType::NextPick:
                 if (host && match.vote.cast(from, event.a))
-                    netSayTally(match);
+                    netSayTally(match, event.a);
                 break;
             case NetEventType::NextTally:
                 if (!host)
                 {
-                    for (int s = 0; s < NetVote::kMost; ++s)
-                        match.vote.tally[s] = static_cast<std::uint8_t>(event.v[s]);
+                    if (event.a < NetVote::kMost)
+                        match.vote.tally[event.a] = static_cast<std::uint8_t>(event.v[0]);
                     ++match.vote.stamp;
                 }
                 break;
@@ -1382,9 +1372,11 @@ namespace hldata
         if (match.role == NetMatch::Role::Host)
         {
             if (match.vote.cast(match.me, slot))
-                detail::netSayTally(match);
+                detail::netSayTally(match, slot);
             return;
         }
+        if (match.vote.choice[match.me] >= 0)
+            return;
         match.vote.choice[match.me] = static_cast<std::int8_t>(slot);
         ++match.vote.stamp;
         netSay(match, netEvent(NetEventType::NextPick, slot));

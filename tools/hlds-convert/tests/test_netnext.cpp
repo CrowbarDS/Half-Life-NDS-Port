@@ -2,6 +2,7 @@
 // what is left out, and the list being edited.
 
 #include <cstdio>
+#include <cstring>
 #include <vector>
 
 #include "HlNetNext.hpp"
@@ -86,10 +87,27 @@ namespace
         check(vote.cast(0, 2) && vote.cast(1, 2) && vote.cast(2, 1), "votes cast");
         check(vote.tally[2] == 2 && vote.tally[1] == 1, "... and counted");
         check(vote.winner(0) == 2 && vote.winner(12345) == 2, "the most chosen wins, whatever the draw");
-        check(vote.cast(1, 1) && vote.tally[2] == 1 && vote.tally[1] == 2, "a changed mind counts once");
-        check(!vote.cast(1, 1) && vote.tally[1] == 2, "... and the same again does nothing");
+        check(!vote.cast(1, 1) && vote.tally[2] == 2 && vote.tally[1] == 1, "a vote made is final");
         check(!vote.cast(5, 0), "who came late has no vote");
-        check(!vote.cast(0, 4) && !vote.cast(0, -1), "no map that is not offered");
+        check(!vote.cast(3, 4) && !vote.cast(3, -1), "no map that is not offered");
+        check(!vote.allVoted(), "one has yet to vote");
+        check(vote.cast(3, 0) && vote.allVoted(), "... and now everyone has: it is over");
+        NetVote nobody = offered(2);
+        nobody.voters = 0;
+        check(!nobody.allVoted(), "with nobody to vote, it is not over by itself");
+
+        // The result: what it came to first, then the most votes, none with none.
+        NetVote ranked = offered(6);
+        ranked.tally[1] = 1;
+        ranked.tally[2] = 3;
+        ranked.tally[4] = 2;
+        ranked.tally[5] = 1;
+        ranked.decided = 2;
+        int top[3];
+        check(ranked.top(top, 3) == 3 && top[0] == 2 && top[1] == 4 && top[2] == 1, "the top three, in order");
+        NetVote drawn = offered(3);
+        drawn.decided = 1;
+        check(drawn.top(top, 3) == 1 && top[0] == 1, "no votes: only what was drawn");
 
         // A tie: only those level, each for some draw.
         NetVote tie = offered(4);
@@ -118,39 +136,56 @@ namespace
         left.cast(0, 0);
         left.cast(1, 1);
         left.cast(2, 1);
-        left.drop(2);
-        left.drop(1);
-        check(left.tally[1] == 0 && left.tally[0] == 1 && left.winner(0) == 0, "who leaves takes their vote back");
+        check(left.drop(2) == 1 && left.drop(1) == 1, "who leaves says what their vote was for");
+        check(left.tally[1] == 0 && left.tally[0] == 1 && left.winner(0) == 0, "... and takes it back");
         check(!left.cast(1, 0), "... and has no other");
+        check(left.drop(3) == -1 && left.allVoted(), "who had not voted is not waited for");
 
         NetVote done = offered(2);
         done.decided = 0;
         check(!done.cast(0, 1), "no vote once it is decided");
+
+        // A long name comes in two parts.
+        NetVote named;
+        named.setName(3, true, "XYZ");
+        named.setName(3, false, "abcdefghijk");
+        check(std::strcmp(named.names[3], "abcdefghijkXYZ") == 0 && named.count == 4, "a long name, whole, in either order");
+        NetVote cut;
+        cut.setName(0, false, "abc");
+        check(std::strcmp(cut.names[0], "abc") == 0, "a short name in one");
     }
 
-    void testDraw()
+    void testList()
     {
-        int list[10];
-        for (int n = 0; n < 10; ++n)
-            list[n] = n;
-        const int some = netDrawSome(list, 10, 77, 4);
-        bool distinct = some == 4;
-        for (int a = 0; a < 4; ++a)
+        check(netVoteScrolled(0, -1, 19) == 0, "no sliding past the first");
+        check(netVoteScrolled(0, 1, 19) == 1, "a button at a time");
+        check(netVoteScrolled(16, 1, 19) == 16, "... and not past the last");
+        check(netVoteScrolled(0, 1, 2) == 0, "a list that fits does not slide");
+
+        // The pictures kept: the few, never what is on the screen.
+        NetVotePictures kept;
+        const int shown[3] = {4, 5, 6};
+        for (int map = 0; map < NetVotePictures::kPlaces; ++map)
         {
-            for (int b = a + 1; b < 4; ++b)
-                distinct = distinct && list[a] != list[b];
+            const int place = kept.room(shown, 3);
+            kept.slot[place] = static_cast<std::int8_t>(map);
+            kept.touch(place);
         }
-        check(distinct, "four different maps drawn");
-        int two[2] = {5, 6};
-        check(netDrawSome(two, 2, 1, 4) == 2, "no more than there are");
-        // Who it waits for: those with a vote, not the host, not who has left.
-        NetVote waits;
-        waits.voters = 0x07;
-        check(!waits.allReady(0), "the vote waits for the others' pictures");
-        waits.ready = 0x02;
-        check(!waits.allReady(0), "... all of them");
-        waits.drop(2);
-        check(waits.allReady(0), "... but not for who has left");
+        const int place = kept.room(shown, 3);
+        check(kept.slot[place] == 0, "full: the one used longest ago goes");
+        kept.touch(kept.find(0));
+        check(kept.slot[kept.room(shown, 3)] == 1, "... used again, it stays");
+        const int all[6] = {0, 1, 2, 3, 4, 5};
+        check(kept.room(all, 6) == -1, "... and what is on the screen always stays");
+
+        // Which to have next.
+        const int rows[3] = {3, 4, 5};
+        check(netVoteWanted(rows, 3, 3, 19, 0) == 3, "what is shown first");
+        check(netVoteWanted(rows, 3, 3, 19, 1u << 3 | 1u << 4) == 5, "... all of it");
+        check(netVoteWanted(rows, 3, 3, 19, 1u << 3 | 1u << 4 | 1u << 5) == 6, "then the next along");
+        check(netVoteWanted(rows, 3, 3, 19, 1u << 3 | 1u << 4 | 1u << 5 | 1u << 6) == 2, "then the one before");
+        const int ends[3] = {0, 1, -1};
+        check(netVoteWanted(ends, 3, 0, 2, 3u) == -1, "nothing more: nothing wanted");
     }
 
     void testPalette()
@@ -210,7 +245,7 @@ int main()
     testRotation();
     testEditing();
     testVote();
-    testDraw();
+    testList();
     testPalette();
     if (g_failures == 0)
         std::printf("test_netnext: ok\n");
