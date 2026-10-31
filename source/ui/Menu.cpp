@@ -1439,8 +1439,8 @@ namespace hlrt
             }
             case kNetTotals: settings.sessionTotals = !settings.sessionTotals; netGame.hostChanged(); return true;
             case kNetNext:
-                // (Vote, the winner's choice and turns are not built yet.)
-                settings.nextMode = settings.nextMode == kNextRotation ? kNextHost : kNextRotation;
+                // (The winner's choice and turns are not built yet.)
+                settings.nextMode = static_cast<std::uint8_t>((settings.nextMode + 3 + (step < 0 ? -1 : 1)) % 3);
                 netGame.hostChanged();
                 return true;
             case kRotPick:

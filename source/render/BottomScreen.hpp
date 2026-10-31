@@ -60,6 +60,16 @@ namespace hlrt
         void drawScores(int top);
         /// The scores as the match ended (NetFinal), from `top` down.
         void drawFinal(int top);
+        /// The vote for the next map, all of the screen: its cards, and how it
+        /// stands (voteUpdate: drawn over, its pictures left as they are).
+        void showVote();
+        void voteUpdate();
+        /// A vote's map's small picture (HlPreview.hpp), into its card.
+        void voteCard(int slot, const std::uint8_t *file, std::size_t size);
+        /// Which of the vote's cards is at this place on the screen; -1: none.
+        int voteCardAt(int x, int y) const;
+        /// Whether the host's LOBBY button is there.
+        bool lobbyButtonAt(int x, int y) const;
         /// A match over: that table, all of the screen, until showPad().
         void showScores();
         /// Three lines and nothing else: what is said when the game cannot

@@ -57,6 +57,9 @@ namespace hlrt
         /// Only what is drawn there in those three is changed, so the block
         /// is for that alone. Again with `three` null: as every cell is.
         void tint(int x, int y, int w, int h, const std::uint16_t *three, int bank = 1);
+        /// A block of cells in sixteen colours altogether of its own, palette
+        /// `bank`: a picture.
+        void tintWhole(int x, int y, int w, int h, const std::uint16_t *sixteen, int bank);
         /// Every cell as every cell is (the game's pad, which has no tints).
         void untintAll() { tint(0, 0, 32, 24, nullptr); }
 

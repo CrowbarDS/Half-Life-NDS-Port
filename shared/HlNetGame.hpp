@@ -28,6 +28,7 @@
 
 #include "HlMonsters.hpp"
 #include "HlNet.hpp"
+#include "HlNetVote.hpp"
 #include "HlRenew.hpp"
 
 namespace hldata
@@ -155,6 +156,7 @@ namespace hldata
         bool warned = false;  ///< the last minute has been reached
         bool warnDue = false; ///< ... and not yet said (whoever runs the screens clears it)
         NetFinal final;
+        NetVote vote;
         char nextName[kNetTextBytes] = {}; ///< the map that comes next, if it is known
         std::uint16_t endDraw = 0; ///< (the host's, said by End) which of a map's places to show it from
         // Counted from the deaths every console hears, for the match's facts.
@@ -450,6 +452,13 @@ namespace hldata
                 final.winnerTeam = final.teamFrags[1] > final.teamFrags[2] ? 1 : 2;
         }
 
+        /// The host: how the vote stands, to everyone.
+        inline void netSayTally(NetMatch &match)
+        {
+            const std::uint8_t *t = match.vote.tally;
+            match.host.out.add(netEvent(NetEventType::NextTally, 0, t[0], t[1], t[2], t[3]));
+        }
+
         /// Who has gone since it ended: greyed where they are.
         inline void netFinalWatch(NetMatch &match)
         {
@@ -461,6 +470,11 @@ namespace hldata
                 {
                     row.gone = true;
                     ++final.stamp;
+                    if (match.role == NetMatch::Role::Host)
+                    {
+                        match.vote.drop(final.order[n]);
+                        netSayTally(match);
+                    }
                 }
             }
         }
@@ -716,6 +730,30 @@ namespace hldata
                     std::memcpy(match.nextName, event.text, kNetTextBytes);
                     match.nextName[kNetTextBytes - 1] = 0;
                     ++match.final.stamp;
+                    match.vote.decided = static_cast<std::int8_t>(event.a - 1);
+                    ++match.vote.stamp;
+                }
+                break;
+            case NetEventType::NextMap:
+                if (!host && event.a < NetVote::kMost)
+                {
+                    std::memcpy(match.vote.names[event.a], event.text, kNetTextBytes);
+                    match.vote.names[event.a][kNetTextBytes - 1] = 0;
+                    if (event.a >= match.vote.count)
+                        match.vote.count = static_cast<std::uint8_t>(event.a + 1);
+                    ++match.vote.stamp;
+                }
+                break;
+            case NetEventType::NextPick:
+                if (host && match.vote.cast(from, event.a))
+                    netSayTally(match);
+                break;
+            case NetEventType::NextTally:
+                if (!host)
+                {
+                    for (int s = 0; s < NetVote::kMost; ++s)
+                        match.vote.tally[s] = static_cast<std::uint8_t>(event.v[s]);
+                    ++match.vote.stamp;
                 }
                 break;
             case NetEventType::RulesMore:
@@ -990,6 +1028,7 @@ namespace hldata
         match.over = false;
         match.warned = match.warnDue = false;
         match.nextName[0] = 0;
+        match.vote = NetVote();
         match.playedMs = 0;
         for (int p = 0; p < kNetPlayers; ++p)
         {
@@ -1317,6 +1356,22 @@ namespace hldata
         add("Kills", final.mostKills, final.kills);
         add("Streak", final.longestStreak, final.streak);
         add("Suicides", final.mostSuicides, final.suicides);
+    }
+
+    /// This console's player votes for the vote's map `slot`.
+    inline void netVotePick(NetMatch &match, int slot)
+    {
+        if (slot < 0 || slot >= match.vote.count || match.vote.decided >= 0)
+            return;
+        if (match.role == NetMatch::Role::Host)
+        {
+            if (match.vote.cast(match.me, slot))
+                detail::netSayTally(match);
+            return;
+        }
+        match.vote.choice[match.me] = static_cast<std::int8_t>(slot);
+        ++match.vote.stamp;
+        netSay(match, netEvent(NetEventType::NextPick, slot));
     }
 
     /// Whether the last minute of a time limit has just begun. (Not for a

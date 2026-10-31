@@ -1642,13 +1642,46 @@ int main(int argc, char *argv[])
                 // The match over: the table, on the touch screen, as it
                 // stands, until the lobby.
                 {
-                    static int scoresShown = -1;
-                    if (paused || !inMatch || !hlrt::netGame.match().over)
-                        scoresShown = -1;
-                    else if (scoresShown != hlrt::netGame.match().final.stamp)
+                    static int scoresShown = -1, voteShown = -1;
+                    static bool touchWas = false;
+                    const hldata::NetMatch &match = hlrt::netGame.match();
+                    if (paused || !inMatch || !match.over)
+                        scoresShown = voteShown = -1;
+                    else
                     {
-                        scoresShown = hlrt::netGame.match().final.stamp;
-                        hlrt::bottomScreen.showScores();
+                        // A touch begun now: a card of the vote, or the host's LOBBY.
+                        const bool touch = (keysHeld() & KEY_TOUCH) != 0;
+                        if (touch && !touchWas)
+                        {
+                            touchPosition at;
+                            touchRead(&at);
+#ifndef HLDS_CHILD
+                            if (hlrt::netGame.isHost() && hlrt::bottomScreen.lobbyButtonAt(at.px, at.py))
+                                hlrt::netGame.sendAllToLobby();
+#endif
+                            if (hlrt::netGame.votePage())
+                                hlrt::netGame.vote(hlrt::bottomScreen.voteCardAt(at.px, at.py));
+                        }
+                        touchWas = touch;
+                        if (hlrt::netGame.votePage())
+                        {
+                            if (voteShown == -1)
+                            {
+                                hlrt::bottomScreen.showVote();
+                                hlrt::netGame.voteRedrawn();
+                                voteShown = match.vote.stamp;
+                            }
+                            else if (voteShown != match.vote.stamp)
+                            {
+                                hlrt::bottomScreen.voteUpdate();
+                                voteShown = match.vote.stamp;
+                            }
+                        }
+                        else if (scoresShown != match.final.stamp)
+                        {
+                            scoresShown = match.final.stamp;
+                            hlrt::bottomScreen.showScores();
+                        }
                     }
                 }
                 // Who killed whom, who came and went: a line at the top of

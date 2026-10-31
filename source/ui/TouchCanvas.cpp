@@ -62,6 +62,13 @@ namespace hlrt
         }
     }
 
+    void TouchCanvas::tintWhole(int x, int y, int w, int h, const std::uint16_t *sixteen, int bank)
+    {
+        for (int i = 0; i < 16; ++i)
+            BG_PALETTE_SUB[bank * 16 + i] = sixteen[i];
+        tint(x, y, w, h, nullptr, bank);
+    }
+
     /// A player's colours, as their swatch shows them: a hue each, strong
     /// and bright (a hue is laid over a colour keeping how strong it is:
     /// a grey's would stay grey).

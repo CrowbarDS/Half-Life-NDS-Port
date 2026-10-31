@@ -65,6 +65,45 @@ namespace hldata
         return 0;
     }
 
+    /// Sixteen colours for a picture, for the touch screen (a cell has no more):
+    /// the commonest, each to three bits of red, green and blue.
+    inline void previewPalette(const std::uint16_t *pixels, int count, std::uint16_t *palette)
+    {
+        std::uint16_t uses[512] = {};
+        for (int n = 0; n < count; ++n)
+        {
+            const std::uint32_t c = pixels[n];
+            std::uint16_t &use = uses[(c >> 2 & 7) | (c >> 7 & 7) << 3 | (c >> 12 & 7) << 6];
+            use = static_cast<std::uint16_t>(use < 65535 ? use + 1 : use);
+        }
+        for (int p = 0; p < 16; ++p)
+        {
+            int best = 0;
+            for (int b = 1; b < 512; ++b)
+                best = uses[b] > uses[best] ? b : best;
+            uses[best] = 0;
+            palette[p] = static_cast<std::uint16_t>(0x8000 | ((best & 7) << 2 | 2) | ((best >> 3 & 7) << 2 | 2) << 5 |
+                                                    ((best >> 6 & 7) << 2 | 2) << 10);
+        }
+    }
+    /// Which of them is nearest.
+    inline int previewNearest(const std::uint16_t *palette, std::uint16_t colour)
+    {
+        int best = 0, bestFar = 1 << 30;
+        for (int p = 0; p < 16; ++p)
+        {
+            const int r = (colour & 31) - (palette[p] & 31), g = (colour >> 5 & 31) - (palette[p] >> 5 & 31),
+                      b = (colour >> 10 & 31) - (palette[p] >> 10 & 31);
+            const int far = r * r + g * g + b * b;
+            if (far < bestFar)
+            {
+                bestFar = far;
+                best = p;
+            }
+        }
+        return best;
+    }
+
     /// Whether `bytes` is a picture of this version and size.
     inline bool previewValid(const std::uint8_t *bytes, std::size_t size)
     {

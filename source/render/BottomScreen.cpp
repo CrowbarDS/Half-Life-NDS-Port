@@ -3,6 +3,7 @@
 #include "render/BottomScreen.hpp"
 
 #include "HlPlayerMove.hpp"
+#include "HlPreview.hpp"
 #include "Settings.hpp"
 #include "Global.hpp"
 #include "HlTouchLayout.hpp"
@@ -588,6 +589,109 @@ namespace hlrt
         }
     }
 
+    namespace
+    {
+        // The vote's cards: its picture on whole cells, its name under it, how
+        // many chose it beside it.
+        constexpr int kVoteTop = 3, kVoteCellsDown = 10;
+        int voteCellX(int slot) { return 1 + (slot % 2) * 16; }
+        int voteCellY(int slot) { return kVoteTop + (slot / 2) * kVoteCellsDown; }
+        constexpr int kLobbyX = 204, kLobbyY = 1, kLobbyW = 50, kLobbyH = 15;
+
+        void drawLobbyButton(Canvas &canvas)
+        {
+#ifndef HLDS_CHILD
+            if (!netGame.isHost())
+                return;
+            const FontView &small = touchCanvas.font(kFontSmall);
+            canvas.button(kLobbyX, kLobbyY, kLobbyW, kLobbyH, false);
+            drawTextCentred(canvas, small, kLobbyX + kLobbyW / 2, kLobbyY + (kLobbyH - small.height()) / 2, "LOBBY",
+                            inkFor(small, kUiOrange));
+#else
+            (void)canvas;
+#endif
+        }
+    } // namespace
+
+    bool BottomScreen::lobbyButtonAt(int x, int y) const
+    {
+        return x >= kLobbyX && x < kLobbyX + kLobbyW && y >= kLobbyY && y < kLobbyY + kLobbyH;
+    }
+
+    int BottomScreen::voteCardAt(int x, int y) const
+    {
+        const NetVote &vote = netGame.match().vote;
+        for (int s = 0; s < vote.count; ++s)
+        {
+            const int cx = voteCellX(s) * 8, cy = voteCellY(s) * 8;
+            if (x >= cx - 4 && x < cx + 116 && y >= cy - 4 && y < cy + 68)
+                return s;
+        }
+        return -1;
+    }
+
+    void BottomScreen::voteUpdate()
+    {
+        Canvas &canvas = touchCanvas.canvas();
+        const NetMatch &match = netGame.match();
+        const NetVote &vote = match.vote;
+        const FontView &title = touchCanvas.font(kFontTitle);
+        char text[8];
+        for (int s = 0; s < vote.count; ++s)
+        {
+            const int x = voteCellX(s) * 8, y = voteCellY(s) * 8;
+            const bool lit = vote.decided >= 0 ? vote.decided == s : match.vote.choice[match.me] == s;
+            const int edge = lit ? kUiOrange + 2 : kUiEdge;
+            canvas.fill(x - 4, y - 4, 120, 2, edge);
+            canvas.fill(x - 4, y + 66, 120, 2, edge);
+            canvas.fill(x - 4, y - 4, 2, 72, edge);
+            canvas.fill(x + 114, y - 4, 2, 72, edge);
+            canvas.fill(x + 66, y + 8, 46, title.height() + 2, kUiBack);
+            std::snprintf(text, sizeof(text), "%d", vote.tally[s]);
+            drawTextCentred(canvas, title, x + 89, y + 9, text, inkFor(title, lit ? kUiWhite : kUiOrange));
+        }
+    }
+
+    void BottomScreen::showVote()
+    {
+        stopShown = false;
+        touchCanvas.pageOff();
+        Canvas &canvas = touchCanvas.canvas();
+        canvas.clear();
+        touchCanvas.untintAll();
+        shown_ = Shown::Message;
+        padPending_ = false;
+        const FontView &medium = touchCanvas.font(kFontMedium), &small = touchCanvas.font(kFontSmall);
+        drawTextCentred(canvas, medium, 104, 4, "VOTE: THE NEXT MAP", inkFor(medium, kUiOrange));
+        drawLobbyButton(canvas);
+        const NetVote &vote = netGame.match().vote;
+        for (int s = 0; s < vote.count; ++s)
+        {
+            const int x = voteCellX(s) * 8, y = voteCellY(s) * 8;
+            canvas.fill(x, y, 64, 48, kUiPanel);
+            drawText(canvas, small, x, y + 50, vote.names[s], inkFor(small, kUiWhite));
+        }
+        touchCanvas.pageOn();
+        voteUpdate();
+    }
+
+    void BottomScreen::voteCard(int slot, const std::uint8_t *file, std::size_t size)
+    {
+        if (slot < 0 || slot >= NetVote::kMost || previewWidthOf(file, size) != kPreviewSmallWidth)
+            return;
+        const auto *pixels = reinterpret_cast<const std::uint16_t *>(file + sizeof(PreviewHeader));
+        std::uint16_t palette[16];
+        previewPalette(pixels, kPreviewSmallWidth * kPreviewSmallHeight, palette);
+        Canvas &canvas = touchCanvas.canvas();
+        const int x = voteCellX(slot) * 8, y = voteCellY(slot) * 8;
+        for (int py = 0; py < kPreviewSmallHeight; ++py)
+        {
+            for (int px = 0; px < kPreviewSmallWidth; ++px)
+                canvas.fill(x + px, y + py, 1, 1, previewNearest(palette, pixels[py * kPreviewSmallWidth + px]));
+        }
+        touchCanvas.tintWhole(voteCellX(slot), voteCellY(slot), kPreviewSmallWidth / 8, kPreviewSmallHeight / 8, palette, 12 + slot);
+    }
+
     void BottomScreen::showScores()
     {
         stopShown = false;
@@ -602,6 +706,7 @@ namespace hlrt
         netFinalTitle(netGame.match(), said, sizeof(said));
         drawTextCentred(canvas, title, 128, 6, said, inkFor(title, kUiOrange));
         drawFinal(6 + title.height() + 2);
+        drawLobbyButton(canvas);
         touchCanvas.pageOn();
     }
 

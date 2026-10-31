@@ -5,6 +5,8 @@
 #include <vector>
 
 #include "HlNetNext.hpp"
+#include "HlNetVote.hpp"
+#include "HlPreview.hpp"
 
 using namespace hldata;
 
@@ -70,6 +72,94 @@ namespace
         check(netNextRotation(kMaps, twice, 2, nameHash("aaa"), false, 0) == -1, "... even listed twice");
     }
 
+    NetVote offered(int count)
+    {
+        NetVote vote;
+        vote.count = static_cast<std::uint8_t>(count);
+        vote.voters = 0x0F;
+        return vote;
+    }
+
+    void testVote()
+    {
+        NetVote vote = offered(4);
+        check(vote.cast(0, 2) && vote.cast(1, 2) && vote.cast(2, 1), "votes cast");
+        check(vote.tally[2] == 2 && vote.tally[1] == 1, "... and counted");
+        check(vote.winner(0) == 2 && vote.winner(12345) == 2, "the most chosen wins, whatever the draw");
+        check(vote.cast(1, 1) && vote.tally[2] == 1 && vote.tally[1] == 2, "a changed mind counts once");
+        check(!vote.cast(1, 1) && vote.tally[1] == 2, "... and the same again does nothing");
+        check(!vote.cast(5, 0), "who came late has no vote");
+        check(!vote.cast(0, 4) && !vote.cast(0, -1), "no map that is not offered");
+
+        // A tie: only those level, each for some draw.
+        NetVote tie = offered(4);
+        tie.cast(0, 0);
+        tie.cast(1, 3);
+        bool first = false, last = false, other = false;
+        for (std::uint32_t draw = 0; draw < 20; ++draw)
+        {
+            const int w = tie.winner(draw);
+            first = first || w == 0;
+            last = last || w == 3;
+            other = other || (w != 0 && w != 3);
+        }
+        check(first && last && !other, "a tie is drawn between those level");
+
+        // Nobody: any of them.
+        const NetVote none = offered(3);
+        bool seen[3] = {};
+        for (std::uint32_t draw = 0; draw < 3; ++draw)
+            seen[none.winner(draw)] = true;
+        check(seen[0] && seen[1] && seen[2], "no votes: drawn from them all");
+        check(NetVote().winner(0) == -1, "nothing offered: nothing wins");
+
+        // Who leaves mid-vote.
+        NetVote left = offered(2);
+        left.cast(0, 0);
+        left.cast(1, 1);
+        left.cast(2, 1);
+        left.drop(2);
+        left.drop(1);
+        check(left.tally[1] == 0 && left.tally[0] == 1 && left.winner(0) == 0, "who leaves takes their vote back");
+        check(!left.cast(1, 0), "... and has no other");
+
+        NetVote done = offered(2);
+        done.decided = 0;
+        check(!done.cast(0, 1), "no vote once it is decided");
+    }
+
+    void testDraw()
+    {
+        int list[10];
+        for (int n = 0; n < 10; ++n)
+            list[n] = n;
+        const int some = netDrawSome(list, 10, 77, 4);
+        bool distinct = some == 4;
+        for (int a = 0; a < 4; ++a)
+        {
+            for (int b = a + 1; b < 4; ++b)
+                distinct = distinct && list[a] != list[b];
+        }
+        check(distinct, "four different maps drawn");
+        int two[2] = {5, 6};
+        check(netDrawSome(two, 2, 1, 4) == 2, "no more than there are");
+        check(netVoteMs(5) == 13000 && netVoteMs(30) == 30000, "a vote has its time, however short the scores' is");
+    }
+
+    void testPalette()
+    {
+        std::uint16_t pixels[100];
+        const std::uint16_t red = 0x8000 | 31, blue = 0x8000 | 31 << 10;
+        for (int n = 0; n < 100; ++n)
+            pixels[n] = n < 70 ? red : blue;
+        std::uint16_t palette[16];
+        previewPalette(pixels, 100, palette);
+        const std::uint16_t nearRed = palette[previewNearest(palette, red)], nearBlue = palette[previewNearest(palette, blue)];
+        check((nearRed & 31) >= 28 && (nearRed >> 10 & 31) <= 3, "red is drawn red");
+        check((nearBlue >> 10 & 31) >= 28 && (nearBlue & 31) <= 3, "blue is drawn blue");
+        check(palette[0] == nearRed, "the commonest colour comes first");
+    }
+
     void testEditing()
     {
         std::uint32_t list[3] = {};
@@ -89,6 +179,9 @@ int main()
     testCandidates();
     testRotation();
     testEditing();
+    testVote();
+    testDraw();
+    testPalette();
     if (g_failures == 0)
         std::printf("test_netnext: ok\n");
     return g_failures == 0 ? 0 : 1;

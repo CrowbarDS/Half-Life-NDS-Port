@@ -156,7 +156,16 @@ namespace hlrt
         /// ... and it has been left (the map is gone): the lobby again, with
         /// whoever is still there.
         void toLobby();
+        /// The match over, and the time for the vote: its page is up.
+        bool votePage() const;
+        /// This console's player chooses the vote's map `slot`.
+        void vote(int slot);
+        /// The vote's page was drawn afresh: its pictures are to be had again.
+        void voteRedrawn() { voteAsk_ = 0; }
 #ifndef HLDS_CHILD
+        /// The host, from the end of a match: everyone back to its lobby now,
+        /// whatever was to come next.
+        void sendAllToLobby();
         /// The host, back in its lobby: the map chosen when the match ended,
         /// once the others have had time to leave theirs. It stays due until
         /// startNext or dropNext.
@@ -288,6 +297,7 @@ namespace hlrt
         void fetchHostFrame();
         void fetchHostStop();
 #endif
+        int voteAsk_ = 0; ///< the next of the vote's pictures to have
         unsigned ready_ = 0;
         std::uint32_t rooms_[hldata::kNetPlayers] = {}; ///< (the host's: KB, by client; 0 not said)
         std::uint32_t frees_[hldata::kNetPlayers] = {};
@@ -307,6 +317,11 @@ namespace hlrt
         /// left the map too.
         static constexpr std::uint32_t kNextWaitVblanks = 3 * 60;
         void chooseNext();
+        void startVote();
+        void decideVote();
+        void sayNext(const std::string &map, int slot);
+        void goBackToLobby();
+        std::string voteMaps_[hldata::NetVote::kMost];
         unsigned guests_ = 0;        ///< bit n: client n has asked for a stream
         std::FILE *airFile_ = nullptr;
         std::uint16_t serves_ = 0;   ///< sendings made, for each one's number

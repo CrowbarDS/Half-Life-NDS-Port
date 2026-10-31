@@ -466,12 +466,15 @@ namespace hlrt
         // 320 set's.
         if (!atlas_ && global.hasData)
         {
-            static std::uint8_t body[kHudAtlasWidth * kHudAtlasHeight + 64];
+            // (Only for now: not kept beside a map.)
+            constexpr std::size_t kBody = kHudAtlasWidth * kHudAtlasHeight + 64;
+            auto *body = static_cast<std::uint8_t *>(std::malloc(kBody));
             hldata::TextureHeader header;
-            for (const char *file : {kHud640File, kHudAtlasFile})
+            for (const char *file : body != nullptr ? std::initializer_list<const char *>{kHud640File, kHudAtlasFile}
+                                                    : std::initializer_list<const char *>{})
             {
                 if (TextureCache::readFile(global.commonPath(file).c_str(), kHudAtlasWidth, kHudAtlasHeight, 1, header,
-                                           body, sizeof(body)) &&
+                                           body, kBody) &&
                     header.texelBytes == sizeof(atlas))
                 {
                     std::memcpy(atlas, body, sizeof(atlas));
@@ -481,21 +484,24 @@ namespace hlrt
                     break;
                 }
             }
+            std::free(body);
         }
         // The train's pictures, the same way (a card cooked before them has
         // none, and shows none).
         if (!train_ && global.hasData)
         {
-            static std::uint8_t body[kHudTrainWidth * kHudTrainHeight + 64];
+            constexpr std::size_t kBody = kHudTrainWidth * kHudTrainHeight + 64;
+            auto *body = static_cast<std::uint8_t *>(std::malloc(kBody));
             hldata::TextureHeader header;
             if (TextureCache::readFile(global.commonPath(kHudTrainFile).c_str(), kHudTrainWidth, kHudTrainHeight, 1,
-                                       header, body, sizeof(body)) &&
+                                       header, body, kBody) &&
                 header.texelBytes == sizeof(trainPictures))
             {
                 std::memcpy(trainPictures, body, sizeof(trainPictures));
                 train_ = true;
                 shownTrain = -1;
             }
+            std::free(body);
         }
     }
 
