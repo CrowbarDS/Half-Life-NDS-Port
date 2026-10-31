@@ -156,6 +156,8 @@ namespace hlrt
         /// ... and it has been left (the map is gone): the lobby again, with
         /// whoever is still there.
         void toLobby();
+        /// The map coming next, as it is known ("": none).
+        const char *nextName() const;
         /// The match over, and the time for the vote: its page is up.
         bool votePage() const;
         /// This console's player chooses the vote's map `slot`.

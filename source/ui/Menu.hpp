@@ -162,6 +162,8 @@ namespace hlrt
         /// That last button, or B: back -- the host asked first, if anyone
         /// has joined its game.
         Action sheetBack();
+        bool nextHeld_ = false; ///< the next map is said on the screen, in place of a lobby
+        std::uint32_t nextHeldAt_ = 0;
         int hostChapter_ = 0; ///< HOST's chapter: MATCH, PLAYERS
         int achChapter_ = 0, settingsChapter_ = 0; ///< the chapter each was last on (kept while the console is on)
         int sheetScroll_ = 0;    ///< how far down the list is scrolled, in pixels

@@ -332,6 +332,17 @@ namespace hlrt
         probeCard();
         title_ = true;
         sheetFrom_ = Page::Main; // (a page left behind by a stream, or a lost link)
+        // (The next map on its way: said, in place of a lobby seen for a moment.)
+        const char *next = netGame.nextName();
+        if (next[0] != 0)
+        {
+            mapCard.hide();
+            page_ = netGame.isHost() ? Page::NetHost : Page::NetLobby;
+            nextHeld_ = true;
+            nextHeldAt_ = Global::vblanks();
+            bottomScreen.showMessage("NEXT MAP", next);
+            return;
+        }
         openSheet(netGame.isHost() ? Page::NetHost : Page::NetLobby);
     }
 
@@ -3439,6 +3450,15 @@ namespace hlrt
 
     Menu::Action Menu::frame()
     {
+        // (Nothing has come of it: the lobby after all.)
+        if (nextHeld_ && (!netGame.on() || Global::vblanks() - nextHeldAt_ > 10 * 60))
+        {
+            nextHeld_ = false;
+            netGame.match().nextName[0] = 0;
+            if (netGame.on())
+                openLobby();
+            return Action::None;
+        }
 #ifndef HLDS_CHILD
         // Back in the lobby with the next map chosen: on to it, for everyone.
         if (page_ == Page::NetHost)
@@ -3457,10 +3477,14 @@ namespace hlrt
                 if (!fits)
                 {
                     netGame.dropNext();
+                    netGame.match().nextName[0] = 0;
+                    nextHeld_ = false;
+                    openLobby();
                     showReason("The next map does not fit a console here.");
                 }
                 else
                 {
+                    nextHeld_ = false;
                     untintSeats();
                     netGame.startNext(next, settings.fragLimit, settings.minuteLimit);
                     netShown_ = 0;
@@ -3469,6 +3493,8 @@ namespace hlrt
             }
         }
 #endif
+        if (nextHeld_)
+            return Action::None;
         // The map's card on the top screen: HOST's map, the host's in the
         // lobby, the touched room's while looking.
         {

@@ -1904,6 +1904,15 @@ namespace hlrt
             fetchTick();
     }
 
+    const char *NetGame::nextName() const
+    {
+#ifndef HLDS_CHILD
+        if (isHost())
+            return nextMap_.c_str();
+#endif
+        return match_.nextName;
+    }
+
     bool NetGame::votePage() const
     {
         return match_.vote.count > 1 && match_.vote.open;
