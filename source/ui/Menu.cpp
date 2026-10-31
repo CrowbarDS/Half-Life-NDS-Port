@@ -43,6 +43,8 @@ namespace hlrt
         {
             kResume,
             kEndMatch,
+            kHandLeft,     ///< a console sent the game: which hand it is played with
+            kHandRight,
             kSave,
             kSaveGame,
             kLoadGame,
@@ -180,6 +182,7 @@ namespace hlrt
         int lobbyModelTried = 0, lobbyModelColours = -1;
         bool lobbyWas = false;
         int lobbyCharacter = 0;
+        const Row kHandRows[] = {{Kind::Button, kHandLeft, "LEFT HAND"}, {Kind::Button, kHandRight, "RIGHT HAND"}};
         const Row kConfirmRows[] = {{Kind::Button, kYes, "YES"}, {Kind::Button, kNo, "NO"}};
         // A new game's difficulty, as the game's NEW GAME asks it.
         const Row kSkillRows[] = {{Kind::Button, kSkillEasy, "EASY"},
@@ -276,6 +279,7 @@ namespace hlrt
             case 0: count = static_cast<int>(sizeof(kMain) / sizeof(kMain[0])); return kMain;
             case 3: count = static_cast<int>(sizeof(kTitleRows) / sizeof(kTitleRows[0])); return kTitleRows;
             case 5: count = 2; return kConfirmRows;
+            case 20: count = 2; return kHandRows;
             case 7: count = static_cast<int>(sizeof(kMultiRows) / sizeof(kMultiRows[0])); return kMultiRows;
             case 9: count = foundCount + 1; return foundRows;
             case 11: count = static_cast<int>(sizeof(kNetPauseRows) / sizeof(kNetPauseRows[0])); return kNetPauseRows;
@@ -300,6 +304,16 @@ namespace hlrt
         title_ = true;
         page_ = Page::Title;
         draw();
+    }
+
+    void Menu::openHand()
+    {
+        open(false);
+        title_ = true;
+        page_ = Page::Hand;
+        draw();
+        // (As it stands until one is touched.)
+        drawRow(settings.leftHanded ? 0 : 1, true);
     }
 
     void Menu::openLobby()
@@ -349,7 +363,7 @@ namespace hlrt
     bool Menu::big() const
     {
         return page_ == Page::Main || page_ == Page::Title || page_ == Page::Confirm || page_ == Page::Multiplayer ||
-               page_ == Page::NetPause || page_ == Page::Difficulty || page_ == Page::NewGame;
+               page_ == Page::NetPause || page_ == Page::Difficulty || page_ == Page::NewGame || page_ == Page::Hand;
     }
 
     /// What of the lobby is on the screen: who is there, what they are
@@ -461,6 +475,7 @@ namespace hlrt
                                    : page_ == Page::Multiplayer ? "MULTIPLAYER"
                                    : page_ == Page::Difficulty  ? "DIFFICULTY"
                                    : page_ == Page::NewGame     ? "NEW GAME"
+                                   : page_ == Page::Hand        ? "WHICH HAND?"
                                                                 : question),
                             inkFor(title, kUiOrange));
         }
@@ -3067,6 +3082,14 @@ namespace hlrt
         switch (item.id)
         {
         case kResume:  return Action::Resume;
+        case kHandLeft:
+        case kHandRight:
+            settings.leftHanded = item.id == kHandLeft;
+            if (netGame.on())
+                openLobby();
+            else
+                openJoin();
+            return Action::None;
         case kEndMatch:
             asker_ = page_;
             ask(Action::EndMatch, "END THE MATCH?");

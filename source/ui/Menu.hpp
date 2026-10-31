@@ -53,6 +53,8 @@ namespace hlrt
         void openTitle();
         /// The same, on the lobby of the game between consoles this console
         /// is in (a match over: back to it).
+        /// A console sent the game, as it comes: which hand it is played with.
+        void openHand();
         void openLobby();
         /// The games near, to choose one: where a console out of a game lands
         /// if it has nowhere else (one sent the game), and says why.
@@ -119,6 +121,7 @@ namespace hlrt
             Profile = 17,     ///< a sheet: the player as the others see them, shown on the top screen
             NetSend = 18,     ///< a sheet: the host giving the game to consoles without it (Download Play)
             NetStarting = 19, ///< a sheet: the host's match beginning -- who is ready, who is on the way
+            Hand = 20,        ///< a console sent the game, as it comes: which hand it is played with
         };
 
         // A sheet: a page of its own, drawn and touched apart from the rows

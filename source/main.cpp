@@ -1320,6 +1320,13 @@ int main(int argc, char *argv[])
         else
             hlrt::menu.openTitle();
 #ifdef HLDS_CHILD
+        // (Sent the game, it has no card to keep this on: asked as it comes.)
+        {
+            static bool handAsked = false;
+            if (!handAsked)
+                hlrt::menu.openHand();
+            handAsked = true;
+        }
         // (Sent the game: the host told what a map may take of it, for the
         // maps it offers -- a DSi's room is not a DS's.)
         guestSayRoom();
