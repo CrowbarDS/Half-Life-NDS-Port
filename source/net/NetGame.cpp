@@ -942,6 +942,12 @@ namespace hlrt
         lobbyAsked_ = true;
     }
 
+    void NetGame::endMatch()
+    {
+        if (phase_ == Phase::Playing)
+            netEndMatch(match_);
+    }
+
     void NetGame::toLobbyFromLoad()
     {
         match_.over = false;
@@ -1363,6 +1369,8 @@ namespace hlrt
     void NetGame::mapLoaded()
     {
         profilesSeen_ = 0; // (who they chose to be: what the map has now loaded)
+        if (match_.minuteLimit >= 2)
+            sound.loadMatchWarning();
         const LevelView &view = level.view;
         spawns_.clear();
         for (std::uint32_t e = 0; e < view.entityCount; ++e)
@@ -1868,6 +1876,13 @@ namespace hlrt
 
     bool NetGame::notice(char *line, int room)
     {
+        if (match_.warnDue)
+        {
+            match_.warnDue = false;
+            sound.matchWarning();
+            std::snprintf(line, static_cast<std::size_t>(room), "1 MINUTE REMAINING");
+            return true;
+        }
         if (match_.noticeCount == 0)
             return false;
         const NetNotice notice = match_.notices[0];
@@ -1879,7 +1894,7 @@ namespace hlrt
         {
         case NetEventType::Died:
             if (notice.other < kNetPlayers && notice.other != notice.who)
-                std::snprintf(line, static_cast<std::size_t>(room), "%s killed %s", name(notice.other), name(notice.who));
+                netKillLine(line, room, name(notice.other), name(notice.who), notice.weapon);
             else
                 std::snprintf(line, static_cast<std::size_t>(room), "%s died", name(notice.who));
             break;

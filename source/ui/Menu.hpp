@@ -36,7 +36,7 @@ namespace hlrt
             /// HOST, with maps never photographed: their pictures taken
             /// first (main.cpp), then openHost().
             TakePreviews,
-            AbortMatch, ///< the host's: everyone back to its lobby
+            EndMatch,   ///< the host's: the match over, for everyone
         };
 
         /// Whether QUIT is offered: there is somewhere to go back to (the

@@ -1283,6 +1283,51 @@ namespace hlrt
         start(SoundLayer::Ui, ui_[which], volume, 64, false);
     }
 
+    void Sound::loadMatchWarning()
+    {
+#ifndef HLDS_CHILD
+        for (int n = 0; n < kMatchWarningWords; ++n)
+        {
+            if (global.hasData && warning_[n].data == nullptr)
+                readClip(kMatchWarningFiles[n], warning_[n]);
+        }
+#endif
+    }
+
+    void Sound::dropMatchWarning()
+    {
+        warningAt_ = -1;
+        for (Clip &clip : warning_)
+        {
+            std::free(clip.data);
+            clip = Clip();
+        }
+    }
+
+    void Sound::matchWarning()
+    {
+        warningAt_ = 0;
+        warningMs_ = 0;
+    }
+
+    void Sound::warningTick(int ms)
+    {
+        if (warningAt_ < 0 || (warningMs_ -= ms) > 0)
+            return;
+        if (warningAt_ >= kMatchWarningWords)
+        {
+            warningAt_ = -1;
+            return;
+        }
+        const Clip &clip = warning_[warningAt_++];
+        // (A word that is not there: on to the next, which will not be either.)
+        if (clip.data == nullptr)
+            return;
+        start(SoundLayer::Ui, clip, 127, 64, false);
+        // (ADPCM: two samples to a byte.)
+        warningMs_ = clip.rate != 0 ? static_cast<int>(clip.bytes * 2000u / clip.rate) : 0;
+    }
+
     void Sound::setPaused(bool paused)
     {
         if (paused == paused_)
@@ -1466,6 +1511,7 @@ namespace hlrt
         const int ms = static_cast<int>(((now - lastVblank_) * 1000 + 30) / 60);
         lastVblank_ = now;
         arm7Audio.frame();
+        warningTick(ms);
         musicTick();
         dspAudio.frame();
         // A DSP that has let the game down is done without from here on:

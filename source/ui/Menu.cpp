@@ -42,7 +42,7 @@ namespace hlrt
         enum Id
         {
             kResume,
-            kAbort,
+            kEndMatch,
             kSave,
             kSaveGame,
             kLoadGame,
@@ -161,7 +161,7 @@ namespace hlrt
                                   {Kind::Button, kOptions, "OPTIONS"},
                                   {Kind::Button, kBack, "BACK"}};
         const Row kNetPauseRows[] = {{Kind::Button, kResume, "RESUME"}, {Kind::Button, kOptions, "OPTIONS"},
-                                     {Kind::Button, kAbort, "ABORT MATCH"}, {Kind::Button, kLeave, "LEAVE GAME"}};
+                                     {Kind::Button, kEndMatch, "END MATCH"}, {Kind::Button, kLeave, "LEAVE GAME"}};
         // The games found: made when they are shown, then BACK.
         constexpr int kFoundListed = 4;
         Row foundRows[kFoundListed + 1];
@@ -244,7 +244,7 @@ namespace hlrt
         bool hiddenRow(Id id)
         {
             return (id == kGameTraining && !onCard[1]) || (id == kGameUplink && !onCard[2]) ||
-                   (id == kContinue && !saveThere) || (id == kQuit && !quitThere) || (id == kAbort && !netGame.isHost());
+                   (id == kContinue && !saveThere) || (id == kQuit && !quitThere) || (id == kEndMatch && (!netGame.isHost() || netGame.match().over));
         }
 
         const Row *tableOf(int page, int &count);
@@ -3051,9 +3051,9 @@ namespace hlrt
         switch (item.id)
         {
         case kResume:  return Action::Resume;
-        case kAbort:
+        case kEndMatch:
             asker_ = page_;
-            ask(Action::AbortMatch, "ABORT THE MATCH?");
+            ask(Action::EndMatch, "END THE MATCH?");
             break;
         case kSave:    return Action::Save;
         case kCommand: return Action::Command;

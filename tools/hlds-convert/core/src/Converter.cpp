@@ -1463,21 +1463,25 @@ namespace hlds
             ++result.fonts;
         }
 
-        // The menu's sounds.
-        for (int n = 0; n < hldata::kUiSoundCount; ++n)
+        // The menu's sounds, and the words of a match's last minute.
+        for (int n = 0; n < hldata::kUiSoundCount + hldata::kMatchWarningWords; ++n)
         {
+            const bool word = n >= hldata::kUiSoundCount;
+            const int k = word ? n - hldata::kUiSoundCount : n;
+            const char *const from = word ? hldata::kMatchWarningSources[k] : hldata::kUiSoundSources[k];
+            const char *const to = word ? hldata::kMatchWarningFiles[k] : hldata::kUiSoundFiles[k];
             std::vector<std::uint8_t> source;
             WavData wav;
-            const fs::path file = findNoCase(options_.gameDir / "sound", hldata::kUiSoundSources[n]);
+            const fs::path file = findNoCase(options_.gameDir / "sound", from);
             if (file.empty() || !readFile(file, source, why) || !parseWav(source, wav, why))
             {
-                result.warnings.push_back(std::string("the sound ") + hldata::kUiSoundSources[n] + " was not made");
+                result.warnings.push_back(std::string("the sound ") + from + " was not made");
                 continue;
             }
             const std::uint32_t hash = hldata::crc32(source.data(), static_cast<std::uint32_t>(source.size())) ^
                                        hldata::kSoundVersion;
             const CookedSound cooked = encodeSound(wav, hldata::kSoundRate, false);
-            if (put(ui / "snd" / (std::string(hldata::kUiSoundFiles[n]) + ".hsn"), packSound(cooked, hash)))
+            if (put(ui / "snd" / (std::string(to) + ".hsn"), packSound(cooked, hash)))
                 ++result.sounds;
         }
 

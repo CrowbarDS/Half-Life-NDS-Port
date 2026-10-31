@@ -1104,6 +1104,9 @@ namespace hlds
         for (const char *name : hldata::kUiSoundFiles)
             packing.add(stage / "snd" / (std::string(name) + ".hsn"), std::string("snd/") + name + ".hsn",
                         false, false);
+        for (const char *name : hldata::kMatchWarningFiles)
+            packing.add(stage / "snd" / (std::string(name) + ".hsn"), std::string("snd/") + name + ".hsn",
+                        false, false);
         // The words of what the people say, of every map staged; and the
         // weapons some map has not, with their sounds (kModelRefLazy).
         {

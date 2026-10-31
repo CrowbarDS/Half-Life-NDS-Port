@@ -493,6 +493,15 @@ namespace hldata
         "items/flashlight1.wav",     "common/wpn_hudon.wav",      "common/wpn_moveselect.wav",
         "common/wpn_hudoff.wav",     "common/wpn_denyselect.wav", "player/sprayer.wav"};
 
+    /// The words of a match's last minute ("sixty seconds remaining": the game's
+    /// announcer has no "minute"), said one after another. On a card only, and
+    /// read only for a match with a time limit: a console sent the game goes
+    /// without, and shows the line alone.
+    inline constexpr int kMatchWarningWords = 3;
+    inline constexpr const char *const kMatchWarningFiles[kMatchWarningWords] = {"mp_warn0", "mp_warn1", "mp_warn2"};
+    inline constexpr const char *const kMatchWarningSources[kMatchWarningWords] = {
+        "vox/sixty.wav", "vox/seconds.wav", "vox/remaining.wav"};
+
     /// Blanks a value moved by the stylus rests before its sound is heard
     /// (a sixth of a second, as the weapon list's rows: HlWeaponList.hpp).
     inline constexpr std::uint32_t kUiSettle = 10;

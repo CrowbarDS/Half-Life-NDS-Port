@@ -24,6 +24,8 @@
 //
 // std-only: the host tests play matches with it (test_net).
 
+#include <cstdio>
+
 #include "HlMonsters.hpp"
 #include "HlNet.hpp"
 #include "HlRenew.hpp"
@@ -65,6 +67,7 @@ namespace hldata
         NetEventType type = NetEventType::None;
         std::uint8_t who = 0;   ///< the player it is about
         std::uint8_t other = 0; ///< (a death: who did it; kNetPlayers: nobody else)
+        std::uint8_t weapon = 0; ///< (a death by another: what they had in hand when it was heard)
     };
 
     /// The rules of a match, as its host set them (Rules).
@@ -126,6 +129,8 @@ namespace hldata
 
         bool playing = false; ///< a map is loaded and the match is on
         bool over = false;
+        bool warned = false;  ///< the last minute has been reached
+        bool warnDue = false; ///< ... and not yet said (whoever runs the screens clears it)
         int fragLimit = 0;    ///< 0: none
         int minuteLimit = 0;  ///< 0: none
         NetRules rules;
@@ -309,6 +314,11 @@ namespace hldata
             notice.type = type;
             notice.who = static_cast<std::uint8_t>(who);
             notice.other = static_cast<std::uint8_t>(other);
+            // (What the killer holds as it is heard: a grenade thrown just
+            // before they changed weapon is put down to the new one.)
+            notice.weapon = type == NetEventType::Died && other < kNetPlayers && other != who
+                                ? netPlayer(match, other).weapon
+                                : static_cast<std::uint8_t>(0);
         }
 
         /// Where player `p` is, as someone the map's logic can be asked
@@ -342,6 +352,10 @@ namespace hldata
         /// else). The scores, to everyone.
         inline void netScore(NetMatch &match, int victim, int killer)
         {
+            // (The match over, the scores are final: a death still on its way
+            // counts for nothing.)
+            if (match.over)
+                return;
             ++match.deaths[victim];
             // (In teamplay, a teammate killed costs the killer a frag, as a
             // death by one's own hand does: the game's teamplay rules.)
@@ -533,7 +547,7 @@ namespace hldata
                 }
                 break;
             case NetEventType::Hit:
-                if (event.a == match.me && from != match.me && match.playing && player.health > 0 &&
+                if (event.a == match.me && from != match.me && match.playing && !match.over && player.health > 0 &&
                     static_cast<std::uint8_t>(event.v[1]) == match.spawns && !netTeammates(match, from, match.me))
                 {
                     playerHurt(player, event.v[0], from < kNetPlayers ? match.glide[from].pos : nullptr);
@@ -542,14 +556,14 @@ namespace hldata
                 }
                 break;
             case NetEventType::Burst:
-                if (from != match.me && match.playing)
+                if (from != match.me && match.playing && !match.over)
                 {
                     const fx at[3] = {event.v[0] * 1024, event.v[1] * 1024, event.v[2] * 1024};
                     explodeAt(w, player, at, 100, true, true, false);
                 }
                 break;
             case NetEventType::Died:
-                if (from != match.me)
+                if (from != match.me && !match.over)
                     netNotice(match, NetEventType::Died, from, event.a);
                 if (host)
                     netScore(match, from, event.a);
@@ -831,6 +845,7 @@ namespace hldata
         match.playing = true;
         player.suit.value.silent = true;
         match.over = false;
+        match.warned = match.warnDue = false;
         match.playedMs = 0;
         for (int p = 0; p < kNetPlayers; ++p)
         {
@@ -1073,6 +1088,39 @@ namespace hldata
     /// Once a frame, after the game's own tick. `yaw` and `pitch` are the
     /// view's (65536 to the circle), `did` what weaponsTick said it did
     /// (kWeapon*), `lamp` whether the suit's lamp is on.
+    /// The host: the match is over, for everyone -- its limits reached, or
+    /// by its END MATCH.
+    inline void netEndMatch(NetMatch &match)
+    {
+        if (match.role != NetMatch::Role::Host || !match.playing || match.over)
+            return;
+        match.over = true;
+        match.host.out.add(netEvent(NetEventType::End));
+        detail::netNotice(match, NetEventType::End, 0);
+    }
+
+    /// Whether the last minute of a time limit has just begun. (Not for a
+    /// limit of a minute: that would be said as the match begins.)
+    inline bool netLastMinute(const NetMatch &match)
+    {
+        return match.playing && !match.over && !match.warned && match.minuteLimit >= 2 &&
+               match.playedMs >= (match.minuteLimit - 1) * 60000;
+    }
+
+    /// What a death says: who, whom, and with what, in `room` (at least 40)
+    /// bytes. Each name is cut, not the words, so that it all fits a line.
+    inline void netKillLine(char *line, int room, const char *killer, const char *victim, std::uint8_t weapon)
+    {
+        static constexpr const char *const kNames[kWeaponCount] = {
+            "",       "crowbar",  "9mm",      "shotgun", "grenade", "MP5",  ".357", "crossbow",
+            "satchel", "tripmine", "snark",   "RPG",     "gauss",   "egon", "hornet"};
+        const char *with = weapon < kWeaponCount ? kNames[weapon] : "";
+        if (with[0] != 0)
+            std::snprintf(line, static_cast<std::size_t>(room), "%.10s killed %.10s (%s)", killer, victim, with);
+        else
+            std::snprintf(line, static_cast<std::size_t>(room), "%.11s killed %.11s", killer, victim);
+    }
+
     inline void netTick(NetMatch &match, LogicWorld &w, PlayerState &player, std::uint16_t yaw, std::int32_t pitch,
                         std::uint32_t did, bool lamp, int ms)
     {
@@ -1104,7 +1152,7 @@ namespace hldata
                 // (Which of their lives it was: a hit on one that is over
                 // by the time it arrives is not taken by the next.)
                 // (Nor on a teammate, without friendly fire.)
-                if (hurt > 0 && player.health > 0 && !netTeammates(match, match.me, p))
+                if (hurt > 0 && player.health > 0 && !match.over && !netTeammates(match, match.me, p))
                     netSay(match, netEvent(NetEventType::Hit, p, hurt > 30000 ? 30000 : hurt, netPlayer(match, p).spawns));
             }
             // What they struck of the map's.
@@ -1145,7 +1193,7 @@ namespace hldata
                 match.blameMs -= ms;
             if (player.health <= 0)
             {
-                if (match.wasAlive)
+                if (match.wasAlive && !match.over)
                 {
                     match.wasAlive = false;
                     match.deadMs = 0;
@@ -1263,6 +1311,8 @@ namespace hldata
 
         // ---- the host's own business
         match.playedMs += ms;
+        if (netLastMinute(match))
+            match.warned = match.warnDue = true;
         if (!host)
             return;
         for (NetMatch::Taken &slot : match.taken)
@@ -1283,11 +1333,7 @@ namespace hldata
             for (int t = 1; t <= 2 && match.rules.teams(); ++t)
                 done = done || (match.fragLimit > 0 && match.teamFrags[t] >= match.fragLimit);
             if (done)
-            {
-                match.over = true;
-                match.host.out.add(netEvent(NetEventType::End));
-                detail::netNotice(match, NetEventType::End, 0);
-            }
+                netEndMatch(match);
         }
     }
 } // namespace hldata

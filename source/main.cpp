@@ -369,7 +369,12 @@ namespace
         NEA_PolyFormat(31, 0, static_cast<NEA_LightEnum>(0), hlrt::WorldDraw::kCull,
                        hlrt::worldDraw.polygonMode());
         hlrt::camera.apply();
+        // (The match over: nothing in hand. It is back with the next map.)
+        const bool held = hlrt::game.held.active;
+        if (hlrt::netGame.playing() && hlrt::netGame.match().over)
+            hlrt::game.held.active = false;
         hlrt::worldDraw.draw();
+        hlrt::game.held.active = held;
         hlrt::hudDraw.draw();
     }
 
@@ -408,6 +413,7 @@ namespace
         // Silence first: the sounds are the map's, and are played out of its
         // memory.
         hlrt::sound.unload();
+        hlrt::sound.dropMatchWarning();
         hlrt::game.destroy();
         hlrt::worldDraw.destroy();
         hlrt::textureStream.end();
@@ -1650,6 +1656,9 @@ int main(int argc, char *argv[])
                     {
                         hlrt::bottomScreen.setPressed(hlrt::input.touchOn);
                         hlrt::bottomScreen.setWeaponList(hlrt::input.weaponList());
+                        // (The match over: nobody does anything more.)
+                        if (inMatch && hlrt::netGame.match().over)
+                            hlrt::input.quiet();
                         hlrt::game.frame(elapsed);
                         achievements.frame();
                         debugFadeTick();
@@ -1674,8 +1683,8 @@ int main(int argc, char *argv[])
                         backToTitle();
                         return;
                     }
-                    if (item == Menu::Action::AbortMatch)
-                        hlrt::netGame.abortMatch();
+                    if (item == Menu::Action::EndMatch)
+                        hlrt::netGame.endMatch();
                     if (item == Menu::Action::Save || item == Menu::Action::SaveTo)
                     {
                         // The quick one, or the player's own that was
@@ -1725,7 +1734,7 @@ int main(int argc, char *argv[])
                         hlrt::bottomScreen.showPad();
                         lastVblank = Global::vblanks();
                     }
-                    else if (item == Menu::Action::Resume || hlrt::input.startPressed)
+                    else if (item == Menu::Action::Resume || item == Menu::Action::EndMatch || hlrt::input.startPressed)
                     {
                         paused = false;
                         settings.save();

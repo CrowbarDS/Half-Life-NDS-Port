@@ -1137,6 +1137,63 @@ namespace
         check(!netTeammates(match, 0, 2), "... and in a free-for-all there are no teams");
     }
 
+    void testMatchEnd()
+    {
+        NetMatch match;
+        netBegin(match, NetMatch::Role::Host, 0, "Host");
+        netHostJoin(match.host, 1);
+        match.host.players[1].flags = kNetHere;
+        match.playing = true;
+
+        // The last minute: said once, and not for a limit of one minute.
+        match.minuteLimit = 1;
+        check(!netLastMinute(match), "a limit of a minute has no last minute to warn of");
+        match.minuteLimit = 5;
+        match.playedMs = 4 * 60000 - 1;
+        check(!netLastMinute(match), "not before the last minute");
+        match.playedMs = 4 * 60000;
+        check(netLastMinute(match), "the last minute begins");
+        match.warned = true;
+        check(!netLastMinute(match), "... and is said once");
+        match.warned = false;
+
+        // A kill: the weapon goes with it.
+        match.mine.weapon = kWeaponShotgun;
+        hldata::detail::netNotice(match, NetEventType::Died, 1, 0);
+        check(match.noticeCount == 1 && match.notices[0].weapon == kWeaponShotgun, "a kill says what did it");
+        hldata::detail::netNotice(match, NetEventType::Died, 1, 1);
+        check(match.notices[1].weapon == 0, "... a death by one's own hand does not");
+        hldata::detail::netNotice(match, NetEventType::Died, 0);
+        check(match.notices[2].weapon == 0, "... nor a death by nobody");
+        char line[40];
+        netKillLine(line, sizeof(line), "Gordon", "Barney", kWeaponShotgun);
+        check(std::strcmp(line, "Gordon killed Barney (shotgun)") == 0, "what a kill says");
+        netKillLine(line, sizeof(line), "ABCDEFGHIJK", "abcdefghijk", kWeaponCrossbow);
+        check(std::strcmp(line, "ABCDEFGHIJ killed abcdefghij (crossbow)") == 0, "the longest names cut; the words stay");
+        netKillLine(line, sizeof(line), "A", "B", kWeaponNone);
+        check(std::strcmp(line, "A killed B") == 0, "no weapon known: no weapon said");
+
+        // The end: once, to everyone, and the scores stay as they were.
+        hldata::detail::netScore(match, 1, 0);
+        check(match.frags[0] == 1 && match.deaths[1] == 1, "a kill counts before the end");
+        const int before = match.host.out.count;
+        netEndMatch(match);
+        check(match.over && match.host.out.count == before + 1, "END MATCH: over, and told to everyone");
+        netEndMatch(match);
+        check(match.host.out.count == before + 1, "... once");
+        hldata::detail::netScore(match, 1, 0);
+        hldata::detail::netScore(match, 0, 0);
+        check(match.frags[0] == 1 && match.deaths[1] == 1 && match.deaths[0] == 0 && match.host.out.count == before + 1,
+              "a death after the end changes nothing");
+        check(!netLastMinute(match), "no warning once it is over");
+
+        NetMatch client;
+        netBegin(client, NetMatch::Role::Client, 7, "Client");
+        client.playing = true;
+        netEndMatch(client);
+        check(!client.over, "only the host ends a match");
+    }
+
     int far(const fx *a, const fx *b)
     {
         fx d[3] = {a[0] - b[0], a[1] - b[1], a[2] - b[2]};
@@ -1591,6 +1648,7 @@ int main()
     testLobbyOfEight();
     testTooMany();
     testTeamScore();
+    testMatchEnd();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir == nullptr)
         std::printf("test_net: HLDS_VALVE_DIR not set, no match was played\n");

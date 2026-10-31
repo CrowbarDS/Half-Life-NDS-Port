@@ -180,6 +180,9 @@ namespace hlrt
         void kick(int p);
         /// The host, its map loaded and not begun: its lobby again.
         void toLobbyFromLoad();
+        /// The host: the match over now, as if its limit had been reached
+        /// (END MATCH).
+        void endMatch();
         /// The host: the match given up, everyone back in its lobby -- those
         /// still loading it too.
         void abortMatch();

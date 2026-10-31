@@ -46,7 +46,7 @@ namespace hldata
     /// frame of another game, or of another build of this one, is not read.
     /// (Version 2: eight players, profiles, the rules, teams, sprays.)
     inline constexpr std::uint16_t kNetMagic = 0x4C48; // "HL"
-    inline constexpr std::uint8_t kNetVersion = 4;
+    inline constexpr std::uint8_t kNetVersion = 5;
 
     // ------------------------------------------------------------ the state
 

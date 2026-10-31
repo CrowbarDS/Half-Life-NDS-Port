@@ -47,6 +47,12 @@ namespace hlrt
         /// Every pass of the main loop: plays what the game has queued, keeps
         /// the loops and the spoken line going, and feeds the music.
         void frame();
+        /// The words of a match's last minute: read as a match with a time
+        /// limit begins (if they are on the card; a console sent the game
+        /// never has them), said, and let go of as it is left.
+        void loadMatchWarning();
+        void dropMatchWarning();
+        void matchWarning();
         /// One of the menu's own sounds (hldata::kUiSound*).
         /// `volume` of 127 (the menu's own: 110, a little under the game).
         void ui(int which, int volume = 110);
@@ -223,6 +229,10 @@ namespace hlrt
         int loaded_ = 0;
         int bytes_ = 0;
         Clip ui_[hldata::kUiSoundCount];
+        Clip warning_[hldata::kMatchWarningWords];
+        int warningAt_ = -1;  ///< the word to say next; -1: none
+        int warningMs_ = 0;   ///< until then
+        void warningTick(int ms);
         void roomTick();
         void holdMusic();
         void resumeMusic();
