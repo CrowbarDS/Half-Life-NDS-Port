@@ -43,7 +43,7 @@ SCRIPT="${2:-sleep 5}"
 # "focus 0" or "focus 1" says which one the keys go to.
 # (One console: its window is put where the coordinates in README.md are
 # measured from -- Qt does not always open it there.)
-if [ "${EMU_INSTANCES:-1}" != 2 ]; then
+if [ "${EMU_INSTANCES:-1}" = 1 ]; then
     SCRIPT="sleep 1.5; place 0 0 25; $SCRIPT"
 fi
 # EMU_PICK2: what the second instance is started on, as a touch of the
@@ -52,6 +52,16 @@ fi
 # in build/emu's configs) -- a console sent the game, as it would be if it
 # had been, but started without Download Play (which needs a bootable DS
 # firmware the emulator here has not got).
+# EMU_INSTANCES=3: a third, at x 640 (its touch screen from 640,222): the same
+# ROM, or EMU_ROM3=child, the Download Play child.
+if [ "${EMU_INSTANCES:-1}" = 3 ]; then
+    EMU_SCREEN="${EMU_SCREEN:-960x480}"
+    PICK2="${EMU_PICK2:-tap 600 47}"
+    [ "${EMU_ROM2:-}" = child ] && PICK2="${EMU_PICK2:-tap 600 75}"
+    PICK3="${EMU_PICK3:-tap 520 47}"
+    [ "${EMU_ROM3:-}" = child ] && PICK3="${EMU_PICK3:-tap 520 75}"
+    SCRIPT="sleep 6; place 0 0 0; sleep 0.5; tap 75 15; sleep 0.8; tap 120 387; sleep 0.8; tap 300 387; sleep 3; place 1 320 0; sleep 1; tap 340 15; sleep 1; tap 420 47; sleep 1; $PICK2; sleep 8; tap 75 15; sleep 0.8; tap 120 387; sleep 0.8; tap 300 387; sleep 3; place 2 640 0; sleep 1; tap 660 15; sleep 1; tap 740 47; sleep 1; ${EMU_SHOT3:-} $PICK3; sleep 12; $SCRIPT"
+fi
 if [ "${EMU_INSTANCES:-1}" = 2 ]; then
     EMU_SCREEN="${EMU_SCREEN:-640x480}"
     PICK2="${EMU_PICK2:-tap 200 47}"
