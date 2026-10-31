@@ -131,6 +131,7 @@ if(HLDS_BUILD_TESTS)
             test_net
             test_netmaps
             test_netnext
+            test_demo
             test_airfetch
             test_people
             test_boxes

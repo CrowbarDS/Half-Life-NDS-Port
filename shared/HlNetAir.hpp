@@ -97,6 +97,7 @@ namespace hldata
         std::uint32_t index = 0;
         std::uint32_t length = 0; ///< the stream's, in bytes
         std::uint8_t skill = 0;   ///< a map's: how hard the match will be (kSkill*)
+        std::uint32_t crc = 0;    ///< of all of it (0: not said; a demo's map says)
         char name[kAirNameBytes] = {};
         const std::uint8_t *data = nullptr;
         int count = 0;
@@ -118,6 +119,7 @@ namespace hldata
         head.index = in.u32();
         head.length = in.u32();
         head.skill = static_cast<std::uint8_t>(in.u8());
+        head.crc = in.u32();
         in.bytes(head.name, kAirNameBytes);
         head.name[kAirNameBytes - 1] = 0;
         head.count = static_cast<int>(in.u16());
@@ -133,6 +135,7 @@ namespace hldata
         std::uint16_t serve = 0;
         std::uint32_t length = 0;
         std::uint8_t skill = 0;
+        std::uint32_t crc = 0; ///< (whoever has worked it out: 0, not said)
         struct Want
         {
             bool on = false;       ///< waited for
@@ -169,6 +172,16 @@ namespace hldata
             wants[c] = Want();
             wants[c].on = true;
             wants[c].room = kAirWindow;
+        }
+        /// ... from piece `from`: what comes before it, it has.
+        void addFrom(int c, std::uint32_t from)
+        {
+            add(c);
+            if (c >= 1 && c < kNetPlayers && wants[c].on)
+            {
+                wants[c].base = from;
+                wants[c].room = from + kAirWindow;
+            }
         }
         /// Client `c` is gone, or is left out.
         void drop(int c)
@@ -310,6 +323,7 @@ namespace hldata
             out.u32(index);
             out.u32(length);
             out.u8(skill);
+            out.u32(crc);
             out.bytes(name, kAirNameBytes);
             out.u16(static_cast<std::uint16_t>(count));
             if (count > 0)
@@ -334,6 +348,10 @@ namespace hldata
         bool known = false;        ///< the host has been heard sending it
         std::uint32_t length = 0;
         std::uint8_t skill = 0;
+        std::uint32_t crc = 0;
+        /// Into memory as long as the stream, each piece at its own place, not
+        /// a ring handed on as it is read (a demo's map: nothing to hand on).
+        bool direct = false;
         std::uint32_t base = 0;    ///< the first piece not come
         std::uint64_t have = 0;    ///< bit n: piece base + 1 + n has come
         std::uint32_t given = 0;   ///< the pieces handed on
@@ -349,15 +367,23 @@ namespace hldata
             std::strncpy(name, named, kAirNameBytes - 1);
             ring = room;
         }
+        /// ... into `room`, as long as the stream, what comes before piece
+        /// `from` being there already.
+        void wantDirect(AirStream what, const char *named, std::uint8_t *room, std::uint32_t from = 0)
+        {
+            want(what, named, room);
+            direct = true;
+            base = from;
+        }
         std::uint32_t pieces() const { return airPieces(length); }
-        bool done() const { return known && given >= pieces() && !holding; }
+        bool done() const { return known && (direct ? base >= pieces() : given >= pieces() && !holding); }
         int percent() const
         {
             return !known || pieces() == 0 ? 0 : static_cast<int>((static_cast<std::uint64_t>(given) * 100) / pieces());
         }
         /// The first piece there is no room for: a window past the next to
         /// be handed on (or being read), whose slot it would take.
-        std::uint32_t room() const { return given + kAirWindow; }
+        std::uint32_t room() const { return direct ? base + kAirWindow : given + kAirWindow; }
 
         /// A host's frame (already read: airRead). True if it was of this
         /// stream.
@@ -372,6 +398,7 @@ namespace hldata
                 serve = head.serve;
                 length = head.length;
                 skill = head.skill;
+                crc = head.crc;
                 std::strncpy(name, head.name, kAirNameBytes - 1);
             }
             else if (head.serve != serve || head.length != length)
@@ -384,7 +411,7 @@ namespace hldata
                 return true;
             if (index > base && ((have >> (index - base - 1)) & 1))
                 return true; // (come already)
-            std::memcpy(ring + (index % kAirWindow) * kAirPiece, head.data, static_cast<std::size_t>(head.count));
+            std::memcpy(ring + (direct ? index : index % kAirWindow) * kAirPiece, head.data, static_cast<std::size_t>(head.count));
             if (index > base)
             {
                 have |= std::uint64_t(1) << (index - base - 1);
