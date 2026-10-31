@@ -818,9 +818,6 @@ namespace hlrt
         scroll = netVoteClampScroll(scroll, vote.count);
         if (scroll == voteScroll_)
             return;
-        // (A tick for each button gone by.)
-        if (netVoteFirstShown(scroll) != netVoteFirstShown(voteScroll_))
-            sound.ui(kUiSoundMove);
         voteScroll_ = scroll;
         voteSlots();
         touchCanvas.listScroll(voteScroll_ - kVoteTop * 8);

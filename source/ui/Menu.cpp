@@ -893,6 +893,8 @@ namespace hlrt
             rows[count++] = Row{Kind::Value, kNetNext, "Next map"};
             if (settings.nextMode == kNextVote)
                 rows[count++] = Row{Kind::Value, kNetVoteTime, "Vote time"};
+            else if (settings.nextMode == kNextWinner || settings.nextMode == kNextTurns)
+                rows[count++] = Row{Kind::Value, kNetVoteTime, "Choice time"};
             rows[count++] = Row{Kind::Value, kNetChat, "Scores shown"};
             rows[count++] = Row{Kind::Value, kNetTotals, "Session totals"};
             if (settings.nextMode != kNextRotation)
@@ -1079,7 +1081,7 @@ namespace hlrt
                            : "No map on this card fits a console without the game.";
             case kNetMap:
 #ifndef HLDS_CHILD
-                if (settings.nextMode == kNextVote)
+                if (settings.nextMode == kNextVote && playersHere() > 1)
                     return "Next map is set to vote: START opens a vote for it.";
 #endif
                 return netGame.mapInfo().empty() ? "No multiplayer map on the card." : nullptr;
@@ -1291,15 +1293,16 @@ namespace hlrt
             case kNetMost: return "How many may play, this console among them: the rest are told the game is full.";
 #ifndef HLDS_CHILD
             case kNetChat: return "How long the final scores stay up when a match ends.";
-            case kNetVoteTime: return "How long everyone has to vote for the next map.";
+            case kNetVoteTime: return settings.nextMode == kNextVote ? "How long everyone has to vote for the next map."
+                                                              : "How long the player has to choose: then a map is drawn at random.";
             case kNetTotals: return "Adds up each player's frags over the matches of this lobby.";
             case kNetNext:
                 switch (settings.nextMode)
                 {
                 case kNextRotation: return "The maps of a list you make, in order, round and round.";
                 case kNextVote: return "Everyone votes between maps drawn at random.";
-                case kNextWinner: return "The winner of each match chooses the next map, within 10 seconds.";
-                case kNextTurns: return "Each player in turn chooses the next map, within 10 seconds.";
+                case kNextWinner: return "The winner of each match chooses the next map.";
+                case kNextTurns: return "Each player in turn chooses the next map.";
                 default: return "Everyone comes back to this lobby, and you choose.";
                 }
             case kRotPick: return "Touch to go through the maps; ADD IT puts this one at the end of the list.";
@@ -2252,7 +2255,7 @@ namespace hlrt
             // before anyone has come: the host's game is closed meanwhile.)
             const int buttons = sheetButtons();
             drawSheetButton(sheetBarBox(0, buttons), "START", sheetPressed_ == kSheetBar,
-                            settings.nextMode != kNextVote &&
+                            !(settings.nextMode == kNextVote && playersHere() > 1) &&
                                 (hostIndex() < 0 || netGame.phase() == NetGame::Phase::Serving || !hostMapFits()));
             if (buttons == 3)
                 drawSheetButton(sheetBarBox(1, 3), "SEND GAME", sheetPressed_ == kSheetBar - 1, playersHere() > 1);
@@ -2586,7 +2589,7 @@ namespace hlrt
             // once it has begun.)
 #ifndef HLDS_CHILD
             // (With a vote, what is voted for: it begins when that is decided.)
-            if (settings.nextMode == kNextVote)
+            if (settings.nextMode == kNextVote && playersHere() > 1)
             {
                 if (netGame.phase() == NetGame::Phase::Hosting)
                 {

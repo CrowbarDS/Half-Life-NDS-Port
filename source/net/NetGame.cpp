@@ -1931,7 +1931,7 @@ namespace hlrt
 
     int NetGame::voteLastsMs() const
     {
-        return (match_.vote.chooser >= 0 ? kNetChooseSeconds : match_.rules.voteSeconds) * 1000;
+        return match_.rules.voteSeconds * 1000;
     }
 
     int NetGame::voteSecondsLeft() const
@@ -2195,6 +2195,12 @@ namespace hlrt
         nextMap_.clear();
         // (Who comes now waits, and plays the next one.)
         netlink::admit(true);
+        // (Alone, there is nobody to vote with or to take turns with: the lobby.)
+        int here = 0;
+        for (int p = 0; p < kNetPlayers; ++p)
+            here += netHere(match_, p) ? 1 : 0;
+        if (here <= 1 && match_.rules.nextMode != kNextRotation)
+            return;
         if (match_.rules.nextMode == kNextVote)
         {
             startVote(-1);

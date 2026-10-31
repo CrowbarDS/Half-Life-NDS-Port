@@ -20,9 +20,6 @@ namespace hldata
     inline constexpr int kNetVoteNameRest = 0x40;
     /// What the vote came to is shown this long.
     inline constexpr int kNetVoteResultMs = 4000;
-    /// How long a player has who chooses alone (the winner, or whose turn it
-    /// is): then a draw.
-    inline constexpr int kNetChooseSeconds = 10;
 
     struct NetVote
     {
