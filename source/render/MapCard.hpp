@@ -91,4 +91,8 @@ namespace hlrt
     /// Whether this console has a picture of `map` (on its card: a console
     /// without one has none).
     bool mapPictured(const std::string &map);
+    /// ... and whether that picture is of the map as it is now (its level's
+    /// checksum, or read off the card): a map cooked again has it taken again.
+    bool mapPictureCurrent(const std::string &map, std::uint32_t levelCrc);
+    bool mapPictureCurrent(const std::string &map);
 } // namespace hlrt

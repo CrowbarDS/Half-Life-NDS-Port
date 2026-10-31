@@ -200,6 +200,17 @@ namespace
         check(netVoteWanted(ends, 3, 0, 2, 3u) == -1, "nothing more: nothing wanted");
     }
 
+    void testPreviewVersion()
+    {
+        PreviewHeader header;
+        previewHeader(header);
+        check(!previewOfMap(header, 0x12345678), "a picture from before versions is of no version: taken again");
+        header.mapVersion = previewMapVersion(0x12345678);
+        check(previewOfMap(header, 0x12345678), "a picture of this map as it is");
+        check(!previewOfMap(header, 0x12345679), "... not of it cooked again");
+        check(previewMapVersion(0) != 0 && previewMapVersion(0x00010001) != 0, "never 0, whatever the checksum");
+    }
+
     void testChoosers()
     {
         // Take turns: round the seats, past those empty.
@@ -291,6 +302,7 @@ int main()
     testVote();
     testList();
     testChoosers();
+    testPreviewVersion();
     testPalette();
     if (g_failures == 0)
         std::printf("test_netnext: ok\n");

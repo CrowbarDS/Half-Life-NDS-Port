@@ -3423,9 +3423,10 @@ namespace hlrt
         case kNetHost:
         {
             // (Maps never photographed: their pictures first, once.)
+            // (And those of a map cooked again since.)
             bool missing = false;
             for (const std::string &map : netGame.maps())
-                missing = missing || (global.hasFat && !mapPictured(map));
+                missing = missing || (!previewsTaken_ && global.hasFat && !mapPictureCurrent(map));
             if (missing && !previewsTaken_)
             {
                 previewsTaken_ = true;

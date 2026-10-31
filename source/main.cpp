@@ -224,11 +224,9 @@ namespace
             return;
         const std::string folder = global.savesDir() + hldata::kPreviewFolder;
         const std::string path = folder + map + ".hpv";
-        if (std::FILE *file = std::fopen(path.c_str(), "rb"))
-        {
-            std::fclose(file);
+        // (Taken already, of this map as it is now: nothing to do.)
+        if (hlrt::mapPictureCurrent(map, hlrt::level.view.header->crc32))
             return;
-        }
         const hldata::LevelView &view = hlrt::level.view;
         bool spawn = false;
         const hldata::EntityRecord *from = hldata::netIntermissionPoint(view, 0, spawn);
@@ -264,6 +262,7 @@ namespace
             mkdir(folder.c_str(), 0777);
             hldata::PreviewHeader header;
             hldata::previewHeader(header);
+            header.mapVersion = hldata::previewMapVersion(hlrt::level.view.header->crc32);
             if (std::FILE *file = std::fopen(path.c_str(), "wb"))
             {
                 const bool ok = std::fwrite(&header, sizeof(header), 1, file) == 1 &&
@@ -795,7 +794,7 @@ namespace
         std::vector<std::string> todo;
         for (const std::string &map : maps)
         {
-            if (!hlrt::mapPictured(map))
+            if (!hlrt::mapPictureCurrent(map))
                 todo.push_back(map);
         }
         std::string error;

@@ -1,4 +1,5 @@
 #include "render/MapCard.hpp"
+#include "data/LevelFile.hpp"
 
 #include <nds.h>
 
@@ -29,6 +30,36 @@ namespace hlrt
         constexpr int kTextX = 6, kTextTop = kTop + kPictureH + 4, kTextW = 128, kTextH = 104;
         constexpr int kTextureH = 128; ///< (a texture's height is a power of two: the words in its top rows)
     } // namespace
+
+    bool mapPictureCurrent(const std::string &map, std::uint32_t levelCrc)
+    {
+#ifdef HLDS_CHILD
+        (void)map;
+        (void)levelCrc;
+        return false;
+#else
+        if (!global.hasFat)
+            return false;
+        std::FILE *file = std::fopen((global.savesDir() + kPreviewFolder + map + ".hpv").c_str(), "rb");
+        if (file == nullptr)
+            return false;
+        PreviewHeader header;
+        const bool got = std::fread(&header, sizeof(header), 1, file) == 1;
+        std::fclose(file);
+        return got && previewOfMap(header, levelCrc);
+#endif
+    }
+
+    bool mapPictureCurrent(const std::string &map)
+    {
+#ifdef HLDS_CHILD
+        (void)map;
+        return false;
+#else
+        LevelHeader header{};
+        return Level::peekHeader(map, header) && mapPictureCurrent(map, header.crc32);
+#endif
+    }
 
     bool mapPictured(const std::string &map)
     {

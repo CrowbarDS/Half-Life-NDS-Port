@@ -28,7 +28,7 @@ namespace hldata
         std::uint16_t version;
         std::uint16_t width;
         std::uint16_t height;
-        std::uint16_t pad;
+        std::uint16_t mapVersion; ///< previewMapVersion of the map it was taken of (0: not said)
     };
     static_assert(sizeof(PreviewHeader) == 12);
     inline constexpr std::size_t kPreviewBytes =
@@ -40,7 +40,20 @@ namespace hldata
         header.version = kPreviewVersion;
         header.width = kPreviewWidth;
         header.height = kPreviewHeight;
-        header.pad = 0;
+        header.mapVersion = 0;
+    }
+
+    /// What says which cooking of a map a picture is of: from its level's
+    /// checksum, and never 0, which is what a picture from before this says.
+    inline std::uint16_t previewMapVersion(std::uint32_t levelCrc)
+    {
+        const std::uint16_t version = static_cast<std::uint16_t>(levelCrc ^ (levelCrc >> 16));
+        return version != 0 ? version : 1;
+    }
+    /// Whether a picture's header is of a map with this checksum.
+    inline bool previewOfMap(const PreviewHeader &header, std::uint32_t levelCrc)
+    {
+        return header.mapVersion == previewMapVersion(levelCrc);
     }
 
     /// A small one (half each way), for a console short of memory: sent it,
