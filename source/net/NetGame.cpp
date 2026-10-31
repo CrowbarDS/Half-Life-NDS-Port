@@ -195,7 +195,12 @@ namespace hlrt
         // rules', which can change in the lobby, and the host refuses the
         // rest -- the radio's own count could not change without everyone
         // being let go.)
-        if (!netlink::host(name, kNetPlayers))
+        // (Starting the radio keeps the ARM7 busy: what it plays again would
+        // run dry, and go round and round.)
+        sound.holdPipeline(true);
+        const bool up = netlink::host(name, kNetPlayers);
+        sound.holdPipeline(false);
+        if (!up)
             return false;
         netBegin(match_, NetMatch::Role::Host, 0, name);
 #ifndef HLDS_CHILD
@@ -217,7 +222,10 @@ namespace hlrt
 
     bool NetGame::scan()
     {
-        if (!netlink::scan())
+        sound.holdPipeline(true);
+        const bool up = netlink::scan();
+        sound.holdPipeline(false);
+        if (!up)
             return false;
         hldata::renew(match_);
         phase_ = Phase::Scanning;
