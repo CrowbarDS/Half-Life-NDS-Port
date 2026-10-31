@@ -4,6 +4,7 @@
 #include <cstdlib>
 
 #include "ui/Menu.hpp"
+#include "HlNetNext.hpp"
 
 #include "HlCommands.hpp"
 #include "HlRemap.hpp"
@@ -127,8 +128,16 @@ namespace hlrt
             kNetLamp,      ///< ... the flashlight allowed
             kNetAim,       ///< ... autoaim
             kNetGuests,    ///< ... consoles without the game let in
-            kNetChat,      ///< ... how long a match's scores are shown
+            kNetChat,      ///< NEXT MAP's: how long a match's scores are shown
             kNetTotals,    ///< ... a lobby's matches added up
+            kNetNext,      ///< ... how the next map is chosen
+            kRotPick,      ///< ... Rotation's: the map to add
+            kRotAdd,       ///< ... that map put at the end
+            kRotUp,        ///< ... the one chosen moved up,
+            kRotDown,      ///< ... down,
+            kRotOut,       ///< ... or taken off
+            kRotItem,      ///< ... the list itself: this and the next kRotationMost - 1
+            kRotItemLast = kRotItem + kRotationMost - 1,
             kNetTeam,      ///< PLAYERS': the team this console's player would be on
             kSeat,         ///< ... a player's place (which, by its row)
             kDlSeat,       ///< SEND THE GAME's: a console that has come for it (which, by its row)
@@ -853,9 +862,47 @@ namespace hlrt
                                  {Kind::Value, kNetLamp, "Flashlight"},
                                  {Kind::Value, kNetAim, "Autoaim"},
                                  {Kind::Value, kNetSkill, "Difficulty"},
-                                 {Kind::Value, kNetGuests, "Without the game"},
-                                 {Kind::Value, kNetChat, "Scores shown"},
-                                 {Kind::Value, kNetTotals, "Session totals"}};
+                                 {Kind::Value, kNetGuests, "Without the game"}};
+#ifndef HLDS_CHILD
+        /// The chapters of HOST.
+        constexpr int kHostMatch = 0, kHostNext = 1, kHostPlayers = 2;
+        /// NEXT MAP's: what follows a match; with Rotation, its list.
+        int rotChosen = 0, rotPick = 0;
+        const Row *nextRows(int &count)
+        {
+            static Row rows[8 + kRotationMost];
+            static char names[kRotationMost][8];
+            count = 0;
+            rows[count++] = Row{Kind::Value, kNetNext, "Next map"};
+            rows[count++] = Row{Kind::Value, kNetChat, "Scores shown"};
+            rows[count++] = Row{Kind::Value, kNetTotals, "Session totals"};
+            if (settings.nextMode != kNextRotation)
+                return rows;
+            rows[count++] = Row{Kind::Value, kRotPick, "Map to add"};
+            rows[count++] = Row{Kind::Value, kRotAdd, "Add it"};
+            rows[count++] = Row{Kind::Value, kRotUp, "Move up"};
+            rows[count++] = Row{Kind::Value, kRotDown, "Move down"};
+            rows[count++] = Row{Kind::Value, kRotOut, "Take off"};
+            for (int n = 0; n < settings.rotationCount; ++n)
+            {
+                std::snprintf(names[n], sizeof(names[n]), "%s%d", n == rotChosen ? "> " : "", n + 1);
+                rows[count++] = Row{Kind::Value, static_cast<Id>(kRotItem + n), names[n]};
+            }
+            return rows;
+        }
+        /// The name of the map with this hash, as the card has it.
+        const char *rotName(std::uint32_t hash)
+        {
+            for (const NetMapInfo &map : netGame.mapInfo())
+            {
+                if (nameHash(map.name.c_str()) == hash)
+                    return map.name.c_str();
+            }
+            return "(not on this card)";
+        }
+#else
+        constexpr int kHostMatch = 0, kHostPlayers = 1;
+#endif
         /// PLAYERS (the host's second chapter, a client's lobby): the team
         /// asked for, in teamplay; then a row for each place the match has.
         const Row *seatRows(int &count)
@@ -930,11 +977,15 @@ namespace hlrt
                 count = static_cast<int>(sizeof(kProfileRows) / sizeof(kProfileRows[0]));
                 return kProfileRows;
             }
-            if (page == kPageHost && chapter == 0)
+            if (page == kPageHost && chapter == kHostMatch)
             {
                 count = static_cast<int>(sizeof(kHostRows) / sizeof(kHostRows[0]));
                 return kHostRows;
             }
+#ifndef HLDS_CHILD
+            if (page == kPageHost && chapter == kHostNext)
+                return nextRows(count);
+#endif
             if (page == kPageHost || page == kPageLobby)
                 return seatRows(count);
             return settingsRows(chapter, count);
@@ -1029,6 +1080,13 @@ namespace hlrt
         /// What a setting is now, as its row says it.
         void settingValue(Id id, int action, char *out, std::size_t size)
         {
+#ifndef HLDS_CHILD
+            if (id >= kRotItem && id <= kRotItemLast)
+            {
+                std::snprintf(out, size, "%s", rotName(settings.rotation[id - kRotItem]));
+                return;
+            }
+#endif
             switch (id)
             {
             case kNetMode: std::snprintf(out, size, "%s", settings.hostMode == kModeTeamplay ? "teamplay" : "deathmatch"); break;
@@ -1051,8 +1109,24 @@ namespace hlrt
                     std::snprintf(out, size, "%d minutes", settings.minuteLimit);
                 break;
             case kNetMost: std::snprintf(out, size, "up to %d", settings.maxPlayers); break;
+#ifndef HLDS_CHILD
             case kNetChat: std::snprintf(out, size, "%d seconds", settings.chatSeconds); break;
             case kNetTotals: std::snprintf(out, size, "%s", settings.sessionTotals ? "on" : "off"); break;
+            case kNetNext:
+            {
+                static const char *const kNames[kNextChoices] = {"host chooses", "rotation", "vote", "winner picks", "take turns"};
+                std::snprintf(out, size, "%s", kNames[settings.nextMode]);
+                break;
+            }
+            case kRotPick:
+                std::snprintf(out, size, "%s", netGame.mapInfo().empty() ? "none"
+                              : netGame.mapInfo()[static_cast<std::size_t>(rotPick) % netGame.mapInfo().size()].name.c_str());
+                break;
+            case kRotAdd:
+            case kRotUp:
+            case kRotDown:
+            case kRotOut: out[0] = 0; break;
+#endif
             case kNetStay: std::snprintf(out, size, "%s", settings.weaponsStay ? "on" : "off"); break;
             case kNetFall: std::snprintf(out, size, "%s", settings.fallDamage != 0 ? "realistic" : "normal"); break;
             case kNetFriendly: std::snprintf(out, size, "%s", settings.friendlyFire ? "on" : "off"); break;
@@ -1184,8 +1258,24 @@ namespace hlrt
             case kNetFrags: return "The match ends when a player (in teamplay, a team) has this many frags.";
             case kNetMinutes: return "The match ends after this long.";
             case kNetMost: return "How many may play, this console among them: the rest are told the game is full.";
+#ifndef HLDS_CHILD
             case kNetChat: return "How long the final scores stay up when a match ends.";
             case kNetTotals: return "Adds up each player's frags over the matches of this lobby.";
+            case kNetNext:
+                switch (settings.nextMode)
+                {
+                case kNextRotation: return "The maps of a list you make, in order, round and round.";
+                case kNextVote: return "Everyone votes between maps drawn at random.";
+                case kNextWinner: return "The winner chooses the next map.";
+                case kNextTurns: return "Each player in turn chooses the next map.";
+                default: return "Everyone comes back to this lobby, and you choose.";
+                }
+            case kRotPick: return "Touch to go through the maps; ADD IT puts this one at the end of the list.";
+            case kRotAdd: return "Puts the map above at the end of the list.";
+            case kRotUp:
+            case kRotDown: return "Moves the map marked > in the list.";
+            case kRotOut: return "Takes the map marked > off the list.";
+#endif
             case kNetStay: return "A weapon taken stays where it lay for the others; whoever has it cannot take it again.";
             case kNetFall: return "Normal: any hard fall costs 10. Realistic: the harder the fall, the more it costs.";
             case kNetFriendly: return "In teamplay: whether teammates' shots hurt each other.";
@@ -1207,6 +1297,14 @@ namespace hlrt
         /// slider a notch). True if it changed.
         bool settingStep(Id id, int step)
         {
+#ifndef HLDS_CHILD
+            // (A map of the list: the one MOVE and TAKE OFF are about.)
+            if (id >= kRotItem && id <= kRotItemLast)
+            {
+                rotChosen = id - kRotItem;
+                return true;
+            }
+#endif
             auto cycle = [&](std::uint8_t &value, int count)
             {
                 value = static_cast<std::uint8_t>((value + count + step) % count);
@@ -1329,6 +1427,7 @@ namespace hlrt
                 netGame.hostChanged();
                 return true;
             }
+#ifndef HLDS_CHILD
             case kNetChat:
             {
                 const int next = settings.chatSeconds + step * 5;
@@ -1337,6 +1436,40 @@ namespace hlrt
                 return true;
             }
             case kNetTotals: settings.sessionTotals = !settings.sessionTotals; netGame.hostChanged(); return true;
+            case kNetNext:
+                // (Vote, the winner's choice and turns are not built yet.)
+                settings.nextMode = settings.nextMode == kNextRotation ? kNextHost : kNextRotation;
+                netGame.hostChanged();
+                return true;
+            case kRotPick:
+            {
+                const int count = static_cast<int>(netGame.mapInfo().size());
+                if (count == 0)
+                    return false;
+                rotPick = (rotPick + step + count) % count;
+                return true;
+            }
+            case kRotAdd:
+                if (netGame.mapInfo().empty())
+                    return false;
+                return netRotationAdd(settings.rotation, settings.rotationCount, kRotationMost,
+                                      nameHash(netGame.mapInfo()[static_cast<std::size_t>(rotPick) % netGame.mapInfo().size()].name.c_str()));
+            case kRotUp:
+            case kRotDown:
+            {
+                const int by = id == kRotUp ? -1 : 1;
+                if (!netRotationMove(settings.rotation, settings.rotationCount, rotChosen, by))
+                    return false;
+                rotChosen += by;
+                return true;
+            }
+            case kRotOut:
+                if (!netRotationRemove(settings.rotation, settings.rotationCount, rotChosen))
+                    return false;
+                if (rotChosen >= settings.rotationCount && rotChosen > 0)
+                    --rotChosen;
+                return true;
+#endif
             case kNetStay: settings.weaponsStay = !settings.weaponsStay; netGame.hostChanged(); return true;
             case kNetFall: settings.fallDamage = settings.fallDamage != 0 ? 0 : 1; netGame.hostChanged(); return true;
             case kNetFriendly:
@@ -1465,7 +1598,7 @@ namespace hlrt
     {
         return page_ == Page::Achievements ? hldata::kAchChapterCount
                : page_ == Page::Settings   ? kSettingsChapters
-               : page_ == Page::NetHost    ? 2
+               : page_ == Page::NetHost    ? kHostPlayers + 1
                                            : 1;
     }
 
@@ -1506,7 +1639,7 @@ namespace hlrt
         const char *name = page_ == Page::Achievements ? hldata::kAchChapterNames[chapter]
                            : page_ == Page::Settings   ? kSettingsChapterNames[chapter]
                            : page_ == Page::Profile    ? "PROFILE"
-                           : page_ == Page::NetHost    ? (chapter == 0 ? "MATCH" : "PLAYERS")
+                           : page_ == Page::NetHost    ? (chapter == kHostMatch ? "MATCH" : chapter == kHostPlayers ? "PLAYERS" : "NEXT MAP")
                            : page_ == Page::NetLobby   ? "LOBBY"
                            : page_ == Page::NetSend    ? "SEND THE GAME"
                            : page_ == Page::NetStarting ? "STARTING"
@@ -1868,7 +2001,7 @@ namespace hlrt
             {
                 if (page_ == Page::NetHost)
                     std::snprintf(said, sizeof(said), "%s",
-                                  chapter == 0 ? "Touch a setting to change it. START when everyone is in; slide the "
+                                  chapter != kHostPlayers ? "Touch a setting to change it. START when everyone is in; slide the "
                                                  "list, or touch < >, for who is here."
                                   : canSend()  ? "Who is in the game. SEND GAME first gives it to consoles without "
                                                  "it, by DS Download Play; START when everyone is in."
@@ -2205,10 +2338,6 @@ namespace hlrt
         }
         if (!settingStep(rows[row].id, step))
             return false;
-        // (The match hosted is kept as it changes: a console switched off in
-        // the lobby has it next time.)
-        if (page_ == Page::NetHost)
-            settings.save();
         sound.ui(rows[row].kind == Kind::Slider ? kUiSoundTick : kUiSoundPress);
         drawSheetList();
         drawSheetDetail();
@@ -2477,6 +2606,9 @@ namespace hlrt
     Menu::Action Menu::sheetLeave()
     {
         sound.ui(kUiSoundPress);
+        // (What was changed on HOST is kept as it is left.)
+        if (page_ == Page::NetHost)
+            settings.save();
         capturing_ = -1;
         sheetAsking_ = 0;
         if (page_ == Page::Profile)
@@ -2580,7 +2712,7 @@ namespace hlrt
         if (!netGame.host())
             std::snprintf(sendWhy_, sizeof(sendWhy_), "The wireless would not start again.");
         // (Who comes next is what the host will want to see.)
-        hostChapter_ = 1;
+        hostChapter_ = kHostPlayers;
         openSheet(Page::NetHost);
 #endif
     }
@@ -2592,7 +2724,7 @@ namespace hlrt
         {
             sound.ui(kUiSoundPress);
             netGame.cancelStart();
-            hostChapter_ = 1;
+            hostChapter_ = kHostPlayers;
             openSheet(Page::NetHost);
             return Action::None;
         }
@@ -3244,6 +3376,36 @@ namespace hlrt
 
     Menu::Action Menu::frame()
     {
+#ifndef HLDS_CHILD
+        // Back in the lobby with the next map chosen: on to it, for everyone.
+        if (page_ == Page::NetHost)
+        {
+            std::string next;
+            if (netGame.nextNone())
+                showReason("No map could come next: choose one.");
+            if (netGame.nextDue(next))
+            {
+                bool fits = !settings.allowGuests;
+                for (const NetMapInfo &map : netGame.mapInfo())
+                {
+                    if (map.name == next)
+                        fits = fits || netMapOffered(map, true, netGame.guestRoom());
+                }
+                if (!fits)
+                {
+                    netGame.dropNext();
+                    showReason("The next map does not fit a console here.");
+                }
+                else
+                {
+                    untintSeats();
+                    netGame.startNext(next, settings.fragLimit, settings.minuteLimit);
+                    netShown_ = 0;
+                    openSheet(Page::NetStarting);
+                }
+            }
+        }
+#endif
         // The map's card on the top screen: HOST's map, the host's in the
         // lobby, the touched room's while looking.
         {
@@ -3285,7 +3447,7 @@ namespace hlrt
                                         rules.minutes * 65537u);
             mapCard.show(card, elsewhere);
             int seat = netGame.match().me;
-            if (lobby && (page_ == Page::NetHost ? hostChapter_ == 1 : true) && sheetSelected_ >= 0)
+            if (lobby && (page_ == Page::NetHost ? hostChapter_ == kHostPlayers : true) && sheetSelected_ >= 0)
             {
                 int count = 0;
                 const Row *rows = sheetRows(static_cast<int>(page_), sheetChapter(), count);

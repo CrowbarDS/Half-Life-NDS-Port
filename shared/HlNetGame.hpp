@@ -41,7 +41,7 @@ namespace hldata
     /// A host's Bye, its first value: nothing, it has left; to one console,
     /// it will not have it (the game is full, or it has let it go); to all,
     /// it is off to send the game, and will be back.
-    inline constexpr int kNetRefuseFull = 1, kNetRefuseKicked = 2, kNetByeBackSoon = 3;
+    inline constexpr int kNetRefuseFull = 1, kNetRefuseKicked = 2, kNetByeBackSoon = 3, kNetRefuseLate = 4;
 
     inline constexpr int kNetSprayWaitMs = 30000; ///< a spray, then none until this long after (decalfrequency)
     inline constexpr int kNetSprayReach = 128;    ///< how far off a wall may be sprayed
@@ -155,6 +155,7 @@ namespace hldata
         bool warned = false;  ///< the last minute has been reached
         bool warnDue = false; ///< ... and not yet said (whoever runs the screens clears it)
         NetFinal final;
+        char nextName[kNetTextBytes] = {}; ///< the map that comes next, if it is known
         std::uint16_t endDraw = 0; ///< (the host's, said by End) which of a map's places to show it from
         // Counted from the deaths every console hears, for the match's facts.
         std::uint8_t kills[kNetPlayers] = {}, streaks[kNetPlayers] = {}, bestStreaks[kNetPlayers] = {},
@@ -709,6 +710,14 @@ namespace hldata
                     ++match.profileStamp; // (what the lobby shows has changed)
                 }
                 break;
+            case NetEventType::NextDecided:
+                if (!host)
+                {
+                    std::memcpy(match.nextName, event.text, kNetTextBytes);
+                    match.nextName[kNetTextBytes - 1] = 0;
+                    ++match.final.stamp;
+                }
+                break;
             case NetEventType::RulesMore:
                 if (!host)
                 {
@@ -808,7 +817,7 @@ namespace hldata
             case NetEventType::Bye:
                 // (The host's to a client it will not have: for that one
                 // alone, and the match goes on for the rest.)
-                if (from == 0 && (event.v[0] == kNetRefuseFull || event.v[0] == kNetRefuseKicked))
+                if (from == 0 && (event.v[0] == kNetRefuseFull || event.v[0] == kNetRefuseKicked || event.v[0] == kNetRefuseLate))
                 {
                     if (event.a != match.me || match.me == 0)
                         break;
@@ -824,8 +833,9 @@ namespace hldata
                     match.endDraw = static_cast<std::uint16_t>(event.v[1]);
                     netFinalTake(match);
                 }
+                if (!match.over)
+                    netNotice(match, NetEventType::End, 0);
                 match.over = true;
-                netNotice(match, NetEventType::End, 0);
                 [[fallthrough]];
             case NetEventType::Start:
             case NetEventType::Ready:
@@ -979,6 +989,7 @@ namespace hldata
         player.suit.value.silent = true;
         match.over = false;
         match.warned = match.warnDue = false;
+        match.nextName[0] = 0;
         match.playedMs = 0;
         for (int p = 0; p < kNetPlayers; ++p)
         {

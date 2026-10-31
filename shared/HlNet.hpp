@@ -117,6 +117,7 @@ namespace hldata
         FetchNone,///< host: there is no such thing: `a` FetchFrom, v[0..1] what
         RulesMore,///< host: what follows a match: v[0] seconds of its scores, v[1] how the next map is chosen,
                   ///< v[2] 1 = a lobby's matches added up
+        NextDecided,///< host: the map that comes next, for the scores to say: text = its name, cut to fit
     };
 
     /// The rules' flags (Rules' v[1]): the game's mp_weaponstay,

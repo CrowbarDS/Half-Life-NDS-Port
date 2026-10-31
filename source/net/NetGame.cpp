@@ -1,4 +1,5 @@
 #include "net/NetGame.hpp"
+#include "HlNetNext.hpp"
 #include "net/AirDevice.hpp"
 #include "data/TextureStream.hpp"
 
@@ -130,6 +131,12 @@ namespace hlrt
         rules.nextMode = settings.nextMode;
         rules.totals = settings.sessionTotals != 0;
         const std::string *hosted = hostedMap(maps_);
+        // (The map coming next, chosen when the last match ended, is not the
+        // settings': they keep the host's own choice.)
+#ifndef HLDS_CHILD
+        if (!nextMap_.empty())
+            hosted = &nextMap_;
+#endif
         rules.mapHash = hosted != nullptr ? nameHash(hosted->c_str()) : 0;
         netSetRules(match_, rules);
         // What the beacon says of it.
@@ -915,6 +922,14 @@ namespace hlrt
 #endif
     }
 
+    void NetGame::dropLate(int p)
+    {
+        if (!isHost() || p < 1 || p >= kNetPlayers || !netHere(match_, p) || kickAt_[p] != 0)
+            return;
+        match_.host.out.add(netEvent(NetEventType::Bye, p, kNetRefuseLate));
+        kickAt_[p] = Global::vblanks() + 60;
+    }
+
     void NetGame::kick(int p)
     {
         if (!isHost() || p < 1 || p >= kNetPlayers || !netHere(match_, p) || kickAt_[p] != 0)
@@ -1337,11 +1352,16 @@ namespace hlrt
             return false;
         if (isHost())
         {
-            // Everyone there ready -- or twenty seconds since this console
-            // was: those not yet begin when they are (Go waits for them).
+            // Everyone there ready -- or thirty seconds since this console
+            // was: those not yet are let go, and the rest begin.
             const unsigned here = netlink::clients();
             if ((ready_ & here) != here && Global::vblanks() - loadedAt_ < kReadyVblanks)
                 return false;
+            for (int c = 1; c < kNetPlayers; ++c)
+            {
+                if ((here >> c) & 1 && !((ready_ >> c) & 1))
+                    dropLate(c);
+            }
             netSay(match_, netEvent(NetEventType::Go));
             goAsked_ = true;
         }
@@ -1684,7 +1704,9 @@ namespace hlrt
         if (match_.refused)
         {
             match_.passedCount = 0;
-            lost(match_.refused == kNetRefuseKicked ? "The host has let you go." : "The game is full.");
+            lost(match_.refused == kNetRefuseKicked ? "The host has let you go."
+                 : match_.refused == kNetRefuseLate ? "This console took too long to load the map."
+                                                    : "The game is full.");
             return;
         }
 
@@ -1810,9 +1832,31 @@ namespace hlrt
         if (phase_ != Phase::Playing)
             return;
         gameApi.netTick(match_, game.logic, player.state, yaw, pitch, did, lamp, ms);
-        // The match over: its scores for a while, then the lobby.
-        if (match_.over && !lobbyAsked_ && (overMs_ += ms) >= match_.rules.chatSeconds * 1000)
-            lobbyAsked_ = true;
+        // The match over: its scores for a while, then the lobby -- when the
+        // host says, so that nobody is still here when the next map is sent.
+        if (match_.over && !lobbyAsked_)
+        {
+            overMs_ += ms;
+#ifndef HLDS_CHILD
+            if (isHost())
+            {
+                if (!nextChosen_)
+                    chooseNext();
+                if (overMs_ >= match_.rules.chatSeconds * 1000)
+                {
+                    NetEvent over = netEvent(NetEventType::End);
+                    over.v[0] = 1;
+                    netSay(match_, over);
+                    lobbyAsked_ = true;
+                }
+                // (A console come for the game itself, meanwhile.)
+                if (air_.sending() && air_.stream == AirStream::Common)
+                    airSend(1);
+            }
+#endif
+            if (!isHost() && overMs_ >= (match_.rules.chatSeconds + 20) * 1000)
+                lobbyAsked_ = true;
+        }
         // (More than four: the host's frames every other frame, so that the
         // air has room for everyone's answers. Each glides between.)
         int here = 0;
@@ -1830,6 +1874,58 @@ namespace hlrt
         else
             fetchTick();
     }
+
+#ifndef HLDS_CHILD
+    void NetGame::chooseNext()
+    {
+        nextChosen_ = true;
+        nextMap_.clear();
+        // (Who comes now waits, and plays the next one.)
+        netlink::admit(true);
+        if (match_.rules.nextMode != kNextRotation)
+            return;
+        const int at = netNextRotation(mapInfo_, settings.rotation, settings.rotationCount, nameHash(pendingMap_.c_str()),
+                                       settings.allowGuests, guestRoom());
+        if (at < 0)
+        {
+            nextNone_ = true;
+            return;
+        }
+        nextMap_ = mapInfo_[static_cast<std::size_t>(at)].name;
+        NetEvent said = netEvent(NetEventType::NextDecided);
+        std::snprintf(said.text, sizeof(said.text), "%s", nextMap_.c_str());
+        netSay(match_, said);
+        std::memcpy(match_.nextName, said.text, kNetTextBytes);
+        ++match_.final.stamp;
+    }
+
+    bool NetGame::nextDue(std::string &map)
+    {
+        if (phase_ != Phase::Hosting || nextMap_.empty() || Global::vblanks() - nextAt_ < kNextWaitVblanks)
+            return false;
+        map = nextMap_;
+        return true;
+    }
+
+    void NetGame::startNext(const std::string &map, int fragLimit, int minuteLimit)
+    {
+        start(map, fragLimit, minuteLimit, pendingSkill_);
+        nextMap_.clear();
+    }
+
+    void NetGame::dropNext()
+    {
+        nextMap_.clear();
+        hostChanged();
+    }
+
+    bool NetGame::nextNone()
+    {
+        const bool was = nextNone_;
+        nextNone_ = false;
+        return was;
+    }
+#endif
 
     bool NetGame::lobbyAsked()
     {
@@ -1859,6 +1955,10 @@ namespace hlrt
         // (The host takes newcomers again, between matches.)
         if (isHost())
             netlink::admit(true);
+#ifndef HLDS_CHILD
+        nextChosen_ = false;
+        nextAt_ = Global::vblanks();
+#endif
     }
 
     bool NetGame::spray()

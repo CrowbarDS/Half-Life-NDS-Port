@@ -156,6 +156,16 @@ namespace hlrt
         /// ... and it has been left (the map is gone): the lobby again, with
         /// whoever is still there.
         void toLobby();
+#ifndef HLDS_CHILD
+        /// The host, back in its lobby: the map chosen when the match ended,
+        /// once the others have had time to leave theirs. It stays due until
+        /// startNext or dropNext.
+        bool nextDue(std::string &map);
+        void startNext(const std::string &map, int fragLimit, int minuteLimit);
+        void dropNext();
+        /// No map could follow the match (true once): the host is to choose.
+        bool nextNone();
+#endif
         /// The host: player `p` let go, told why (and, a moment on, the
         /// radio's link cut); not let back in while this game lasts.
         /// Whether consoles in DSi mode are sent maps at full quality (else as
@@ -288,10 +298,19 @@ namespace hlrt
         std::uint8_t tiers_[hldata::kNetPlayers] = {}; ///< (the host's: 1, in DSi mode)
         std::uint32_t loadedAt_ = 0;
         /// How long the host waits for those not ready once it is.
-        static constexpr std::uint32_t kReadyVblanks = 20 * 60;
+        static constexpr std::uint32_t kReadyVblanks = 30 * 60;
+        void dropLate(int p); ///< (not let go for good, as kick: it never said it was ready)
 #ifndef HLDS_CHILD
         // (The host's.) What it sends the consoles it gave the game to.
         hldata::AirSender air_;
+        // What comes after the match.
+        std::string nextMap_;
+        bool nextChosen_ = false, nextNone_ = false;
+        std::uint32_t nextAt_ = 0;
+        /// How long the host waits, back in its lobby, for the others to have
+        /// left the map too.
+        static constexpr std::uint32_t kNextWaitVblanks = 3 * 60;
+        void chooseNext();
         unsigned guests_ = 0;        ///< bit n: client n has asked for a stream
         std::FILE *airFile_ = nullptr;
         std::uint16_t serves_ = 0;   ///< sendings made, for each one's number

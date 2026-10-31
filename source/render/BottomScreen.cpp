@@ -526,7 +526,7 @@ namespace hlrt
         const FontView &small = touchCanvas.font(kFontSmall);
         // Whole rows of cells, as drawScores'; the last row is the facts'.
         const int firstCell = (top + 7) / 8 + 1;
-        const bool roomy = firstCell + final.count * 2 <= 22;
+        const bool roomy = firstCell + final.count * 2 <= 21;
         const int rowCells = roomy ? 2 : 1;
         const FontView &font = roomy ? small : touchCanvas.plain();
         const int headY = firstCell * 8 - font.height() - 1;
@@ -573,7 +573,12 @@ namespace hlrt
                 drawTextCentred(canvas, font, allX, textY, text, inkFor(font, ink));
             }
         }
-        // What was remarkable about it, along the bottom.
+        // What comes next, and what was remarkable about it, along the bottom.
+        if (match.nextName[0] != 0)
+        {
+            std::snprintf(text, sizeof(text), "NEXT: %s", match.nextName);
+            drawTextCentred(canvas, small, 128, 192 - 2 * small.height() - 4, text, inkFor(small, kUiOrange));
+        }
         char facts[64];
         netFinalFacts(final, facts, sizeof(facts));
         if (facts[0] != 0)
