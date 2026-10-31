@@ -589,13 +589,13 @@ namespace
                   back.controlScheme == kControlsModern && back.padTurns == 1 && back.padLooks == 0 &&
                   back.leftHanded == 1,
               "the layout and the swaps are kept with the other settings");
-        check(SettingsData().controlScheme == kControlsClassic && SettingsData().padTurns == 0 &&
+        check(SettingsData().controlScheme == kControlsModern && SettingsData().padTurns == 0 &&
                   SettingsData().padLooks == 0,
-              "... and are the classic layout, nothing swapped, unless it is said");
+              "... and are the modern layout, nothing swapped, unless it is said");
         data.controlScheme = kControlsSchemes;
         bytes = writeSettings(data);
         SettingsData untouched;
-        check(!readSettings(bytes.data(), bytes.size(), untouched) && untouched.controlScheme == kControlsClassic,
+        check(!readSettings(bytes.data(), bytes.size(), untouched) && untouched.controlScheme == kControlsModern,
               "a layout there is not is not believed");
 
         // A file of the version before: all it had is kept.

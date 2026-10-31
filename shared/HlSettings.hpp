@@ -68,7 +68,7 @@ namespace hldata
         GraphicsSettings graphics;
         /// The layout of the buttons (kControls*), and which of the pad and
         /// the stylus turns and which moves (HlControls.hpp).
-        std::uint8_t controlScheme = 0;
+        std::uint8_t controlScheme = kControlsModern;
         std::uint8_t padTurns = 0;
         std::uint8_t padLooks = 0;
         /// How far the stylus turns the view, across and up and down (10:
@@ -286,6 +286,9 @@ namespace hldata
         SettingsData read;
         yas::mem_istream is(bytes + sizeof(header), header.payloadBytes);
         yas::binary_iarchive<yas::mem_istream, flags> ia(is);
+        // (A file from before there was a choice was played the classic way.)
+        if (header.version == kSettingsVersionBefore)
+            read.controlScheme = kControlsClassic;
         if (header.version == kSettingsVersionBefore)
             read.serializeEight(ia);
         else if (header.version == kSettingsVersionNine)

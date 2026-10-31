@@ -23,7 +23,7 @@ public:
     bool leftHanded = false;
     /// The layout of the buttons (hldata::kControls*), and which of the pad
     /// and the stylus turns and which moves.
-    std::uint8_t controlScheme = hldata::kControlsClassic;
+    std::uint8_t controlScheme = hldata::kControlsModern;
     bool padTurns = false;
     bool padLooks = false;
     /// How far the stylus turns the view across and up and down (10 as it
