@@ -479,6 +479,7 @@ namespace hlrt
 
     void Menu::drawWhole()
     {
+        touchCanvas.listOff();
         Canvas &canvas = touchCanvas.canvas();
         canvas.clear();
         // (Whatever the last page coloured: a score table's, a lobby's.)

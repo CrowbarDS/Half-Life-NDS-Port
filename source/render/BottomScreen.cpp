@@ -4,6 +4,7 @@
 
 #include "HlPlayerMove.hpp"
 #include "HlPreview.hpp"
+#include "audio/Sound.hpp"
 #include "Settings.hpp"
 #include "Global.hpp"
 #include "HlTouchLayout.hpp"
@@ -625,16 +626,17 @@ namespace hlrt
         {
         case VotePage::Confirm: return row == 1 ? voteAsked_ : -1;
         case VotePage::Result: return row == 0 ? netGame.match().vote.decided : -1;
-        default: return voteTop_ + row < netGame.match().vote.count ? voteTop_ + row : -1;
+        default: return voteSlotMap_[row];
         }
     }
 
-    void BottomScreen::voteRow(int row)
+    int BottomScreen::voteTop() const { return netVoteFirstShown(voteScroll_); }
+
+    void BottomScreen::voteRowAt(int map, int y)
     {
         Canvas &canvas = touchCanvas.canvas();
         const NetMatch &match = netGame.match();
         const NetVote &vote = match.vote;
-        const int map = voteRowMap(row), y = voteRowY(row);
         const FontView &medium = touchCanvas.font(kFontMedium), &small = touchCanvas.font(kFontSmall);
         // (Not over its picture, which stays as it is: only what is beside it.)
         canvas.fill(kVoteX + 72, y - 3, kVoteW - 72, 54, kUiBack);
@@ -653,47 +655,87 @@ namespace hlrt
         drawText(canvas, small, kVoteX + 72, y + 28, text, inkFor(small, mine ? kUiOrange : kUiGrey));
     }
 
+    void BottomScreen::voteRow(int row)
+    {
+        voteRowAt(voteRowMap(row), voteRowY(row));
+    }
+
+    /// A button's place on the list's layer: four slots, the layer's height.
+    namespace
+    {
+        int voteSlotY(int slot) { return slot * kNetVoteRowPixels + 8; }
+    }
+
+    void BottomScreen::voteSlots()
+    {
+        // What is in sight, each in its slot: drawn as it comes in, where it
+        // cannot be seen, and nothing else touched.
+        const NetVote &vote = netGame.match().vote;
+        const int first = netVoteFirstShown(voteScroll_);
+        for (int m = first; m < first + kNetVoteRows; ++m)
+        {
+            const int slot = m % kNetVoteRows;
+            const int map = m < vote.count ? m : -1;
+            if (voteSlotMap_[slot] == map)
+                continue;
+            voteSlotMap_[slot] = map;
+            Canvas &canvas = touchCanvas.canvas();
+            const int y = voteSlotY(slot);
+            canvas.fill(kVoteX, y - 8, kVoteW, kNetVoteRowPixels, kUiBack);
+            touchCanvas.listPicture(1, y / 8, 8, 6, nullptr, 12 + slot);
+            if (map >= 0)
+                canvas.fill(8, y, 64, 48, kUiPanel);
+            voteRowAt(map, y);
+            netGame.voteSlotChanged(slot);
+        }
+    }
+
+    void BottomScreen::voteMarker()
+    {
+        const NetVote &vote = netGame.match().vote;
+        Canvas &marker = touchCanvas.marker();
+        marker.clear();
+        const int last = netVoteLastScroll(vote.count);
+        if (last == 0)
+            return;
+        const int height = marker.height * kNetVoteViewPixels / (vote.count * kNetVoteRowPixels);
+        marker.fill(1, 0, 3, marker.height, kUiPanel);
+        marker.fill(1, (marker.height - height) * voteScroll_ / last, 3, height, kUiOrange + 2);
+    }
+
     void BottomScreen::voteList()
     {
         votePage_ = VotePage::List;
         stopShown = false;
-        Canvas &canvas = touchCanvas.canvas();
-        canvas.clear();
         touchCanvas.untintAll();
+        touchCanvas.listOn();
         shown_ = Shown::Message;
         padPending_ = false;
+        // (A bar the list slides under: colour 0 would let it show through.)
+        Canvas &heading = touchCanvas.heading();
+        heading.fill(0, 0, heading.width, heading.height, kUiPanel);
         const FontView &medium = touchCanvas.font(kFontMedium);
         // (Everyone, or one who chooses alone while the others look on.)
         const NetMatch &match = netGame.match();
-        char heading[32] = "VOTE: THE NEXT MAP";
+        char title[32] = "VOTE: THE NEXT MAP";
         if (match.vote.chooser == match.me)
-            std::snprintf(heading, sizeof(heading), "CHOOSE THE NEXT MAP");
+            std::snprintf(title, sizeof(title), "CHOOSE THE NEXT MAP");
         else if (match.vote.chooser >= 0)
-            std::snprintf(heading, sizeof(heading), "%s CHOOSES", match.final.rows[match.vote.chooser].name);
-        drawText(canvas, medium, 6, 4, heading, inkFor(medium, kUiOrange));
-        drawLobbyButton(canvas);
+            std::snprintf(title, sizeof(title), "%s CHOOSES", match.final.rows[match.vote.chooser].name);
+        drawText(heading, medium, 6, 4, title, inkFor(medium, kUiOrange));
+        drawLobbyButton(heading);
         voteClock_ = -1;
-        const NetVote &vote = netGame.match().vote;
-        for (int r = 0; r < kNetVoteRows; ++r)
-        {
-            if (voteRowMap(r) < 0)
-                continue;
-            canvas.fill(kVoteX + 4, voteRowY(r), 64, 48, kUiPanel);
-            voteRow(r);
-        }
-        // Where it is in the list.
-        if (vote.count > kNetVoteRows)
-        {
-            const int height = 168 * kNetVoteRows / vote.count;
-            canvas.fill(249, 24, 3, 168, kUiPanel);
-            canvas.fill(249, 24 + (168 - height) * voteTop_ / (vote.count - kNetVoteRows), 3, height, kUiOrange + 2);
-        }
-        netGame.voteRedrawn();
+        for (int &map : voteSlotMap_)
+            map = -2;
+        voteSlots();
+        touchCanvas.listScroll(voteScroll_ - kVoteTop * 8);
+        voteMarker();
     }
 
     void BottomScreen::showVote()
     {
-        voteTop_ = 0;
+        voteScroll_ = 0;
+        voteSpeed_ = 0;
         voteHeld_ = false;
         voteList();
         netGame.setVoteShown(true);
@@ -703,12 +745,13 @@ namespace hlrt
     {
         votePage_ = VotePage::Confirm;
         voteAsked_ = map;
+        touchCanvas.listOff();
         Canvas &canvas = touchCanvas.canvas();
         canvas.clear();
         touchCanvas.untintAll();
         const FontView &medium = touchCanvas.font(kFontMedium);
         drawTextCentred(canvas, medium, 128, 28, "VOTE FOR THIS MAP?", inkFor(medium, kUiOrange));
-        canvas.fill(kVoteX + 4, voteRowY(1), 64, 48, kUiPanel);
+        canvas.fill(8, voteRowY(1), 64, 48, kUiPanel);
         voteRow(1);
         canvas.button(8, 140, 116, 46, false);
         drawTextCentred(canvas, medium, 66, 140 + (46 - medium.height()) / 2, "YES", inkFor(medium, kUiOrange));
@@ -720,13 +763,14 @@ namespace hlrt
     void BottomScreen::showVoteResult()
     {
         votePage_ = VotePage::Result;
+        touchCanvas.listOff();
         Canvas &canvas = touchCanvas.canvas();
         canvas.clear();
         touchCanvas.untintAll();
         const NetVote &vote = netGame.match().vote;
         const FontView &medium = touchCanvas.font(kFontMedium), &small = touchCanvas.font(kFontSmall);
         drawTextCentred(canvas, medium, 128, 4, "NEXT MAP", inkFor(medium, kUiOrange));
-        canvas.fill(kVoteX + 4, voteRowY(0), 64, 48, kUiPanel);
+        canvas.fill(8, voteRowY(0), 64, 48, kUiPanel);
         voteRow(0);
         int top[3];
         const int found = vote.top(top, 3);
@@ -746,10 +790,12 @@ namespace hlrt
 
     void BottomScreen::voteUpdate()
     {
-        if (votePage_ == VotePage::List)
+        if (votePage_ != VotePage::List)
+            return;
+        for (int slot = 0; slot < kNetVoteRows; ++slot)
         {
-            for (int r = 0; r < kNetVoteRows; ++r)
-                voteRow(r);
+            if (voteSlotMap_[slot] >= 0)
+                voteRowAt(voteSlotMap_[slot], voteSlotY(slot));
         }
     }
 
@@ -758,17 +804,33 @@ namespace hlrt
         if (votePage_ != VotePage::List || seconds == voteClock_)
             return;
         voteClock_ = seconds;
-        Canvas &canvas = touchCanvas.canvas();
+        Canvas &canvas = touchCanvas.heading();
         const FontView &small = touchCanvas.font(kFontSmall);
         char text[8];
         std::snprintf(text, sizeof(text), "%d:%02d", seconds / 60, seconds % 60);
-        canvas.fill(166, 3, 36, small.height() + 2, kUiBack);
+        canvas.fill(166, 3, 36, small.height() + 2, kUiPanel);
         drawTextCentred(canvas, small, 184, 5, text, inkFor(small, kUiGrey));
+    }
+
+    void BottomScreen::voteSlideTo(int scroll)
+    {
+        const NetVote &vote = netGame.match().vote;
+        scroll = netVoteClampScroll(scroll, vote.count);
+        if (scroll == voteScroll_)
+            return;
+        // (A tick for each button gone by.)
+        if (netVoteFirstShown(scroll) != netVoteFirstShown(voteScroll_))
+            sound.ui(kUiSoundMove);
+        voteScroll_ = scroll;
+        voteSlots();
+        touchCanvas.listScroll(voteScroll_ - kVoteTop * 8);
+        voteMarker();
     }
 
     void BottomScreen::voteTouch(bool down, int x, int y)
     {
-        const NetVote &vote = netGame.match().vote;
+        const NetMatch &match = netGame.match();
+        const NetVote &vote = match.vote;
         if (votePage_ == VotePage::Result)
             return;
         if (down && !voteHeld_)
@@ -777,45 +839,69 @@ namespace hlrt
             voteMoved_ = false;
             voteFromY_ = voteDownY_ = y;
             voteDownX_ = x;
+            voteSpeed_ = 0;
             return;
         }
         if (down)
         {
-            // A slide: a button at a time.
-            if (votePage_ == VotePage::List && (y - voteFromY_ >= 28 || voteFromY_ - y >= 28))
-            {
-                const int to = netVoteScrolled(voteTop_, y < voteFromY_ ? 1 : -1, vote.count);
-                voteFromY_ = y;
+            if (votePage_ != VotePage::List)
+                return;
+            // The list follows the stylus.
+            if (!voteMoved_ && (y - voteDownY_ >= 6 || voteDownY_ - y >= 6))
                 voteMoved_ = true;
-                if (to != voteTop_)
+            if (voteMoved_)
+            {
+                voteSpeed_ = voteFromY_ - y;
+                voteSlideTo(voteScroll_ + voteSpeed_);
+            }
+            voteFromY_ = y;
+            return;
+        }
+        if (voteHeld_)
+        {
+            voteHeld_ = false;
+            if (voteMoved_)
+                return;
+            if (votePage_ == VotePage::Confirm)
+            {
+                if (voteDownY_ >= 140 && voteDownY_ < 186)
                 {
-                    voteTop_ = to;
+                    const bool yes = voteDownX_ >= 8 && voteDownX_ < 124;
+                    sound.ui(yes ? kUiSoundPress : kUiSoundTick);
+                    if (yes)
+                        netGame.vote(voteAsked_);
                     voteList();
                 }
+                return;
             }
-            return;
-        }
-        if (!voteHeld_)
-            return;
-        voteHeld_ = false;
-        if (voteMoved_)
-            return;
-        if (votePage_ == VotePage::Confirm)
-        {
-            if (voteDownY_ >= 140 && voteDownY_ < 186 && voteDownX_ >= 8 && voteDownX_ < 124)
-                netGame.vote(voteAsked_);
-            if (voteDownY_ >= 140 && voteDownY_ < 186)
-                voteList();
-            return;
-        }
-        // (A vote made is made: the list is there to look at.)
-        if (vote.choice[netGame.match().me] >= 0 || voteDownY_ < voteRowY(0) - 3 ||
-            (vote.chooser >= 0 && vote.chooser != netGame.match().me))
-            return;
-        const int row = (voteDownY_ - (voteRowY(0) - 3)) / (kVoteCellsDown * 8);
-        const int map = voteRowMap(row);
-        if (map >= 0)
+            const int map = netVoteMapAt(voteScroll_, voteDownY_ - kVoteTop * 8, vote.count);
+            if (map < 0)
+                return;
+            // (A vote made is made; and another's choice is theirs: the list
+            // is there to look at.)
+            if (vote.choice[match.me] >= 0 || (vote.chooser >= 0 && vote.chooser != match.me))
+            {
+                sound.ui(kUiSoundDeny);
+                return;
+            }
+            sound.ui(kUiSoundPress);
             voteConfirm(map);
+            return;
+        }
+        // Let go: on by what it was moving at, then to rest on a button.
+        if (votePage_ != VotePage::List)
+            return;
+        if (voteSpeed_ > 1 || voteSpeed_ < -1)
+        {
+            voteSlideTo(voteScroll_ + voteSpeed_);
+            voteSpeed_ = voteSpeed_ * 7 / 8;
+            return;
+        }
+        voteSpeed_ = 0;
+        const int rest = netVoteRestScroll(voteScroll_, vote.count);
+        const int gap = rest - voteScroll_;
+        if (gap != 0)
+            voteSlideTo(voteScroll_ + (gap > 0 ? (gap + 3) / 4 : (gap - 3) / 4));
     }
 
     void BottomScreen::voteCard(int row, const std::uint8_t *file, std::size_t size)
@@ -826,19 +912,23 @@ namespace hlrt
         std::uint16_t palette[16];
         previewPalette(pixels, kPreviewSmallWidth * kPreviewSmallHeight, palette);
         Canvas &canvas = touchCanvas.canvas();
-        const int x = kVoteX + 5, y = voteRowY(row);
-        const int px0 = (x + 7) / 8 * 8;
+        const bool list = votePage_ == VotePage::List;
+        const int x = 8, y = list ? voteSlotY(row) : voteRowY(row);
         for (int py = 0; py < kPreviewSmallHeight; ++py)
         {
             for (int px = 0; px < kPreviewSmallWidth; ++px)
-                canvas.fill(px0 + px, y + py, 1, 1, previewNearest(palette, pixels[py * kPreviewSmallWidth + px]));
+                canvas.fill(x + px, y + py, 1, 1, previewNearest(palette, pixels[py * kPreviewSmallWidth + px]));
         }
-        touchCanvas.tintWhole(px0 / 8, y / 8, kPreviewSmallWidth / 8, kPreviewSmallHeight / 8, palette, 12 + row);
+        if (list)
+            touchCanvas.listPicture(1, y / 8, kPreviewSmallWidth / 8, kPreviewSmallHeight / 8, palette, 12 + row);
+        else
+            touchCanvas.tintWhole(1, y / 8, kPreviewSmallWidth / 8, kPreviewSmallHeight / 8, palette, 12 + row);
     }
 
     void BottomScreen::showScores()
     {
         stopShown = false;
+        touchCanvas.listOff();
         touchCanvas.pageOff();
         Canvas &canvas = touchCanvas.canvas();
         canvas.clear();

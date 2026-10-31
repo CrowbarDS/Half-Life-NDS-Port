@@ -157,14 +157,40 @@ namespace hldata
         return some;
     }
 
-    /// The list of the vote's maps: three at a time, on the touch screen. The
-    /// first to show, moved by `step` and kept within it.
-    inline constexpr int kNetVoteRows = 3;
-    inline int netVoteScrolled(int top, int step, int count)
+    /// The list of the vote's maps, on the touch screen: a button every
+    /// kNetVoteRowPixels, slid by the pixel, seen through a window
+    /// kNetVoteViewPixels tall. At most kNetVoteRows are in sight at once.
+    inline constexpr int kNetVoteRowPixels = 64, kNetVoteViewPixels = 168, kNetVoteRows = 4;
+    /// How far the list may be slid.
+    inline int netVoteLastScroll(int count)
     {
-        const int last = count > kNetVoteRows ? count - kNetVoteRows : 0;
-        const int to = top + step;
-        return to < 0 ? 0 : (to > last ? last : to);
+        const int last = count * kNetVoteRowPixels - kNetVoteViewPixels;
+        return last > 0 ? last : 0;
+    }
+    inline int netVoteClampScroll(int scroll, int count)
+    {
+        const int last = netVoteLastScroll(count);
+        return scroll < 0 ? 0 : (scroll > last ? last : scroll);
+    }
+    /// Where it comes to rest once let go: on a button, or at an end.
+    inline int netVoteRestScroll(int scroll, int count)
+    {
+        // (Near the end, the end: the last map is to be seen whole.)
+        const int last = netVoteLastScroll(count);
+        if (scroll > last - kNetVoteRowPixels / 2)
+            return last;
+        const int to = (scroll + kNetVoteRowPixels / 2) / kNetVoteRowPixels * kNetVoteRowPixels;
+        return netVoteClampScroll(to, count);
+    }
+    /// The first map in sight.
+    inline int netVoteFirstShown(int scroll) { return scroll / kNetVoteRowPixels; }
+    /// The map at `y` pixels down the window; -1: none there.
+    inline int netVoteMapAt(int scroll, int y, int count)
+    {
+        if (y < 0 || y >= kNetVoteViewPixels)
+            return -1;
+        const int map = (scroll + y) / kNetVoteRowPixels;
+        return map < count ? map : -1;
     }
 
     /// The pictures kept of the vote's maps: only a few, a console having little

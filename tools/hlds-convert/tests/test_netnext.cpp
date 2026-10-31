@@ -157,10 +157,22 @@ namespace
 
     void testList()
     {
-        check(netVoteScrolled(0, -1, 19) == 0, "no sliding past the first");
-        check(netVoteScrolled(0, 1, 19) == 1, "a button at a time");
-        check(netVoteScrolled(16, 1, 19) == 16, "... and not past the last");
-        check(netVoteScrolled(0, 1, 2) == 0, "a list that fits does not slide");
+        // The list: by the pixel, kept within it, resting on a button.
+        check(netVoteLastScroll(19) == 19 * 64 - 168 && netVoteLastScroll(2) == 0, "how far it may slide");
+        check(netVoteClampScroll(-5, 19) == 0 && netVoteClampScroll(5000, 19) == netVoteLastScroll(19), "not past either end");
+        check(netVoteRestScroll(30, 19) == 0 && netVoteRestScroll(34, 19) == 64, "let go, to the nearest button");
+        check(netVoteRestScroll(netVoteLastScroll(19), 19) == netVoteLastScroll(19), "... or the end");
+        check(netVoteFirstShown(0) == 0 && netVoteFirstShown(64) == 1 && netVoteFirstShown(63) == 0, "the first in sight");
+        check(netVoteMapAt(0, 0, 19) == 0 && netVoteMapAt(0, 70, 19) == 1 && netVoteMapAt(30, 40, 19) == 1, "what a touch is on");
+        check(netVoteMapAt(0, 140, 2) == -1 && netVoteMapAt(0, -1, 19) == -1 && netVoteMapAt(0, 168, 19) == -1, "... not past the list");
+        // At most four in sight, each in a slot of its own: nothing is drawn over what is seen.
+        bool fits = true;
+        for (int scroll = 0; scroll <= netVoteLastScroll(32); ++scroll)
+        {
+            const int first = netVoteFirstShown(scroll), last = (scroll + kNetVoteViewPixels - 1) / kNetVoteRowPixels;
+            fits = fits && last - first + 1 <= kNetVoteRows;
+        }
+        check(fits, "never more in sight than there are slots");
 
         // The pictures kept: the few, never what is on the screen.
         NetVotePictures kept;
@@ -179,11 +191,11 @@ namespace
         check(kept.room(all, 6) == -1, "... and what is on the screen always stays");
 
         // Which to have next.
-        const int rows[3] = {3, 4, 5};
-        check(netVoteWanted(rows, 3, 3, 19, 0) == 3, "what is shown first");
-        check(netVoteWanted(rows, 3, 3, 19, 1u << 3 | 1u << 4) == 5, "... all of it");
-        check(netVoteWanted(rows, 3, 3, 19, 1u << 3 | 1u << 4 | 1u << 5) == 6, "then the next along");
-        check(netVoteWanted(rows, 3, 3, 19, 1u << 3 | 1u << 4 | 1u << 5 | 1u << 6) == 2, "then the one before");
+        const int rows[kNetVoteRows] = {3, 4, 5, 6};
+        check(netVoteWanted(rows, kNetVoteRows, 3, 19, 0) == 3, "what is shown first");
+        check(netVoteWanted(rows, kNetVoteRows, 3, 19, 1u << 3 | 1u << 4) == 5, "... all of it");
+        check(netVoteWanted(rows, kNetVoteRows, 3, 19, 0xFu << 3) == 7, "then the next along");
+        check(netVoteWanted(rows, kNetVoteRows, 3, 19, 0x1Fu << 3) == 2, "then the one before");
         const int ends[3] = {0, 1, -1};
         check(netVoteWanted(ends, 3, 0, 2, 3u) == -1, "nothing more: nothing wanted");
     }

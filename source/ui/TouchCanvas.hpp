@@ -60,6 +60,18 @@ namespace hlrt
         /// A block of cells in sixteen colours altogether of its own, palette
         /// `bank`: a picture.
         void tintWhole(int x, int y, int w, int h, const std::uint16_t *sixteen, int bank);
+        /// A layer of its own, for the vote's list: a canvas 256 by 256 that
+        /// slides by the pixel and wraps round, under a heading and a marker
+        /// that stay. Until listOff() -- which create() is too -- canvas() is it.
+        void listOn();
+        void listOff();
+        bool listIsOn() const { return listOn_; }
+        /// What is shown at the window's top row of the screen's: the list's row `top`.
+        void listScroll(int top);
+        /// A picture's cells on the list, in its colours (null: as every cell is).
+        void listPicture(int x, int y, int w, int h, const std::uint16_t *sixteen, int bank);
+        hldata::Canvas &heading() { return heading_; }
+        hldata::Canvas &marker() { return marker_; }
         /// Every cell as every cell is (the game's pad, which has no tints).
         void untintAll() { tint(0, 0, 32, 24, nullptr); }
 
@@ -69,6 +81,8 @@ namespace hlrt
         hldata::Canvas canvas_;
         std::uint32_t *screen_ = nullptr;
         int pageDepth_ = 0;
+        bool listOn_ = false;
+        hldata::Canvas heading_, marker_;
         hldata::FontView fonts_[hldata::kFontCount];
         hldata::FontView plain_;
     };

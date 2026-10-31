@@ -1943,6 +1943,7 @@ namespace hlrt
     void NetGame::voteLetGo()
     {
         // (Its pictures' colours are not for what comes next on those cells.)
+        touchCanvas.listOff();
         if (voteShown_)
             touchCanvas.untintAll();
         voteShown_ = false;

@@ -166,6 +166,8 @@ namespace hlrt
         void vote(int slot);
         /// The vote's page was drawn afresh: its pictures are to be had again.
         void voteRedrawn();
+        /// Another map in slot `slot` of the list: its picture is to be drawn.
+        void voteSlotChanged(int slot) { voteRowDrawn_[slot] = -1; }
         /// Its page is on the screen (what has come may be drawn on it).
         void setVoteShown(bool shown) { voteShown_ = shown; }
         /// It is over: its pictures let go of, and their colours off the screen.

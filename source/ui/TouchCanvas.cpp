@@ -5,6 +5,8 @@
 #include "Global.hpp"
 #include "HlRemap.hpp"
 
+#include <cstring>
+
 namespace hlrt
 {
     TouchCanvas touchCanvas;
@@ -18,10 +20,97 @@ namespace hlrt
         std::uint16_t mapCopy[24 * 32];
     } // namespace
 
+    // The vote's list has a layer of its own to slide, which needs more cells
+    // than the screen has: bank I as well as bank H, for as long as it is up.
+    //
+    //   bank H (32 KB)  the list's 1024 tiles: cell (x, y) of 32 by 32, tile
+    //                   y * 32 + x -- the layer wraps round by itself
+    //   bank I (16 KB)  0: its map; 2 KB: the fixed layer's map; 4 KB: that
+    //                   layer's tiles (the heading's three rows, a blank one,
+    //                   and the marker's column)
+    namespace
+    {
+        constexpr int kListMapBase = 16, kFixedMapBase = 17, kFixedTileBase = 2;
+        constexpr int kFixedFirstTile = 128, kFixedRows = 3;
+        constexpr int kFixedBlank = kFixedFirstTile + kFixedRows * 32;
+        constexpr int kMarkerCells = 21;
+        std::uint32_t *fixedTiles(int tile)
+        {
+            return reinterpret_cast<std::uint32_t *>(0x06208000 + tile * 32);
+        }
+    } // namespace
+
+    void TouchCanvas::listOn()
+    {
+        create();
+        listOn_ = true;
+        pageDepth_ = 0;
+        vramSetBankI(VRAM_I_SUB_BG_0x06208000);
+        videoSetModeSub(MODE_0_2D | DISPLAY_BG0_ACTIVE | DISPLAY_BG1_ACTIVE);
+        canvas_.tiles = reinterpret_cast<std::uint32_t *>(BG_GFX_SUB);
+        canvas_.width = 256;
+        canvas_.height = 256;
+        canvas_.clear();
+        auto *map = reinterpret_cast<std::uint16_t *>(0x06208000);
+        for (int n = 0; n < 32 * 32; ++n)
+            map[n] = static_cast<std::uint16_t>(n);
+        // Above it, fixed: the heading, and the marker at the side.
+        std::memset(fixedTiles(kFixedFirstTile), 0, (kFixedRows * 32 + 1 + kMarkerCells) * 32);
+        auto *fixedMap = map + 32 * 32;
+        for (int y = 0; y < 32; ++y)
+        {
+            for (int x = 0; x < 32; ++x)
+                fixedMap[y * 32 + x] = static_cast<std::uint16_t>(
+                    y < kFixedRows ? kFixedFirstTile + y * 32 + x
+                                   : (x == 31 && y < kFixedRows + kMarkerCells ? kFixedBlank + 1 + y - kFixedRows : kFixedBlank));
+        }
+        heading_.tiles = fixedTiles(kFixedFirstTile);
+        heading_.width = 256;
+        heading_.height = kFixedRows * 8;
+        marker_.tiles = fixedTiles(kFixedBlank + 1);
+        marker_.width = 8;
+        marker_.height = kMarkerCells * 8;
+        REG_BG0CNT_SUB = BG_32x32 | BG_COLOR_16 | BG_MAP_BASE(kListMapBase) | BG_TILE_BASE(0) | BG_PRIORITY(1);
+        REG_BG1CNT_SUB = BG_32x32 | BG_COLOR_16 | BG_MAP_BASE(kFixedMapBase) | BG_TILE_BASE(kFixedTileBase) | BG_PRIORITY(0);
+        REG_BG1HOFS_SUB = 0;
+        REG_BG1VOFS_SUB = 0;
+        listScroll(0);
+    }
+
+    void TouchCanvas::listScroll(int top)
+    {
+        REG_BG0VOFS_SUB = static_cast<std::uint16_t>(top & 255);
+    }
+
+    void TouchCanvas::listPicture(int x, int y, int w, int h, const std::uint16_t *sixteen, int bank)
+    {
+        for (int i = 0; i < 16; ++i)
+            BG_PALETTE_SUB[bank * 16 + i] = sixteen != nullptr ? sixteen[i] : hldata::uiColour(i);
+        auto *map = reinterpret_cast<std::uint16_t *>(0x06208000);
+        for (int cy = y; cy < y + h; ++cy)
+        {
+            for (int cx = x; cx < x + w; ++cx)
+                map[(cy & 31) * 32 + cx] = static_cast<std::uint16_t>(((cy & 31) * 32 + cx) | (sixteen != nullptr ? bank << 12 : 0));
+        }
+    }
+
+    void TouchCanvas::listOff()
+    {
+        if (!listOn_)
+            return;
+        listOn_ = false;
+        // (As create() has it.)
+        created_ = false;
+        create();
+    }
+
     void TouchCanvas::create()
     {
         if (created_)
+        {
+            listOff();
             return;
+        }
         created_ = true;
         videoSetModeSub(MODE_0_2D | DISPLAY_BG0_ACTIVE);
         vramSetBankH(VRAM_H_SUB_BG);

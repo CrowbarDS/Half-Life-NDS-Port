@@ -1,5 +1,6 @@
 #pragma once
 
+#include "HlNetVote.hpp"
 #include "EngineObject.hpp"
 
 // The touch screen while the game is played: a bar along the top (MENU,
@@ -71,12 +72,13 @@ namespace hlrt
         void showVoteResult();
         /// The stylus, on those pages: on the screen at (x, y), or lifted.
         void voteTouch(bool down, int x, int y);
-        /// A map's small picture (HlPreview.hpp), onto row `row`'s button.
+        /// A map's small picture (HlPreview.hpp), onto row `row`'s button
+        /// (on the list, its slot's).
         void voteCard(int row, const std::uint8_t *file, std::size_t size);
         /// Which map is on row `row` of what is shown (-1: none), and the first
         /// of the list.
         int voteRowMap(int row) const;
-        int voteTop() const { return voteTop_; }
+        int voteTop() const;
         /// Whether the host's LOBBY button is there.
         bool lobbyButtonAt(int x, int y) const;
         /// A match over: that table, all of the screen, until showPad().
@@ -118,10 +120,15 @@ namespace hlrt
             Result,
         };
         void voteList();
+        void voteSlots();
+        void voteMarker();
+        void voteSlideTo(int scroll);
         void voteRow(int row);
+        void voteRowAt(int map, int y);
         void voteConfirm(int map);
         VotePage votePage_ = VotePage::List;
-        int voteTop_ = 0, voteAsked_ = -1, voteClock_ = -1;
+        int voteScroll_ = 0, voteSpeed_ = 0, voteAsked_ = -1, voteClock_ = -1;
+        int voteSlotMap_[hldata::kNetVoteRows] = {-2, -2, -2, -2};
         bool voteHeld_ = false, voteMoved_ = false;
         int voteFromY_ = 0, voteDownX_ = 0, voteDownY_ = 0;
         enum class Shown
