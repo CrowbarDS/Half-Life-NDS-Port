@@ -1318,7 +1318,11 @@ int main(int argc, char *argv[])
         if (hlrt::netGame.on())
             hlrt::menu.openLobby();
         else
+#ifdef HLDS_CHILD
+            hlrt::menu.openJoin(); // (out of the game: there is no title here)
+#else
             hlrt::menu.openTitle();
+#endif
 #ifdef HLDS_CHILD
         // (Sent the game, it has no card to keep this on: asked as it comes.)
         {

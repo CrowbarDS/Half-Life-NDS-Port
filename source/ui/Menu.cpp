@@ -2635,6 +2635,12 @@ namespace hlrt
             netGame.leave();
             untintSeats();
             mapCard.hide();
+#ifdef HLDS_CHILD
+            // (No page of its own to go back to: looking for a game at once.)
+            settings.save();
+            openJoin();
+            return Action::None;
+#endif
         }
         page_ = page_ == Page::Saves                  ? asker_
                 : page_ == Page::Profile || lobby ? Page::Multiplayer
