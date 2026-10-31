@@ -229,21 +229,8 @@ namespace
             return;
         }
         const hldata::LevelView &view = hlrt::level.view;
-        const hldata::EntityRecord *from = nullptr;
-        for (std::uint32_t e = 0; e < view.entityCount && from == nullptr; ++e)
-        {
-            if (view.entities[e].classId == static_cast<std::uint16_t>(hldata::EntityClass::InfoIntermission))
-                from = &view.entities[e];
-        }
         bool spawn = false;
-        for (std::uint32_t e = 0; e < view.entityCount && from == nullptr; ++e)
-        {
-            if (view.entities[e].classId == static_cast<std::uint16_t>(hldata::EntityClass::InfoPlayerDeathmatch))
-            {
-                from = &view.entities[e];
-                spawn = true;
-            }
-        }
+        const hldata::EntityRecord *from = hldata::netIntermissionPoint(view, 0, spawn);
         if (from == nullptr)
             return;
         hlrt::Camera &camera = hlrt::camera;
@@ -361,6 +348,27 @@ namespace
     };
 #endif
 
+    /// The match over: the view is where the map is shown from, whatever the
+    /// player was doing. Before the frame is drawn.
+    void holdIntermissionView()
+    {
+        if (!hlrt::netGame.playing() || !hlrt::netGame.match().over)
+            return;
+        bool spawn = false;
+        const hldata::EntityRecord *from =
+            hldata::netIntermissionPoint(hlrt::level.view, hlrt::netGame.match().endDraw, spawn);
+        if (from == nullptr)
+            return;
+        hlrt::Camera &camera = hlrt::camera;
+        for (int i = 0; i < 3; ++i)
+            camera.pos[i] = from->origin[i];
+        if (spawn)
+            camera.pos[2] += hldata::fxFromInt(28);
+        camera.yaw = from->angles[1];
+        camera.pitch = static_cast<std::int16_t>(-static_cast<std::int16_t>(from->angles[0]));
+        camera.update();
+    }
+
     void drawScene()
     {
         // NEA leaves all four lights on and the modelview at identity. The
@@ -375,7 +383,11 @@ namespace
             hlrt::game.held.active = false;
         hlrt::worldDraw.draw();
         hlrt::game.held.active = held;
-        hlrt::hudDraw.draw();
+        // (Nor the display: the map, and the scores below it.)
+        if (hlrt::netGame.playing() && hlrt::netGame.match().over)
+            hlrt::hudDraw.clear();
+        else
+            hlrt::hudDraw.draw();
     }
 
     enum class LoadResult
@@ -1618,9 +1630,14 @@ int main(int argc, char *argv[])
                 // The match over: the table, on the touch screen, as it
                 // stands, until the lobby.
                 {
-                    static unsigned scoresDue = 0;
-                    if (inMatch && !paused && hlrt::netGame.match().over && ++scoresDue % 15 == 1)
+                    static int scoresShown = -1;
+                    if (paused || !inMatch || !hlrt::netGame.match().over)
+                        scoresShown = -1;
+                    else if (scoresShown != hlrt::netGame.match().final.stamp)
+                    {
+                        scoresShown = hlrt::netGame.match().final.stamp;
                         hlrt::bottomScreen.showScores();
+                    }
                 }
                 // Who killed whom, who came and went: a line at the top of
                 // the picture for a few seconds (the touch screen is the
@@ -1862,6 +1879,7 @@ int main(int argc, char *argv[])
             };
 
             step();
+            holdIntermissionView();
             NEA_Process(drawScene);
             hlrt::sound.frame();
             // What is in view now says what to read for the next frames;

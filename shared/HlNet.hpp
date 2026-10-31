@@ -115,6 +115,8 @@ namespace hldata
         FetchHave,///< client: of sending `a`, v[0] the first piece I lack, v[1..4] the bits of those past it
         FetchAgain,///< client: sending `a` came wrong: all of it, again
         FetchNone,///< host: there is no such thing: `a` FetchFrom, v[0..1] what
+        RulesMore,///< host: what follows a match: v[0] seconds of its scores, v[1] how the next map is chosen,
+                  ///< v[2] 1 = a lobby's matches added up
     };
 
     /// The rules' flags (Rules' v[1]): the game's mp_weaponstay,

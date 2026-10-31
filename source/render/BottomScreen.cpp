@@ -517,6 +517,72 @@ namespace hlrt
         }
     }
 
+    void BottomScreen::drawFinal(int top)
+    {
+        Canvas &canvas = touchCanvas.canvas();
+        const NetMatch &match = netGame.match();
+        const NetFinal &final = match.final;
+        const bool totals = match.rules.totals;
+        const FontView &small = touchCanvas.font(kFontSmall);
+        // Whole rows of cells, as drawScores'; the last row is the facts'.
+        const int firstCell = (top + 7) / 8 + 1;
+        const bool roomy = firstCell + final.count * 2 <= 22;
+        const int rowCells = roomy ? 2 : 1;
+        const FontView &font = roomy ? small : touchCanvas.plain();
+        const int headY = firstCell * 8 - font.height() - 1;
+        const int nameX = 28, fragsX = totals ? 166 : 196, deathsX = totals ? 202 : 236, allX = 238;
+        char text[48];
+        if (match.rules.teams())
+        {
+            std::snprintf(text, sizeof(text), "TEAMS  %d : %d", final.teamFrags[1], final.teamFrags[2]);
+            drawText(canvas, font, nameX, headY, text, inkFor(font, kUiOrange));
+        }
+        else
+            drawText(canvas, font, nameX, headY, "PLAYER", inkFor(font, kUiGrey));
+        drawTextCentred(canvas, font, fragsX, headY, "FRAGS", inkFor(font, kUiGrey));
+        drawTextCentred(canvas, font, deathsX, headY, "DIED", inkFor(font, kUiGrey));
+        if (totals)
+            drawTextCentred(canvas, font, allX, headY, "ALL", inkFor(font, kUiGrey));
+        const NetFinal::Row *first = final.count > 0 ? &final.rows[final.order[0]] : nullptr;
+        for (int row = 0; row < final.count; ++row)
+        {
+            const int p = final.order[row], cell = firstCell + row * rowCells, y = cell * 8;
+            const NetFinal::Row &line = final.rows[p];
+            const int textY = y + (rowCells * 8 - font.height()) / 2;
+            // The winner, or the winning team, stands out; who has gone is grey.
+            const bool won = match.rules.teams() ? final.winnerTeam != 0 && line.team == final.winnerTeam
+                                                 : line.frags == first->frags && line.deaths == first->deaths;
+            if (won && !line.gone)
+                canvas.fill(24, y, 232, rowCells * 8, kUiPanel);
+            canvas.fill(8, y, 8, 8, 1);
+            canvas.fill(16, y, 8, 8, 2);
+            const std::uint16_t three[3] = {line.gone ? uiColour(kUiGrey) : hueColour(line.top),
+                                            line.gone ? uiColour(kUiGrey) : hueColour(line.bottom), uiColour(kUiEdge)};
+            touchCanvas.tint(1, cell, 2, 1, three, 2 + row);
+            const int ink = line.gone ? kUiGrey : (won || p == match.me ? kUiWhite : kUiOrange);
+            const char *name = line.name[0] != 0 ? line.name : "...";
+            std::snprintf(text, sizeof(text), "%.*s", textFit(font, name, fragsX - nameX - 18), name);
+            drawText(canvas, font, nameX + 2, textY, text, inkFor(font, ink));
+            std::snprintf(text, sizeof(text), "%d", line.frags);
+            drawTextCentred(canvas, font, fragsX, textY, text, inkFor(font, ink));
+            std::snprintf(text, sizeof(text), "%d", line.deaths);
+            drawTextCentred(canvas, font, deathsX, textY, text, inkFor(font, ink));
+            if (totals)
+            {
+                std::snprintf(text, sizeof(text), "%d", match.sessionFrags[p]);
+                drawTextCentred(canvas, font, allX, textY, text, inkFor(font, ink));
+            }
+        }
+        // What was remarkable about it, along the bottom.
+        char facts[64];
+        netFinalFacts(final, facts, sizeof(facts));
+        if (facts[0] != 0)
+        {
+            std::snprintf(text, sizeof(text), "%.*s", textFit(small, facts, 248), facts);
+            drawTextCentred(canvas, small, 128, 192 - small.height() - 2, text, inkFor(small, kUiGrey));
+        }
+    }
+
     void BottomScreen::showScores()
     {
         stopShown = false;
@@ -527,8 +593,10 @@ namespace hlrt
         shown_ = Shown::Message;
         padPending_ = false;
         const FontView &title = touchCanvas.font(kFontTitle);
-        drawTextCentred(canvas, title, 128, 6, "THE MATCH IS OVER", inkFor(title, kUiOrange));
-        drawScores(6 + title.height() + 2);
+        char said[32];
+        netFinalTitle(netGame.match(), said, sizeof(said));
+        drawTextCentred(canvas, title, 128, 6, said, inkFor(title, kUiOrange));
+        drawFinal(6 + title.height() + 2);
         touchCanvas.pageOn();
     }
 

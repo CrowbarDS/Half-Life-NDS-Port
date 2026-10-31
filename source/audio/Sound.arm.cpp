@@ -35,7 +35,12 @@ namespace hlrt
         /// which the ARM7 decodes and plays (HlStereoMusic.hpp) and
         /// musicTick keeps filled ahead of it (two thirds of a second: a
         /// frame of the game's held up by the card does not run it dry).
+#ifdef HLDS_CHILD
+        // (A console sent the game is sent no music: nothing to keep ahead of.)
+        constexpr std::uint32_t kMusicRingBlocks = 1;
+#else
         constexpr std::uint32_t kMusicRingBlocks = 8;
+#endif
         alignas(32) std::uint16_t musicRing[kMusicRingBlocks * StereoMusic::kBlockWords];
 
         /// The music as loud as the player has it (the track itself is

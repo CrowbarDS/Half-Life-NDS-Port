@@ -126,6 +126,9 @@ namespace hlrt
         rules.most = settings.maxPlayers;
         rules.frags = static_cast<std::uint8_t>(settings.fragLimit);
         rules.minutes = static_cast<std::uint8_t>(settings.minuteLimit);
+        rules.chatSeconds = settings.chatSeconds;
+        rules.nextMode = settings.nextMode;
+        rules.totals = settings.sessionTotals != 0;
         const std::string *hosted = hostedMap(maps_);
         rules.mapHash = hosted != nullptr ? nameHash(hosted->c_str()) : 0;
         netSetRules(match_, rules);
@@ -1808,7 +1811,7 @@ namespace hlrt
             return;
         gameApi.netTick(match_, game.logic, player.state, yaw, pitch, did, lamp, ms);
         // The match over: its scores for a while, then the lobby.
-        if (match_.over && !lobbyAsked_ && (overMs_ += ms) >= kNetIntermissionMs)
+        if (match_.over && !lobbyAsked_ && (overMs_ += ms) >= match_.rules.chatSeconds * 1000)
             lobbyAsked_ = true;
         // (More than four: the host's frames every other frame, so that the
         // air has room for everyone's answers. Each glides between.)

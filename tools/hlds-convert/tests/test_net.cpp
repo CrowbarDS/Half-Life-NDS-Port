@@ -1194,6 +1194,86 @@ namespace
         check(!client.over, "only the host ends a match");
     }
 
+    void testFinalScores()
+    {
+        NetMatch match;
+        netBegin(match, NetMatch::Role::Host, 0, "Host");
+        for (int c = 1; c < 4; ++c)
+        {
+            netHostJoin(match.host, c);
+            match.host.players[c].flags = kNetHere;
+        }
+        const char *const names[4] = {"Ann", "Bob", "Cid", "Dee"};
+        for (int p = 0; p < 4; ++p)
+            std::strcpy(match.names[p], names[p]);
+        match.playing = true;
+        match.rules.totals = true;
+        // Bob and Cid level on frags: the fewer deaths first.
+        match.frags[1] = 5; match.deaths[1] = 3;
+        match.frags[2] = 5; match.deaths[2] = 1;
+        match.frags[0] = 2; match.frags[3] = -1;
+        for (int n = 0; n < 3; ++n)
+            hldata::detail::netCount(match, 3, 1);
+        hldata::detail::netCount(match, 1, 2);
+        hldata::detail::netCount(match, 2, 1);
+        hldata::detail::netCount(match, 0, 0);
+        hldata::detail::netCount(match, 0, kNetPlayers);
+        netEndMatch(match);
+        const NetFinal &final = match.final;
+        check(final.count == 4 && final.order[0] == 2 && final.order[1] == 1 && final.order[2] == 0 && final.order[3] == 3,
+              "the final scores: most frags first, then fewest deaths");
+        char line[64];
+        netFinalTitle(match, line, sizeof(line));
+        check(std::strcmp(line, "Cid WINS") == 0, "the winner is named");
+        check(final.mostKills == 1 && final.kills == 4 && final.longestStreak == 1 && final.streak == 3 &&
+                  final.mostSuicides == 0 && final.suicides == 2,
+              "the match's facts: kills, a streak broken by a death, deaths by one's own hand");
+        netFinalFacts(final, line, sizeof(line));
+        check(std::strcmp(line, "Kills Bob 4  Streak Bob 3  Suicides Ann 2") == 0, "... in a line");
+        check(match.sessionFrags[2] == 5 && match.sessionDeaths[1] == 3, "the session's totals");
+
+        // Who leaves stays, grey; the rest as they were.
+        const std::uint16_t stamp = final.stamp;
+        match.host.players[1].flags = 0;
+        match.names[1][0] = 0;
+        match.frags[1] = 0;
+        hldata::detail::netFinalWatch(match);
+        check(final.rows[1].gone && std::strcmp(final.rows[1].name, "Bob") == 0 && final.rows[1].frags == 5 &&
+                  final.stamp != stamp && !final.rows[2].gone,
+              "who leaves stays on the scores, greyed");
+        // Who comes later is not on them.
+        match.host.players[4].flags = kNetHere;
+        hldata::detail::netFinalWatch(match);
+        check(final.count == 4, "... who comes later is not on them");
+
+        // A draw.
+        NetMatch level;
+        netBegin(level, NetMatch::Role::Host, 0, "Host");
+        netHostJoin(level.host, 1);
+        level.host.players[1].flags = kNetHere;
+        level.playing = true;
+        netEndMatch(level);
+        netFinalTitle(level, line, sizeof(line));
+        check(std::strcmp(line, "A DRAW") == 0, "level on frags and deaths: a draw");
+        netFinalFacts(level.final, line, sizeof(line));
+        check(line[0] == 0, "... and nothing happened: no facts");
+
+        // Teams.
+        NetMatch teams;
+        netBegin(teams, NetMatch::Role::Host, 0, "Host");
+        netHostJoin(teams.host, 1);
+        teams.host.players[1].flags = kNetHere;
+        teams.playing = true;
+        teams.rules.mode = kNetModeTeamplay;
+        teams.profiles[0].team = 1;
+        teams.profiles[1].team = 2;
+        teams.teamFrags[1] = 2;
+        teams.teamFrags[2] = 7;
+        netEndMatch(teams);
+        netFinalTitle(teams, line, sizeof(line));
+        check(teams.final.winnerTeam == 2 && std::strcmp(line, "TEAM 2 WINS") == 0, "the winning team");
+    }
+
     int far(const fx *a, const fx *b)
     {
         fx d[3] = {a[0] - b[0], a[1] - b[1], a[2] - b[2]};
@@ -1649,6 +1729,7 @@ int main()
     testTooMany();
     testTeamScore();
     testMatchEnd();
+    testFinalScores();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir == nullptr)
         std::printf("test_net: HLDS_VALVE_DIR not set, no match was played\n");

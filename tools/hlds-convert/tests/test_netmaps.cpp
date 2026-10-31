@@ -7,6 +7,7 @@
 #include <memory>
 #include <vector>
 
+#include "HlNetGame.hpp"
 #include "HlNetMaps.hpp"
 #include "HlPreview.hpp"
 #include "TestGame.hpp"
@@ -109,6 +110,17 @@ namespace
         }
         check(count == 4, "stalkyard's four places the game shows it from are kept");
         check(turned, "... each facing the way it looks");
+        // Which is shown: by the draw every console was told, each in its turn.
+        {
+            bool spawn = true;
+            const EntityRecord *points[4];
+            for (std::uint32_t draw = 0; draw < 4; ++draw)
+                points[draw] = netIntermissionPoint(v, draw, spawn);
+            check(!spawn && points[0] != nullptr && points[0] != points[1] && points[1] != points[2] && points[2] != points[3],
+                  "each draw shows another of its four");
+            check(netIntermissionPoint(v, 6, spawn) == points[2] && netIntermissionPoint(v, 0xFFFF, spawn) == points[3],
+                  "... the same draw the same one, on every console");
+        }
         // A map with none: its places to come in at, as before.
         auto c = std::make_unique<Game>();
         if (c->bsp.load(std::string(dir) + "/maps/crossfire.bsp", error))
@@ -121,6 +133,11 @@ namespace
                 spawns += c->view.entities[e].classId == static_cast<std::uint16_t>(EntityClass::InfoPlayerDeathmatch);
             }
             check(intermissions == 0 && spawns > 0, "crossfire has none: its picture is from where a player comes in");
+            bool spawn = false;
+            const EntityRecord *point = netIntermissionPoint(c->view, 1234, spawn);
+            check(spawn && point != nullptr &&
+                      point->classId == static_cast<std::uint16_t>(EntityClass::InfoPlayerDeathmatch),
+                  "... and is shown from there between matches");
         }
     }
 } // namespace

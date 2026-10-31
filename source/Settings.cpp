@@ -62,6 +62,12 @@ void Settings::load()
         hostAutoaim = data.hostAutoaim != 0;
         maxPlayers = data.maxPlayers;
         allowGuests = data.allowGuests != 0;
+        chatSeconds = data.chatSeconds;
+        sessionTotals = data.sessionTotals != 0;
+        nextMode = data.nextMode;
+        rotationCount = data.rotationCount;
+        for (int i = 0; i < hldata::kRotationMost; ++i)
+            rotation[i] = data.rotation[i];
     }
 }
 
@@ -176,6 +182,12 @@ bool Settings::save() const
     data.hostAutoaim = hostAutoaim ? 1 : 0;
     data.maxPlayers = maxPlayers;
     data.allowGuests = allowGuests ? 1 : 0;
+    data.chatSeconds = chatSeconds;
+    data.sessionTotals = sessionTotals ? 1 : 0;
+    data.nextMode = nextMode;
+    data.rotationCount = rotationCount;
+    for (int i = 0; i < hldata::kRotationMost; ++i)
+        data.rotation[i] = rotation[i];
     const std::vector<std::uint8_t> bytes = hldata::writeSettings(data);
 
     std::FILE *file = std::fopen(global.dataPath("settings.dat").c_str(), "wb");

@@ -58,6 +58,8 @@ namespace hlrt
         /// Who has how many frags, the most first, from `top` to the screen's
         /// foot: for 8 players too (in the plain letters, then).
         void drawScores(int top);
+        /// The scores as the match ended (NetFinal), from `top` down.
+        void drawFinal(int top);
         /// A match over: that table, all of the screen, until showPad().
         void showScores();
         /// Three lines and nothing else: what is said when the game cannot

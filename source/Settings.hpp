@@ -90,6 +90,12 @@ public:
     bool hostAutoaim = true;
     std::uint8_t maxPlayers = 4;
     bool allowGuests = false;
+    /// What follows a match (hldata::SettingsData's).
+    std::uint8_t chatSeconds = hldata::kChatDefault;
+    bool sessionTotals = false;
+    std::uint8_t nextMode = hldata::kNextHost;
+    std::uint8_t rotationCount = 0;
+    std::uint32_t rotation[hldata::kRotationMost] = {};
 
     /// Read settings.dat. An absent or unreadable file is a first boot, not an
     /// error: the defaults stand.

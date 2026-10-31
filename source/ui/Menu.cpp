@@ -125,6 +125,8 @@ namespace hlrt
             kNetLamp,      ///< ... the flashlight allowed
             kNetAim,       ///< ... autoaim
             kNetGuests,    ///< ... consoles without the game let in
+            kNetChat,      ///< ... how long a match's scores are shown
+            kNetTotals,    ///< ... a lobby's matches added up
             kNetTeam,      ///< PLAYERS': the team this console's player would be on
             kSeat,         ///< ... a player's place (which, by its row)
             kDlSeat,       ///< SEND THE GAME's: a console that has come for it (which, by its row)
@@ -836,7 +838,9 @@ namespace hlrt
                                  {Kind::Value, kNetLamp, "Flashlight"},
                                  {Kind::Value, kNetAim, "Autoaim"},
                                  {Kind::Value, kNetSkill, "Difficulty"},
-                                 {Kind::Value, kNetGuests, "Without the game"}};
+                                 {Kind::Value, kNetGuests, "Without the game"},
+                                 {Kind::Value, kNetChat, "Scores shown"},
+                                 {Kind::Value, kNetTotals, "Session totals"}};
         /// PLAYERS (the host's second chapter, a client's lobby): the team
         /// asked for, in teamplay; then a row for each place the match has.
         const Row *seatRows(int &count)
@@ -1032,6 +1036,8 @@ namespace hlrt
                     std::snprintf(out, size, "%d minutes", settings.minuteLimit);
                 break;
             case kNetMost: std::snprintf(out, size, "up to %d", settings.maxPlayers); break;
+            case kNetChat: std::snprintf(out, size, "%d seconds", settings.chatSeconds); break;
+            case kNetTotals: std::snprintf(out, size, "%s", settings.sessionTotals ? "on" : "off"); break;
             case kNetStay: std::snprintf(out, size, "%s", settings.weaponsStay ? "on" : "off"); break;
             case kNetFall: std::snprintf(out, size, "%s", settings.fallDamage != 0 ? "realistic" : "normal"); break;
             case kNetFriendly: std::snprintf(out, size, "%s", settings.friendlyFire ? "on" : "off"); break;
@@ -1163,6 +1169,8 @@ namespace hlrt
             case kNetFrags: return "The match ends when a player (in teamplay, a team) has this many frags.";
             case kNetMinutes: return "The match ends after this long.";
             case kNetMost: return "How many may play, this console among them: the rest are told the game is full.";
+            case kNetChat: return "How long the final scores stay up when a match ends.";
+            case kNetTotals: return "Adds up each player's frags over the matches of this lobby.";
             case kNetStay: return "A weapon taken stays where it lay for the others; whoever has it cannot take it again.";
             case kNetFall: return "Normal: any hard fall costs 10. Realistic: the harder the fall, the more it costs.";
             case kNetFriendly: return "In teamplay: whether teammates' shots hurt each other.";
@@ -1306,6 +1314,14 @@ namespace hlrt
                 netGame.hostChanged();
                 return true;
             }
+            case kNetChat:
+            {
+                const int next = settings.chatSeconds + step * 5;
+                settings.chatSeconds = static_cast<std::uint8_t>(next > kChatMost ? kChatLeast : (next < kChatLeast ? kChatMost : next));
+                netGame.hostChanged();
+                return true;
+            }
+            case kNetTotals: settings.sessionTotals = !settings.sessionTotals; netGame.hostChanged(); return true;
             case kNetStay: settings.weaponsStay = !settings.weaponsStay; netGame.hostChanged(); return true;
             case kNetFall: settings.fallDamage = settings.fallDamage != 0 ? 0 : 1; netGame.hostChanged(); return true;
             case kNetFriendly:

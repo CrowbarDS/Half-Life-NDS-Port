@@ -43,9 +43,6 @@ namespace hldata
     /// it is off to send the game, and will be back.
     inline constexpr int kNetRefuseFull = 1, kNetRefuseKicked = 2, kNetByeBackSoon = 3;
 
-    /// The match over, the scores shown this long before everyone is back in
-    /// the host's lobby (the game's mp_chattime, before its next map).
-    inline constexpr int kNetIntermissionMs = 10000;
     inline constexpr int kNetSprayWaitMs = 30000; ///< a spray, then none until this long after (decalfrequency)
     inline constexpr int kNetSprayReach = 128;    ///< how far off a wall may be sprayed
     inline constexpr int kNetSprayHalf = 32;      ///< units from a spray's middle to its edge (64 across, as the game's)
@@ -78,6 +75,9 @@ namespace hldata
         std::uint8_t most = 4;              ///< how many may play
         std::uint32_t mapHash = 0;          ///< nameHash of the map it is to be on (0: not said)
         std::uint8_t frags = 0, minutes = 0; ///< the limits, for the lobby to show (0: none)
+        std::uint8_t chatSeconds = 10;       ///< how long the scores are shown (RulesMore)
+        std::uint8_t nextMode = 0;           ///< how the next map is chosen (HlSettings.hpp's kNext*)
+        bool totals = false;                 ///< a lobby's matches added up
         bool teams() const { return mode == kNetModeTeamplay; }
         bool has(std::uint16_t flag) const { return (flags & flag) != 0; }
     };
@@ -109,6 +109,29 @@ namespace hldata
         fx normal[3] = {0, 0, kFxOne}; ///< Q12: the way the wall faces
     };
 
+    /// The scores as a match ended, kept as they were: who leaves stays on
+    /// them, greyed, and who comes later is not on them.
+    struct NetFinal
+    {
+        struct Row
+        {
+            char name[kNetTextBytes] = {};
+            std::int16_t frags = 0, deaths = 0;
+            std::uint8_t top = 30, bottom = 6, team = 0;
+            bool gone = false;
+        };
+        Row rows[kNetPlayers];
+        std::uint8_t order[kNetPlayers] = {}; ///< the players, the most frags first, then the fewest deaths
+        std::uint8_t count = 0;
+        std::uint8_t winnerTeam = 0;          ///< (teamplay) 0: level
+        std::int16_t teamFrags[3] = {};
+        /// Whom the match's facts are of (kNetPlayers: nobody), and how many.
+        std::uint8_t mostKills = kNetPlayers, longestStreak = kNetPlayers, mostSuicides = kNetPlayers;
+        std::uint8_t kills = 0, streak = 0, suicides = 0;
+        /// Changes with whatever is shown of it.
+        std::uint16_t stamp = 0;
+    };
+
     struct NetMatch
     {
         enum class Role : std::uint8_t
@@ -131,6 +154,13 @@ namespace hldata
         bool over = false;
         bool warned = false;  ///< the last minute has been reached
         bool warnDue = false; ///< ... and not yet said (whoever runs the screens clears it)
+        NetFinal final;
+        std::uint16_t endDraw = 0; ///< (the host's, said by End) which of a map's places to show it from
+        // Counted from the deaths every console hears, for the match's facts.
+        std::uint8_t kills[kNetPlayers] = {}, streaks[kNetPlayers] = {}, bestStreaks[kNetPlayers] = {},
+                     suicides[kNetPlayers] = {};
+        // A lobby's matches added up, seat by seat, as they end.
+        std::int16_t sessionFrags[kNetPlayers] = {}, sessionDeaths[kNetPlayers] = {};
         int fragLimit = 0;    ///< 0: none
         int minuteLimit = 0;  ///< 0: none
         NetRules rules;
@@ -346,6 +376,92 @@ namespace hldata
                 ghost.groundMover = traceAll(*w.world, ghost.ducked, ghost.origin, below).mover;
             }
             return ghost;
+        }
+
+        /// A death, as every console hears it: for the match's facts.
+        inline void netCount(NetMatch &match, int victim, int killer)
+        {
+            if (match.over || victim < 0 || victim >= kNetPlayers)
+                return;
+            match.streaks[victim] = 0;
+            if (killer >= kNetPlayers || killer == victim)
+            {
+                ++match.suicides[victim];
+                return;
+            }
+            ++match.kills[killer];
+            if (++match.streaks[killer] > match.bestStreaks[killer])
+                match.bestStreaks[killer] = match.streaks[killer];
+        }
+
+        /// The match has just ended: the scores kept as they stand.
+        inline void netFinalTake(NetMatch &match)
+        {
+            NetFinal &final = match.final;
+            const std::uint16_t stamp = final.stamp;
+            final = NetFinal();
+            final.stamp = static_cast<std::uint16_t>(stamp + 1);
+            for (int p = 0; p < kNetPlayers; ++p)
+            {
+                if (!netHere(match, p))
+                    continue;
+                NetFinal::Row &row = final.rows[p];
+                std::memcpy(row.name, match.names[p], kNetTextBytes);
+                row.frags = match.frags[p];
+                row.deaths = match.deaths[p];
+                const NetProfile &profile = match.profiles[p];
+                row.top = profile.known ? profile.top : 30;
+                row.bottom = profile.known ? profile.bottom : 6;
+                row.team = profile.team;
+                int at = final.count++;
+                for (; at > 0; --at)
+                {
+                    const NetFinal::Row &other = final.rows[final.order[at - 1]];
+                    if (other.frags > row.frags || (other.frags == row.frags && other.deaths <= row.deaths))
+                        break;
+                    final.order[at] = final.order[at - 1];
+                }
+                final.order[at] = static_cast<std::uint8_t>(p);
+                if (match.rules.totals)
+                {
+                    match.sessionFrags[p] = static_cast<std::int16_t>(match.sessionFrags[p] + row.frags);
+                    match.sessionDeaths[p] = static_cast<std::int16_t>(match.sessionDeaths[p] + row.deaths);
+                }
+                if (match.kills[p] > final.kills)
+                {
+                    final.kills = match.kills[p];
+                    final.mostKills = static_cast<std::uint8_t>(p);
+                }
+                if (match.bestStreaks[p] > final.streak)
+                {
+                    final.streak = match.bestStreaks[p];
+                    final.longestStreak = static_cast<std::uint8_t>(p);
+                }
+                if (match.suicides[p] > final.suicides)
+                {
+                    final.suicides = match.suicides[p];
+                    final.mostSuicides = static_cast<std::uint8_t>(p);
+                }
+            }
+            final.teamFrags[1] = match.teamFrags[1];
+            final.teamFrags[2] = match.teamFrags[2];
+            if (match.rules.teams() && final.teamFrags[1] != final.teamFrags[2])
+                final.winnerTeam = final.teamFrags[1] > final.teamFrags[2] ? 1 : 2;
+        }
+
+        /// Who has gone since it ended: greyed where they are.
+        inline void netFinalWatch(NetMatch &match)
+        {
+            NetFinal &final = match.final;
+            for (int n = 0; n < final.count; ++n)
+            {
+                NetFinal::Row &row = final.rows[final.order[n]];
+                if (!row.gone && !netHere(match, final.order[n]))
+                {
+                    row.gone = true;
+                    ++final.stamp;
+                }
+            }
         }
 
         /// The host: player `victim` has died, by `killer` (or by nobody
@@ -564,7 +680,10 @@ namespace hldata
                 break;
             case NetEventType::Died:
                 if (from != match.me && !match.over)
+                {
                     netNotice(match, NetEventType::Died, from, event.a);
+                    netCount(match, from, event.a);
+                }
                 if (host)
                     netScore(match, from, event.a);
                 break;
@@ -588,6 +707,14 @@ namespace hldata
                     match.rules.frags = static_cast<std::uint8_t>(event.v[5] & 0xFF);
                     match.rules.minutes = static_cast<std::uint8_t>((event.v[5] >> 8) & 0xFF);
                     ++match.profileStamp; // (what the lobby shows has changed)
+                }
+                break;
+            case NetEventType::RulesMore:
+                if (!host)
+                {
+                    match.rules.chatSeconds = static_cast<std::uint8_t>(event.v[0] < 5 ? 5 : (event.v[0] > 30 ? 30 : event.v[0]));
+                    match.rules.nextMode = static_cast<std::uint8_t>(event.v[1]);
+                    match.rules.totals = event.v[2] != 0;
                 }
                 break;
             case NetEventType::Profile:
@@ -691,6 +818,12 @@ namespace hldata
                     match.passed[match.passedCount++] = event;
                 break;
             case NetEventType::End:
+                // (v[0] 1: given up, with no scores to show.)
+                if (!match.over && event.v[0] != 1)
+                {
+                    match.endDraw = static_cast<std::uint16_t>(event.v[1]);
+                    netFinalTake(match);
+                }
                 match.over = true;
                 netNotice(match, NetEventType::End, 0);
                 [[fallthrough]];
@@ -849,6 +982,13 @@ namespace hldata
         match.playedMs = 0;
         for (int p = 0; p < kNetPlayers; ++p)
         {
+            match.kills[p] = match.streaks[p] = match.bestStreaks[p] = match.suicides[p] = 0;
+            // (A seat someone else has taken, or nobody: its totals are not theirs.)
+            if (!netHere(match, p) || std::strncmp(match.final.rows[p].name, match.names[p], kNetTextBytes) != 0)
+                match.sessionFrags[p] = match.sessionDeaths[p] = 0;
+        }
+        for (int p = 0; p < kNetPlayers; ++p)
+        {
             match.frags[p] = match.deaths[p] = 0;
             match.glide[p] = NetGlide();
             match.pose[p] = 0;
@@ -935,6 +1075,8 @@ namespace hldata
         match.host.out.add(netEvent(NetEventType::Rules, 0, match.rules.mode, match.rules.flags, match.rules.most,
                                     static_cast<int>(match.rules.mapHash & 0xFFFF), static_cast<int>(match.rules.mapHash >> 16),
                                     match.rules.frags | match.rules.minutes << 8));
+        match.host.out.add(netEvent(NetEventType::RulesMore, 0, match.rules.chatSeconds, match.rules.nextMode,
+                                    match.rules.totals ? 1 : 0));
         for (int p = 0; p < kNetPlayers && again; ++p)
             match.profiles[p].team = 0;
         for (int p = 0; p < kNetPlayers; ++p)
@@ -1094,9 +1236,76 @@ namespace hldata
     {
         if (match.role != NetMatch::Role::Host || !match.playing || match.over)
             return;
+        match.endDraw = static_cast<std::uint16_t>((match.seed * 2654435761u + static_cast<std::uint32_t>(match.playedMs)) >> 16);
+        detail::netFinalTake(match);
         match.over = true;
-        match.host.out.add(netEvent(NetEventType::End));
+        match.host.out.add(netEvent(NetEventType::End, 0, 0, static_cast<std::int16_t>(match.endDraw)));
         detail::netNotice(match, NetEventType::End, 0);
+    }
+
+    /// Where a map is shown from between matches: one of its
+    /// info_intermission, by `draw` (the game takes one at random, and every
+    /// console here the same one); with none, where a player first comes in
+    /// (`spawn` then, the eye being over the middle). Null if neither.
+    inline const EntityRecord *netIntermissionPoint(const LevelView &view, std::uint32_t draw, bool &spawn)
+    {
+        spawn = false;
+        std::uint32_t points = 0;
+        for (std::uint32_t e = 0; e < view.entityCount; ++e)
+            points += view.entities[e].classId == static_cast<std::uint16_t>(EntityClass::InfoIntermission) ? 1 : 0;
+        std::uint32_t wanted = points != 0 ? draw % points : 0;
+        for (std::uint32_t e = 0; e < view.entityCount; ++e)
+        {
+            if (view.entities[e].classId == static_cast<std::uint16_t>(EntityClass::InfoIntermission) && wanted-- == 0)
+                return &view.entities[e];
+        }
+        for (std::uint32_t e = 0; e < view.entityCount; ++e)
+        {
+            if (view.entities[e].classId == static_cast<std::uint16_t>(EntityClass::InfoPlayerDeathmatch))
+            {
+                spawn = true;
+                return &view.entities[e];
+            }
+        }
+        return nullptr;
+    }
+
+    /// What the top of the final scores says.
+    inline void netFinalTitle(const NetMatch &match, char *line, int room)
+    {
+        const NetFinal &final = match.final;
+        const auto size = static_cast<std::size_t>(room);
+        if (match.rules.teams())
+        {
+            if (final.winnerTeam != 0)
+                std::snprintf(line, size, "TEAM %d WINS", final.winnerTeam);
+            else
+                std::snprintf(line, size, "A DRAW");
+            return;
+        }
+        const NetFinal::Row *first = final.count > 0 ? &final.rows[final.order[0]] : nullptr;
+        const NetFinal::Row *second = final.count > 1 ? &final.rows[final.order[1]] : nullptr;
+        if (first == nullptr || (second != nullptr && second->frags == first->frags && second->deaths == first->deaths))
+            std::snprintf(line, size, "A DRAW");
+        else
+            std::snprintf(line, size, "%s WINS", first->name[0] != 0 ? first->name : "...");
+    }
+
+    /// The match's facts, in a line ("" if nothing happened).
+    inline void netFinalFacts(const NetFinal &final, char *line, int room)
+    {
+        int at = 0;
+        line[0] = 0;
+        const auto add = [&](const char *what, int who, int many)
+        {
+            if (who >= kNetPlayers || at >= room - 1)
+                return;
+            at += std::snprintf(line + at, static_cast<std::size_t>(room - at), "%s%s %.8s %d", at != 0 ? "  " : "", what,
+                                final.rows[who].name, many);
+        };
+        add("Kills", final.mostKills, final.kills);
+        add("Streak", final.longestStreak, final.streak);
+        add("Suicides", final.mostSuicides, final.suicides);
     }
 
     /// Whether the last minute of a time limit has just begun. (Not for a
@@ -1200,6 +1409,7 @@ namespace hldata
                     const int killer = match.blameMs > 0 ? match.blamed : kNetPlayers;
                     netSay(match, netEvent(NetEventType::Died, killer));
                     detail::netNotice(match, NetEventType::Died, match.me, killer);
+                    detail::netCount(match, match.me, killer);
                     if (host)
                         detail::netScore(match, match.me, killer);
                 }
@@ -1313,6 +1523,8 @@ namespace hldata
         match.playedMs += ms;
         if (netLastMinute(match))
             match.warned = match.warnDue = true;
+        if (match.over)
+            detail::netFinalWatch(match);
         if (!host)
             return;
         for (NetMatch::Taken &slot : match.taken)
