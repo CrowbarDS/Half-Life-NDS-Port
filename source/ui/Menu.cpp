@@ -460,6 +460,8 @@ namespace hlrt
     {
         bottomScreen.release();
         title_ = false;
+        // (The next map said on the screen has come and gone, while nothing here ran.)
+        nextHeld_ = false;
         page_ = netGame.playing() ? Page::NetPause : Page::Main;
         active_ = -1;
         // (The touch that opened it, if there was one, is not a press.)
