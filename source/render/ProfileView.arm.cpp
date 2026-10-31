@@ -50,6 +50,8 @@ namespace hlrt
     bool ProfileView::open(int top, int bottom, int character)
     {
         close();
+        character_ = character;
+        hidden_ = false;
         const bool other = character > 0 && character < kCharacterCount;
         const std::string own = std::string("chr/") + kCharacterFiles[other ? character : 0];
         // (At its finest on a DSi, where it is there.)
@@ -196,7 +198,7 @@ namespace hlrt
     // own, so that ModelDraw's stays where it is, in its caller.)
     __attribute__((flatten)) void ProfileView::draw()
     {
-        if (data_ == nullptr)
+        if (data_ == nullptr || hidden_)
             return;
         const ModelView &model = *static_cast<const ModelView *>(view_);
         // On by the blanks gone by, however many frames that was.

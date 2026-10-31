@@ -25,6 +25,10 @@ namespace hlrt
         /// Nothing is made again for the card already shown.
         void show(const hldata::NetMapInfo *map, const char *elsewhere = nullptr);
         void hide() { show(nullptr); }
+        /// Kept, but not drawn: a page of the lobby's that has no use for it
+        /// (to make it again would be seen).
+        void setHidden(bool hidden) { hidden_ = hidden; }
+        bool hidden() const { return hidden_; }
         /// A picture of `name` the host sent (a .hpv of either size:
         /// HlPreview.hpp), kept to show in place of the card's -- a console
         /// that was sent the game has no card. This takes `file` over. All of
@@ -62,6 +66,7 @@ namespace hlrt
         void draw(void (*corner)(int sx, int sy, int s, int t));
 
     private:
+        bool hidden_ = false;
         std::string shownName_;
         std::uint32_t room_ = 0;
         bool showRules_ = false;

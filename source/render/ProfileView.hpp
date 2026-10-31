@@ -26,6 +26,11 @@ namespace hlrt
         /// Let it all go.
         void close();
         bool shown() const { return data_ != nullptr; }
+        /// Who it is (open's `character`).
+        int character() const { return character_; }
+        /// Kept, but not drawn: a page of the lobby's that has no use for it
+        /// (to read it in again would be seen).
+        void setHidden(bool hidden) { hidden_ = hidden; }
         /// To the right of the screen's middle, by this many units of its
         /// view (a lobby's: the map's card has the left).
         void setPlace(int x) { atX_ = x; }
@@ -45,6 +50,8 @@ namespace hlrt
         std::uint16_t yaw_ = 0;
         std::uint32_t since_ = 0;
         int atX_ = 0;
+        int character_ = 0;
+        bool hidden_ = false;
 #ifndef HLDS_CHILD
         int aim_ = -1;             ///< the pose of holding what they hold
         std::uint8_t *gunData_ = nullptr;

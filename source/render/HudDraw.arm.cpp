@@ -366,7 +366,7 @@ namespace hlrt
                 drawMenuLogo();
             // (A multiplayer map's card, in the lobby: on the picture, as
             // the title is.)
-            if (mapCard.shown())
+            if (mapCard.shown() && !mapCard.hidden())
             {
                 beginFlat();
                 mapCard.draw(corner);

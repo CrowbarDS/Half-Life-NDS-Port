@@ -1569,7 +1569,17 @@ namespace hlrt
         if (page == Page::Profile)
         {
             readLogos();
-            profileView.open(settings.topColour, settings.bottomColour, settings.playerModel);
+            // (From the lobby, it may well be up already: not read again.)
+            if (!profileView.shown() || profileView.character() != settings.playerModel)
+            {
+#ifdef HLDS_CHILD
+                // (Who they chose may have yet to come: frame() sees to it.)
+                if (!netGame.on())
+#endif
+                    profileView.open(settings.topColour, settings.bottomColour, settings.playerModel);
+            }
+            else
+                profileView.setColours(settings.topColour, settings.bottomColour);
         }
         // (The touch that opened it is not one here, nor a button still held.)
         sheetHeld_ = keysHeld();
@@ -2612,7 +2622,11 @@ namespace hlrt
         sheetAsking_ = 0;
         if (page_ == Page::Profile)
         {
-            profileView.close();
+            // (Back to the lobby, which shows it too.)
+            if (sheetFrom_ != Page::NetLobby)
+                profileView.close();
+            else
+                lobbyModelColours = settings.topColour | settings.bottomColour << 8;
             dropLogos();
             touchCanvas.tint(kSprayCellX, kSprayCellY, 4, 4, nullptr);
         }
@@ -3469,7 +3483,12 @@ namespace hlrt
             const NetRules &rules = netGame.match().rules;
             mapCard.setRules(lobby, rules.mode * 31u + rules.flags * 131u + rules.most * 7u + rules.frags * 1009u +
                                         rules.minutes * 65537u);
-            mapCard.show(card, elsewhere);
+            // PROFILE and OPTIONS from the lobby: its card and its model are
+            // kept for coming back to, not made again.
+            const bool away = (page_ == Page::Profile || page_ == Page::Settings) && sheetFrom_ == Page::NetLobby;
+            mapCard.setHidden(away);
+            if (!away)
+                mapCard.show(card, elsewhere);
             int seat = netGame.match().me;
             if (lobby && (page_ == Page::NetHost ? hostChapter_ == kHostPlayers : true) && sheetSelected_ >= 0)
             {
@@ -3483,6 +3502,7 @@ namespace hlrt
             }
             if (lobby)
             {
+                profileView.setHidden(false);
                 const NetProfile &profile = netGame.match().profiles[seat];
                 const int top = profile.known ? profile.top : settings.topColour;
                 const int bottom = profile.known ? profile.bottom : settings.bottomColour;
@@ -3514,7 +3534,9 @@ namespace hlrt
             else if (lobbyWas)
             {
                 profileView.setPlace(0);
-                if (page_ != Page::Profile)
+                if (page_ == Page::Settings && away)
+                    profileView.setHidden(true);
+                else if (page_ != Page::Profile)
                     profileView.close();
             }
             lobbyWas = lobby;
