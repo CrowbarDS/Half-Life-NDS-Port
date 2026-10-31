@@ -66,7 +66,12 @@ namespace hlrt
     {
         for (int i = 0; i < 16; ++i)
             BG_PALETTE_SUB[bank * 16 + i] = sixteen[i];
-        tint(x, y, w, h, nullptr, bank);
+        std::uint16_t *map = pageDepth_ > 0 ? mapCopy : BG_MAP_RAM_SUB(0);
+        for (int cy = y; cy < y + h && cy < 24; ++cy)
+        {
+            for (int cx = x; cx < x + w && cx < 32; ++cx)
+                map[cy * 32 + cx] = static_cast<std::uint16_t>((kFirstTile + cy * 32 + cx) | (bank << 12));
+        }
     }
 
     /// A player's colours, as their swatch shows them: a hue each, strong
