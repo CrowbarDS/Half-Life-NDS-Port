@@ -1352,7 +1352,8 @@ int main(int argc, char *argv[])
             if (!hlrt::netGame.on() || hlrt::menu.onJoin())
             {
                 saidRoom = false;
-                if (!hlrt::netGame.on() && !hlrt::menu.onJoin())
+                // (Which hand is answered first: it then goes there itself.)
+                if (!hlrt::netGame.on() && !hlrt::menu.onJoin() && !hlrt::menu.onHand())
                     hlrt::menu.openJoin();
             }
             else if (!saidRoom && hlrt::netGame.phase() == hlrt::NetGame::Phase::Lobby)

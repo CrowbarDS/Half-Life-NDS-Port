@@ -740,6 +740,8 @@ namespace hlrt
         };
         /// Where MULTIPLAYER's row `row` is: a tile (the first five: three,
         /// then two under them in the middle), or BACK.
+        /// WHICH HAND?: a big button each, on its own side.
+        TileBox handTile(int row) { return TileBox{8 + row * 124, 44, 116, 132}; }
         TileBox multiTile(int row)
         {
             if (row >= kTiles)
@@ -3074,6 +3076,15 @@ namespace hlrt
                             item.label, inkFor(font, dead ? kUiGrey : (down ? kUiWhite : kUiOrange)));
             return;
         }
+        if (page_ == Page::Hand)
+        {
+            const TileBox box = handTile(row);
+            const FontView &font = touchCanvas.font(kFontMedium);
+            canvas.button(box.x, box.y, box.w, box.h, down);
+            drawTextCentred(canvas, font, box.x + box.w / 2, box.y + (box.h - font.height()) / 2, item.label,
+                            inkFor(font, down ? kUiWhite : kUiOrange));
+            return;
+        }
         if (page_ == Page::NetJoin && item.id == kNetFound && row < foundCount)
         {
             // A room's card: the host, its match, how many, its signal.
@@ -3127,6 +3138,16 @@ namespace hlrt
 
     int Menu::rowAt(int x, int y) const
     {
+        if (page_ == Page::Hand)
+        {
+            for (int row = 0; row < 2; ++row)
+            {
+                const TileBox box = handTile(row);
+                if (x >= box.x && x < box.x + box.w && y >= box.y && y < box.y + box.h)
+                    return row;
+            }
+            return -1;
+        }
         if (page_ == Page::Multiplayer)
         {
             for (int row = 0; row < rowCount(); ++row)

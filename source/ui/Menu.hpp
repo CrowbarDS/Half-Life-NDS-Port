@@ -60,6 +60,7 @@ namespace hlrt
         /// if it has nowhere else (one sent the game), and says why.
         void openJoin();
         bool onJoin() const { return page_ == Page::NetJoin; }
+        bool onHand() const { return page_ == Page::Hand; }
         /// The list of saves that the load and save pages show (the
         /// caller's: SaveGame::index()).
         void setSaves(const hldata::SaveIndex *saves) { saves_ = saves; }
