@@ -38,7 +38,7 @@ namespace hldata
         {255, 120, 24}, {225, 180, 24}, {0, 60, 255}, {0, 167, 255}, {0, 167, 0},
         {255, 43, 0},   {123, 73, 0},   {100, 100, 100}, {36, 36, 36}};
 
-    inline constexpr std::uint8_t kChatLeast = 5, kChatMost = 30, kChatDefault = 10;
+    inline constexpr std::uint8_t kChatLeast = 5, kChatMost = 30, kChatDefault = 10, kVoteDefault = 10;
     inline constexpr int kRotationMost = 16;
     /// How the next map of a game between consoles is chosen.
     inline constexpr std::uint8_t kNextHost = 0, kNextRotation = 1, kNextVote = 2, kNextWinner = 3, kNextTurns = 4,
@@ -136,6 +136,8 @@ namespace hldata
         std::uint8_t nextMode = 0;
         std::uint8_t rotationCount = 0;
         std::uint32_t rotation[kRotationMost] = {};
+        /// How long a vote for the next map stays open (kChatLeast..kChatMost).
+        std::uint8_t voteSeconds = kVoteDefault;
 
         /// What a file of version 8 held: all but the controls.
         template <class Ar>
@@ -186,6 +188,13 @@ namespace hldata
         template <class Ar>
         void serialize(Ar &ar)
         {
+            serializeFifteen(ar);
+            ar &voteSeconds;
+        }
+        /// ... and of version 15: no vote to time.
+        template <class Ar>
+        void serializeFifteen(Ar &ar)
+        {
             serializeFourteen(ar);
             ar &chatSeconds &sessionTotals &nextMode &rotationCount;
             for (std::uint32_t &hash : rotation)
@@ -212,13 +221,14 @@ namespace hldata
     inline constexpr std::uint8_t kQualityStandard = 0, kQualityHigh = 1, kQualityChoices = 2;
 
     inline constexpr char kSettingsMagic[4] = {'H', 'L', 'S', 'T'};
-    inline constexpr std::uint16_t kSettingsVersion = 15;
+    inline constexpr std::uint16_t kSettingsVersion = 16;
     /// The versions before, which are still read: 13 had no profile and no
     /// match hosted; 12 had no room effects,
     /// output or quality (its DSP switch is the room effects' Enhanced);
     /// 11 had no achievements' pop-ups to turn off; 10 had no autoaim; 9 had
     /// the layouts but no aim speed, custom buttons or stylus pressure; 8 no
     /// controls to choose.
+    inline constexpr std::uint16_t kSettingsVersionFifteen = 15;
     inline constexpr std::uint16_t kSettingsVersionFourteen = 14;
     inline constexpr std::uint16_t kSettingsVersionThirteen = 13;
     inline constexpr std::uint16_t kSettingsVersionTwelve = 12;
@@ -273,7 +283,8 @@ namespace hldata
             return false;
         std::memcpy(&header, bytes, sizeof(header));
         if (std::memcmp(header.magic, kSettingsMagic, sizeof(header.magic)) != 0 ||
-            (header.version != kSettingsVersion && header.version != kSettingsVersionFourteen &&
+            (header.version != kSettingsVersion && header.version != kSettingsVersionFifteen &&
+             header.version != kSettingsVersionFourteen &&
              header.version != kSettingsVersionThirteen &&
              header.version != kSettingsVersionTwelve &&
              header.version != kSettingsVersionEleven &&
@@ -303,6 +314,8 @@ namespace hldata
             read.serializeThirteen(ia);
         else if (header.version == kSettingsVersionFourteen)
             read.serializeFourteen(ia);
+        else if (header.version == kSettingsVersionFifteen)
+            read.serializeFifteen(ia);
         else
             ia &read;
         // (Before 13: the DSP switched on is the DSP's rooms; else the
@@ -340,7 +353,8 @@ namespace hldata
             read.fallDamage > 1 || read.friendlyFire > 1 || read.flashlight > 1 || read.hostAutoaim > 1 ||
             read.maxPlayers < kPlayersLeast || read.maxPlayers > kPlayersMost || read.allowGuests > 1 ||
             read.chatSeconds < kChatLeast || read.chatSeconds > kChatMost || read.sessionTotals > 1 ||
-            read.nextMode >= kNextChoices || read.rotationCount > kRotationMost)
+            read.nextMode >= kNextChoices || read.rotationCount > kRotationMost ||
+            read.voteSeconds < kChatLeast || read.voteSeconds > kChatMost)
             return false;
         out = read;
         return true;

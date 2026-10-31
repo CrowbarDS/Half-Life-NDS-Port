@@ -256,6 +256,27 @@ namespace
                   dsp ? "a file of version 12 with the DSP on: the DSP's rooms"
                       : "a file of version 12 with the DSP off: the game's own rooms");
         }
+        // A file of version 15 has no vote time: as it is at first.
+        {
+            SettingsData fifteen;
+            fifteen.chatSeconds = 25;
+            constexpr std::size_t flags = yas::mem | yas::binary | yas::no_header;
+            yas::mem_ostream os;
+            yas::binary_oarchive<yas::mem_ostream, flags> oa(os);
+            fifteen.serializeFifteen(oa);
+            const auto buf = os.get_intrusive_buffer();
+            SettingsHeader header{};
+            std::memcpy(header.magic, kSettingsMagic, sizeof(header.magic));
+            header.version = kSettingsVersionFifteen;
+            header.payloadBytes = static_cast<std::uint16_t>(buf.size);
+            header.crc32 = crc32(reinterpret_cast<const std::uint8_t *>(buf.data), static_cast<std::uint32_t>(buf.size));
+            std::vector<std::uint8_t> file(sizeof(header) + buf.size);
+            std::memcpy(file.data(), &header, sizeof(header));
+            std::memcpy(file.data() + sizeof(header), buf.data, buf.size);
+            SettingsData read;
+            check(readSettings(file.data(), file.size(), read) && read.chatSeconds == 25 && read.voteSeconds == kVoteDefault,
+                  "a file of version 15 is read, with the vote's time as it is at first");
+        }
         // A file of version 13 keeps all it had; the profile and the match
         // hosted are as they are at first.
         {

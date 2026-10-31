@@ -131,6 +131,7 @@ namespace hlrt
         rules.chatSeconds = settings.chatSeconds;
         rules.nextMode = settings.nextMode;
         rules.totals = settings.sessionTotals != 0;
+        rules.voteSeconds = settings.voteSeconds;
         const std::string *hosted = hostedMap(maps_);
         // (The map coming next, chosen when the last match ended, is not the
         // settings': they keep the host's own choice.)

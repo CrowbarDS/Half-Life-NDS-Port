@@ -116,7 +116,7 @@ namespace hldata
         FetchAgain,///< client: sending `a` came wrong: all of it, again
         FetchNone,///< host: there is no such thing: `a` FetchFrom, v[0..1] what
         RulesMore,///< host: what follows a match: v[0] seconds of its scores, v[1] how the next map is chosen,
-                  ///< v[2] 1 = a lobby's matches added up
+                  ///< v[2] 1 = a lobby's matches added up, v[3] seconds of a vote
         NextDecided,///< host: the map that comes next, for the scores to say: text = its name, cut to fit;
                   ///< `a` = which of the vote's, and 1 (0: not by a vote)
         NextMap,  ///< host: the vote offers this as its map `a`: text = its name, cut to fit

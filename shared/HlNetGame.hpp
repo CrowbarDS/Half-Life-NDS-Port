@@ -79,6 +79,7 @@ namespace hldata
         std::uint8_t chatSeconds = 10;       ///< how long the scores are shown (RulesMore)
         std::uint8_t nextMode = 0;           ///< how the next map is chosen (HlSettings.hpp's kNext*)
         bool totals = false;                 ///< a lobby's matches added up
+        std::uint8_t voteSeconds = 10;       ///< how long a vote stays open
         bool teams() const { return mode == kNetModeTeamplay; }
         bool has(std::uint16_t flag) const { return (flags & flag) != 0; }
     };
@@ -762,6 +763,7 @@ namespace hldata
                     match.rules.chatSeconds = static_cast<std::uint8_t>(event.v[0] < 5 ? 5 : (event.v[0] > 30 ? 30 : event.v[0]));
                     match.rules.nextMode = static_cast<std::uint8_t>(event.v[1]);
                     match.rules.totals = event.v[2] != 0;
+                    match.rules.voteSeconds = static_cast<std::uint8_t>(event.v[3] < 5 ? 5 : (event.v[3] > 30 ? 30 : event.v[3]));
                 }
                 break;
             case NetEventType::Profile:
@@ -1126,7 +1128,7 @@ namespace hldata
                                     static_cast<int>(match.rules.mapHash & 0xFFFF), static_cast<int>(match.rules.mapHash >> 16),
                                     match.rules.frags | match.rules.minutes << 8));
         match.host.out.add(netEvent(NetEventType::RulesMore, 0, match.rules.chatSeconds, match.rules.nextMode,
-                                    match.rules.totals ? 1 : 0));
+                                    match.rules.totals ? 1 : 0, match.rules.voteSeconds));
         for (int p = 0; p < kNetPlayers && again; ++p)
             match.profiles[p].team = 0;
         for (int p = 0; p < kNetPlayers; ++p)

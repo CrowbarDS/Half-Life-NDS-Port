@@ -66,6 +66,7 @@ void Settings::load()
         sessionTotals = data.sessionTotals != 0;
         nextMode = data.nextMode;
         rotationCount = data.rotationCount;
+        voteSeconds = data.voteSeconds;
         for (int i = 0; i < hldata::kRotationMost; ++i)
             rotation[i] = data.rotation[i];
     }
@@ -186,6 +187,7 @@ bool Settings::save() const
     data.sessionTotals = sessionTotals ? 1 : 0;
     data.nextMode = nextMode;
     data.rotationCount = rotationCount;
+    data.voteSeconds = voteSeconds;
     for (int i = 0; i < hldata::kRotationMost; ++i)
         data.rotation[i] = rotation[i];
     const std::vector<std::uint8_t> bytes = hldata::writeSettings(data);

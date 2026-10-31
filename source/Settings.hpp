@@ -96,6 +96,7 @@ public:
     std::uint8_t nextMode = hldata::kNextHost;
     std::uint8_t rotationCount = 0;
     std::uint32_t rotation[hldata::kRotationMost] = {};
+    std::uint8_t voteSeconds = hldata::kVoteDefault;
 
     /// Read settings.dat. An absent or unreadable file is a first boot, not an
     /// error: the defaults stand.

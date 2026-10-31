@@ -131,6 +131,7 @@ namespace hlrt
             kNetChat,      ///< NEXT MAP's: how long a match's scores are shown
             kNetTotals,    ///< ... a lobby's matches added up
             kNetNext,      ///< ... how the next map is chosen
+            kNetVoteTime,  ///< ... how long a vote stays open
             kRotPick,      ///< ... Rotation's: the map to add
             kRotAdd,       ///< ... that map put at the end
             kRotUp,        ///< ... the one chosen moved up,
@@ -876,6 +877,8 @@ namespace hlrt
             static char names[kRotationMost][8];
             count = 0;
             rows[count++] = Row{Kind::Value, kNetNext, "Next map"};
+            if (settings.nextMode == kNextVote)
+                rows[count++] = Row{Kind::Value, kNetVoteTime, "Vote time"};
             rows[count++] = Row{Kind::Value, kNetChat, "Scores shown"};
             rows[count++] = Row{Kind::Value, kNetTotals, "Session totals"};
             if (settings.nextMode != kNextRotation)
@@ -1113,6 +1116,7 @@ namespace hlrt
             case kNetMost: std::snprintf(out, size, "up to %d", settings.maxPlayers); break;
 #ifndef HLDS_CHILD
             case kNetChat: std::snprintf(out, size, "%d seconds", settings.chatSeconds); break;
+            case kNetVoteTime: std::snprintf(out, size, "%d seconds", settings.voteSeconds); break;
             case kNetTotals: std::snprintf(out, size, "%s", settings.sessionTotals ? "on" : "off"); break;
             case kNetNext:
             {
@@ -1262,6 +1266,7 @@ namespace hlrt
             case kNetMost: return "How many may play, this console among them: the rest are told the game is full.";
 #ifndef HLDS_CHILD
             case kNetChat: return "How long the final scores stay up when a match ends.";
+            case kNetVoteTime: return "How long everyone has to vote for the next map.";
             case kNetTotals: return "Adds up each player's frags over the matches of this lobby.";
             case kNetNext:
                 switch (settings.nextMode)
@@ -1431,9 +1436,11 @@ namespace hlrt
             }
 #ifndef HLDS_CHILD
             case kNetChat:
+            case kNetVoteTime:
             {
-                const int next = settings.chatSeconds + step * 5;
-                settings.chatSeconds = static_cast<std::uint8_t>(next > kChatMost ? kChatLeast : (next < kChatLeast ? kChatMost : next));
+                std::uint8_t &value = id == kNetChat ? settings.chatSeconds : settings.voteSeconds;
+                const int next = value + step * 5;
+                value = static_cast<std::uint8_t>(next > kChatMost ? kChatLeast : (next < kChatLeast ? kChatMost : next));
                 netGame.hostChanged();
                 return true;
             }
