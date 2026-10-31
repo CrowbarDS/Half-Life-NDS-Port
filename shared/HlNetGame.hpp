@@ -735,7 +735,21 @@ namespace hldata
                     ++match.vote.stamp;
                 }
                 break;
+            case NetEventType::NextReady:
+                if (host && from < kNetPlayers)
+                    match.vote.ready = static_cast<std::uint8_t>(match.vote.ready | 1u << from);
+                break;
+            case NetEventType::NextOpen:
+                if (!host)
+                {
+                    match.vote.open = true;
+                    ++match.vote.stamp;
+                }
+                break;
             case NetEventType::NextMap:
+                // (The vote given up, before it came to anything.)
+                if (!host && event.a == kNetVoteCancel)
+                    match.vote = NetVote();
                 if (!host && event.a < NetVote::kMost)
                 {
                     std::memcpy(match.vote.names[event.a], event.text, kNetTextBytes);

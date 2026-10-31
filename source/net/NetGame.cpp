@@ -307,7 +307,13 @@ namespace hlrt
     {
         const FetchFrom from = taking_.from;
         fetchDrop();
-        if (from == FetchFrom::Picture || from == FetchFrom::PictureFull)
+        if (from == FetchFrom::VotePicture)
+        {
+            // (None there is a card with its name alone; no answer: asked again.)
+            if (none && taking_.what < NetVote::kMost)
+                voteHave_[taking_.what] = true;
+        }
+        else if (from == FetchFrom::Picture || from == FetchFrom::PictureFull)
             pictureNext_ = -1;
         else if ((from == FetchFrom::Map || from == FetchFrom::MapFull) && filePath_[0] != '\0')
         {
@@ -467,10 +473,15 @@ namespace hlrt
         }
         if (from == FetchFrom::VotePicture)
         {
-            const std::uint32_t bytes = raw > kAirNameBytes ? raw - kAirNameBytes : 0;
-            if (match_.over && votePage())
-                bottomScreen.voteCard(static_cast<int>(taking_.what), data, bytes);
-            std::free(data);
+            const std::uint32_t slot = taking_.what;
+            if (slot < NetVote::kMost && match_.vote.count > 1 && voteData_[slot] == nullptr)
+            {
+                voteData_[slot] = data;
+                voteBytes_[slot] = raw > kAirNameBytes ? raw - kAirNameBytes : 0;
+                voteHave_[slot] = true;
+            }
+            else
+                std::free(data);
             return;
         }
         if (from == FetchFrom::Picture || from == FetchFrom::PictureFull)
@@ -532,10 +543,9 @@ namespace hlrt
         // waiting to begin, or in play), that map's.
         const bool lobby = phase_ == Phase::Lobby && !starting_;
         const bool map = phase_ == Phase::Playing || (phase_ == Phase::Lobby && starting_);
-        // (The vote's pictures are had with a map loaded, as the map's own are.)
+        // (The vote's pictures are had with or without a map.)
         const bool ofMap = taking_.from == FetchFrom::Map || taking_.from == FetchFrom::MapFull;
-        const bool withMap = ofMap || taking_.from == FetchFrom::VotePicture;
-        if ((!lobby && !map) || (takingOn_ && withMap != map))
+        if ((!lobby && !map) || (takingOn_ && taking_.from != FetchFrom::VotePicture && ofMap != map))
         {
             if (takingOn_ && ofMap && filePath_[0] == '\0')
                 textureStream.fetchFailed(false);
@@ -576,6 +586,9 @@ namespace hlrt
             }
             return;
         }
+        // (The vote's own, in its place: voteFrame.)
+        if (match_.vote.count > 1)
+            return;
 #ifdef HLDS_CHILD
         const bool full = global.twlChild;
         // Who is looked at, first: it is on the screen.
@@ -644,6 +657,7 @@ namespace hlrt
         dropPeople();
         personWanted_ = 0;
         mapCard.dropPicture();
+        voteLetGo();
     }
 
 #ifndef HLDS_CHILD
@@ -1655,6 +1669,7 @@ namespace hlrt
             static LogicWorld none;
             static PlayerState nobody;
             gameApi.netLobby(match_, none, nobody);
+            voteFrame(17); // (a vote before the first match)
             if (isHost())
             {
 #ifndef HLDS_CHILD
@@ -1794,6 +1809,8 @@ namespace hlrt
             }
             if (event.type == NetEventType::Start && !isHost())
             {
+                match_.vote = NetVote();
+                voteLetGo();
 #ifdef HLDS_CHILD
                 guest::forgetTaken(); // (a new match: nothing of the last is held)
 #endif
@@ -1857,43 +1874,17 @@ namespace hlrt
             {
                 if (!nextChosen_)
                     chooseNext();
-                // (A vote needs its time, whatever the scores' is.)
-                const int shown = match_.vote.count > 1 ? hldata::netVoteMs(match_.rules.chatSeconds)
-                                                        : match_.rules.chatSeconds * 1000;
-                if (match_.vote.count > 1 && match_.vote.decided < 0 && overMs_ >= shown - kNetVoteResultMs)
-                    decideVote();
-                if (overMs_ >= shown)
+                // (A vote keeps its own time: voteFrame.)
+                if (match_.vote.count <= 1 && overMs_ >= match_.rules.chatSeconds * 1000)
                     goBackToLobby();
                 // (A console come for the game itself, meanwhile.)
                 if (air_.sending() && air_.stream == AirStream::Common)
                     airSend(1);
             }
 #endif
-            if (!isHost() && overMs_ >= (match_.rules.chatSeconds + 20) * 1000)
+            if (!isHost() && overMs_ >= (match_.rules.chatSeconds + match_.rules.voteSeconds + 30) * 1000)
                 lobbyAsked_ = true;
-            // The vote's pictures, as they can be had.
-            if (votePage() && voteAsk_ < match_.vote.count)
-            {
-#ifndef HLDS_CHILD
-                if (isHost())
-                {
-                    FetchHost::Asked asked;
-                    asked.from = FetchFrom::VotePicture;
-                    asked.what = static_cast<std::uint32_t>(voteAsk_);
-                    std::uint8_t *data = nullptr;
-                    std::uint32_t packed = 0, raw = 0, name = 0;
-                    if (fetchFind(asked, data, packed, raw, name))
-                    {
-                        bottomScreen.voteCard(voteAsk_, data, raw > kAirNameBytes ? raw - kAirNameBytes : 0);
-                        std::free(data);
-                    }
-                    ++voteAsk_;
-                }
-                else
-#endif
-                if (!fetchBusy())
-                    fetchAsk(FetchFrom::VotePicture, static_cast<std::uint32_t>(voteAsk_++));
-            }
+            voteFrame(ms);
         }
         // (More than four: the host's frames every other frame, so that the
         // air has room for everyone's answers. Each glides between.)
@@ -1915,7 +1906,122 @@ namespace hlrt
 
     bool NetGame::votePage() const
     {
-        return match_.over && match_.vote.count > 1 && overMs_ >= kNetVoteScoresMs;
+        return match_.vote.count > 1 && match_.vote.open;
+    }
+
+    bool NetGame::voteOn() const
+    {
+        return !match_.playing && match_.vote.count > 1;
+    }
+
+    void NetGame::voteRedrawn()
+    {
+        for (bool &drawn : voteDrawn_)
+            drawn = false;
+    }
+
+    void NetGame::voteLetGo()
+    {
+        for (int s = 0; s < NetVote::kMost; ++s)
+        {
+            std::free(voteData_[s]);
+            voteData_[s] = nullptr;
+            voteBytes_[s] = 0;
+            voteHave_[s] = voteDrawn_[s] = false;
+        }
+        voteSaidReady_ = false;
+        voteMs_ = 0;
+    }
+
+    void NetGame::voteFrame(int ms)
+    {
+        NetVote &vote = match_.vote;
+        if (vote.count <= 1)
+            return;
+        voteMs_ += ms;
+        // Each picture, until it has come or the host says it has none. (They
+        // come whole and right, or they are asked for again: HlAirBank.hpp.)
+        int missing = -1;
+        for (int s = vote.count - 1; s >= 0; --s)
+            missing = voteHave_[s] ? missing : s;
+        if (missing >= 0)
+        {
+#ifndef HLDS_CHILD
+            if (isHost())
+            {
+                FetchHost::Asked asked;
+                asked.from = FetchFrom::VotePicture;
+                asked.what = static_cast<std::uint32_t>(missing);
+                std::uint8_t *data = nullptr;
+                std::uint32_t packed = 0, raw = 0, name = 0;
+                if (fetchFind(asked, data, packed, raw, name))
+                {
+                    voteData_[missing] = data;
+                    voteBytes_[missing] = raw > kAirNameBytes ? raw - kAirNameBytes : 0;
+                }
+                voteHave_[missing] = true;
+            }
+            else
+#endif
+            if (!fetchBusy())
+                fetchAsk(FetchFrom::VotePicture, static_cast<std::uint32_t>(missing));
+        }
+        else if (!isHost() && !voteSaidReady_)
+        {
+            voteSaidReady_ = true;
+            netSay(match_, netEvent(NetEventType::NextReady));
+        }
+        // What has come, on the screen, once its page is up.
+        if (vote.open)
+        {
+            for (int s = 0; s < vote.count; ++s)
+            {
+                if (voteData_[s] != nullptr && !voteDrawn_[s] && voteShown_)
+                {
+                    voteDrawn_[s] = true;
+                    bottomScreen.voteCard(s, voteData_[s], voteBytes_[s]);
+                    break;
+                }
+            }
+        }
+#ifndef HLDS_CHILD
+        if (!isHost())
+            return;
+        // Who has gone has no vote.
+        for (int p = 0; p < kNetPlayers; ++p)
+        {
+            if (((vote.voters >> p) & 1) && !netHere(match_, p))
+            {
+                vote.drop(p);
+                hldata::detail::netSayTally(match_);
+            }
+        }
+        const int scores = match_.playing ? match_.rules.chatSeconds * 1000 : 0;
+        if (!vote.open && voteMs_ >= scores && ((missing < 0 && vote.allReady(match_.me)) || voteMs_ >= kNetVotePicturesMs))
+        {
+            vote.open = true;
+            ++vote.stamp;
+            voteOpenedAt_ = voteMs_;
+            netSay(match_, netEvent(NetEventType::NextOpen));
+        }
+        if (!vote.open)
+            return;
+        const int closes = voteOpenedAt_ + match_.rules.voteSeconds * 1000;
+        if (vote.decided < 0 && voteMs_ >= closes)
+            decideVote();
+        if (vote.decided >= 0 && voteMs_ >= closes + kNetVoteResultMs)
+        {
+            if (match_.playing)
+                goBackToLobby();
+            else
+            {
+                // (Nobody has a map to leave: on to it at once.)
+                nextAt_ = Global::vblanks() - kNextWaitVblanks;
+                vote = NetVote();
+                voteLetGo();
+            }
+        }
+#endif
     }
 
     void NetGame::vote(int slot)
@@ -1934,10 +2040,21 @@ namespace hlrt
 
     void NetGame::sendAllToLobby()
     {
-        if (!isHost() || !match_.over || lobbyAsked_)
+        if (!isHost() || lobbyAsked_)
             return;
         nextMap_.clear();
-        goBackToLobby();
+        if (match_.over)
+        {
+            goBackToLobby();
+            return;
+        }
+        // (A vote before the first match: given up.)
+        if (voteOn())
+        {
+            netSay(match_, netEvent(NetEventType::NextMap, kNetVoteCancel));
+            match_.vote = NetVote();
+            voteLetGo();
+        }
     }
 
     void NetGame::sayNext(const std::string &map, int slot)
@@ -1952,7 +2069,7 @@ namespace hlrt
 
     void NetGame::decideVote()
     {
-        const int slot = match_.vote.winner(match_.endDraw * 2654435761u + static_cast<std::uint32_t>(overMs_));
+        const int slot = match_.vote.winner(match_.endDraw * 2654435761u + Global::vblanks());
         if (slot < 0)
             return;
         match_.vote.decided = static_cast<std::int8_t>(slot);
@@ -1960,8 +2077,22 @@ namespace hlrt
         sayNext(voteMaps_[slot], slot);
     }
 
+    void NetGame::startFirstVote(int skill)
+    {
+        if (phase_ != Phase::Hosting || voteOn())
+            return;
+        pendingSkill_ = skill;
+        nextMap_.clear();
+        match_.endDraw = static_cast<std::uint16_t>(Global::vblanks());
+        pendingMap_.clear();
+        startVote();
+        // (Only the one map it could be: at once.)
+        nextAt_ = Global::vblanks() - kNextWaitVblanks;
+    }
+
     void NetGame::startVote()
     {
+        voteLetGo();
         int candidates[64];
         const int count = netNextCandidates(mapInfo_, nameHash(pendingMap_.c_str()), settings.allowGuests, guestRoom(),
                                             candidates, 64);
@@ -1981,7 +2112,8 @@ namespace hlrt
         vote.count = static_cast<std::uint8_t>(netDrawSome(candidates, count, match_.endDraw * 40503u + 1u, NetVote::kMost));
         for (int p = 0; p < kNetPlayers; ++p)
             vote.voters = static_cast<std::uint8_t>(vote.voters | (netHere(match_, p) ? 1u << p : 0u));
-        for (int s = 0; s < vote.count; ++s)
+        // (The last first: who hears the first knows how many there are.)
+        for (int s = vote.count - 1; s >= 0; --s)
         {
             voteMaps_[s] = mapInfo_[static_cast<std::size_t>(candidates[s])].name;
             NetEvent offered = netEvent(NetEventType::NextMap, s);
@@ -2025,6 +2157,8 @@ namespace hlrt
 
     void NetGame::startNext(const std::string &map, int fragLimit, int minuteLimit)
     {
+        match_.vote = NetVote();
+        voteLetGo();
         start(map, fragLimit, minuteLimit, pendingSkill_);
         nextMap_.clear();
     }
@@ -2049,7 +2183,6 @@ namespace hlrt
             return false;
         lobbyAsked_ = false;
         overMs_ = 0;
-        voteAsk_ = 0;
         // (Asked once: the next is the next match's.)
         match_.over = false;
         return true;
@@ -2061,6 +2194,8 @@ namespace hlrt
             return;
         effectDraw.dropSprays();
         starting_ = goAsked_ = cancelled_ = lobbyAsked_ = false;
+        match_.vote = NetVote();
+        voteLetGo();
         match_.playing = false;
         match_.over = false;
         match_.firstActor = -1;

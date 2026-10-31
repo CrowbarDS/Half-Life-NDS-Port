@@ -161,11 +161,17 @@ namespace hlrt
         /// This console's player chooses the vote's map `slot`.
         void vote(int slot);
         /// The vote's page was drawn afresh: its pictures are to be had again.
-        void voteRedrawn() { voteAsk_ = 0; }
+        void voteRedrawn();
+        /// Its page is on the screen (what has come may be drawn on it).
+        void setVoteShown(bool shown) { voteShown_ = shown; }
+        /// A vote before the first match is going on (in the lobby).
+        bool voteOn() const;
 #ifndef HLDS_CHILD
         /// The host, from the end of a match: everyone back to its lobby now,
         /// whatever was to come next.
         void sendAllToLobby();
+        /// The host: START with the next map to be voted for.
+        void startFirstVote(int skill);
         /// The host, back in its lobby: the map chosen when the match ended,
         /// once the others have had time to leave theirs. It stays due until
         /// startNext or dropNext.
@@ -297,7 +303,15 @@ namespace hlrt
         void fetchHostFrame();
         void fetchHostStop();
 #endif
-        int voteAsk_ = 0; ///< the next of the vote's pictures to have
+        // The vote's pictures: had as they come, kept until it is over.
+        std::uint8_t *voteData_[hldata::NetVote::kMost] = {};
+        std::uint32_t voteBytes_[hldata::NetVote::kMost] = {};
+        bool voteHave_[hldata::NetVote::kMost] = {};  ///< come, or there is none
+        bool voteDrawn_[hldata::NetVote::kMost] = {};
+        bool voteSaidReady_ = false, voteShown_ = false;
+        int voteMs_ = 0, voteOpenedAt_ = 0;
+        void voteFrame(int ms);
+        void voteLetGo();
         unsigned ready_ = 0;
         std::uint32_t rooms_[hldata::kNetPlayers] = {}; ///< (the host's: KB, by client; 0 not said)
         std::uint32_t frees_[hldata::kNetPlayers] = {};

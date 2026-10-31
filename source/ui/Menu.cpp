@@ -1064,6 +1064,10 @@ namespace hlrt
                            ? nullptr
                            : "No map on this card fits a console without the game.";
             case kNetMap:
+#ifndef HLDS_CHILD
+                if (settings.nextMode == kNextVote)
+                    return "Next map is set to vote: START opens a vote for it.";
+#endif
                 return netGame.mapInfo().empty() ? "No multiplayer map on the card." : nullptr;
             default:
                 return nullptr;
@@ -2219,7 +2223,8 @@ namespace hlrt
             // before anyone has come: the host's game is closed meanwhile.)
             const int buttons = sheetButtons();
             drawSheetButton(sheetBarBox(0, buttons), "START", sheetPressed_ == kSheetBar,
-                            hostIndex() < 0 || netGame.phase() == NetGame::Phase::Serving || !hostMapFits());
+                            settings.nextMode != kNextVote &&
+                                (hostIndex() < 0 || netGame.phase() == NetGame::Phase::Serving || !hostMapFits()));
             if (buttons == 3)
                 drawSheetButton(sheetBarBox(1, 3), "SEND GAME", sheetPressed_ == kSheetBar - 1, playersHere() > 1);
             drawSheetButton(sheetBarBox(buttons - 1, buttons), "BACK", sheetPressed_ == kSheetBar - (buttons - 1));
@@ -2550,6 +2555,19 @@ namespace hlrt
             // loads the map when the match says it has begun: main.cpp. A
             // host alone may look round a map, too -- though nobody can come
             // once it has begun.)
+#ifndef HLDS_CHILD
+            // (With a vote, what is voted for: it begins when that is decided.)
+            if (settings.nextMode == kNextVote)
+            {
+                if (netGame.phase() == NetGame::Phase::Hosting)
+                {
+                    settings.save();
+                    untintSeats();
+                    netGame.startFirstVote(skill_);
+                }
+                return Action::None;
+            }
+#endif
             const int at = hostIndex();
             if (at < 0 || netGame.phase() == NetGame::Phase::Serving || !hostMapFits())
                 return Action::None;

@@ -122,6 +122,8 @@ namespace hldata
         NextMap,  ///< host: the vote offers this as its map `a`: text = its name, cut to fit
         NextPick, ///< client: I vote for its map `a`
         NextTally,///< host: how many have chosen each of the vote's maps: v[0..3]
+        NextReady,///< client: I have all the vote's pictures
+        NextOpen, ///< host: the vote is open
     };
 
     /// The rules' flags (Rules' v[1]): the game's mp_weaponstay,

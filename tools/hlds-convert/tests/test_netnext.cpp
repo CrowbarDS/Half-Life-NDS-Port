@@ -143,7 +143,14 @@ namespace
         check(distinct, "four different maps drawn");
         int two[2] = {5, 6};
         check(netDrawSome(two, 2, 1, 4) == 2, "no more than there are");
-        check(netVoteMs(5) == 13000 && netVoteMs(30) == 30000, "a vote has its time, however short the scores' is");
+        // Who it waits for: those with a vote, not the host, not who has left.
+        NetVote waits;
+        waits.voters = 0x07;
+        check(!waits.allReady(0), "the vote waits for the others' pictures");
+        waits.ready = 0x02;
+        check(!waits.allReady(0), "... all of them");
+        waits.drop(2);
+        check(waits.allReady(0), "... but not for who has left");
     }
 
     void testPalette()

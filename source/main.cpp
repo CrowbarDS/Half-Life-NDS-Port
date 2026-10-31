@@ -38,6 +38,7 @@
 #include "render/GpuStats.hpp"
 #include "render/EffectDraw.hpp"
 #include "render/MapCard.hpp"
+#include "render/ProfileView.hpp"
 #include "render/ModelDraw.hpp"
 #include "render/HudDraw.hpp"
 #include "render/FrameFreeze.hpp"
@@ -367,6 +368,63 @@ namespace
         camera.yaw = from->angles[1];
         camera.pitch = static_cast<std::int16_t>(-static_cast<std::int16_t>(from->angles[0]));
         camera.update();
+    }
+
+    // What is on the touch screen when a match is over, and for a vote before
+    // the first: the scores, the vote, and what is touched of them.
+    int scoresShown = -1, voteShown = -1;
+    bool touchWas = false, voteWaitShown = false;
+    void endScreensReset()
+    {
+        scoresShown = voteShown = -1;
+        voteWaitShown = false;
+        hlrt::netGame.setVoteShown(false);
+    }
+    void endScreens()
+    {
+        const hldata::NetMatch &match = hlrt::netGame.match();
+        // A touch begun now: a card of the vote, or the host's LOBBY.
+        const bool touch = (keysHeld() & KEY_TOUCH) != 0;
+        if (touch && !touchWas)
+        {
+            touchPosition at;
+            touchRead(&at);
+#ifndef HLDS_CHILD
+            if (hlrt::netGame.isHost() && hlrt::bottomScreen.lobbyButtonAt(at.px, at.py))
+                hlrt::netGame.sendAllToLobby();
+#endif
+            if (hlrt::netGame.votePage())
+                hlrt::netGame.vote(hlrt::bottomScreen.voteCardAt(at.px, at.py));
+        }
+        touchWas = touch;
+        if (hlrt::netGame.votePage())
+        {
+            if (voteShown == -1)
+            {
+                hlrt::bottomScreen.showVote();
+                hlrt::netGame.voteRedrawn();
+                hlrt::netGame.setVoteShown(true);
+                voteShown = match.vote.stamp;
+            }
+            else if (voteShown != match.vote.stamp)
+            {
+                hlrt::bottomScreen.voteUpdate();
+                voteShown = match.vote.stamp;
+            }
+        }
+        else if (match.over)
+        {
+            if (scoresShown != match.final.stamp)
+            {
+                scoresShown = match.final.stamp;
+                hlrt::bottomScreen.showScores();
+            }
+        }
+        else if (!voteWaitShown)
+        {
+            voteWaitShown = true;
+            hlrt::bottomScreen.showMessage("NEXT MAP", "The vote is about to open");
+        }
     }
 
     void drawScene()
@@ -1420,6 +1478,26 @@ int main(int argc, char *argv[])
                 continue;
             }
 #endif
+            // A vote before the first match has the touch screen; the lobby
+            // again when it is over.
+            {
+                static bool voteWas = false;
+                if (hlrt::netGame.voteOn())
+                {
+                    voteWas = true;
+                    hlrt::mapCard.setHidden(true);
+                    hlrt::profileView.setHidden(true);
+                    endScreens();
+                    continue;
+                }
+                if (voteWas)
+                {
+                    voteWas = false;
+                    endScreensReset();
+                    if (hlrt::netGame.on())
+                        hlrt::menu.openLobby();
+                }
+            }
             using hlrt::Menu;
             const Menu::Action item = hlrt::menu.frame();
             if (item == Menu::Action::Continue || item == Menu::Action::Load)
@@ -1642,47 +1720,10 @@ int main(int argc, char *argv[])
                 // The match over: the table, on the touch screen, as it
                 // stands, until the lobby.
                 {
-                    static int scoresShown = -1, voteShown = -1;
-                    static bool touchWas = false;
-                    const hldata::NetMatch &match = hlrt::netGame.match();
-                    if (paused || !inMatch || !match.over)
-                        scoresShown = voteShown = -1;
+                    if (paused || !inMatch || !hlrt::netGame.match().over)
+                        endScreensReset();
                     else
-                    {
-                        // A touch begun now: a card of the vote, or the host's LOBBY.
-                        const bool touch = (keysHeld() & KEY_TOUCH) != 0;
-                        if (touch && !touchWas)
-                        {
-                            touchPosition at;
-                            touchRead(&at);
-#ifndef HLDS_CHILD
-                            if (hlrt::netGame.isHost() && hlrt::bottomScreen.lobbyButtonAt(at.px, at.py))
-                                hlrt::netGame.sendAllToLobby();
-#endif
-                            if (hlrt::netGame.votePage())
-                                hlrt::netGame.vote(hlrt::bottomScreen.voteCardAt(at.px, at.py));
-                        }
-                        touchWas = touch;
-                        if (hlrt::netGame.votePage())
-                        {
-                            if (voteShown == -1)
-                            {
-                                hlrt::bottomScreen.showVote();
-                                hlrt::netGame.voteRedrawn();
-                                voteShown = match.vote.stamp;
-                            }
-                            else if (voteShown != match.vote.stamp)
-                            {
-                                hlrt::bottomScreen.voteUpdate();
-                                voteShown = match.vote.stamp;
-                            }
-                        }
-                        else if (scoresShown != match.final.stamp)
-                        {
-                            scoresShown = match.final.stamp;
-                            hlrt::bottomScreen.showScores();
-                        }
-                    }
+                        endScreens();
                 }
                 // Who killed whom, who came and went: a line at the top of
                 // the picture for a few seconds (the touch screen is the

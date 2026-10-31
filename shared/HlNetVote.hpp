@@ -13,13 +13,11 @@
 
 namespace hldata
 {
-    /// A match's end with a vote: the scores, the vote, and what it came to.
-    inline constexpr int kNetVoteScoresMs = 3000, kNetVoteLeastMs = 8000, kNetVoteResultMs = 2000;
-    inline constexpr int netVoteMs(int chatSeconds)
-    {
-        const int least = kNetVoteScoresMs + kNetVoteLeastMs + kNetVoteResultMs;
-        return chatSeconds * 1000 > least ? chatSeconds * 1000 : least;
-    }
+    /// NextMap's `a`: not a map, but the vote given up.
+    inline constexpr int kNetVoteCancel = 255;
+    /// What the vote came to is shown this long; and it opens this long after
+    /// it began at the latest, whatever pictures have yet to come.
+    inline constexpr int kNetVoteResultMs = 2000, kNetVotePicturesMs = 10000;
 
     struct NetVote
     {
@@ -31,7 +29,15 @@ namespace hldata
         std::uint8_t voters = 0;  ///< bit p: player p may vote (the host's)
         std::int8_t decided = -1; ///< the map it came to
         std::uint16_t stamp = 0;  ///< changes with whatever is shown of it
+        bool open = false;        ///< its pictures have come (or long enough has gone by): voting
+        std::uint8_t ready = 0;   ///< bit p: player p has all its pictures (the host's)
 
+        /// Whether every one with a vote but `me` has their pictures.
+        bool allReady(int me) const
+        {
+            const unsigned others = voters & ~(1u << me);
+            return (ready & others) == others;
+        }
         /// Player `p` chooses `slot`, in place of what they chose before.
         bool cast(int p, int slot)
         {
