@@ -42,10 +42,6 @@ namespace hlrt::dlsend
     void frame();
     /// START: those who have come are sent it (Gathering).
     void go();
-    /// How fast: far ahead of what the consoles have said they have (the
-    /// default), or at the library's own pace (to compare: X on the page).
-    void setFast(bool fast);
-    bool fast();
     /// As many have come as the match has room for.
     bool full();
     State state();

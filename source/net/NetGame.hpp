@@ -168,10 +168,6 @@ namespace hlrt
 #endif
         /// The host: player `p` let go, told why (and, a moment on, the
         /// radio's link cut); not let back in while this game lasts.
-        /// Whether consoles in DSi mode are sent maps at full quality (else as
-        /// the others are).
-        bool fullGuests() const { return fullGuests_; }
-        void setFullGuests(bool on) { fullGuests_ = on; }
         /// Who a player chose to be, here to be shown (a console sent the game
         /// asks the host when it is wanted).
         bool personHere(int id) const;

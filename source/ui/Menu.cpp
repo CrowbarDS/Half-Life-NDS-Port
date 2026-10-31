@@ -1929,17 +1929,14 @@ namespace hlrt
             switch (dlsend::state())
             {
             case dlsend::State::Gathering:
-                std::snprintf(said, sizeof(said), "%d console%s here%s. START sends the game to them all at once. X: %s. Y: DSi mode, %s maps.",
+                std::snprintf(said, sizeof(said), "%d console%s here%s. START sends the game to them all at once.",
                               here, here == 1 ? "" : "s", dlsend::full() ? " (the most there is room for)"
-                                                                         : "; more can still come",
-                              dlsend::fast() ? "fast" : "standard pace", netGame.fullGuests() ? "full" : "lean");
+                                                                         : "; more can still come");
                 break;
             case dlsend::State::Sending:
                 // (And what the radio is doing: the rate, and the counts that
-                // say why it is not more; X, the other pace, to compare.)
-                std::snprintf(said, sizeof(said), "Sending the game (%s, X; DSi mode: %s, Y): %d%%. %s",
-                              dlsend::fast() ? "fast" : "standard", netGame.fullGuests() ? "full maps" : "lean maps",
-                              dlsend::percent(), dlsend::rate());
+                // say why it is not more.)
+                std::snprintf(said, sizeof(said), "Sending the game: %d%%. %s", dlsend::percent(), dlsend::rate());
                 break;
             case dlsend::State::Starting:
             case dlsend::State::Done:
@@ -3518,20 +3515,6 @@ namespace hlrt
         // the consoles have been started, the host's game again.
         if (page_ == Page::NetSend)
         {
-            // (X: the other pace, to compare on a console's own radio.)
-            if (keysDown() & KEY_X)
-            {
-                dlsend::setFast(!dlsend::fast());
-                sound.ui(kUiSoundTick);
-                drawSheetDetail();
-            }
-            // (Y: what a console in DSi mode is then sent of the maps.)
-            if (keysDown() & KEY_Y)
-            {
-                netGame.setFullGuests(!netGame.fullGuests());
-                sound.ui(kUiSoundTick);
-                drawSheetDetail();
-            }
             dlsend::frame();
             if (dlsend::state() == dlsend::State::Done)
             {

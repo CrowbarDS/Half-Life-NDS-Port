@@ -25,7 +25,6 @@ namespace hlrt::dlsend
         constexpr std::uint32_t kStartVblanks = 60;
 
         State now = State::Off;
-        bool fastPace = true;
         void *rom = nullptr;
         std::size_t romSize = 0;
         int wanted = 2;
@@ -114,7 +113,7 @@ namespace hlrt::dlsend
             why = "The radio would not start.";
             return false;
         }
-        netlink::dlFast(fastPace);
+        netlink::dlFast(true); // (far ahead of what the consoles have said they have)
         wanted = most < 2 ? 1 : most - 1;
         seen = 0;
         lastSum = -1;
@@ -207,15 +206,6 @@ namespace hlrt::dlsend
         movedAt = Global::vblanks();
         now = State::Sending;
     }
-
-    void setFast(bool fast)
-    {
-        fastPace = fast;
-        if (now != State::Off)
-            netlink::dlFast(fastPace);
-    }
-
-    bool fast() { return fastPace; }
 
     bool full()
     {
