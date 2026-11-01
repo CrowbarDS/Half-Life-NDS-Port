@@ -31,7 +31,7 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           mkdir -p "rom/half-life-nds-port-$VERSION" release
-          cp artifacts/rom/half-life-nds-port.nds THIRD_PARTY_LICENSES "rom/half-life-nds-port-$VERSION/"
+          cp artifacts/rom/half-life-nds-port.nds THIRD_PARTY_LICENSES LICENSE-HALF-LIFE-SDK "rom/half-life-nds-port-$VERSION/"
           (cd rom && zip -qr "../release/half-life-nds-port-$VERSION.zip" .)
           for f in artifacts/converter-*/*; do
             name="$(basename "$f")"
@@ -44,7 +44,7 @@ jobs:
         uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4.9.1
         with:
           config: cliff.toml
-          args: --latest --strip all
+          args: --latest --strip header
         env:
           OUTPUT: release-notes.md
 

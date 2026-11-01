@@ -69,7 +69,6 @@ jobs:
           chmod +x linuxdeploy linuxdeploy-plugin-qt
           mkdir -p dist AppDir/usr/bin
           cp "$RUNNER_TEMP/ptexconv/ptexconv" AppDir/usr/bin/
-          cp THIRD_PARTY_LICENSES AppDir/
           cat > hlds-convert-gui.desktop <<'DESKTOP'
           [Desktop Entry]
           Type=Application
@@ -81,7 +80,16 @@ jobs:
           python3 tools/package/icon.py Logo.bmp hlds-convert-gui.png
           export QMAKE="$QT_DIR/bin/qmake" LD_LIBRARY_PATH="$QT_DIR/lib" PATH="$PWD:$PATH"
           ./linuxdeploy --appdir AppDir -e build/convert/gui/hlds-convert-gui \
-            -d hlds-convert-gui.desktop -i hlds-convert-gui.png --plugin qt --output appimage
+            -d hlds-convert-gui.desktop -i hlds-convert-gui.png --plugin qt
+          # The licences of the system's libraries it took along.
+          cp THIRD_PARTY_LICENSES AppDir/
+          for lib in AppDir/usr/lib/*.so*; do
+            dpkg -S "$(basename "$lib")" 2>/dev/null | head -1 | cut -d: -f1
+          done | sort -u | while read -r pkg; do
+            printf '\n--- %s, bundled in this package\n\n' "$pkg" >> AppDir/THIRD_PARTY_LICENSES
+            cat "/usr/share/doc/$pkg/copyright" >> AppDir/THIRD_PARTY_LICENSES
+          done
+          ./linuxdeploy --appdir AppDir --output appimage
           mv ./*.AppImage "dist/hlds-convert-${{ matrix.name }}.AppImage"
           mkdir cli
           cp build/cli/hlds-convert "$RUNNER_TEMP/ptexconv/ptexconv" THIRD_PARTY_LICENSES cli/
@@ -161,6 +169,13 @@ jobs:
           windeployqt6 --no-translations --no-opengl-sw "$out/hlds-convert-gui.exe"
           # What Qt and the compiler stand on, from the MSYS2 system they came from.
           ldd "$out/hlds-convert-gui.exe" | awk '{print $3}' | grep -iE "^/(ucrt64|clangarm64)/" | sort -u | xargs -I{} cp -n {} "$out/"
+          # The licences of the system's libraries it took along.
+          for dll in "$out"/*.dll; do
+            pacman -Qqo "/$(echo "$MSYSTEM" | tr A-Z a-z)/bin/$(basename "$dll")" 2>/dev/null
+          done | sort -u | while read -r pkg; do
+            printf '\n--- %s, bundled in this package: %s\n' "$pkg" "$(pacman -Qi "$pkg" | sed -n 's/^Licenses *: //p')" >> "$out/THIRD_PARTY_LICENSES"
+            find "/$(echo "$MSYSTEM" | tr A-Z a-z)/share/licenses/$pkg" -type f -exec cat {} + >> "$out/THIRD_PARTY_LICENSES" 2>/dev/null || true
+          done
           (cd dist && zip -qr "hlds-convert-${{ matrix.name }}.zip" "hlds-convert-${{ matrix.name }}")
           rm -rf "$out"
 
