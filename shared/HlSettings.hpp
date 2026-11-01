@@ -129,7 +129,7 @@ namespace hldata
         std::uint8_t flashlight = 0;
         std::uint8_t hostAutoaim = 1;
         std::uint8_t maxPlayers = 4;
-        std::uint8_t allowGuests = 0;
+        std::uint8_t allowGuests = 1;
         /// How long a match's scores are shown (the game's mp_chattime:
         /// kChatLeast..kChatMost, by fives); whether a lobby's matches are
         /// added up; how the next map is chosen (kNext*), and the maps it goes

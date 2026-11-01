@@ -943,7 +943,7 @@ namespace hlrt
                                  {Kind::Value, kNetLamp, "Flashlight"},
                                  {Kind::Value, kNetAim, "Autoaim"},
                                  {Kind::Value, kNetSkill, "Difficulty"},
-                                 {Kind::Value, kNetGuests, "Without the game"}};
+                                 {Kind::Value, kNetGuests, "Download Play players"}};
 #ifndef HLDS_CHILD
         /// The chapters of HOST.
         constexpr int kHostMatch = 0, kHostNext = 1, kHostPlayers = 2;
@@ -1382,7 +1382,7 @@ namespace hlrt
             case kNetAim: return "Whether the guns' aim bends towards a player near it.";
             case kNetSkill: return "How hard the map's chargers and anything of its own are, on every console.";
             case kNetGuests:
-                return "Consoles without Half-Life can join, sent the game: only the maps that fit them are offered.";
+                return "Consoles sent the game by Download Play can join: only the maps that fit them are offered.";
             case kNetTeam: return "The team you would be on. The host puts you there if it keeps the teams even.";
             case kProfModel: return "Who the others see you as. A console with no room for it sees the suit, in your colours.";
             case kProfTop: return "The colour of the top of the suit, as the others see it.";

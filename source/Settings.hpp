@@ -89,7 +89,7 @@ public:
     bool flashlight = false;
     bool hostAutoaim = true;
     std::uint8_t maxPlayers = 4;
-    bool allowGuests = false;
+    bool allowGuests = true;
     /// What follows a match (hldata::SettingsData's).
     std::uint8_t chatSeconds = hldata::kChatDefault;
     bool sessionTotals = false;
