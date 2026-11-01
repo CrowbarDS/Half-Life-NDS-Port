@@ -63,7 +63,8 @@ namespace hldata
         inline std::uint32_t keySpan(std::uint32_t count, std::uint32_t step, std::uint32_t frame,
                                      std::uint32_t lastFrame, std::int32_t &along)
         {
-            std::uint32_t index = (frame >> 8) / step;
+            // (Divided as 64 bits, so that the console's hardware divider does it.)
+            std::uint32_t index = static_cast<std::uint32_t>(frame / (static_cast<std::uint64_t>(step) << 8));
             if (index >= count - 1)
                 index = count - 2;
             const std::uint32_t from = index * step;
@@ -72,11 +73,7 @@ namespace hldata
             std::uint32_t done = frame - (from << 8);
             if (done > span)
                 done = span;
-            // (In 32 bits wherever the keys are less than 4096 frames apart,
-            // which is everywhere: a 64-bit divide is a call.)
-            along = span < (1u << 20)
-                        ? static_cast<std::int32_t>((done << 12) / span)
-                        : static_cast<std::int32_t>((static_cast<std::uint64_t>(done) << 12) / span);
+            along = static_cast<std::int32_t>((static_cast<std::uint64_t>(done) << 12) / span);
             return index;
         }
 
