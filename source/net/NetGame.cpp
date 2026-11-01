@@ -949,6 +949,8 @@ namespace hlrt
         airEnd();
         guests_ = 0;
         demoStop();
+#else
+        guest::demoEnd();
 #endif
     }
 
@@ -1739,6 +1741,10 @@ namespace hlrt
                     size = airReplySize_;
                     airReplySize_ = 0;
                 }
+                // (A demo's map: how far it has got, turn about with what the
+                // game says -- which is how what is asked for gets through.)
+                else if (match_.rules.demo != 0 && (++ticks_ & 1) != 0)
+                    size = guest::demoAnswer(reply);
 #endif
                 if (size > 0)
                     netlink::send(reply, size);

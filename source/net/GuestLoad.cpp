@@ -10,6 +10,7 @@
 
 #include "Global.hpp"
 #include "net/AirDevice.hpp"
+#include "net/NetGame.hpp"
 #include "net/NetLink.hpp"
 
 namespace hlrt::guest
@@ -33,6 +34,7 @@ namespace hlrt::guest
             std::uint32_t size = 0;
             std::string path; ///< or, the file on a card it is in
             bool air = false; ///< or, the host is sending it
+            bool arena = false; ///< or, it is coming to the demo's memory
         };
         constexpr int kOffersMost = 4;
         Offer offers[kOffersMost];
@@ -111,7 +113,7 @@ namespace hlrt::guest
             std::uint8_t *was;
             {
                 const Hold hold;
-                was = receiver.ring;
+                was = receiver.direct ? nullptr : receiver.ring;
                 receiver.want(stream, name, ring);
             }
             std::free(was);
@@ -124,7 +126,7 @@ namespace hlrt::guest
             std::uint8_t *was;
             {
                 const Hold hold;
-                was = receiver.ring;
+                was = receiver.direct ? nullptr : receiver.ring;
                 receiver.ring = nullptr;
             }
             std::free(was);
@@ -232,6 +234,91 @@ namespace hlrt::guest
             }
         };
         AirSupply airSupply;
+
+        // A demo (HlDemo.hpp): one block, had once before its first map and
+        // kept until it ends. The stream comes to it, wherever the game is.
+        constexpr std::uint32_t kDemoFolderBytes = 256 * 1024;
+        constexpr std::uint32_t kDemoCrcBytes = 8 * 1024; ///< checked, of a stream come, as a frame goes
+        constexpr std::uint32_t kDemoAskVblanks = 120;
+        constexpr std::uint32_t kDemoGiveUpVblanks = 3600;
+        std::uint8_t *demoRoom = nullptr;
+        hldata::DemoArena demoArena;
+        std::uint32_t demoMap = 0;
+        std::uint32_t demoAskedAt = 0;
+        std::uint32_t demoCrcAt = 0, demoCrcSoFar = 0;
+        int demoSaidDone = 0;
+        bool demoTwlWas = false;
+        std::uint8_t *demoPlaceOf(std::uint32_t map)
+        {
+            const int place = demoArena.find(map);
+            return place < 0 ? nullptr : demoRoom + demoArena.offsetOf(place);
+        }
+        void demoWant(const char *name)
+        {
+            const std::uint32_t map = hldata::nameHash(name);
+            const int place = demoArena.take(map, 0, hldata::DemoArena::Role::Current);
+            if (place < 0)
+                return;
+            demoMap = map;
+            {
+                const Hold hold;
+                receiver.wantDirect(hldata::AirStream::Map, name, demoRoom + demoArena.offsetOf(place));
+            }
+            demoCrcAt = 0;
+            demoCrcSoFar = hldata::kCrcStart;
+            demoSaidDone = 0;
+            quietSince = Global::vblanks();
+            netlink::setSink(sinkTake);
+            netGame.demoAsk(map, true, 0);
+            demoAskedAt = Global::vblanks();
+        }
+
+        /// The demo's map from its memory: what has come so far, and the radio
+        /// heard while it waits for the rest.
+        struct ArenaSupply : hldata::GuestSupply
+        {
+            void (*progress)(int) = nullptr;
+            const std::uint8_t *data = nullptr;
+            std::uint32_t at = 0;
+            int shown = -1;
+            std::uint32_t heardAt = 0;
+            std::uint32_t since = 0;
+            bool more(const std::uint8_t *&out, std::size_t &length) override
+            {
+                since = Global::vblanks();
+                while (true)
+                {
+                    std::uint32_t come, all;
+                    {
+                        const Hold hold;
+                        all = receiver.known ? receiver.length : 0;
+                        come = receiver.base * hldata::kAirPiece;
+                    }
+                    come = come > all ? all : come;
+                    if (Global::vblanks() != heardAt)
+                    {
+                        heardAt = Global::vblanks();
+                        netGame.frame();
+                    }
+                    if (!netGame.on() || (all != 0 && at >= all))
+                        return false;
+                    if (at < come)
+                    {
+                        out = data + at;
+                        length = come - at < hldata::kAirPiece ? come - at : hldata::kAirPiece;
+                        at += static_cast<std::uint32_t>(length);
+                        const int percent = static_cast<int>(static_cast<std::uint64_t>(at) * 100 / all);
+                        if (progress != nullptr && percent != shown)
+                            progress(shown = percent);
+                        return true;
+                    }
+                    if (Global::vblanks() - since > kDemoGiveUpVblanks)
+                        return false;
+                    swiWaitForVBlank();
+                }
+            }
+        };
+        ArenaSupply arenaSupply;
 
         /// Every member of a stream, each into a block of its own, handed to
         /// `keep` (which owns it from then on, or frees it). (Its cursor in
@@ -358,7 +445,16 @@ namespace hlrt::guest
             if (offers[i].map != map)
                 continue;
             hldata::GuestSupply *supply = &mapSupply;
-            if (offers[i].air)
+            if (offers[i].arena)
+            {
+                arenaSupply = ArenaSupply();
+                arenaSupply.progress = mapProgress;
+                arenaSupply.data = demoPlaceOf(hldata::nameHash(map.c_str()));
+                if (arenaSupply.data == nullptr)
+                    return false;
+                supply = &arenaSupply;
+            }
+            else if (offers[i].air)
             {
                 // (Begun when the host's first frame of it was heard:
                 // airFrame.)
@@ -449,6 +545,15 @@ namespace hlrt::guest
         replySize = 0;
         if (!hldata::airRead(bytes, size, head))
             return false;
+        // A demo's map: where it belongs (the first heard of it, sinkTake
+        // from then on), whoever it was sent for.
+        if (receiver.direct && head.stream == hldata::AirStream::Map)
+        {
+            const Hold hold;
+            if (receiver.frame(head))
+                quietSince = Global::vblanks();
+            return false;
+        }
         // At full quality: for a console in DSi mode alone. It has all it
         // needs of the map then, and the others' base and map go by.
         if (head.stream == hldata::AirStream::MapFull && !global.twlChild)
@@ -549,6 +654,101 @@ namespace hlrt::guest
         return ok;
     }
 
+    bool demoBegin(std::uint32_t longest, const char *map)
+    {
+        // (All the three it may hold, else two: the last one's asked for
+        // again when it is gone back to.)
+        for (std::uint32_t count = hldata::DemoArena::kPlaces; count >= 2 && demoRoom == nullptr; --count)
+        {
+            const std::uint32_t bytes = kDemoFolderBytes + count * longest;
+            demoRoom = static_cast<std::uint8_t *>(std::malloc(bytes));
+            if (demoRoom != nullptr)
+                demoArena.plan(bytes, kDemoFolderBytes, longest);
+        }
+        if (demoRoom == nullptr)
+            return false;
+        demoTwlWas = global.twlChild;
+        global.twlChild = false;
+        offerCount = 0;
+        offers[offerCount++] = Offer{map, nullptr, 0, std::string(), false, true};
+        demoWant(map);
+        return true;
+    }
+
+    void demoEnd()
+    {
+        if (demoRoom == nullptr)
+            return;
+        {
+            const Hold hold;
+            receiver = hldata::AirReceiver();
+        }
+        std::free(demoRoom);
+        demoRoom = nullptr;
+        demoArena = hldata::DemoArena();
+        demoMap = 0;
+        offerCount = 0;
+        global.twlChild = demoTwlWas;
+    }
+
+    bool demoMapHere()
+    {
+        const Hold hold;
+        return receiver.direct && receiver.done();
+    }
+
+    int demoAnswer(std::uint8_t *reply)
+    {
+        if (demoRoom == nullptr || !receiver.direct)
+            return 0;
+        bool done;
+        {
+            const Hold hold;
+            done = receiver.done();
+        }
+        if (!done)
+        {
+            // (Till the host has heard: and if it has lost track of this
+            // console, it hears again.)
+            if (Global::vblanks() - demoAskedAt >= kDemoAskVblanks)
+            {
+                demoAskedAt = Global::vblanks();
+                netGame.demoAsk(demoMap, true, receiver.base);
+                return 0;
+            }
+            const Hold hold;
+            return receiver.known ? receiver.ask(reply) : 0;
+        }
+        // All here: is it what was sent? A little at a time: the game is on.
+        if (!demoArena.isWhole(demoMap))
+        {
+            const std::uint8_t *data = demoPlaceOf(demoMap);
+            const std::uint32_t rest = receiver.length - demoCrcAt;
+            const std::uint32_t step = rest < kDemoCrcBytes ? rest : kDemoCrcBytes;
+            demoCrcSoFar = hldata::crc32Update(demoCrcSoFar, data + demoCrcAt, step);
+            demoCrcAt += step;
+            if (demoCrcAt >= receiver.length)
+            {
+                if (hldata::crc32Finish(demoCrcSoFar) == receiver.crc)
+                    demoArena.arrived(demoMap);
+                else
+                {
+                    char name[hldata::kAirNameBytes];
+                    std::memcpy(name, receiver.name, sizeof(name));
+                    demoArena.spoiled(demoMap);
+                    demoWant(name);
+                    return 0;
+                }
+            }
+        }
+        // (Said for a while: one lost answer would keep the host sending.)
+        if (demoSaidDone >= kAirLingerVblanks)
+            return 0;
+        ++demoSaidDone;
+        const Hold hold;
+        return receiver.ask(reply);
+    }
+
     void offerAir(const std::string &map)
     {
         for (int i = 0; i < offerCount; ++i)
@@ -596,6 +796,11 @@ namespace hlrt::guest
 
     void hear()
     {
+        if (receiver.direct)
+        {
+            netGame.frame();
+            return;
+        }
         if (mapOnAir && receiver.ring != nullptr)
             pump();
     }

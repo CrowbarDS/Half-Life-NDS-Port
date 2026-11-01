@@ -113,6 +113,20 @@ namespace hlrt::guest
     const char *airMap();
     int airSkill();
 
+    // -------------------------------------------------------------- a demo
+
+    /// A console in DSi mode playing a demo: its memory for the demo's streams
+    /// (longest: the longest), its first map asked for and offered. All its
+    /// lean streams, as a console in DS mode has them, till demoEnd. False:
+    /// not enough memory.
+    bool demoBegin(std::uint32_t longest, const char *map);
+    void demoEnd();
+    /// All of the map being played has come.
+    bool demoMapHere();
+    /// Once in a while as a frame is sent: what to say of the map coming, in
+    /// place of the game's frame. 0: nothing.
+    int demoAnswer(std::uint8_t *reply);
+
     /// What the guest holds of what it was sent, by kind (the readout's,
     /// and the converter's estimate's check): the base's bytes, and what the
     /// last map's stream gave its loaders.

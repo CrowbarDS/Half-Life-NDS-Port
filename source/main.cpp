@@ -1,5 +1,6 @@
 #include <ctime>
 
+#include "HlManifest.hpp"
 #include "net/NetGame.hpp"
 #include "global_header.hpp"
 
@@ -1441,6 +1442,63 @@ int main(int argc, char *argv[])
                 saidRoom = true;
                 guestSayRoom();
             }
+            // A demo: once which hand is answered, its base, then its first
+            // map, as it comes -- no waiting for anyone to start it.
+            const int demo = hlrt::netGame.demo();
+            if (demo != 0 && global.twlChild && !hlrt::menu.onHand() && hlrt::netGame.on() &&
+                hlrt::netGame.phase() == hlrt::NetGame::Phase::Lobby)
+            {
+                static std::uint32_t askedAt = 0;
+                if (std::strcmp(hlrt::guest::baseGroup(), hldata::kAirGroupNames[demo]) != 0)
+                {
+                    if (Global::vblanks() - askedAt >= 120)
+                    {
+                        askedAt = Global::vblanks();
+                        hlrt::netGame.demoAsk(0, true, 0);
+                    }
+                }
+                else
+                {
+                    const char *first = hldata::netDemoMaps(demo)[0];
+                    leaving();
+                    hlrt::netGame.forMapLoad();
+                    bool started = hlrt::guest::demoBegin(hlrt::netGame.demoLongest(), first);
+                    if (started)
+                    {
+                        hlrt::game.resetProgress();
+                        hlrt::game.globals.set(hldata::kGlobalSkill, hldata::kSkillMedium);
+                        hlrt::SaveGame::newRun(Global::vblanks() * 2654435761u + 1u);
+                        leavingAbandoned = true;
+                        hlrt::game.cheats = hldata::Cheats();
+                        hlrt::game.crosshair = true;
+                        guestMapName = first;
+                        hlrt::guest::onMapProgress(guestMapProgress);
+                        started = loadLevel(first, nullptr, error) == LoadResult::Ok;
+                        // (A stream cut short loads as far as it goes.)
+                        if (started && !hlrt::guest::demoMapHere())
+                        {
+                            started = false;
+                            error = "The host has gone quiet";
+                        }
+                    }
+                    else
+                        error = "Not enough memory";
+                    if (started)
+                        break;
+                    hlrt::bottomScreen.showMessage("CANNOT LOAD", error.c_str());
+                    for (int n = 0; n < 180; ++n)
+                        swiWaitForVBlank();
+                    if (hlrt::level.loaded())
+                    {
+                        dropMap();
+                        hlrt::level.unload();
+                    }
+                    back();
+                    hlrt::netGame.leave();
+                    hlrt::menu.openJoin();
+                    continue;
+                }
+            }
             // A match about to begin: its group's base, and its map as it
             // comes -- then held, under the curtain, until the host starts it.
             hldata::AirHead air;
@@ -1724,8 +1782,9 @@ int main(int argc, char *argv[])
                 // if this console is out of it without having asked to be
                 // (the host left, the link went), the title.
                 const bool inMatch = hlrt::netGame.playing();
+                const bool inGame = inMatch || hlrt::netGame.demo() != 0;
                 hlrt::netGame.frame();
-                if (inMatch && !hlrt::netGame.on())
+                if (inGame && !hlrt::netGame.on())
                 {
                     hlrt::bottomScreen.showMessage("OUT OF THE GAME", hlrt::netGame.ended());
                     for (int n = 0; n < 150; ++n)
