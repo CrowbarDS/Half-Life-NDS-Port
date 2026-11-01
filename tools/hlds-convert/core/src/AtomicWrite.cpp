@@ -72,6 +72,11 @@ namespace hlds
                 return false;
             }
         }
+#ifdef _WIN32
+        // (Windows will not rename over a file.)
+        std::filesystem::remove(path, ec);
+        ec.clear();
+#endif
         std::filesystem::rename(temp, path, ec);
         if (ec)
         {

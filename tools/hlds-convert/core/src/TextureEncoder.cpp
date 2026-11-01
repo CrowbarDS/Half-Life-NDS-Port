@@ -48,6 +48,13 @@ namespace hlds
         /// Quote a path for the shell. Paths here are ours (a temp directory
         /// and an executable the user pointed at), but a space in a home
         /// directory is common enough.
+#ifdef _WIN32
+        // (cmd.exe: quotes, and no backslash to double.)
+        std::string quoted(const std::filesystem::path &path)
+        {
+            return "\"" + path.generic_string() + "\"";
+        }
+#else
         std::string quoted(const std::filesystem::path &path)
         {
             std::string out = "\"";
@@ -60,6 +67,7 @@ namespace hlds
             out.push_back('"');
             return out;
         }
+#endif
     } // namespace
 
     PtexconvEncoder::PtexconvEncoder(std::filesystem::path executable,
@@ -104,7 +112,12 @@ namespace hlds
                                     " > /dev/null 2>&1";
 #endif
         encodeSlots().take();
+#ifdef _WIN32
+        // (cmd.exe takes off the first and last quote of what it is given.)
+        const int status = std::system(("\"" + command + "\"").c_str());
+#else
         const int status = std::system(command.c_str());
+#endif
         encodeSlots().give();
 
         auto piece = [&](const char *suffix, std::vector<std::uint8_t> &bytes)
