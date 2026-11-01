@@ -1,0 +1,55 @@
+# The build container (docker/), published so that nothing has to compile
+# teak-llvm twice. Its tag is a hash of docker/: the image is built only when
+# a pinned version there changes, and is otherwise just found.
+#
+# It is built from docker/ alone (docker/.dockerignore), with no secrets: it
+# holds the tools and nothing of the game or of this repository.
+name: Toolchain image
+
+on:
+  workflow_call:
+    outputs:
+      image:
+        description: The image, by name and tag
+        value: ${{ jobs.image.outputs.image }}
+
+permissions: {}
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.name.outputs.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Name the image
+        id: name
+        run: |
+          tag="${{ hashFiles('docker/**') }}"
+          echo "image=ghcr.io/warioware64/half-life-nds-port-toolchain:${tag:0:16}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish, if there is none yet
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
+        run: |
+          if docker manifest inspect "$IMAGE" > /dev/null 2>&1; then
+            echo "Already published: $IMAGE"
+            exit 0
+          fi
+          docker build docker \
+            --build-arg WITH_TEAK=1 \
+            --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+            --label "org.opencontainers.image.description=Toolchain for the Half-Life DS port; no game data" \
+            -t "$IMAGE"
+          docker push "$IMAGE"

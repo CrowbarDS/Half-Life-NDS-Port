@@ -5,4 +5,5 @@
 *.s     text eol=lf
 Makefile.teak text eol=lf
 docker/Dockerfile text eol=lf
+docker/versions.env text eol=lf
 *.bmp   binary

@@ -9,8 +9,8 @@
 # HLDS_VALVE_DIR=<your Half-Life "valve" folder> makes it readable inside, as
 # /valve: for converting the game and for the tests that play its maps.
 #
-# The image is built the first time, and again when the Dockerfile or one of
-# the forks it takes has changed.
+# The image is built the first time, and again when something in docker/ has
+# changed.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 

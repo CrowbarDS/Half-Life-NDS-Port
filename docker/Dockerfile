@@ -15,10 +15,11 @@
 #       program is linked to the container's Qt; to use it, build it where
 #       it is to run (see the README).
 #
-# The forks are taken at the head of their master branch; the image is built
-# again from that step on whenever one of them has moved.
+# What it is made of is pinned: the BlocksDS image just below, the rest in
+# versions.env. Only those two files and fetch.sh go into the image, so it
+# holds the tools and nothing of the game or of this repository.
 
-ARG BLOCKSDS_IMAGE=skylyrac/blocksds:slim-latest
+ARG BLOCKSDS_IMAGE=skylyrac/blocksds:slim-v1.24.0@sha256:779f6193d1030c62e60d1f0f39c3e32cf4045c0bd224a45c0ceadf9d9ab01a51
 ARG WITH_TEAK=0
 ARG WITH_QT=0
 
@@ -31,66 +32,57 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3 python3-venv python3-pip && \
     rm -rf /var/lib/apt/lists/*
 
-# BlocksDS and its ARM compiler at their newest (the code is C++26: it wants
-# the current GCC), and ptexconv, which the converter runs for textures.
-# (The upgrade twice: the first time the package manager only brings itself
-# up to date. And each step up to five times, a few seconds apart: the name
-# servers Docker hands a build on some machines now and then answer "no such
-# host" for one that exists.)
-RUN again() { n=1; until "$@"; do \
-        [ "$n" -ge 5 ] && return 1; n=$((n + 1)); \
-        echo "... did not work: again in 5 seconds ($n of 5)"; sleep 5; done; } && \
-    again wf-pacman -Syu --noconfirm && \
-    again wf-pacman -Syu --noconfirm && \
-    again wf-pacman -S --noconfirm --needed blocksds-toolchain blocksds-ptexconv && \
-    wf-pacman -Scc --noconfirm && \
-    mkdir -p "${BLOCKSDSEXT}"
+COPY versions.env fetch.sh /opt/hlds/
+
+# ptexconv, which the converter runs for textures. (BlocksDS and its compiler
+# are the image's own, at the versions it was made with.)
+RUN . /opt/hlds/versions.env && \
+    sh /opt/hlds/fetch.sh "$PTEXCONV_REPO" "$PTEXCONV_COMMIT" /tmp/ptexconv && \
+    mkdir -p "${BLOCKSDSEXT}/ptexconv" && \
+    gcc -O2 /tmp/ptexconv/src/*.c -lm -o "${BLOCKSDSEXT}/ptexconv/ptexconv" && \
+    cp /tmp/ptexconv/LICENSE "${BLOCKSDSEXT}/ptexconv/" && \
+    rm -rf /tmp/ptexconv
 
 # ------------------------------------------- the DSP toolchain, if asked for
 FROM base AS teak-0
 
 FROM base AS teak-1
-ARG TEAK_LLVM_REPO=https://github.com/Warioware64/teak-llvm.git
-ARG TEAK_LLVM_REF=master
-ARG LIBTEAK_REPO=https://github.com/Warioware64/libteak.git
-ARG LIBTEAK_REF=master
-# (How many compilers at once: each can take a gigabyte and more.)
+# (How many compilers at once: each can take a gigabyte and more. And this
+# LLVM is older than the compiler here, which no longer brings in <cstdint>.)
 ARG TEAK_JOBS=4
-ADD https://api.github.com/repos/Warioware64/teak-llvm/git/refs/heads/master /tmp/teak-llvm.ref
-RUN git clone --depth 1 --branch "${TEAK_LLVM_REF}" "${TEAK_LLVM_REPO}" /tmp/teak-llvm && \
-    cd /tmp/teak-llvm && JOBS="${TEAK_JOBS}" ./build-teak.sh configure build install && \
+RUN . /opt/hlds/versions.env && \
+    sh /opt/hlds/fetch.sh "$TEAK_LLVM_REPO" "$TEAK_LLVM_COMMIT" /tmp/teak-llvm && \
+    cd /tmp/teak-llvm && \
+    CXXFLAGS="-include cstdint" JOBS="${TEAK_JOBS}" ./build-teak.sh configure build install && \
     rm -rf /tmp/teak-llvm
-ADD https://api.github.com/repos/Warioware64/libteak/git/refs/heads/master /tmp/libteak.ref
-RUN git clone --depth 1 --branch "${LIBTEAK_REF}" "${LIBTEAK_REPO}" /tmp/libteak && \
+RUN . /opt/hlds/versions.env && \
+    sh /opt/hlds/fetch.sh "$LIBTEAK_REPO" "$LIBTEAK_COMMIT" /tmp/libteak && \
     make -C /tmp/libteak install && \
     rm -rf /tmp/libteak
 
 # ---------------------------------------------------- Nitro Engine Advanced
 # (With its sound: the game is built with NEA_MAXMOD.)
 FROM teak-${WITH_TEAK} AS dev
-ARG NEA_REPO=https://github.com/Warioware64/nitro-engine.git
-ARG NEA_REF=master
+ARG WITH_TEAK
 ARG NEA_JOBS=4
-ADD https://api.github.com/repos/Warioware64/nitro-engine/git/refs/heads/master /tmp/nea.ref
-RUN git clone --depth 1 --branch "${NEA_REF}" "${NEA_REPO}" /tmp/nitro-engine && \
-    make -C /tmp/nitro-engine -f Makefile.blocksds -j"${NEA_JOBS}" install NEA_MAXMOD=1 && \
+RUN . /opt/hlds/versions.env && \
+    sh /opt/hlds/fetch.sh "$NEA_REPO" "$NEA_COMMIT" /tmp/nitro-engine && \
+    make -C /tmp/nitro-engine -f Makefile.blocksds -j"${NEA_JOBS}" install NEA_MAXMOD=1 NEA_TEAK="${WITH_TEAK}" && \
     rm -rf /tmp/nitro-engine
 
 # The wireless: the dswifi fork that also does DS Download Play, installed as
 # "dswifi_dl" beside the stock one. (After the engine: nothing of that
 # depends on it, and it is the game that links it.)
-ARG DSWIFI_REPO=https://github.com/Warioware64/dswifi.git
-ARG DSWIFI_REF=master
-ADD https://api.github.com/repos/Warioware64/dswifi/git/refs/heads/master /tmp/dswifi.ref
-RUN git clone --depth 1 --branch "${DSWIFI_REF}" "${DSWIFI_REPO}" /tmp/dswifi && \
+RUN . /opt/hlds/versions.env && \
+    sh /opt/hlds/fetch.sh "$DSWIFI_REPO" "$DSWIFI_COMMIT" /tmp/dswifi && \
     make -C /tmp/dswifi -j"${NEA_JOBS}" && make -C /tmp/dswifi install && \
     rm -rf /tmp/dswifi
 
 # The ROM's build system is this repository's own copy of architectds (found
 # through PYTHONPATH once the repository is mounted); what it needs besides
 # is here, where any user of the container can read it.
-RUN python3 -m venv /opt/hlds-venv && \
-    /opt/hlds-venv/bin/pip install --no-cache-dir ninja pillow
+RUN . /opt/hlds/versions.env && python3 -m venv /opt/hlds-venv && \
+    /opt/hlds-venv/bin/pip install --no-cache-dir "ninja==${NINJA_VERSION}" "pillow==${PILLOW_VERSION}"
 ENV HLDS_VENV=/opt/hlds-venv \
     PYTHONPATH=/work/architectds_nea_mod \
     HOME=/tmp
@@ -106,16 +98,17 @@ CMD ["bash"]
 FROM dev AS qt-0
 
 FROM dev AS qt-1
-ARG QT_VERSION=6.8.3
 USER root
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN . /opt/hlds/versions.env && \
+    apt-get update && apt-get install -y --no-install-recommends \
         libgl1-mesa-dev libegl1-mesa-dev libxkbcommon-dev libfontconfig1-dev \
         libfreetype6-dev libdbus-1-3 libglib2.0-dev && \
     rm -rf /var/lib/apt/lists/* && \
     python3 -m venv /opt/aqt && \
-    /opt/aqt/bin/pip install --no-cache-dir aqtinstall && \
+    /opt/aqt/bin/pip install --no-cache-dir "aqtinstall==${AQT_VERSION}" && \
     /opt/aqt/bin/aqt install-qt linux desktop "${QT_VERSION}" linux_gcc_64 -O /opt/qt && \
-    rm -rf /opt/aqt
-ENV HLDS_QT_DIR=/opt/qt/${QT_VERSION}/gcc_64
+    rm -rf /opt/aqt && \
+    ln -s "/opt/qt/${QT_VERSION}/gcc_64" /opt/qt/current
+ENV HLDS_QT_DIR=/opt/qt/current
 
 FROM qt-${WITH_QT} AS final

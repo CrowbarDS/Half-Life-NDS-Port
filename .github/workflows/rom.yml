@@ -1,0 +1,60 @@
+# The ROMs, built in the toolchain image, and the host suites run there.
+name: ROM
+
+on:
+  workflow_call:
+
+permissions: {}
+
+jobs:
+  image:
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/toolchain-image.yml
+
+  rom:
+    needs: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ${{ needs.image.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    env:
+      HLDS_JOBS: 4
+      PYTHONPATH: ${{ github.workspace }}/architectds_nea_mod
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the version comes from the tags
+
+      - name: Let git read the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Build the ROMs
+        run: ./make.sh
+
+      - name: Check what the hot code and the library are made of
+        run: tools/arm9-report.sh --check
+
+      - name: Build the host suites
+        run: |
+          cmake -S tools/hlds-convert -B build/convert -DHLDS_BUILD_GUI=OFF
+          cmake --build build/convert -j4
+
+      - name: Run the host suites
+        run: ctest --test-dir build/convert --output-on-failure
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rom
+          if-no-files-found: error
+          path: |
+            half-life-nds-port.nds
+            child/out/hl-child-twl.nds
+            build/hl/hl.dsl
