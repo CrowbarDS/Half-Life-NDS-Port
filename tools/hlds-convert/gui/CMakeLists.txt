@@ -18,6 +18,7 @@ target_link_libraries(hlds-convert-gui
 )
 set_target_properties(hlds-convert-gui PROPERTIES
     WIN32_EXECUTABLE ON
+    MACOSX_BUNDLE ON
 )
 
 # The same pages driven with no display, for a test.

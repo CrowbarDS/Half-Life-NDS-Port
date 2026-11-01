@@ -9,10 +9,39 @@
 
 #include "hlds/AtomicWrite.hpp"
 
+#if defined(_WIN32)
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
+
 namespace hlds
 {
     namespace
     {
+        /// The folder this program is in; empty if it cannot be told.
+        std::filesystem::path programFolder()
+        {
+#if defined(_WIN32)
+            wchar_t path[32768];
+            const DWORD length = GetModuleFileNameW(nullptr, path, 32768);
+            if (length == 0 || length >= 32768)
+                return {};
+            return std::filesystem::path(path).parent_path();
+#elif defined(__APPLE__)
+            char path[4096];
+            std::uint32_t size = sizeof(path);
+            if (_NSGetExecutablePath(path, &size) != 0)
+                return {};
+            return std::filesystem::path(path).parent_path();
+#else
+            std::error_code ec;
+            return std::filesystem::read_symlink("/proc/self/exe", ec).parent_path();
+#endif
+        }
+
         /// Multi-threaded encoding
         class EncodeSlots
         {
@@ -161,6 +190,9 @@ namespace hlds
         const char separator = ':';
 #endif
         std::vector<std::filesystem::path> candidates;
+        // (The packages have it beside the program: the one they were made with.)
+        if (const std::filesystem::path folder = programFolder(); !folder.empty())
+            candidates.push_back(folder / exe);
         if (const char *ext = std::getenv("BLOCKSDSEXT"))
             candidates.push_back(std::filesystem::path(ext) / "ptexconv" / exe);
         if (const char *wf = std::getenv("WONDERFUL_TOOLCHAIN"))

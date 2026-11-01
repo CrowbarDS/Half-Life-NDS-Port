@@ -1,0 +1,248 @@
+# The converter for each system: its static command line and its window, tested
+# and packaged with the ptexconv it runs.
+name: Converter
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x86_64, runner: ubuntu-24.04, qt_host: linux, qt_arch: linux_gcc_64, qt_dir: gcc_64, app_arch: x86_64 }
+          - { name: linux-arm64, runner: ubuntu-24.04-arm, qt_host: linux_arm64, qt_arch: linux_gcc_arm64, qt_dir: gcc_arm64, app_arch: aarch64 }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install what it needs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build libgl1-mesa-dev libegl1-mesa-dev \
+            libxkbcommon-dev libxkbcommon-x11-0 libfontconfig1-dev libfreetype6-dev libdbus-1-3 libglib2.0-dev \
+            libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libfuse2t64 file
+          . docker/versions.env
+          pipx install "aqtinstall==$AQT_VERSION"
+          aqt install-qt "${{ matrix.qt_host }}" desktop "$QT_VERSION" "${{ matrix.qt_arch }}" -O "$RUNNER_TEMP/qt"
+          echo "QT_DIR=$RUNNER_TEMP/qt/$QT_VERSION/${{ matrix.qt_dir }}" >> "$GITHUB_ENV"
+
+      - name: Build ptexconv
+        run: |
+          . docker/versions.env
+          sh docker/fetch.sh "$PTEXCONV_REPO" "$PTEXCONV_COMMIT" "$RUNNER_TEMP/ptexconv"
+          gcc -O2 -static "$RUNNER_TEMP"/ptexconv/src/*.c -lm -o "$RUNNER_TEMP/ptexconv/ptexconv"
+          echo "$RUNNER_TEMP/ptexconv" >> "$GITHUB_PATH"
+
+      - name: Build the static command line
+        run: |
+          cmake -S tools/hlds-convert -B build/cli -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DHLDS_BUILD_GUI=OFF -DHLDS_BUILD_TESTS=OFF -DCMAKE_EXE_LINKER_FLAGS=-static
+          cmake --build build/cli --target hlds-convert
+
+      - name: Build the window and the tests
+        run: |
+          cmake -S tools/hlds-convert -B build/convert -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_DIR"
+          cmake --build build/convert
+
+      - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          ctest --test-dir build/convert --output-on-failure
+          mkdir -p check/shots check/card check/cache
+          build/convert/gui/hlds-install-check check/shots check/card check/cache
+
+      - name: Package
+        run: |
+          arch="${{ matrix.app_arch }}"
+          base=https://github.com/linuxdeploy
+          curl -fsSL -o linuxdeploy "$base/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-$arch.AppImage"
+          curl -fsSL -o linuxdeploy-plugin-qt "$base/linuxdeploy-plugin-qt/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-qt-$arch.AppImage"
+          chmod +x linuxdeploy linuxdeploy-plugin-qt
+          mkdir -p dist AppDir/usr/bin
+          cp "$RUNNER_TEMP/ptexconv/ptexconv" AppDir/usr/bin/
+          cp THIRD_PARTY_LICENSES AppDir/
+          cat > hlds-convert-gui.desktop <<'DESKTOP'
+          [Desktop Entry]
+          Type=Application
+          Name=Half-Life DS Installer
+          Exec=hlds-convert-gui
+          Icon=hlds-convert-gui
+          Categories=Utility;
+          DESKTOP
+          python3 tools/package/icon.py Logo.bmp hlds-convert-gui.png
+          export QMAKE="$QT_DIR/bin/qmake" LD_LIBRARY_PATH="$QT_DIR/lib" PATH="$PWD:$PATH"
+          ./linuxdeploy --appdir AppDir -e build/convert/gui/hlds-convert-gui \
+            -d hlds-convert-gui.desktop -i hlds-convert-gui.png --plugin qt --output appimage
+          mv ./*.AppImage "dist/hlds-convert-${{ matrix.name }}.AppImage"
+          mkdir cli
+          cp build/cli/hlds-convert "$RUNNER_TEMP/ptexconv/ptexconv" THIRD_PARTY_LICENSES cli/
+          tar -C cli -czf "dist/hlds-convert-cli-${{ matrix.name }}.tar.gz" .
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: converter-${{ matrix.name }}
+          if-no-files-found: error
+          path: dist/*
+
+  windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: windows-x64, runner: windows-2025, msystem: UCRT64, prefix: mingw-w64-ucrt-x86_64 }
+          - { name: windows-arm64, runner: windows-11-arm, msystem: CLANGARM64, prefix: mingw-w64-clang-aarch64 }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+        with:
+          msystem: ${{ matrix.msystem }}
+          update: true
+          install: >-
+            git
+            zip
+            ${{ matrix.prefix }}-cc
+            ${{ matrix.prefix }}-cmake
+            ${{ matrix.prefix }}-ninja
+            ${{ matrix.prefix }}-qt6-base
+            ${{ matrix.prefix }}-qt6-tools
+
+      - name: Let git read the checkout
+        run: git config --global --add safe.directory "$(pwd)"
+
+      - name: Build ptexconv
+        run: |
+          . docker/versions.env
+          sh docker/fetch.sh "$PTEXCONV_REPO" "$PTEXCONV_COMMIT" ptexconv-src
+          cc -O2 -static ptexconv-src/src/*.c -lm -o ptexconv.exe
+          mkdir -p tools-bin && mv ptexconv.exe tools-bin/
+          echo "PATH=$(pwd)/tools-bin:$PATH" >> "$GITHUB_ENV"
+
+      - name: Build the static command line
+        run: |
+          cmake -S tools/hlds-convert -B build/cli -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DHLDS_BUILD_GUI=OFF -DHLDS_BUILD_TESTS=OFF -DCMAKE_EXE_LINKER_FLAGS=-static
+          cmake --build build/cli --target hlds-convert
+
+      - name: Build the window and the tests
+        run: |
+          cmake -S tools/hlds-convert -B build/convert -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/convert
+
+      - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          ctest --test-dir build/convert --output-on-failure
+          mkdir -p check/shots check/card check/cache
+          build/convert/gui/hlds-install-check.exe check/shots check/card check/cache
+
+      - name: Package
+        run: |
+          out="dist/hlds-convert-${{ matrix.name }}"
+          mkdir -p "$out"
+          cp build/convert/gui/hlds-convert-gui.exe build/cli/hlds-convert.exe tools-bin/ptexconv.exe THIRD_PARTY_LICENSES "$out/"
+          windeployqt6 --no-translations --no-opengl-sw "$out/hlds-convert-gui.exe"
+          # What Qt and the compiler stand on, from the MSYS2 system they came from.
+          ldd "$out/hlds-convert-gui.exe" | awk '{print $3}' | grep -iE "^/(ucrt64|clangarm64)/" | sort -u | xargs -I{} cp -n {} "$out/"
+          (cd dist && zip -qr "hlds-convert-${{ matrix.name }}.zip" "hlds-convert-${{ matrix.name }}")
+          rm -rf "$out"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: converter-${{ matrix.name }}
+          if-no-files-found: error
+          path: dist/*
+
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install Qt
+        run: |
+          . docker/versions.env
+          pipx install "aqtinstall==$AQT_VERSION"
+          aqt install-qt mac desktop "$QT_VERSION" clang_64 -O "$RUNNER_TEMP/qt"
+          echo "QT_DIR=$RUNNER_TEMP/qt/$QT_VERSION/macos" >> "$GITHUB_ENV"
+
+      - name: Build ptexconv, for both processors
+        run: |
+          . docker/versions.env
+          sh docker/fetch.sh "$PTEXCONV_REPO" "$PTEXCONV_COMMIT" "$RUNNER_TEMP/ptexconv"
+          clang -O2 -arch arm64 -arch x86_64 "$RUNNER_TEMP"/ptexconv/src/*.c -lm -o "$RUNNER_TEMP/ptexconv/ptexconv"
+          echo "$RUNNER_TEMP/ptexconv" >> "$GITHUB_PATH"
+
+      - name: Build for both processors
+        run: |
+          cmake -S tools/hlds-convert -B build/convert -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_DIR" -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0
+          cmake --build build/convert -j4
+
+      - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          ctest --test-dir build/convert --output-on-failure
+          mkdir -p check/shots check/card check/cache
+          build/convert/gui/hlds-install-check check/shots check/card check/cache
+
+      - name: Package
+        run: |
+          app=build/convert/gui/hlds-convert-gui.app
+          cp "$RUNNER_TEMP/ptexconv/ptexconv" "$app/Contents/MacOS/"
+          mkdir -p "$app/Contents/Resources"
+          cp THIRD_PARTY_LICENSES "$app/Contents/Resources/"
+          "$QT_DIR/bin/macdeployqt" "$app"
+          codesign --force --deep --sign - "$app"
+          mkdir -p dist cli
+          ditto -c -k --keepParent "$app" dist/hlds-convert-macos-universal.zip
+          cp build/convert/hlds-convert "$RUNNER_TEMP/ptexconv/ptexconv" THIRD_PARTY_LICENSES cli/
+          tar -C cli -czf dist/hlds-convert-cli-macos-universal.tar.gz .
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: converter-macos-universal
+          if-no-files-found: error
+          path: dist/*
+
+  # The Intel half of the universal program is tested on an Intel machine.
+  macos-intel:
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Build ptexconv
+        run: |
+          . docker/versions.env
+          sh docker/fetch.sh "$PTEXCONV_REPO" "$PTEXCONV_COMMIT" "$RUNNER_TEMP/ptexconv"
+          clang -O2 "$RUNNER_TEMP"/ptexconv/src/*.c -lm -o "$RUNNER_TEMP/ptexconv/ptexconv"
+          echo "$RUNNER_TEMP/ptexconv" >> "$GITHUB_PATH"
+
+      - name: Build and test
+        run: |
+          cmake -S tools/hlds-convert -B build/convert -DCMAKE_BUILD_TYPE=Release -DHLDS_BUILD_GUI=OFF
+          cmake --build build/convert -j4
+          ctest --test-dir build/convert --output-on-failure
