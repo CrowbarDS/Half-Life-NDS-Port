@@ -2,7 +2,7 @@
 
 Half-Life running natively on the DS and DSi: the original campaign at DS scale, with local wireless multiplayer and Download Play.
 
-**No game data is in this repository or in the ROM.** You bring your own copy of Half-Life, and a converter turns it into the files the console reads from its SD card.
+**No game files are in the repository or the ROM; the difficulty table's numbers are built in for now.** You bring your own copy of Half-Life, and a converter turns it into the files the console reads from its SD card.
 
 This is an unofficial fan project, not affiliated with or endorsed by Valve.
 
@@ -124,7 +124,7 @@ Half-Life is a trademark of Valve Corporation. The port's game rules and monster
 
 ## Licence
 
-Licence under review. The game code is adapted from the Half-Life SDK and distributed under Valve's [Half-Life 1 SDK licence](LICENSE-HALF-LIFE-SDK) (free, non-commercial). The rest of the code is by the authors; its final licence will be announced.
+Licence under review. The game code is adapted from the Half-Life SDK and distributed under Valve's [Half-Life 1 SDK licence](LICENSE-HALF-LIFE-SDK) (free, non-commercial). Parts of the engine code are adapted from Xash3D FWGS (GPL-3.0-or-later). The rest is by the authors. The final licence, and rewrites of the adapted parts, will come in a later version.
 
 Each third-party component's licence is in [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES).
 
