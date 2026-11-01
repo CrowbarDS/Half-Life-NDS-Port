@@ -801,14 +801,21 @@ namespace hlrt::guest
         }
         if (!done)
         {
-            // (Till the host has heard: and if it has lost track of this
-            // console, it hears again.)
-            if (Global::vblanks() - demoAskedAt >= kDemoAskVblanks)
+            // (Nothing coming: the host has not heard, or has lost track of
+            // this console, and hears again.)
+            const std::uint32_t now = Global::vblanks();
+            if (now - quietSince >= kDemoAskVblanks && now - demoAskedAt >= kDemoAskVblanks)
             {
-                demoAskedAt = Global::vblanks();
+                demoAskedAt = now;
                 netGame.demoAsk(demoTaking, demoTaking == demoMap, receiver.base);
                 return 0;
             }
+            // (An answer for a frame that has come, as pump's: said with
+            // nothing to answer, it waits in a queue and reaches the host as
+            // old news, and what has come is sent again.)
+            if (!heardInIrq)
+                return 0;
+            heardInIrq = false;
             const Hold hold;
             return receiver.known ? receiver.ask(reply) : 0;
         }

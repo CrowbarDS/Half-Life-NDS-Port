@@ -246,6 +246,13 @@ namespace hldata
             }
             if (r == nullptr)
                 return;
+            // (Said again: nothing to begin over. What it has come to know of
+            // what the console holds would be lost, and all of it sent again.)
+            if (r->on && r->map == map && r->stream >= 0 && r->seat == seat)
+            {
+                r->live = live;
+                return;
+            }
             release(*r);
             r->on = true;
             r->token = token;

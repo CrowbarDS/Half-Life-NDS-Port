@@ -1272,7 +1272,7 @@ namespace hlrt
             guests_ |= 1u << from;
         if (air_.asked(from, bytes, size))
             return;
-        if (match_.rules.demo != 0 && stream == AirStream::Map)
+        if (match_.rules.demo != 0 && stream == AirStream::MapFull)
         {
             demoServer_.heard(from, bytes, size);
             return;
@@ -1754,9 +1754,9 @@ namespace hlrt
                     size = airReplySize_;
                     airReplySize_ = 0;
                 }
-                // (A demo's map: how far it has got, turn about with what the
+                // (A demo's map: how far it has got, and now and then what the
                 // game says -- which is how what is asked for gets through.)
-                else if (match_.rules.demo != 0 && (++ticks_ & 1) != 0)
+                else if (match_.rules.demo != 0 && (++ticks_ & 7) != 0)
                     size = guest::demoAnswer(reply);
 #endif
                 if (size > 0)

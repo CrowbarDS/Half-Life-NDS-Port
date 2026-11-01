@@ -198,6 +198,19 @@ namespace
         check(netDemoPrefetch(arena, links, 0) == 0, "the last map: nothing");
     }
 
+    void testSaidAgain()
+    {
+        // A console that repeats what it wants keeps its place in the stream.
+        DemoServer server;
+        server.want(7, 1, 111, false, 0, "a", 60000, 1, 1);
+        AirSender &air = server.streams[0].air;
+        air.wants[1].base = 40;
+        air.wants[1].have = 5;
+        server.want(7, 1, 111, true, 40, "a", 60000, 1, 1);
+        check(air.wants[1].base == 40 && air.wants[1].have == 5, "said again: what it holds is still known");
+        check(server.streamIsLive(0), "... and it may now be wanted now");
+    }
+
     void testOnePlace()
     {
         // Room for the map played alone: nothing got ready, and the next
@@ -355,6 +368,7 @@ int main()
     testArena();
     testPrefetch();
     testOnePlace();
+    testSaidAgain();
     testOneStream();
     testResume();
     testLiveFirst();
