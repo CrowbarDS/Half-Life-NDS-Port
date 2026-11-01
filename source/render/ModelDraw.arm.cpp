@@ -97,7 +97,7 @@ namespace hlrt
 
         /// How a player stands holding their gun: which clip, and its blend
         /// by how far up they look (in `aim`: clip * 256 + blend). -1: not one.
-        int playerAim(const ActorState &actor, const ModelView &model, int id)
+        [[gnu::noinline]] int playerAim(const ActorState &actor, const ModelView &model, int id)
         {
             const NetMatch &match = netGame.match();
             const int p = id - match.firstActor;
