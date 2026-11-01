@@ -46,7 +46,7 @@ namespace hldata
     /// frame of another game, or of another build of this one, is not read.
     /// (Version 2: eight players, profiles, the rules, teams, sprays.)
     inline constexpr std::uint16_t kNetMagic = 0x4C48; // "HL"
-    inline constexpr std::uint8_t kNetVersion = 6;
+    inline constexpr std::uint8_t kNetVersion = 7;
 
     // ------------------------------------------------------------ the state
 
@@ -116,7 +116,8 @@ namespace hldata
         FetchAgain,///< client: sending `a` came wrong: all of it, again
         FetchNone,///< host: there is no such thing: `a` FetchFrom, v[0..1] what
         RulesMore,///< host: what follows a match: v[0] seconds of its scores, v[1] how the next map is chosen,
-                  ///< v[2] 1 = a lobby's matches added up, v[3] seconds of a vote
+                  ///< v[2] 1 = a lobby's matches added up, v[3] seconds of a vote,
+                  ///< v[4] the demo being served (HlDemo.hpp; 0: a game), v[5] its longest stream, in 16 KB
         NextDecided,///< host: the map that comes next, for the scores to say: text = its name, cut to fit;
                   ///< `a` = which of the vote's, and 1 (0: not by a vote)
         NextMap,  ///< host: the vote offers this as its map `a`: text = its name, or the rest of it
@@ -125,6 +126,7 @@ namespace hldata
         NextTally,///< host: v[0] have chosen the vote's map `a`
         NextOpen, ///< host: the vote is open
         NextTurn, ///< host: player `a` alone chooses the next map, from the vote's list
+        DemoWant, ///< client: `a` 1 wanted now, 0 for later: the demo's map of hash v[0..1], from piece v[2..3]
     };
 
     /// The rules' flags (Rules' v[1]): the game's mp_weaponstay,

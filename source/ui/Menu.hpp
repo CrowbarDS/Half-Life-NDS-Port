@@ -37,6 +37,7 @@ namespace hlrt
             /// first (main.cpp), then openHost().
             TakePreviews,
             EndMatch,   ///< the host's: the match over, for everyone
+            StopDemo,   ///< the host's: no more of the demo being served
         };
 
         /// Whether QUIT is offered: there is somewhere to go back to (the
@@ -122,6 +123,8 @@ namespace hlrt
             Profile = 17,     ///< a sheet: the player as the others see them, shown on the top screen
             NetSend = 18,     ///< a sheet: the host giving the game to consoles without it (Download Play)
             NetStarting = 19, ///< a sheet: the host's match beginning -- who is ready, who is on the way
+            NetDemo = 21,     ///< SEND DEMO: which, and who can have it
+            NetServe = 22,    ///< the host serving a demo: who has got how far
             Hand = 20,        ///< a console sent the game, as it comes: which hand it is played with
         };
 
@@ -217,6 +220,9 @@ namespace hlrt
         /// Hazard Course's, or Uplink's; and which of those are on the card.
         std::string map_;
         bool gameThere_[3] = {true, true, true};
+        bool demoThere_[2] = {false, false}; ///< the Hazard Course's, Uplink's
+        std::uint32_t servedAt_ = 0;
+        unsigned servedSum_ = 0;
         const hldata::SaveIndex *saves_ = nullptr;
         bool title_ = false;   ///< it is the title's menu, not the pause's
         bool saving_ = false;  ///< the list is shown to save into

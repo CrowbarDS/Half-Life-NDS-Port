@@ -160,12 +160,25 @@ namespace
                 hlrt::NetGame::Found rooms[8];
                 const int count = hlrt::netGame.found(rooms, 8);
                 int best = -1;
+                bool demoOnly = false;
                 for (int i = 0; i < count; ++i)
                 {
                     const hlrt::NetGame::Found &room = rooms[i];
+                    // (A demo: for a console in DSi mode alone.)
+                    if (room.room.version == hldata::kNetVersion && room.room.mode >= hldata::kNetModeDemoBase && !global.twlChild)
+                    {
+                        demoOnly = true;
+                        continue;
+                    }
                     if (room.room.version == hldata::kNetVersion && room.room.guests && room.players < room.most &&
                         (best < 0 || room.bars > rooms[best].bars))
                         best = i;
+                }
+                if (best < 0 && demoOnly)
+                {
+                    guestSay(hldata::netDemoRefusal(false), "The game near is a demo.");
+                    for (int n = 0; n < 180; ++n)
+                        swiWaitForVBlank();
                 }
                 in = best >= 0 && hlrt::netGame.join(rooms[best].index) && guestJoined(600);
             }

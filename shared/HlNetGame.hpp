@@ -42,7 +42,7 @@ namespace hldata
     /// A host's Bye, its first value: nothing, it has left; to one console,
     /// it will not have it (the game is full, or it has let it go); to all,
     /// it is off to send the game, and will be back.
-    inline constexpr int kNetRefuseFull = 1, kNetRefuseKicked = 2, kNetByeBackSoon = 3, kNetRefuseLate = 4;
+    inline constexpr int kNetRefuseFull = 1, kNetRefuseKicked = 2, kNetByeBackSoon = 3, kNetRefuseLate = 4, kNetRefuseNoRoom = 5;
 
     inline constexpr int kNetSprayWaitMs = 30000; ///< a spray, then none until this long after (decalfrequency)
     inline constexpr int kNetSprayReach = 128;    ///< how far off a wall may be sprayed
@@ -80,6 +80,8 @@ namespace hldata
         std::uint8_t nextMode = 0;           ///< how the next map is chosen (HlSettings.hpp's kNext*)
         bool totals = false;                 ///< a lobby's matches added up
         std::uint8_t voteSeconds = 10;       ///< how long a vote stays open
+        std::uint8_t demo = 0;               ///< the demo being served (HlDemo.hpp); 0: a game
+        std::uint16_t demoLongest = 0;       ///< ... its longest stream, in 16 KB
         bool teams() const { return mode == kNetModeTeamplay; }
         bool has(std::uint16_t flag) const { return (flags & flag) != 0; }
     };
@@ -543,7 +545,7 @@ namespace hldata
                                     static_cast<int>(match.rules.mapHash & 0xFFFF), static_cast<int>(match.rules.mapHash >> 16),
                                     match.rules.frags | match.rules.minutes << 8);
             match.host.out.add(netEvent(NetEventType::RulesMore, 0, match.rules.chatSeconds, match.rules.nextMode,
-                                        match.rules.totals ? 1 : 0, match.rules.voteSeconds));
+                                        match.rules.totals ? 1 : 0, match.rules.voteSeconds, match.rules.demo, match.rules.demoLongest));
             match.host.out.add(rules);
             for (int p = 0; p < kNetPlayers; ++p)
             {
@@ -774,6 +776,8 @@ namespace hldata
                     match.rules.chatSeconds = static_cast<std::uint8_t>(event.v[0] < 5 ? 5 : (event.v[0] > 30 ? 30 : event.v[0]));
                     match.rules.nextMode = static_cast<std::uint8_t>(event.v[1]);
                     match.rules.totals = event.v[2] != 0;
+                    match.rules.demo = static_cast<std::uint8_t>(event.v[4]);
+                    match.rules.demoLongest = static_cast<std::uint16_t>(event.v[5]);
                     match.rules.voteSeconds = static_cast<std::uint8_t>(event.v[3] < 5 ? 5 : (event.v[3] > 150 ? 150 : event.v[3]));
                 }
                 break;
@@ -868,7 +872,7 @@ namespace hldata
             case NetEventType::Bye:
                 // (The host's to a client it will not have: for that one
                 // alone, and the match goes on for the rest.)
-                if (from == 0 && (event.v[0] == kNetRefuseFull || event.v[0] == kNetRefuseKicked || event.v[0] == kNetRefuseLate))
+                if (from == 0 && (event.v[0] == kNetRefuseFull || event.v[0] == kNetRefuseKicked || event.v[0] == kNetRefuseLate || event.v[0] == kNetRefuseNoRoom))
                 {
                     if (event.a != match.me || match.me == 0)
                         break;
@@ -897,6 +901,7 @@ namespace hldata
             case NetEventType::FetchHave:
             case NetEventType::FetchAgain:
             case NetEventType::FetchNone:
+            case NetEventType::DemoWant:
                 if (match.passedCount < NetMatch::kMostNotices)
                     match.passed[match.passedCount++] = event;
                 break;
@@ -1139,7 +1144,7 @@ namespace hldata
                                     static_cast<int>(match.rules.mapHash & 0xFFFF), static_cast<int>(match.rules.mapHash >> 16),
                                     match.rules.frags | match.rules.minutes << 8));
         match.host.out.add(netEvent(NetEventType::RulesMore, 0, match.rules.chatSeconds, match.rules.nextMode,
-                                    match.rules.totals ? 1 : 0, match.rules.voteSeconds));
+                                    match.rules.totals ? 1 : 0, match.rules.voteSeconds, match.rules.demo, match.rules.demoLongest));
         for (int p = 0; p < kNetPlayers && again; ++p)
             match.profiles[p].team = 0;
         for (int p = 0; p < kNetPlayers; ++p)

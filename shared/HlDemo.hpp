@@ -29,6 +29,19 @@ namespace hldata
         return dsiMode ? nullptr : "Needs a DSi or 3DS";
     }
 
+    /// The demos (HlManifest.hpp's AirGroup): their maps, as the game goes
+    /// through them, the first where it begins.
+    inline constexpr int kDemoHazard = 2, kDemoUplink = 3, kDemoMapsMost = 7;
+    inline constexpr const char *const kDemoHazardMaps[kDemoMapsMost] = {"t0a0", "t0a0a", "t0a0b", "t0a0b1", "t0a0b2", "t0a0c", "t0a0d"};
+    inline constexpr const char *const kDemoUplinkMaps[kDemoMapsMost] = {"hldemo1", "hldemo2", "hldemo3", nullptr, nullptr, nullptr, nullptr};
+    inline const char *const *netDemoMaps(int group)
+    {
+        return group == kDemoUplink ? kDemoUplinkMaps : kDemoHazardMaps;
+    }
+    /// What a beacon's `mode` says of a demo.
+    inline constexpr std::uint8_t kNetModeDemoBase = 2;
+    inline const char *netDemoTitle(int group) { return group == kDemoUplink ? "UPLINK" : "HAZARD COURSE"; }
+
     // ---------------------------------------------------------------- the arena
 
     struct DemoArena

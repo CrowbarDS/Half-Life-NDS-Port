@@ -133,6 +133,8 @@ namespace hlrt
         rules.nextMode = settings.nextMode;
         rules.totals = settings.sessionTotals != 0;
         rules.voteSeconds = settings.voteSeconds;
+        rules.demo = match_.rules.demo;
+        rules.demoLongest = match_.rules.demoLongest;
         const std::string *hosted = hostedMap(maps_);
         // (The map coming next, chosen when the last match ended, is not the
         // settings': they keep the host's own choice.)
@@ -147,8 +149,14 @@ namespace hlrt
         room.mode = rules.mode;
         room.most = match_.rules.most;
         room.guests = settings.allowGuests;
+        if (match_.rules.demo != 0)
+        {
+            room.mode = static_cast<std::uint8_t>(kNetModeDemoBase + match_.rules.demo - kDemoHazard);
+            room.guests = true;
+        }
         const std::string *map = hostedMap(maps_);
-        room.mapHash = map != nullptr ? nameHash(map->c_str()) : 0;
+        // (A demo: nothing of the host's to show, which plays nothing.)
+        room.mapHash = map != nullptr && match_.rules.demo == 0 ? nameHash(map->c_str()) : 0;
         std::uint8_t bytes[kNetRoomBytes];
         netRoomWrite(room, bytes);
         netlink::hostRoom(bytes, kNetRoomBytes);
@@ -940,6 +948,7 @@ namespace hlrt
 #ifndef HLDS_CHILD
         airEnd();
         guests_ = 0;
+        demoStop();
 #endif
     }
 
@@ -1248,6 +1257,11 @@ namespace hlrt
             guests_ |= 1u << from;
         if (air_.asked(from, bytes, size))
             return;
+        if (match_.rules.demo != 0 && stream == AirStream::Map)
+        {
+            demoServer_.heard(from, bytes, size);
+            return;
+        }
         // A console that has just come asks for the game itself.
         if (stream == AirStream::Common && serve == 0)
         {
@@ -1688,7 +1702,16 @@ namespace hlrt
                 // answers only a frame of the host's -- one that has nothing
                 // to say for itself would wait for nothing.)
                 // (A console just come, waiting for the game itself: the same.)
-                if ((phase_ == Phase::Serving || air_.stream == AirStream::Common) && air_.sending())
+                if (match_.rules.demo != 0 && !air_.sending())
+                {
+                    // (A frame of the game's now and then, as below; and one
+                    // every frame with nothing else to send, to be answered.)
+                    if ((++ticks_ & 7) == 0)
+                        send();
+                    if (demoFrame() == 0 && (ticks_ & 7) != 0)
+                        send();
+                }
+                else if ((phase_ == Phase::Serving || air_.stream == AirStream::Common || match_.rules.demo != 0) && air_.sending())
                 {
                     // (Four a frame: queued, they go back to back -- the radio
                     // starts the next as each exchange ends.)
@@ -1744,6 +1767,7 @@ namespace hlrt
             match_.passedCount = 0;
             lost(match_.refused == kNetRefuseKicked ? "The host has let you go."
                  : match_.refused == kNetRefuseLate ? "This console took too long to load the map."
+                 : match_.refused == kNetRefuseNoRoom ? netDemoRefusal(false)
                                                     : "The game is full.");
             return;
         }
@@ -1768,6 +1792,12 @@ namespace hlrt
                 // (Only a console sent the game says this: one come back has
                 // asked for nothing, and is to be sent the maps all the same.)
                 guests_ |= 1u << event.from;
+                // A demo: for a console in DSi mode alone, and told why not.
+                if (match_.rules.demo != 0 && tiers_[event.from] == 0)
+                {
+                    match_.host.out.add(netEvent(NetEventType::Bye, event.from, kNetRefuseNoRoom));
+                    kickAt_[event.from] = Global::vblanks() + 60;
+                }
 #endif
                 continue;
             }
@@ -1777,6 +1807,11 @@ namespace hlrt
                 continue;
             }
 #ifndef HLDS_CHILD
+            if (event.type == NetEventType::DemoWant && isHost())
+            {
+                demoHeard(event);
+                continue;
+            }
             if (event.type == NetEventType::Fetch && isHost())
             {
                 fetch_.ask(event.from, static_cast<FetchFrom>(event.a),
@@ -1920,6 +1955,199 @@ namespace hlrt
 #endif
         return match_.nextName;
     }
+
+#ifndef HLDS_CHILD
+    // ---------------------------------------------------------- serving a demo
+
+    bool NetGame::demoThere(int group)
+    {
+        const char *const *maps = netDemoMaps(group);
+        const auto there = [](const std::string &path)
+        {
+            std::FILE *file = std::fopen(global.dataPath(path).c_str(), "rb");
+            if (file != nullptr)
+                std::fclose(file);
+            return file != nullptr;
+        };
+        if (!there(std::string("air/") + kAirGroupNames[group] + ".base.hgs"))
+            return false;
+        for (int m = 0; m < kDemoMapsMost && maps[m] != nullptr; ++m)
+        {
+            if (!there(std::string("air/") + maps[m] + ".hgs"))
+                return false;
+        }
+        return true;
+    }
+
+    bool NetGame::demoHost(int group)
+    {
+        // How long the longest is: what a receiver makes its room by.
+        const char *const *maps = netDemoMaps(group);
+        std::uint32_t longest = 0;
+        for (int m = 0; m < kDemoMapsMost && maps[m] != nullptr; ++m)
+        {
+            demoLength_[m] = demoCrc_[m] = 0;
+            if (std::FILE *file = std::fopen(global.dataPath(std::string("air/") + maps[m] + ".hgs").c_str(), "rb"))
+            {
+                std::fseek(file, 0, SEEK_END);
+                demoLength_[m] = static_cast<std::uint32_t>(std::ftell(file));
+                std::fclose(file);
+                longest = demoLength_[m] > longest ? demoLength_[m] : longest;
+            }
+        }
+        if (longest == 0 || !host())
+            return false;
+        match_.rules.demo = static_cast<std::uint8_t>(group);
+        match_.rules.demoLongest = static_cast<std::uint16_t>((longest + 16383) / 16384);
+        demoServer_ = DemoServer();
+        demoBases_ = 0;
+        for (int c = 0; c < kNetPlayers; ++c)
+        {
+            demoTokens_[c] = 0;
+            demoMapOf_[c] = 0;
+        }
+        sayRules();
+        return true;
+    }
+
+    void NetGame::demoStop()
+    {
+        for (int s = 0; s < DemoServer::kStreams; ++s)
+        {
+            if (demoFile_[s] != nullptr)
+                std::fclose(demoFile_[s]);
+            demoFile_[s] = nullptr;
+            demoFileMap_[s] = 0;
+        }
+        demoServer_ = DemoServer();
+    }
+
+    bool NetGame::demoRow(int row, char *line, int room, int &bars)
+    {
+        const char *const *maps = netDemoMaps(match_.rules.demo);
+        for (int c = 1; c < kNetPlayers; ++c)
+        {
+            if (!netHere(match_, c) || row-- != 0)
+                continue;
+            bars = this->bars(c);
+            const char *map = demoMapOf_[c] != 0 ? maps[demoMapOf_[c] - 1] : "";
+            const int percent = demoTokens_[c] != 0 ? demoServer_.percentOf(demoTokens_[c]) : -1;
+            if (demoTokens_[c] != 0 && percent < 0)
+                std::snprintf(line, static_cast<std::size_t>(room), "%.11s  %s  playing", match_.names[c], map);
+            else if (percent >= 0)
+                std::snprintf(line, static_cast<std::size_t>(room), "%.11s  %s  %d%%", match_.names[c], map, percent);
+            else
+                std::snprintf(line, static_cast<std::size_t>(room), "%.11s  joining", match_.names[c]);
+            return true;
+        }
+        return false;
+    }
+
+    void NetGame::demoHeard(const NetEvent &event)
+    {
+        const int c = event.from;
+        if (c < 1 || c >= kNetPlayers)
+            return;
+        const std::uint32_t map = static_cast<std::uint16_t>(event.v[0]) | static_cast<std::uint32_t>(static_cast<std::uint16_t>(event.v[1])) << 16;
+        const std::uint32_t from = static_cast<std::uint16_t>(event.v[2]) | static_cast<std::uint32_t>(static_cast<std::uint16_t>(event.v[3])) << 16;
+        // (No map: its base, which it now has time for.)
+        if (map == 0)
+        {
+            if (tiers_[c] != 0)
+                demoBases_ |= 1u << c;
+            return;
+        }
+        const char *const *maps = netDemoMaps(match_.rules.demo);
+        for (int m = 0; m < kDemoMapsMost && maps[m] != nullptr; ++m)
+        {
+            if (nameHash(maps[m]) != map)
+                continue;
+            // What it is said to come to, worked out the first time it is asked for.
+            if (demoCrc_[m] == 0)
+            {
+                if (std::FILE *file = std::fopen(global.dataPath(std::string("air/") + maps[m] + ".hgs").c_str(), "rb"))
+                {
+                    static std::uint8_t chunk[4096];
+                    std::uint32_t crc = kCrcStart;
+                    for (std::size_t got; (got = std::fread(chunk, 1, sizeof(chunk), file)) > 0;)
+                        crc = crc32Update(crc, chunk, got);
+                    std::fclose(file);
+                    demoCrc_[m] = crc32Finish(crc);
+                }
+            }
+            demoTokens_[c] = match_.host.clients[c].token;
+            demoMapOf_[c] = static_cast<std::uint8_t>(m + 1);
+            demoServer_.want(demoTokens_[c], c, map, event.a != 0, from, maps[m], demoLength_[m], demoCrc_[m],
+                             static_cast<std::uint16_t>(m + 1));
+            return;
+        }
+    }
+
+    int NetGame::demoFrame()
+    {
+        // Who has gone is kept for when they come back, and not sent to.
+        const unsigned present = netlink::clients();
+        for (int c = 1; c < kNetPlayers; ++c)
+        {
+            if (!((present >> c) & 1) && demoTokens_[c] != 0)
+            {
+                demoServer_.lost(demoTokens_[c]);
+                demoTokens_[c] = 0;
+                demoMapOf_[c] = 0;
+            }
+        }
+        demoServer_.frame();
+        // The models and sounds all the maps have, to those who have come.
+        demoBases_ &= present;
+        if (demoBases_ != 0 && !air_.sending())
+        {
+            const char *group = kAirGroupNames[match_.rules.demo];
+            if (airBegin(AirStream::Base, group, std::string("air/") + group + ".base.hgs", demoBases_))
+                demoBases_ = 0;
+        }
+        if (air_.sending())
+            return 0; // (the lobby's frames send it)
+        int sent = 0;
+        std::uint8_t piece[kAirPiece];
+        std::uint8_t bytes[kNetCmdBytes];
+        int stream;
+        std::uint32_t index;
+        for (int n = 0; n < kAirServeFrames && demoServer_.next(stream, index); ++n)
+        {
+            if (demoFileMap_[stream] != demoServer_.streams[stream].map)
+            {
+                if (demoFile_[stream] != nullptr)
+                    std::fclose(demoFile_[stream]);
+                demoFile_[stream] = nullptr;
+                demoFileMap_[stream] = demoServer_.streams[stream].map;
+                demoFile_[stream] = std::fopen(
+                    global.dataPath(std::string("air/") + demoServer_.streams[stream].air.name + ".hgs").c_str(), "rb");
+            }
+            if (demoFile_[stream] == nullptr)
+                break;
+            const AirSender &air = demoServer_.streams[stream].air;
+            const int count = air.pieceBytes(index);
+            if (std::fseek(demoFile_[stream], static_cast<long>(index) * kAirPiece, SEEK_SET) != 0 ||
+                std::fread(piece, 1, static_cast<std::size_t>(count), demoFile_[stream]) != static_cast<std::size_t>(count))
+                break;
+            const int size = air.piece(index, piece, count, bytes);
+            if (size > 0)
+            {
+                netlink::send(bytes, size);
+                ++sent_;
+                ++sent;
+            }
+        }
+        return sent;
+    }
+#else
+    void NetGame::demoAsk(std::uint32_t map, bool now, std::uint32_t from)
+    {
+        netSay(match_, netEvent(NetEventType::DemoWant, now ? 1 : 0, static_cast<std::int16_t>(map & 0xFFFF),
+                                static_cast<std::int16_t>(map >> 16), static_cast<std::int16_t>(from & 0xFFFF),
+                                static_cast<std::int16_t>(from >> 16)));
+    }
+#endif
 
     bool NetGame::votePage() const
     {

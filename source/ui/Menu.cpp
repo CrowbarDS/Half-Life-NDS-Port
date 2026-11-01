@@ -113,6 +113,9 @@ namespace hlrt
             kNewSkill,     ///< ... and how hard (its value row)
             kQuit,         ///< the title's: back to whatever started the game
             kSendDemo,     ///< MULTIPLAYER's: a demo sent to a console without the game
+            kDemoUplink,
+            kDemoHazard,
+            kStopDemo,
             kProfile,      ///< ... the player's name, model, colours and spray
             kProfName,     ///< PROFILE's: the name the others see
             kProfModel,
@@ -174,6 +177,10 @@ namespace hlrt
                                   {Kind::Button, kProfile, "PROFILE"},
                                   {Kind::Button, kOptions, "OPTIONS"},
                                   {Kind::Button, kBack, "BACK"}};
+        const Row kDemoRows[] = {{Kind::Button, kDemoUplink, "UPLINK"},
+                                 {Kind::Button, kDemoHazard, "HAZARD COURSE"},
+                                 {Kind::Button, kBack, "BACK"}};
+        const Row kServeRows[] = {{Kind::Button, kStopDemo, "STOP"}};
         const Row kNetPauseRows[] = {{Kind::Button, kResume, "RESUME"}, {Kind::Button, kOptions, "OPTIONS"},
                                      {Kind::Button, kEndMatch, "END MATCH"}, {Kind::Button, kLeave, "LEAVE GAME"}};
         // The games found: made when they are shown, then BACK.
@@ -290,6 +297,8 @@ namespace hlrt
             case 3: count = static_cast<int>(sizeof(kTitleRows) / sizeof(kTitleRows[0])); return kTitleRows;
             case 5: count = 2; return kConfirmRows;
             case 20: count = 2; return kHandRows;
+            case 21: count = 3; return kDemoRows;
+            case 22: count = 1; return kServeRows;
             case 7: count = static_cast<int>(sizeof(kMultiRows) / sizeof(kMultiRows[0])); return kMultiRows;
             case 9: count = foundCount + 1; return foundRows;
             case 11: count = static_cast<int>(sizeof(kNetPauseRows) / sizeof(kNetPauseRows[0])); return kNetPauseRows;
@@ -358,6 +367,10 @@ namespace hlrt
             onCard[i] = gameThere_[i];
         }
         saveThere = saves_ != nullptr && saveMostRecent(*saves_) >= 0;
+#ifndef HLDS_CHILD
+        demoThere_[0] = netGame.demoThere(hldata::kDemoHazard);
+        demoThere_[1] = netGame.demoThere(hldata::kDemoUplink);
+#endif
     }
 
     void Menu::setQuittable(bool can) { quitThere = can; }
@@ -384,7 +397,8 @@ namespace hlrt
     bool Menu::big() const
     {
         return page_ == Page::Main || page_ == Page::Title || page_ == Page::Confirm || page_ == Page::Multiplayer ||
-               page_ == Page::NetPause || page_ == Page::Difficulty || page_ == Page::NewGame || page_ == Page::Hand;
+               page_ == Page::NetPause || page_ == Page::Difficulty || page_ == Page::NewGame || page_ == Page::Hand ||
+               page_ == Page::NetDemo || page_ == Page::NetServe;
     }
 
     /// What of the lobby is on the screen: who is there, what they are
@@ -462,12 +476,19 @@ namespace hlrt
         title_ = false;
         // (The next map said on the screen has come and gone, while nothing here ran.)
         nextHeld_ = false;
-        page_ = netGame.playing() ? Page::NetPause : Page::Main;
+        page_ = netGame.playing() || netGame.demo() != 0 ? Page::NetPause : Page::Main;
         active_ = -1;
         // (The touch that opened it, if there was one, is not a press.)
         touching_ = (keysHeld() & KEY_TOUCH) != 0;
         if (show)
             draw();
+    }
+
+    namespace
+    {
+        int drawFitted(Canvas &canvas, const FontView &font, int x, int y, const char *text, const Ink &ink, int width,
+                       int count = -1);
+        void drawBars(Canvas &canvas, int x, int y, int bars);
     }
 
     void Menu::draw()
@@ -491,7 +512,7 @@ namespace hlrt
         }
         if (big())
         {
-            const FontView &title = touchCanvas.font(page_ == Page::Confirm ? kFontMedium : kFontTitle);
+            const FontView &title = touchCanvas.font(page_ == Page::Confirm || page_ == Page::NetServe ? kFontMedium : kFontTitle);
             drawTextCentred(canvas, title, 128, page_ == Page::Confirm ? 14 : 8,
                             page_ == Page::Main || page_ == Page::NetPause
                                 ? "PAUSED"
@@ -500,6 +521,8 @@ namespace hlrt
                                    : page_ == Page::Difficulty  ? "DIFFICULTY"
                                    : page_ == Page::NewGame     ? "NEW GAME"
                                    : page_ == Page::Hand        ? "WHICH HAND?"
+                                   : page_ == Page::NetDemo     ? "SEND DEMO"
+                                   : page_ == Page::NetServe    ? "SERVING THE DEMO"
                                                                 : question),
                             inkFor(title, kUiOrange));
         }
@@ -514,11 +537,38 @@ namespace hlrt
                             inkFor(small, kUiOrange));
             if (joinWhy[0] != 0)
                 drawTextCentred(canvas, small, 128, 170, joinWhy, inkFor(small, kUiGrey));
+            // (A demo it cannot have: why, without having to touch it.)
+            else if (foundCount > 0 && foundList[0].room.mode >= kNetModeDemoBase && foundDead(0) != nullptr)
+                drawTextCentred(canvas, small, 128, 170, foundDead(0), inkFor(small, kUiGrey));
 #ifdef HLDS_CHILD
             drawTextCentred(canvas, small, 128, 150, global.twlChild ? "DSi mode, 16 MB" : "DS mode", inkFor(small, kUiGrey));
 #endif
         }
-        if (page_ == Page::NetPause)
+#ifndef HLDS_CHILD
+        if (page_ == Page::NetDemo)
+        {
+            const FontView &small = touchCanvas.font(kFontSmall);
+            const int top = kMainLayout.top + rowCount() * kMainLayout.pitch + 8;
+            drawTextCentred(canvas, small, 128, top, "Other consoles need no data.", inkFor(small, kUiGrey));
+            drawTextCentred(canvas, small, 128, top + 12, "They must be a DSi or 3DS, in DSi mode.", inkFor(small, kUiGrey));
+        }
+        if (page_ == Page::NetServe)
+        {
+            const FontView &small = touchCanvas.font(kFontSmall);
+            const int top = kMainLayout.top + rowCount() * kMainLayout.pitch + 6;
+            char line[48];
+            int bars = 0, row = 0;
+            for (; netGame.demoRow(row, line, sizeof(line), bars); ++row)
+            {
+                const int y = top + row * 16;
+                drawFitted(canvas, small, 16, y, line, inkFor(small, kUiOrange), 200);
+                drawBars(canvas, 226, y, bars);
+            }
+            if (row == 0)
+                drawTextCentred(canvas, small, 128, top, "Waiting for consoles. Stay near them.", inkFor(small, kUiGrey));
+        }
+#endif
+        if (page_ == Page::NetPause && netGame.demo() == 0)
         {
             bottomScreen.drawScores(kMainLayout.top + rowCount() * kMainLayout.pitch + 4);
             netShown_ = netSignature();
@@ -553,7 +603,7 @@ namespace hlrt
         /// no more than `width`: what does not fit is left off, and "..."
         /// says so. Where it ends.
         int drawFitted(Canvas &canvas, const FontView &font, int x, int y, const char *text, const Ink &ink, int width,
-                       int count = -1)
+                       int count)
         {
             if (textWidth(font, text, count) <= width)
                 return drawText(canvas, font, x, y, text, ink, count);
@@ -2717,7 +2767,7 @@ namespace hlrt
                 : page_ == Page::Profile || lobby ? Page::Multiplayer
                 : page_ == Page::Settings && from == Page::Multiplayer ? Page::Multiplayer
                 : title_                 ? Page::Title
-                : netGame.playing()      ? Page::NetPause
+                : netGame.playing() || netGame.demo() != 0 ? Page::NetPause
                                          : Page::Main;
         settings.save();
         active_ = -1;
@@ -3172,7 +3222,10 @@ namespace hlrt
             canvas.button(kOptionLayout.x, y, kOptionLayout.width, kOptionLayout.height, down && !dead);
             char text[64];
             std::snprintf(text, sizeof(text), "%s  %s  %s  %d/%d", found.name,
-                          found.room.version == 0 ? "" : (found.room.mode == kNetModeTeamplay ? "teamplay" : "deathmatch"),
+                          found.room.version == 0 ? ""
+                          : found.room.mode >= kNetModeDemoBase
+                              ? (found.room.mode == kNetModeDemoBase ? "demo: Hazard Course" : "demo: Uplink")
+                              : (found.room.mode == kNetModeTeamplay ? "teamplay" : "deathmatch"),
                           found.map != nullptr ? found.map
 #ifndef HLDS_CHILD
                                               : (found.room.mapHash != 0 ? "(not on this card)" : ""),
@@ -3263,7 +3316,11 @@ namespace hlrt
         case kGameUplink:
             return gameThere_[2] ? nullptr : "Uplink is not on the card";
         case kSendDemo:
-            return "Send a demo: coming later";
+            return demoThere_[0] || demoThere_[1] ? nullptr : "No demo's maps are on the card";
+        case kDemoHazard:
+            return demoThere_[0] ? nullptr : "The Hazard Course's maps are not on the card";
+        case kDemoUplink:
+            return demoThere_[1] ? nullptr : "Uplink's maps are not on the card";
         default:
             return nullptr;
         }
@@ -3279,6 +3336,14 @@ namespace hlrt
         const int most = found.room.version != 0 ? found.room.most : found.most;
         if (found.players >= most)
             return "Full";
+#ifdef HLDS_CHILD
+        if (found.room.version != 0 && found.room.mode >= kNetModeDemoBase && !global.twlChild)
+            return netDemoRefusal(false);
+#else
+        // (The demo is for consoles with no data: this one has the game.)
+        if (found.room.version != 0 && found.room.mode >= kNetModeDemoBase)
+            return global.isDSi ? "A demo is for a console without the game" : netDemoRefusal(false);
+#endif
 #ifdef HLDS_CHILD
         if (found.room.version == 0 || !found.room.guests)
             return "It lets in only consoles with the game";
@@ -3384,6 +3449,14 @@ namespace hlrt
                 openNewGame();
                 break;
             }
+#ifndef HLDS_CHILD
+            if (action == Action::StopDemo)
+            {
+                netGame.leave();
+                outOfGame();
+                break;
+            }
+#endif
             return action;
         }
         case kNo:
@@ -3399,6 +3472,13 @@ namespace hlrt
             openSheet(Page::Achievements);
             break;
         case kBack:
+            // (SEND DEMO's: where it came from.)
+            if (page_ == Page::NetDemo)
+            {
+                page_ = Page::Multiplayer;
+                draw();
+                break;
+            }
             // Out of a lobby: out of the game, and the radio silent.
             if (page_ == Page::NetHost || page_ == Page::NetJoin || page_ == Page::NetLobby)
             {
@@ -3410,7 +3490,7 @@ namespace hlrt
             // (From how hard, back to which game; from which game, to where
             // it was asked for.)
             page_ = page_ == Page::Difficulty ? Page::NewGame
-                                              : (title_ ? Page::Title : (netGame.playing() ? Page::NetPause : Page::Main));
+                                              : (title_ ? Page::Title : (netGame.playing() || netGame.demo() != 0 ? Page::NetPause : Page::Main));
             draw();
             break;
         case kMultiplayer:
@@ -3435,6 +3515,30 @@ namespace hlrt
             openHost();
             break;
         }
+#ifndef HLDS_CHILD
+        case kSendDemo:
+            page_ = Page::NetDemo;
+            draw();
+            break;
+        case kDemoUplink:
+        case kDemoHazard:
+            if (netGame.demoHost(item.id == kDemoUplink ? hldata::kDemoUplink : hldata::kDemoHazard))
+            {
+                page_ = Page::NetServe;
+                draw();
+            }
+            else
+            {
+                page_ = Page::Multiplayer;
+                draw();
+                showReason("The wireless would not start");
+            }
+            break;
+        case kStopDemo:
+            asker_ = page_;
+            ask(Action::StopDemo, "STOP THE DEMO?");
+            break;
+#endif
         case kNetJoin:
             joinWhy[0] = 0;
             if (netGame.scan())
@@ -3538,7 +3642,7 @@ namespace hlrt
                         card = &map;
                 }
 #ifndef HLDS_CHILD
-                if (card == nullptr && page_ == Page::NetJoin && foundCount > 0)
+                if (card == nullptr && page_ == Page::NetJoin && foundCount > 0 && foundList[0].room.mode < kNetModeDemoBase)
                     elsewhere = "?";
 #endif
                 // (The host's map, not on this card -- or no card: its name,
@@ -3778,9 +3882,30 @@ namespace hlrt
         }
         else if (page_ == Page::NetPause)
         {
-            if (netSignature() != netShown_ && active_ < 0)
+            if (netGame.demo() == 0 && netSignature() != netShown_ && active_ < 0)
                 draw();
         }
+#ifndef HLDS_CHILD
+        else if (page_ == Page::NetServe && active_ < 0 && Global::vblanks() - servedAt_ >= 30)
+        {
+            servedAt_ = Global::vblanks();
+            // (Drawn again only when it has changed: it would blink.)
+            char line[48];
+            int bars = 0;
+            unsigned sum = 0;
+            for (int row = 0; netGame.demoRow(row, line, sizeof(line), bars); ++row)
+            {
+                sum = sum * 131u + static_cast<unsigned>(bars) + 1u;
+                for (const char *c = line; *c != 0; ++c)
+                    sum = sum * 31u + static_cast<unsigned char>(*c);
+            }
+            if (sum != servedSum_)
+            {
+                servedSum_ = sum;
+                draw();
+            }
+        }
+#endif
         const bool down = (keysHeld() & KEY_TOUCH) != 0;
         if (down)
         {

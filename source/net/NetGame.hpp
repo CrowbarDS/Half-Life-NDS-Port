@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 
+#include "HlDemo.hpp"
 #include "HlNetAir.hpp"
 #include "HlNetGame.hpp"
 #include "HlNetMaps.hpp"
@@ -158,6 +159,22 @@ namespace hlrt
         void toLobby();
         /// The map coming next, as it is known ("": none).
         const char *nextName() const;
+        /// A demo being served, or played from it (HlDemo.hpp); 0: a game.
+        int demo() const { return match_.rules.demo; }
+#ifndef HLDS_CHILD
+        /// Whether all of a demo's streams are on this card.
+        bool demoThere(int group);
+        /// The host: serve a demo, and nothing else. False if the radio would
+        /// not start.
+        bool demoHost(int group);
+        /// A receiver's line, for the Serving page: who, what, how far. `row`-th
+        /// of those here; false: no such. Its signal, 0..4.
+        bool demoRow(int row, char *line, int room, int &bars);
+#else
+        /// A console in DSi mode playing a demo: this map wanted, from this piece.
+        void demoAsk(std::uint32_t map, bool now, std::uint32_t from);
+        std::uint32_t demoLongest() const { return static_cast<std::uint32_t>(match_.rules.demoLongest) * 16384u; }
+#endif
         /// The match over, and the time for the vote: its page is up.
         bool votePage() const;
         /// How long it has to go (as well as it is known here).
@@ -348,6 +365,19 @@ namespace hlrt
         void sayNext(const std::string &map, int slot);
         void goBackToLobby();
         std::string voteMaps_[hldata::NetVote::kMost];
+        // Serving a demo: who is sent what, each stream's file, and what is
+        // known of each map's.
+        hldata::DemoServer demoServer_;
+        std::FILE *demoFile_[hldata::DemoServer::kStreams] = {};
+        std::uint32_t demoFileMap_[hldata::DemoServer::kStreams] = {};
+        std::uint32_t demoLength_[hldata::kDemoMapsMost] = {};
+        std::uint32_t demoCrc_[hldata::kDemoMapsMost] = {};
+        unsigned demoBases_ = 0;      ///< bit n: client n is to be sent the demo's base
+        std::uint16_t demoTokens_[hldata::kNetPlayers] = {};
+        std::uint8_t demoMapOf_[hldata::kNetPlayers] = {}; ///< (its place among the demo's maps, + 1)
+        int demoFrame();
+        void demoHeard(const hldata::NetEvent &event);
+        void demoStop();
         unsigned guests_ = 0;        ///< bit n: client n has asked for a stream
         std::FILE *airFile_ = nullptr;
         std::uint16_t serves_ = 0;   ///< sendings made, for each one's number

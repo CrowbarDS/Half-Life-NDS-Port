@@ -331,6 +331,11 @@ namespace
 
 int main()
 {
+    // The demos' maps, the first where each begins.
+    check(std::strcmp(netDemoMaps(kDemoUplink)[0], "hldemo1") == 0, "Uplink begins on hldemo1");
+    check(netDemoMaps(kDemoUplink)[3] == nullptr, "Uplink has three maps");
+    check(std::strcmp(netDemoMaps(kDemoHazard)[0], "t0a0") == 0, "the Hazard Course begins on t0a0");
+    check(std::strcmp(netDemoMaps(kDemoHazard)[kDemoMapsMost - 1], "t0a0d") == 0, "the Hazard Course ends on t0a0d");
     testRefusal();
     testArena();
     testPrefetch();
