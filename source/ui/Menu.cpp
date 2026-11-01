@@ -344,8 +344,6 @@ namespace hlrt
         title_ = true;
         page_ = Page::Hand;
         draw();
-        // (As it stands until one is touched.)
-        drawRow(settings.leftHanded ? 0 : 1, true);
     }
 
     void Menu::openLobby()
