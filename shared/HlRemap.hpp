@@ -6,9 +6,9 @@
 // "DM_Base" has them at 160..191 (the top) and 192..223 (the bottom); one
 // named "RemapN_aaa_bbb_ccc" says where they are, aaa..bbb and bbb+1..ccc.
 // Each colour of a run keeps how bright and how strong it is, and takes the
-// new hue (xash3d's Image_PaletteHueReplace, which this follows line for
-// line, and the game's own studio renderer before it).
+// new hue.
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -63,65 +63,35 @@ namespace hldata
     }
 
     /// The colours `first`..`last` of `palette` (RGB, three bytes each) given
-    /// the hue `colour` (0..255 for the whole circle).
+    /// the hue `colour` (0..255 for the whole circle). In HSV terms: V and S
+    /// stay, so the largest and smallest channels keep their values, and H
+    /// says which channel has which. The circle is six sectors of 60 degrees:
+    /// in each, one channel is at the top, one at the bottom, and the third
+    /// goes in a straight line between them.
     inline void hueReplace(std::uint8_t (*palette)[3], int colour, int first, int last)
     {
-        const float hue = static_cast<float>(colour) * (360.0f / 255);
+        const int degrees = colour * 360 / 255;
+        const int sector = degrees / 60 % 6;
+        const int along = degrees % 60;
         for (int i = first; i <= last && i < 256; ++i)
         {
-            float r = palette[i][0], g = palette[i][1], b = palette[i][2];
-            const float most = (r > g ? (r > b ? r : b) : (g > b ? g : b)) / 255.0f;
-            float least = (r < g ? (r < b ? r : b) : (g < b ? g : b)) / 255.0f;
-            if (most == 0)
-                continue;
-            const float value = most;
-            const float saturation = (most - least) / most;
-            least = value * (1.0f - saturation);
-            if (hue <= 120.0f)
-            {
-                b = least;
-                if (hue < 60)
-                {
-                    r = value;
-                    g = least + hue * (value - least) / (120.0f - hue);
-                }
-                else
-                {
-                    g = value;
-                    r = least + (120.0f - hue) * (value - least) / hue;
-                }
-            }
-            else if (hue <= 240.0f)
-            {
-                r = least;
-                if (hue < 180.0f)
-                {
-                    g = value;
-                    b = least + (hue - 120.0f) * (value - least) / (240.0f - hue);
-                }
-                else
-                {
-                    b = value;
-                    g = least + (240.0f - hue) * (value - least) / (hue - 120.0f);
-                }
-            }
-            else
-            {
-                g = least;
-                if (hue < 300.0f)
-                {
-                    b = value;
-                    r = least + (hue - 240.0f) * (value - least) / (360.0f - hue);
-                }
-                else
-                {
-                    r = value;
-                    b = least + (360.0f - hue) * (value - least) / (hue - 240.0f);
-                }
-            }
-            palette[i][0] = static_cast<std::uint8_t>(r * 255);
-            palette[i][1] = static_cast<std::uint8_t>(g * 255);
-            palette[i][2] = static_cast<std::uint8_t>(b * 255);
+            std::uint8_t *rgb = palette[i];
+            const int high = std::max({rgb[0], rgb[1], rgb[2]});
+            const int low = std::min({rgb[0], rgb[1], rgb[2]});
+            const int span = high - low;
+            const auto up = static_cast<std::uint8_t>(low + span * along / 60);
+            const auto down = static_cast<std::uint8_t>(high - span * along / 60);
+            const auto top = static_cast<std::uint8_t>(high);
+            const auto bottom = static_cast<std::uint8_t>(low);
+            const std::uint8_t sectors[6][3] = {
+                {top, up, bottom},   // red to yellow
+                {down, top, bottom}, // yellow to green
+                {bottom, top, up},   // green to cyan
+                {bottom, down, top}, // cyan to blue
+                {up, bottom, top},   // blue to magenta
+                {top, bottom, down}, // magenta to red
+            };
+            std::memcpy(rgb, sectors[sector], 3);
         }
     }
 
