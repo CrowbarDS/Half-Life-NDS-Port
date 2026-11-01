@@ -1,17 +1,17 @@
-// hlds-convert-gui: the converter with a window. See MainWindow.hpp.
+// hlds-convert-gui: the installer. See Installer.hpp.
 
 #include <QApplication>
 
-#include "MainWindow.hpp"
+#include "Installer.hpp"
 
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
-    // Where QSettings keeps the two remembered folders.
+    // Where QSettings keeps the folder last used, and the cache goes.
     QApplication::setOrganizationName(QStringLiteral("hlds"));
     QApplication::setApplicationName(QStringLiteral("hlds-convert"));
 
-    MainWindow window;
+    Installer window;
     window.show();
     return app.exec();
 }
