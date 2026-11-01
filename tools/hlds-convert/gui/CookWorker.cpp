@@ -21,10 +21,10 @@ void CookWorker::run()
         [&](const hlds::MapResult &r)
         {
             for (const std::string &warning : r.warnings)
-                emit logLine(QStringLiteral("  warning: ") + QString::fromStdString(warning));
+                emit logLine(QString::fromStdString(r.name) + QStringLiteral(": warning: ") + QString::fromStdString(warning));
             if (!r.ok)
             {
-                emit logLine(QStringLiteral("  FAILED: ") + QString::fromStdString(r.error));
+                emit logLine(QString::fromStdString(r.name) + QStringLiteral(": FAILED: ") + QString::fromStdString(r.error));
                 return;
             }
             emit logLine(QStringLiteral("  %1 KB, %2 textures (%3 new)")

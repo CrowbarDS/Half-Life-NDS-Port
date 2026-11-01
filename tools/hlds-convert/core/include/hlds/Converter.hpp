@@ -46,6 +46,8 @@ namespace hlds
         bool guardedMerges = true; ///< CookOptions::guardedMerges
         bool groupByLeaf = true;   ///< CookOptions::groupByLeaf
         std::string startMap; ///< empty: keep the manifest's, or the default
+        /// Told of the parts of a run that are no map's: a phrase each.
+        std::function<void(const std::string &)> status;
     };
 
     struct MapResult
@@ -183,7 +185,9 @@ namespace hlds
         /// Cook several maps and then write the manifest, which lists every
         /// map cooked now or by an earlier run that is still on the card.
         /// `progress` is called before each map with its index; `cancel`, if
-        /// given, is checked between maps. Returns the number that failed.
+        /// given, is checked between maps, and a run cancelled leaves its
+        /// archives as they are, with no new manifest. Returns the number
+        /// that failed.
         int cookMaps(const std::vector<std::string> &names,
                      const std::function<void(std::size_t, const std::string &)> &progress,
                      const std::function<void(const MapResult &)> &done,

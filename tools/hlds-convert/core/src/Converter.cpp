@@ -1872,7 +1872,16 @@ namespace hlds
                             const std::atomic<bool> *cancel, std::string &error)
     {
         int failed = 0;
+        const auto say = [&](const char *what)
+        {
+            if (options_.status)
+                options_.status(what);
+        };
+        const auto cancelled = [&]() { return cancel != nullptr && cancel->load(); };
+        say("Preparing what all the maps share");
         common_ = cookCommon();
+        if (cancelled())
+            return failed;
         {
             PackReport report;
             std::string why;
@@ -1921,6 +1930,9 @@ namespace hlds
                 thread.join();
         }
         failed += failedCount.load();
+        if (cancelled())
+            return failed;
+        say("Packing what all the maps share");
         // (Again, now that the maps are: what their people say is in it.)
         {
             PackReport report;
@@ -1929,7 +1941,9 @@ namespace hlds
                 common_.warnings.push_back("the common archive was not made: " + why);
         }
 
+        say("Packing the maps for Download Play");
         packAirGroups();
+        say("Writing the list of maps");
         if (!writeManifest(error))
             return failed + 1;
         return failed;
