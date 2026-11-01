@@ -5,6 +5,7 @@
 //
 // Needs the game: HLDS_VALVE_DIR. Without it, nothing is run.
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>

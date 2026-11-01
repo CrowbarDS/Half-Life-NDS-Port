@@ -16,6 +16,7 @@
 //
 // std-only: the host tests run it, over a radio that loses frames.
 
+#include <cstring>
 #include <cstdint>
 
 #include "HlNetAir.hpp"

@@ -4,6 +4,7 @@
 // key holds paths from the mapper's own machine, in whatever case they typed,
 // and a miss there turns into a map with untextured walls rather than an error.
 
+#include <cstring>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>

@@ -8,6 +8,7 @@
 // maps are a few brushes and a few lines of entity text, so that what is
 // being tested is the rule and nothing else.
 
+#include <cstdlib>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>

@@ -6,6 +6,7 @@
 // kill by the player) and nothing it should not (a name not listened for,
 // one whose entities are gone, a cheat's kills).
 
+#include <cstring>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>

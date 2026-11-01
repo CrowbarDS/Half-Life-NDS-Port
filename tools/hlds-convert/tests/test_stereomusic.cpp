@@ -5,6 +5,7 @@
 // a ring the ARM9 is behind with is silence, counted, until it catches up;
 // and the end of the track is silence, not counted.
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <vector>

@@ -6,6 +6,7 @@
 // consistently wrong -- every wall facing outwards, say -- which a round-trip
 // test alone never would.
 
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 

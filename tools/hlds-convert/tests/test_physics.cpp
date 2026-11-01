@@ -10,6 +10,7 @@
 // The box room has only axis-aligned walls, so set HLDS_VALVE_DIR to a game
 // folder to run the same comparisons on a real map with sloped planes.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>

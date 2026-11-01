@@ -4,6 +4,7 @@
 // The packing is checked the only way that means anything: what the DS's
 // chip would make of the packed sound is compared with what went in.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>

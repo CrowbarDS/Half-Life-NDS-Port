@@ -428,8 +428,8 @@ namespace hlds
                         const hldata::Leaf &sl = level.leaves[seen];
                         for (int c = 0; c < 8; ++c)
                         {
-                            const double corner[3] = {(c & 1) ? sl.maxs[0] : sl.mins[0], (c & 2) ? sl.maxs[1] : sl.mins[1],
-                                                      (c & 4) ? sl.maxs[2] : sl.mins[2]};
+                            const double corner[3] = {double((c & 1) ? sl.maxs[0] : sl.mins[0]), double((c & 2) ? sl.maxs[1] : sl.mins[1]),
+                                                      double((c & 4) ? sl.maxs[2] : sl.mins[2])};
                             const double d[3] = {corner[0] - eyeAt[0], corner[1] - eyeAt[1], corner[2] - eyeAt[2]};
                             farthest = std::max(farthest, std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]));
                         }

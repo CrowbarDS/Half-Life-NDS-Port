@@ -4,6 +4,7 @@
 // a switched texture's other face, '-' textures varied face by face, which
 // face a brush shows as it is used, and a conveyor carrying and sliding.
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>

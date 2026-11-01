@@ -24,6 +24,7 @@
 //
 // std-only: the host tests play matches with it (test_net).
 
+#include <cstring>
 #include <cstdio>
 
 #include "HlMonsters.hpp"

@@ -5,6 +5,8 @@
 // card has one); the most recent found; one of the player's deleted.
 // Against a "card" in memory that can be told to fail at any step.
 
+#include <algorithm>
+#include <cstring>
 #include <cstdio>
 #include <map>
 #include <string>

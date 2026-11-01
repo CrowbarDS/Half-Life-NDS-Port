@@ -36,6 +36,8 @@
 #ifndef __yas__detail__io__binary_streams_hpp
 #define __yas__detail__io__binary_streams_hpp
 
+#include <cstdlib>
+
 #include <yas/detail/config/config.hpp>
 
 #include <yas/detail/io/io_exceptions.hpp>

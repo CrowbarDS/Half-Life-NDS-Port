@@ -10,6 +10,8 @@
 //
 // std-only and inline.
 
+#include <cstring>
+
 #include "HlUi.hpp"
 
 namespace hldata

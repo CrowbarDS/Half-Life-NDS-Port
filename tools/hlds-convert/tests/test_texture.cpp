@@ -7,6 +7,7 @@
 //
 // The encoder tests need ptexconv and are skipped, loudly, without it.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>

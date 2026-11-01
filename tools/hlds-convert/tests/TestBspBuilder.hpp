@@ -20,6 +20,7 @@
 // viewer, into the wall. Every face here follows that, which is what the
 // cooker's winding handling is later tested against.
 
+#include <cstdio>
 #include <cmath>
 #include <cstdint>
 #include <cstring>

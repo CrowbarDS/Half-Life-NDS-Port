@@ -7,6 +7,7 @@
 
 #include "hlds/TextureFamily.hpp"
 
+#include <cstdlib>
 #include <algorithm>
 #include <array>
 #include <cmath>

@@ -19,6 +19,7 @@
 // at rest at the station and the player still inside it. Nothing draws; a
 // minute of the ride takes a fraction of a second.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>

@@ -13,6 +13,8 @@
 // Included at the end of HlSaveState.hpp. std-only and inline: the host
 // tests run it.
 
+#include <cstring>
+
 namespace hldata
 {
     HL_FIELDS(AiSound, 5);

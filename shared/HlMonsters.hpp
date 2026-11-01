@@ -30,6 +30,9 @@
 //
 // std-only and inline: the host tests run it.
 
+#include <cstdlib>
+#include <cstring>
+
 #include "HlLogic.hpp"
 #include "HlMaterial.hpp"
 #include "HlAi.hpp"

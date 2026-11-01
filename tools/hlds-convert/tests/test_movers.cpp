@@ -8,6 +8,7 @@
 // random segments; then the things a player would actually notice are checked
 // by walking into them.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <random>

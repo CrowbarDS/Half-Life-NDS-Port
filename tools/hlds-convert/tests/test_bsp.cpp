@@ -6,6 +6,7 @@
 // And the PVS polygon count is the number a map is judged for heavy fog use from,
 // so it is pinned on a level small enough to count by hand.
 
+#include <cstring>
 #include <cstdio>
 
 #include "TestBspBuilder.hpp"

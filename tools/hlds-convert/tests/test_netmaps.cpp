@@ -2,6 +2,7 @@
 // for its card (HlPreview.hpp), and where that picture is taken from: the
 // map's info_intermission, kept by the converter, facing what it looks at.
 
+#include <cstring>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>

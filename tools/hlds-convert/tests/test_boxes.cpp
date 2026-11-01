@@ -4,6 +4,7 @@
 // (It used to move as something a person wide, whatever it was: a crate 64
 // across went 16 units into every wall.)
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>

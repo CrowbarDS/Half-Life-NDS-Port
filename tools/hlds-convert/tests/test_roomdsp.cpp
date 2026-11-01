@@ -4,6 +4,7 @@
 // stops, at both of the console's rates; and going from one room to another
 // never clicks.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>

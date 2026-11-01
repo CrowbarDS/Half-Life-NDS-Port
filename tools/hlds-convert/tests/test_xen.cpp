@@ -9,6 +9,7 @@
 // On a synthetic room, and with HLDS_VALVE_DIR on the game's own: c4a1's
 // arrival, carried into c4a1a, and c4a3's pads.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>

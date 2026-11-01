@@ -9,6 +9,7 @@
 // stream or archive is refused by the converter's reader rather than run
 // past the end of anything.
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>

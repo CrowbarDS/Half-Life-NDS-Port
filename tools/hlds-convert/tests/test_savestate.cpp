@@ -7,6 +7,7 @@
 // when they are done. Whatever was not saved -- a door's timer, a monster's
 // grudge, a queue of things due -- shows as the two parting company.
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>

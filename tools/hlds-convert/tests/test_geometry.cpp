@@ -7,6 +7,7 @@
 // wall. So every polygon here is checked the same way: decode what was packed,
 // and require that the pieces face the right way and add up to the whole.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 

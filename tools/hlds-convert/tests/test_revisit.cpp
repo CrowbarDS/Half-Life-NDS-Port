@@ -7,6 +7,8 @@
 //
 // With HLDS_VALVE_DIR (the game's maps); without it, nothing is run.
 
+#include <algorithm>
+#include <cstring>
 #include <cstdio>
 #include <cstdlib>
 #include <map>
