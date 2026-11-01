@@ -133,6 +133,8 @@ int main()
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir != nullptr && dir[0] != '\0')
         testReal(dir);
+    else
+        std::printf("test_avi: HLDS_VALVE_DIR not set, the game's films were not read\n");
     if (g_failures == 0)
         std::printf("test_avi: ok\n");
     return g_failures == 0 ? 0 : 1;

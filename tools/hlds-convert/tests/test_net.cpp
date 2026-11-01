@@ -695,7 +695,10 @@ namespace
         c->game = std::make_unique<Game>();
         std::string error;
         if (!c->game->bsp.load(std::string(dir) + "/maps/" + map + ".bsp", error))
+        {
+            check(false, (std::string(dir) + "/maps/" + map + ".bsp loads").c_str());
             return nullptr;
+        }
         finish(*c->game, nullptr, dir);
         const LevelView &v = c->game->view;
         for (std::uint32_t e = 0; e < v.entityCount; ++e)
@@ -1755,7 +1758,7 @@ int main()
     testFinalScores();
     testWinnerChooser();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
-    if (dir == nullptr)
+    if (dir == nullptr || dir[0] == '\0')
         std::printf("test_net: HLDS_VALVE_DIR not set, no match was played\n");
     else
     {

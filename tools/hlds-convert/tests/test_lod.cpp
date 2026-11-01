@@ -212,7 +212,10 @@ namespace
         MdlFile mdl;
         std::string error;
         if (!mdl.load(std::string(dir) + "/models/" + name + ".mdl", error))
+        {
+            check(false, (std::string(dir) + "/models/" + name + ".mdl loads").c_str());
             return;
+        }
         const std::vector<std::string> clips = {mdl.sequences.empty() ? std::string() : mdl.sequences[0].label};
         char text[160];
         std::vector<std::uint8_t> files[2];
@@ -313,6 +316,7 @@ int main()
     else
     {
         std::printf("test_lod: HLDS_VALVE_DIR not set, the game's models were not read\n");
+        return 77;
     }
     if (g_failures == 0)
         std::printf("test_lod: ok\n");

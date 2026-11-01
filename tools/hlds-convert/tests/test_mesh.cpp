@@ -682,7 +682,7 @@ namespace
             BspFile bsp;
             if (!bsp.load(std::string(dir) + "/maps/" + map + ".bsp", error))
             {
-                std::printf("test_mesh: %s, skipped\n", error.c_str());
+                check(false, (std::string(map) + " loads").c_str());
                 continue;
             }
             auditMap(bsp, map);

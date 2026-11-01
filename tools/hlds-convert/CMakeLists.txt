@@ -110,7 +110,8 @@ target_link_libraries(hlds-convert PRIVATE hlds_convert_core)
 #
 # No Valve data is in this repository and none may be added, so every test
 # here runs on a level built in memory (tests/TestBspBuilder.hpp). Tests that
-# want real maps read HLDS_VALVE_DIR from the environment and skip without it.
+# want real maps read HLDS_VALVE_DIR from the environment and leave those checks
+# out without it; one that then has nothing left to check returns 77: skipped.
 # ---------------------------------------------------------------------------
 # The installer's decisions: no Qt either, and tested with the rest.
 add_library(hlds_install STATIC install/Install.cpp)
@@ -193,12 +194,14 @@ if(HLDS_BUILD_TESTS)
         add_executable(${test_name} tests/${test_name}.cpp)
         target_link_libraries(${test_name} PRIVATE hlds_convert_core)
         add_test(NAME ${test_name} COMMAND ${test_name})
+        # (A suite with nothing to check without the game says so with this.)
+        set_tests_properties(${test_name} PROPERTIES SKIP_RETURN_CODE 77)
     endforeach()
 
     # The DSi's DSP program (teak/, assembly) run in an emulated DSP and held
     # against its model, sample for sample (tools/dspsim). Skipped where the
     # emulator or the Teak toolchain is not there: the script says which.
-    add_test(NAME dspsim COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/../dspsim/run.sh)
+    add_test(NAME dspsim COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../dspsim/run.sh)
     set_tests_properties(dspsim PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "DSPSIM_BUDGET=25")
 
     # Not a test: writes a synthetic map with one brush of each kind in front

@@ -49,7 +49,10 @@ namespace
         s.game = std::make_unique<Game>();
         std::string error;
         if (!s.game->bsp.load(std::string(dir) + "/maps/c1a1.bsp", error))
+        {
+            check(false, (std::string(dir) + "/maps/c1a1.bsp loads").c_str());
             return s;
+        }
         finish(*s.game, nullptr, dir);
         if (!s.game->ok)
             return s;
@@ -425,7 +428,10 @@ int main()
     if (dir != nullptr && dir[0] != '\0')
         testFight(dir);
     else
+    {
         std::printf("test_people: HLDS_VALVE_DIR not set, the game's maps were not read\n");
+        return 77;
+    }
     if (g_failures == 0)
         std::printf("test_people: ok\n");
     return g_failures == 0 ? 0 : 1;

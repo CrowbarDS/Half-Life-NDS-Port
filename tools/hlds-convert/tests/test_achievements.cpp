@@ -342,7 +342,10 @@ namespace
         auto game = std::make_unique<Game>();
         std::string error;
         if (!game->bsp.load(std::string(dir) + "/maps/" + map + ".bsp", error))
+        {
+            check(false, (std::string(dir) + "/maps/" + map + ".bsp loads").c_str());
             return nullptr;
+        }
         static Globals globals;
         finish(*game, &globals, dir);
         if (!game->ok)

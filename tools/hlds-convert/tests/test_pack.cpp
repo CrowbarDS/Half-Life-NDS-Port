@@ -384,11 +384,14 @@ namespace
     void testRealMap()
     {
         const char *valve = std::getenv("HLDS_VALVE_DIR");
-        if (valve == nullptr || !fs::exists(fs::path(valve) / "maps" / "c1a0.bsp"))
+        if (valve == nullptr || *valve == '\0')
         {
             std::printf("test_pack: HLDS_VALVE_DIR not set, the game's own map was not packed\n");
             return;
         }
+        check(fs::exists(fs::path(valve) / "maps" / "c1a0.bsp"), "the game's own map is there to be packed");
+        if (!fs::exists(fs::path(valve) / "maps" / "c1a0.bsp"))
+            return;
         const fs::path root = fs::temp_directory_path() / "hlds_test_pack_real";
         fs::remove_all(root);
         fs::create_directories(root / "card");

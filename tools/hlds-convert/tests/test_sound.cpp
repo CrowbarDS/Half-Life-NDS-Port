@@ -470,6 +470,8 @@ int main()
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir != nullptr && dir[0] != '\0')
         testRealSounds(dir);
+    else
+        std::printf("test_sound: HLDS_VALVE_DIR not set, the game's sounds were not read\n");
     if (g_failures == 0)
         std::printf("test_sound: ok\n");
     return g_failures == 0 ? 0 : 1;

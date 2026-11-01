@@ -244,7 +244,10 @@ namespace
         auto game = std::make_unique<Game>();
         std::string error;
         if (!game->bsp.load(std::string(dir) + "/maps/c4a1.bsp", error))
+        {
+            check(false, (std::string(dir) + "/maps/c4a1.bsp loads").c_str());
             return;
+        }
         finish(*game, &globals);
         check(game->ok, "c4a1 cooks");
         if (!game->ok)
@@ -270,6 +273,10 @@ namespace
             finish(*next, &globals);
             step(*next);
             check(next->player.gravityPercent.value == 60, "c4a1a pulls the player at 0.6 still");
+        }
+        else
+        {
+            check(false, "c4a1a loads");
         }
 
         // c4a2a: stood on its pod (a push up over a door that pops when
@@ -315,11 +322,18 @@ namespace
                         toUnits(high - from), worstFall);
             check(toUnits(high - from) > 200 && worstFall == 0, "... a jump from it throws them up, and down unhurt");
         }
+        else
+        {
+            check(false, "c4a2a loads");
+        }
 
         // c4a3: a jump onto one of its pads.
         auto lair = std::make_unique<Game>();
         if (!lair->bsp.load(std::string(dir) + "/maps/c4a3.bsp", error))
+        {
+            check(false, (std::string(dir) + "/maps/c4a3.bsp loads").c_str());
             return;
+        }
         finish(*lair, &globals);
         Game &l = *lair;
         globals.set(kGlobalPlayerGravity, 30);

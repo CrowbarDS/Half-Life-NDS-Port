@@ -31,7 +31,10 @@ namespace
         auto game = std::make_unique<Game>();
         std::string error;
         if (!game->bsp.load(std::string(dir) + "/maps/" + map + ".bsp", error))
+        {
+            check(false, (std::string(dir) + "/maps/" + map + ".bsp loads").c_str());
             return nullptr;
+        }
         finish(*game, nullptr, dir);
         if (!game->ok)
             return nullptr;
@@ -1130,6 +1133,7 @@ int main()
     else
     {
         std::printf("test_soldiers: HLDS_VALVE_DIR not set, the maps were not played\n");
+        return 77;
     }
     if (g_failures == 0)
         std::printf("test_soldiers: ok\n");

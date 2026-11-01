@@ -140,6 +140,10 @@ namespace
                       point->classId == static_cast<std::uint16_t>(EntityClass::InfoPlayerDeathmatch),
                   "... and is shown from there between matches");
         }
+        else
+        {
+            check(false, "crossfire loads");
+        }
     }
 } // namespace
 

@@ -5,7 +5,7 @@
 // when it loops).
 //
 // Needs HLDS_VALVE_DIR; without it there is nothing to read and the test
-// says so and passes.
+// says so and is skipped.
 
 #include <cmath>
 #include <cstdio>
@@ -91,8 +91,8 @@ int main()
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir == nullptr || *dir == '\0')
     {
-        std::printf("test_mdl: HLDS_VALVE_DIR not set, nothing to read\ntest_mdl: ok\n");
-        return 0;
+        std::printf("test_mdl: HLDS_VALVE_DIR not set, nothing to read\n");
+        return 77;
     }
     // Counts measured from the files with an independent script.
     static const Expect kModels[] = {

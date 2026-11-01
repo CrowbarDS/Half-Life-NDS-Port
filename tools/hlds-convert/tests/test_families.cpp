@@ -26,7 +26,10 @@ namespace
         auto game = std::make_unique<Game>();
         std::string error;
         if (!game->bsp.load(std::string(dir) + "/maps/" + map + ".bsp", error))
+        {
+            check(false, (std::string(dir) + "/maps/" + map + ".bsp loads").c_str());
             return nullptr;
+        }
         finish(*game, nullptr, dir);
         return game->ok ? std::move(game) : nullptr;
     }
@@ -112,7 +115,10 @@ namespace
         BspFile bsp;
         std::string error;
         if (!bsp.load(std::string(dir) + "/maps/c2a4f.bsp", error))
+        {
+            check(false, (std::string(dir) + "/maps/c2a4f.bsp loads").c_str());
             return;
+        }
         // Per family: which variants its faces wear.
         std::map<std::string, std::set<int>> worn;
         int varied = 0;
@@ -292,6 +298,7 @@ int main()
     else
     {
         std::printf("test_families: HLDS_VALVE_DIR not set, the game's maps were not read\n");
+        return 77;
     }
     if (g_failures == 0)
         std::printf("test_families: ok\n");

@@ -118,7 +118,10 @@ namespace
         auto game = std::make_unique<Game>();
         std::string error;
         if (!game->bsp.load(std::string(dir) + "/maps/c1a0e.bsp", error))
+        {
+            check(false, (std::string(dir) + "/maps/c1a0e.bsp loads").c_str());
             return;
+        }
         finish(*game, nullptr, dir);
         if (!game->ok)
             return;
@@ -165,7 +168,10 @@ namespace
         auto game = std::make_unique<Game>();
         std::string error;
         if (!game->bsp.load(std::string(dir) + "/maps/c1a0e.bsp", error))
+        {
+            check(false, (std::string(dir) + "/maps/c1a0e.bsp loads").c_str());
             return;
+        }
         finish(*game, nullptr, dir);
         if (!game->ok)
             return;
@@ -262,7 +268,10 @@ namespace
         auto game = std::make_unique<Game>();
         std::string error;
         if (!game->bsp.load(std::string(dir) + "/maps/c1a0e.bsp", error))
+        {
+            check(false, (std::string(dir) + "/maps/c1a0e.bsp loads").c_str());
             return;
+        }
         finish(*game, nullptr, dir);
         if (!game->ok)
             return;
@@ -336,7 +345,10 @@ int main()
         testPrisoners(dir);
     }
     else
+    {
         std::printf("test_cascade: HLDS_VALVE_DIR not set, the map was not played\n");
+        return 77;
+    }
     if (g_failures == 0)
         std::printf("test_cascade: ok\n");
     return g_failures == 0 ? 0 : 1;

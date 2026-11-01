@@ -319,6 +319,10 @@ static void testChapters()
                   name("c2a4e") == "QUESTIONABLE ETHICS" && name("c3a2") == "LAMBDA CORE",
               "the game's own maps are of the game's own chapters");
     }
+    else
+    {
+        std::printf("test_cook: HLDS_VALVE_DIR not set, the game's own chapters were not read\n");
+    }
 }
 
 int main()

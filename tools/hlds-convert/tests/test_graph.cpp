@@ -294,9 +294,15 @@ int main()
 {
     testSearch();
     const char *valve = std::getenv("HLDS_VALVE_DIR");
-    if (valve == nullptr || !fs::exists(fs::path(valve) / "maps" / "graphs" / "c1a1a.nod"))
+    if (valve == nullptr || *valve == '\0')
     {
         std::printf("test_graph: HLDS_VALVE_DIR not set, the game's graphs were not read\n");
+    }
+    else if (!fs::exists(fs::path(valve) / "maps" / "graphs" / "c1a1a.nod"))
+    {
+        // (The game writes its graphs the first time a map is played: an
+        // install that has not been may have none.)
+        std::printf("test_graph: this game has no graphs yet, they were not read\n");
     }
     else
     {

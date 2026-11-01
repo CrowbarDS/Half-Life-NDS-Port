@@ -120,7 +120,10 @@ namespace
         auto game = std::make_unique<Game>();
         std::string error;
         if (!game->bsp.load(std::string(dir) + "/maps/" + map + ".bsp", error))
+        {
+            check(false, (std::string(dir) + "/maps/" + map + ".bsp loads").c_str());
             return;
+        }
         finish(*game, nullptr, dir);
         if (!game->ok)
         {
@@ -185,7 +188,7 @@ int main()
     if (dir == nullptr || dir[0] == '\0')
     {
         std::printf("test_actors: HLDS_VALVE_DIR not set, the maps were not played\n");
-        return 0;
+        return 77;
     }
     static const char *const kMaps[] = {"c0a0",  "c0a0a", "c0a0b", "c0a0c", "c0a0d", "c0a0e",
                                         "c1a0",  "c1a0d", "c1a0a", "c1a0b", "c1a0e", "c1a0c",

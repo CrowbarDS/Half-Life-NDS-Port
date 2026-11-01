@@ -136,7 +136,10 @@ namespace
         auto game = std::make_unique<Game>();
         std::string error;
         if (!game->bsp.load(std::string(dir) + "/maps/c1a0.bsp", error))
+        {
+            check(false, (std::string(dir) + "/maps/c1a0.bsp loads").c_str());
             return;
+        }
         finish(*game, nullptr, dir);
         check(game->ok, "the map cooks");
         if (!game->ok)
@@ -172,7 +175,10 @@ namespace
         auto game = std::make_unique<Game>();
         std::string error;
         if (!game->bsp.load(std::string(dir) + "/maps/c1a0.bsp", error))
+        {
+            check(false, (std::string(dir) + "/maps/c1a0.bsp loads").c_str());
             return;
+        }
         finish(*game, nullptr, dir);
         if (!game->ok)
             return;

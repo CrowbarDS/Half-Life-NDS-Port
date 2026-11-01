@@ -234,7 +234,10 @@ namespace
         auto game = std::make_unique<Game>();
         std::string error;
         if (!game->bsp.load(std::string(dir) + "/maps/" + map + ".bsp", error))
+        {
+            check(false, (std::string(dir) + "/maps/" + map + ".bsp loads").c_str());
             return true;
+        }
         finish(*game, &globals);
         if (!game->ok)
             return false;
@@ -312,7 +315,10 @@ namespace
                 const PlayerState player = game->player;
                 auto again = std::make_unique<Game>();
                 if (!again->bsp.load(std::string(dir) + "/maps/" + map + ".bsp", error))
+                {
+                    check(false, (std::string(dir) + "/maps/" + map + ".bsp loads").c_str());
                     return false;
+                }
                 finish(*again, &globals);
                 const int t2 = again->tram();
                 logicPlaceBrush(again->logic, again->view.logic[t2].brush, car.pos,
@@ -339,7 +345,10 @@ namespace
                 route += " " + map;
                 auto next = std::make_unique<Game>();
                 if (!next->bsp.load(std::string(dir) + "/maps/" + map + ".bsp", error))
+                {
+                    check(false, (std::string(dir) + "/maps/" + map + ".bsp loads").c_str());
                     return false;
+                }
                 finish(*next, &globals);
                 if (!next->ok)
                     return false;
@@ -387,7 +396,10 @@ namespace
         auto game = std::make_unique<Game>();
         std::string error;
         if (!game->bsp.load(std::string(dir) + "/maps/c0a0d.bsp", error))
+        {
+            check(false, (std::string(dir) + "/maps/c0a0d.bsp loads").c_str());
             return;
+        }
         finish(*game, &globals, dir);
         check(game->ok, "c0a0d cooks with its models");
         if (!game->ok)
@@ -415,7 +427,10 @@ namespace
                 std::printf("test_track: into %s with %d actors coming along\n", map.c_str(), coming);
                 auto next = std::make_unique<Game>();
                 if (!next->bsp.load(std::string(dir) + "/maps/" + map + ".bsp", error))
+                {
+                    check(false, (std::string(dir) + "/maps/" + map + ".bsp loads").c_str());
                     return;
+                }
                 finish(*next, &globals, dir);
                 applyArrival(next->logic, next->view.landmarks, next->view.landmarkCount,
                              next->view.nameHashes, next->view.nameCount, next->player, arrival,
@@ -512,7 +527,10 @@ namespace
         auto game = std::make_unique<Game>();
         std::string error;
         if (!game->bsp.load(std::string(dir) + "/maps/" + which.from + ".bsp", error))
+        {
+            check(false, (std::string(dir) + "/maps/" + which.from + ".bsp loads").c_str());
             return;
+        }
         finish(*game, &globals);
         const int lift = game->ok ? liftOf(*game, which.name, asOld) : -1;
         check(lift >= 0 && (asOld || game->view.logic[lift].extra[3] != 0),
@@ -542,7 +560,10 @@ namespace
             check(map == which.to, "the lift's level change is to the next map");
             auto next = std::make_unique<Game>();
             if (!next->bsp.load(std::string(dir) + "/maps/" + map + ".bsp", error))
+            {
+                check(false, (std::string(dir) + "/maps/" + map + ".bsp loads").c_str());
                 return;
+            }
             finish(*next, &globals);
             liftOf(*next, which.name, asOld);
             applyArrival(next->logic, next->view.landmarks, next->view.landmarkCount, next->view.nameHashes,
@@ -756,7 +777,10 @@ namespace
         auto game = std::make_unique<Game>();
         std::string error;
         if (!game->bsp.load(std::string(dir) + "/maps/c2a2.bsp", error))
+        {
+            check(false, (std::string(dir) + "/maps/c2a2.bsp loads").c_str());
             return;
+        }
         finish(*game, &globals);
         check(game->ok, "c2a2 cooks");
         if (!game->ok)
@@ -813,6 +837,10 @@ namespace
                 check(there >= 0 && next->states[there].speed == g.states[train].speed,
                       "... and arrives in c2a2a at them still, going as fast");
             }
+            else
+            {
+                check(false, "c2a2a loads");
+            }
         }
         const fx before = g.states[train].speed;
         trainUse(g.logic, g.player);
@@ -861,6 +889,10 @@ namespace
                       "on its controls, it is taken");
             }
         }
+        else
+        {
+            check(false, "c2a3 loads");
+        }
         // c2a3a: the shark cage (spawnflags 3) is nobody's to drive.
         auto cage = std::make_unique<Game>();
         if (cage->bsp.load(std::string(dir) + "/maps/c2a3a.bsp", error))
@@ -870,6 +902,10 @@ namespace
             check(t >= 0 && !hldata::detail::trainOnControls(cage->logic, cage->player, t) &&
                       (cage->view.logic[t].flags & kLogicSelfDriven),
                   "c2a3a's shark cage is nobody's to drive");
+        }
+        else
+        {
+            check(false, "c2a3a loads");
         }
     }
 
@@ -886,7 +922,10 @@ namespace
             auto game = std::make_unique<Game>();
             std::string error;
             if (!game->bsp.load(std::string(dir) + "/maps/c1a1c.bsp", error))
+            {
+                check(false, (std::string(dir) + "/maps/c1a1c.bsp loads").c_str());
                 return;
+            }
             finish(*game, nullptr);
             Game &g = *game;
             const int lift = recordNamed(g, "pl", LogicKind::Train);

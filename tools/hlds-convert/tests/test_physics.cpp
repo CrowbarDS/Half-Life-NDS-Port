@@ -515,7 +515,7 @@ namespace
         std::string error;
         if (!w.bsp.load(std::string(dir) + "/maps/c1a0.bsp", error))
         {
-            std::printf("test_physics: %s, real-map checks skipped\n", error.c_str());
+            check(false, "c1a0 loads");
             return;
         }
         finish(w);

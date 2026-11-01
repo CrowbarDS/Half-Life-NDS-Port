@@ -400,7 +400,10 @@ namespace
         hlds::MdlFile mdl;
         std::string error;
         if (!mdl.load(std::string(dir) + "/models/player/gordon/gordon.mdl", error))
+        {
+            check(false, (std::string(dir) + "/models/player/gordon/gordon.mdl loads").c_str());
             return;
+        }
         hlds::CookedModel cooked;
         hlds::ModelCookReport report;
         check(hlds::cookModel(mdl, {"look_idle", "run"}, cooked, report, error, 128 * 128), "the player model cooks");

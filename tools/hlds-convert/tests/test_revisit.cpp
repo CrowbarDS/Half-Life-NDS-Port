@@ -78,6 +78,8 @@ namespace
         std::string error;
         if (g->bsp.load(std::string(valve) + "/maps/" + name + ".bsp", error))
             finish(*g, nullptr, valve);
+        else
+            check(false, (std::string(name) + " loads").c_str());
         return g;
     }
 
@@ -336,7 +338,7 @@ int main()
     if (valve == nullptr || *valve == '\0')
     {
         std::printf("test_revisit: HLDS_VALVE_DIR not set, the game's maps were not read\n");
-        return 0;
+        return 77;
     }
     for (const char *name : {"c1a0", "c1a1", "c2a2d", "c4a1"})
         testStreamIsTheState(valve, name);

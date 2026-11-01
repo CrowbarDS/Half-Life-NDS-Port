@@ -180,7 +180,10 @@ namespace
             std::string error;
             fading = kept = 0;
             if (!g->bsp.load(std::string(dir) + "/maps/" + map + ".bsp", error))
+            {
+                check(false, (std::string(dir) + "/maps/" + map + ".bsp loads").c_str());
                 return false;
+            }
             static Globals globals;
             finish(*g, &globals, dir);
             for (int i = 0; i < g->logic.recordCount; ++i)

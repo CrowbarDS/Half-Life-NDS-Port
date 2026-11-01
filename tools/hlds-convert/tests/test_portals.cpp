@@ -90,7 +90,10 @@ namespace
         auto g = std::make_unique<Game>();
         std::string error;
         if (!g->bsp.load(std::string(dir) + "/maps/" + map + ".bsp", error))
+        {
+            check(false, (std::string(dir) + "/maps/" + map + ".bsp loads").c_str());
             return;
+        }
         finish(*g, nullptr);
         check(g->ok, (std::string(map) + " cooks").c_str());
         if (!g->ok)
@@ -219,7 +222,10 @@ namespace
         BspFile bsp;
         std::string error;
         if (!bsp.load(std::string(dir) + "/maps/" + map + ".bsp", error))
+        {
+            check(false, (std::string(dir) + "/maps/" + map + ".bsp loads").c_str());
             return;
+        }
         int spans[2] = {-1, -1}, surfaces[2] = {0, 0};
         for (int byLeaf = 0; byLeaf < 2; ++byLeaf)
         {
@@ -245,7 +251,7 @@ int main()
     if (dir == nullptr || *dir == '\0')
     {
         std::printf("test_portals: HLDS_VALVE_DIR not set, the game's maps were not read\n");
-        return 0;
+        return 77;
     }
     for (const char *map : {"c1a2a", "c2a5x", "c1a4b"})
     {

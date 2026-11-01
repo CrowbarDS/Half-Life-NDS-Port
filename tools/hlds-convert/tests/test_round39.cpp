@@ -51,7 +51,10 @@ namespace
         auto g = std::make_unique<Game>();
         std::string error;
         if (!g->bsp.load(std::string(valve) + "/maps/" + name + ".bsp", error))
+        {
+            check(false, (std::string(valve) + "/maps/" + name + ".bsp loads").c_str());
             return g;
+        }
         finish(*g, nullptr, valve);
         return g;
     }

@@ -27,7 +27,10 @@ namespace
         auto game = std::make_unique<Game>();
         std::string error;
         if (!game->bsp.load(std::string(dir) + "/maps/" + map + ".bsp", error))
+        {
+            check(false, (std::string(dir) + "/maps/" + map + ".bsp loads").c_str());
             return nullptr;
+        }
         finish(*game, globals, dir);
         return game->ok ? std::move(game) : nullptr;
     }
@@ -273,7 +276,7 @@ int main()
     if (dir == nullptr || dir[0] == '\0')
     {
         std::printf("test_savestate: HLDS_VALVE_DIR not set, the game's maps were not read\n");
-        return 0;
+        return 77;
     }
     refusals(dir);
     // (HLDS_STATE_MAPS: other maps than these, comma separated.)

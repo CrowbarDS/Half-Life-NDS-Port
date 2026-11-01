@@ -37,7 +37,10 @@ namespace
         played->globals.set(kGlobalSkill, static_cast<std::uint8_t>(level));
         std::string error;
         if (!played->game.bsp.load(std::string(dir) + "/maps/" + map + ".bsp", error))
+        {
+            check(false, (std::string(dir) + "/maps/" + map + ".bsp loads").c_str());
             return nullptr;
+        }
         finish(played->game, &played->globals, dir);
         return played->game.ok ? std::move(played) : nullptr;
     }
@@ -563,7 +566,9 @@ int main()
     testLevels();
     if (dir == nullptr || dir[0] == '\0')
     {
-        std::printf("test_skill: HLDS_VALVE_DIR not set, the maps were not played\ntest_skill: ok\n");
+        std::printf("test_skill: HLDS_VALVE_DIR not set, the maps were not played\n");
+        if (g_failures == 0)
+            std::printf("test_skill: ok\n");
         return g_failures == 0 ? 0 : 1;
     }
     testHealth(dir);
