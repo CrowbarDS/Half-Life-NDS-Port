@@ -1854,7 +1854,9 @@ int main(int argc, char *argv[])
             {
                 {
                     const hlrt::DebugLog::Perf::Scope scope(hlrt::DebugLog::Section::Input);
-                    hlrt::input.poll(!paused);
+                    // (The match over: the touch screen is the scores' and the
+                    // vote's, and no weapon slot is touched or heard.)
+                    hlrt::input.poll(!paused && !(hlrt::netGame.playing() && hlrt::netGame.match().over));
                 }
                 const std::uint32_t now = Global::vblanks();
                 const int elapsed = static_cast<int>(now - lastVblank);
