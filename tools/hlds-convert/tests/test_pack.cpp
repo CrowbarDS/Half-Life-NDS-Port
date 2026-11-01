@@ -139,13 +139,15 @@ namespace
             return false;
         };
         bool lazyApart = true;
-        int lazyModels = 0, lazySounds = 0;
+        int lazyViews = 0, lazySounds = 0;
+        bool lazyBundled = true;
         for (std::uint32_t i = 0; i < view.modelRefCount; ++i)
         {
             const std::string name = view.modelRefs[i].name;
             if (modelRefLazy(view.modelRefs[i]))
             {
-                ++lazyModels;
+                lazyViews += name.rfind("v_", 0) == 0 ? 1 : 0;
+                lazyBundled = lazyBundled && hldata::bundlesOf(name.c_str()) != 0;
                 lazyApart = lazyApart && !has("mdl/" + name + ".hmd") && inCommon("wpn/" + name + ".hmd");
                 continue;
             }
@@ -172,7 +174,8 @@ namespace
         {
             // (Nothing is held in it yet: every weapon is one it has not --
             // the MP5's shot and reload clicks among the sounds.)
-            check(lazyModels == 15, "c1a0 names every view model, none of them its own");
+            check(lazyViews == 15, "c1a0 names every view model, none of them its own");
+            check(lazyBundled, "what it leaves to the common archive is all in the weapons' bundles");
             check(lazySounds > 15, "... and their sounds, the guns' own and their clips'");
         }
     }
