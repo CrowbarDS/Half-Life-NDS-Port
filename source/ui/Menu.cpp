@@ -115,6 +115,7 @@ namespace hlrt
             kSendDemo,     ///< MULTIPLAYER's: a demo sent to a console without the game
             kDemoUplink,
             kDemoHazard,
+            kDemoSend,
             kStopDemo,
             kProfile,      ///< ... the player's name, model, colours and spray
             kProfName,     ///< PROFILE's: the name the others see
@@ -180,7 +181,7 @@ namespace hlrt
         const Row kDemoRows[] = {{Kind::Button, kDemoUplink, "UPLINK"},
                                  {Kind::Button, kDemoHazard, "HAZARD COURSE"},
                                  {Kind::Button, kBack, "BACK"}};
-        const Row kServeRows[] = {{Kind::Button, kStopDemo, "STOP"}};
+        const Row kServeRows[] = {{Kind::Button, kDemoSend, "SEND THE GAME"}, {Kind::Button, kStopDemo, "STOP"}};
         const Row kNetPauseRows[] = {{Kind::Button, kResume, "RESUME"}, {Kind::Button, kOptions, "OPTIONS"},
                                      {Kind::Button, kEndMatch, "END MATCH"}, {Kind::Button, kLeave, "LEAVE GAME"}};
         // The games found: made when they are shown, then BACK.
@@ -298,7 +299,7 @@ namespace hlrt
             case 5: count = 2; return kConfirmRows;
             case 20: count = 2; return kHandRows;
             case 21: count = 3; return kDemoRows;
-            case 22: count = 1; return kServeRows;
+            case 22: count = 2; return kServeRows;
             case 7: count = static_cast<int>(sizeof(kMultiRows) / sizeof(kMultiRows[0])); return kMultiRows;
             case 9: count = foundCount + 1; return foundRows;
             case 11: count = static_cast<int>(sizeof(kNetPauseRows) / sizeof(kNetPauseRows[0])); return kNetPauseRows;
@@ -2809,17 +2810,28 @@ namespace hlrt
         // is nobody in it yet. And the title's moving picture put away, as
         // for a map: a DS has not the memory for it and the program both --
         // its pictures are read out of a megabyte.)
+        // (A demo: which goes with the game, and is served again after.)
+        sendDemo_ = netGame.demo();
         netGame.leave();
         hudDraw.hideMenu();
         const int at = hostIndex();
         char description[64];
+        if (sendDemo_ != 0)
+            std::snprintf(description, sizeof(description), "%s demo: DSi or 3DS",
+                          sendDemo_ == hldata::kDemoUplink ? "Uplink" : "Hazard Course");
+        else
         std::snprintf(description, sizeof(description), "%s on %s",
                       settings.hostMode == kModeTeamplay ? "Teamplay" : "Deathmatch",
                       at >= 0 ? netGame.mapInfo()[static_cast<std::size_t>(at)].name.c_str() : "the host's map");
         std::string why;
-        if (!dlsend::begin(description, settings.maxPlayers, why))
+        if (!dlsend::begin(description, sendDemo_ != 0 ? kNetPlayers : settings.maxPlayers, why))
         {
             std::snprintf(sendWhy_, sizeof(sendWhy_), "%s", why.c_str());
+            if (sendDemo_ != 0)
+            {
+                sendEnd();
+                return;
+            }
             hudDraw.showMenu();
             netGame.host();
             draw();
@@ -2835,6 +2847,20 @@ namespace hlrt
 #ifndef HLDS_CHILD
         dlsend::end();
         hudDraw.showMenu();
+        if (sendDemo_ != 0)
+        {
+            const int demo = sendDemo_;
+            sendDemo_ = 0;
+            const bool up = netGame.demoHost(demo);
+            page_ = up ? Page::NetServe : Page::Multiplayer;
+            servedSum_ = 0;
+            draw();
+            if (!up)
+                showReason("The wireless would not start again.");
+            else if (sendWhy_[0] != 0)
+                showReason(sendWhy_);
+            return;
+        }
         if (!netGame.host())
             std::snprintf(sendWhy_, sizeof(sendWhy_), "The wireless would not start again.");
         // (Who comes next is what the host will want to see.)
@@ -3317,6 +3343,10 @@ namespace hlrt
             return gameThere_[2] ? nullptr : "Uplink is not on the card";
         case kSendDemo:
             return demoThere_[0] || demoThere_[1] ? nullptr : "No demo's maps are on the card";
+#ifndef HLDS_CHILD
+        case kDemoSend:
+            return dlsend::available() ? nullptr : "This program has no game to send";
+#endif
         case kDemoHazard:
             return demoThere_[0] ? nullptr : "The Hazard Course's maps are not on the card";
         case kDemoUplink:
@@ -3456,6 +3486,12 @@ namespace hlrt
                 outOfGame();
                 break;
             }
+            if (action == Action::SendDemo)
+            {
+                netGame.sayBackSoon();
+                sendBegin();
+                break;
+            }
 #endif
             return action;
         }
@@ -3533,6 +3569,15 @@ namespace hlrt
                 draw();
                 showReason("The wireless would not start");
             }
+            break;
+        case kDemoSend:
+            if (playersHere() <= 1)
+            {
+                sendBegin();
+                break;
+            }
+            asker_ = page_;
+            ask(Action::SendDemo, "ALL OUT FOR A MOMENT: SEND?");
             break;
         case kStopDemo:
             asker_ = page_;

@@ -38,6 +38,7 @@ namespace hlrt
             TakePreviews,
             EndMatch,   ///< the host's: the match over, for everyone
             StopDemo,   ///< the host's: no more of the demo being served
+            SendDemo,   ///< the host's: all out for a moment, to give the game to more
         };
 
         /// Whether QUIT is offered: there is somewhere to go back to (the
@@ -223,6 +224,7 @@ namespace hlrt
         bool demoThere_[2] = {false, false}; ///< the Hazard Course's, Uplink's
         std::uint32_t servedAt_ = 0;
         unsigned servedSum_ = 0;
+        int sendDemo_ = 0; ///< SEND THE GAME from a demo: the one to serve again after it
         const hldata::SaveIndex *saves_ = nullptr;
         bool title_ = false;   ///< it is the title's menu, not the pause's
         bool saving_ = false;  ///< the list is shown to save into
