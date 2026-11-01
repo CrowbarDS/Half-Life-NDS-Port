@@ -372,7 +372,8 @@ namespace hlrt
         std::uint32_t demoFileMap_[hldata::DemoServer::kStreams] = {};
         std::uint32_t demoLength_[hldata::kDemoMapsMost] = {};
         std::uint32_t demoCrc_[hldata::kDemoMapsMost] = {};
-        unsigned demoBases_ = 0;      ///< bit n: client n is to be sent the demo's base
+        bool demoLiveNow_ = false;    ///< a stream someone is waiting for went out this frame
+        int fetchWho_ = 0;            ///< (who asked for what fetchFind is finding)
         std::uint16_t demoTokens_[hldata::kNetPlayers] = {};
         std::uint8_t demoMapOf_[hldata::kNetPlayers] = {}; ///< (its place among the demo's maps, + 1)
         int demoFrame();

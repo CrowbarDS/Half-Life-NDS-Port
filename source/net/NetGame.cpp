@@ -557,8 +557,14 @@ namespace hlrt
     {
         // In its lobby, what it has asked for there; with a map (loaded, and
         // waiting to begin, or in play), that map's.
-        const bool lobby = phase_ == Phase::Lobby && !starting_;
-        const bool map = phase_ == Phase::Playing || (phase_ == Phase::Lobby && starting_);
+        // (A demo stays in its lobby, and its map is played from there.)
+#ifdef HLDS_CHILD
+        const bool played = starting_ || (match_.rules.demo != 0 && !guest::demoLoading());
+#else
+        const bool played = starting_;
+#endif
+        const bool lobby = phase_ == Phase::Lobby && !played;
+        const bool map = phase_ == Phase::Playing || (phase_ == Phase::Lobby && played);
         // (The vote's pictures are had with or without a map.)
         const bool ofMap = taking_.from == FetchFrom::Map || taking_.from == FetchFrom::MapFull;
         if ((!lobby && !map) || (takingOn_ && taking_.from != FetchFrom::VotePicture && ofMap != map))
@@ -606,6 +612,8 @@ namespace hlrt
         if (match_.vote.count > 1)
             return;
 #ifdef HLDS_CHILD
+        if (match_.rules.demo != 0)
+            return; // (nothing but the map's own)
         const bool full = global.twlChild;
         // Who is looked at, first: it is on the screen.
         if (personWanted_ > 0)
@@ -743,10 +751,14 @@ namespace hlrt
             }
             return false;
         }
-        // A member of a bank.
+        // A member of a bank. (A demo's: of the map that console is playing.)
+        const char *demoBank = match_.rules.demo != 0 && demoMapOf_[fetchWho_] != 0
+                                   ? netDemoMaps(match_.rules.demo)[demoMapOf_[fetchWho_] - 1]
+                                   : nullptr;
         const std::string bank = asked.from == FetchFrom::People       ? std::string("air/chr.bank")
                                  : asked.from == FetchFrom::PeopleFull ? std::string("air/chr.dsi.bank")
-                                 : asked.from == FetchFrom::MapFull    ? "air/" + pendingMap_ + ".dsi.bank"
+                                 : asked.from == FetchFrom::MapFull
+                                     ? "air/" + (demoBank != nullptr ? std::string(demoBank) : pendingMap_) + ".dsi.bank"
                                                                        : std::string();
         if (bank.empty())
             return false;
@@ -794,8 +806,8 @@ namespace hlrt
                 fetchData_[k] = nullptr;
             }
         }
-        // Not while a stream is sent.
-        if (phase_ != Phase::Hosting && phase_ != Phase::Playing)
+        // Not while a stream is sent. (A demo's, that someone is waiting for.)
+        if ((phase_ != Phase::Hosting && phase_ != Phase::Playing) || demoLiveNow_)
             return;
         int who = 0;
         FetchHost::Asked asked;
@@ -803,6 +815,7 @@ namespace hlrt
         {
             std::uint8_t *data = nullptr;
             std::uint32_t packed = 0, raw = 0, name = 0;
+            fetchWho_ = who;
             if (!fetchFind(asked, data, packed, raw, name))
             {
                 netSay(match_, netEvent(NetEventType::FetchNone, static_cast<int>(asked.from),
@@ -1713,7 +1726,7 @@ namespace hlrt
                     if (demoFrame() == 0 && (ticks_ & 7) != 0)
                         send();
                 }
-                else if ((phase_ == Phase::Serving || air_.stream == AirStream::Common || match_.rules.demo != 0) && air_.sending())
+                else if ((phase_ == Phase::Serving || air_.stream == AirStream::Common) && air_.sending())
                 {
                     // (Four a frame: queued, they go back to back -- the radio
                     // starts the next as each exchange ends.)
@@ -1975,11 +1988,9 @@ namespace hlrt
                 std::fclose(file);
             return file != nullptr;
         };
-        if (!there(std::string("air/") + kAirGroupNames[group] + ".base.hgs"))
-            return false;
         for (int m = 0; m < kDemoMapsMost && maps[m] != nullptr; ++m)
         {
-            if (!there(std::string("air/") + maps[m] + ".hgs"))
+            if (!there(std::string("air/") + maps[m] + ".dsi.hgs") || !there(std::string("air/") + maps[m] + ".dsi.bank"))
                 return false;
         }
         return true;
@@ -1993,7 +2004,7 @@ namespace hlrt
         for (int m = 0; m < kDemoMapsMost && maps[m] != nullptr; ++m)
         {
             demoLength_[m] = demoCrc_[m] = 0;
-            if (std::FILE *file = std::fopen(global.dataPath(std::string("air/") + maps[m] + ".hgs").c_str(), "rb"))
+            if (std::FILE *file = std::fopen(global.dataPath(std::string("air/") + maps[m] + ".dsi.hgs").c_str(), "rb"))
             {
                 std::fseek(file, 0, SEEK_END);
                 demoLength_[m] = static_cast<std::uint32_t>(std::ftell(file));
@@ -2006,7 +2017,6 @@ namespace hlrt
         match_.rules.demo = static_cast<std::uint8_t>(group);
         match_.rules.demoLongest = static_cast<std::uint16_t>((longest + 16383) / 16384);
         demoServer_ = DemoServer();
-        demoBases_ = 0;
         for (int c = 0; c < kNetPlayers; ++c)
         {
             demoTokens_[c] = 0;
@@ -2026,6 +2036,7 @@ namespace hlrt
             demoFileMap_[s] = 0;
         }
         demoServer_ = DemoServer();
+        demoLiveNow_ = false;
     }
 
     bool NetGame::demoRow(int row, char *line, int room, int &bars)
@@ -2056,13 +2067,6 @@ namespace hlrt
             return;
         const std::uint32_t map = static_cast<std::uint16_t>(event.v[0]) | static_cast<std::uint32_t>(static_cast<std::uint16_t>(event.v[1])) << 16;
         const std::uint32_t from = static_cast<std::uint16_t>(event.v[2]) | static_cast<std::uint32_t>(static_cast<std::uint16_t>(event.v[3])) << 16;
-        // (No map: its base, which it now has time for.)
-        if (map == 0)
-        {
-            if (tiers_[c] != 0)
-                demoBases_ |= 1u << c;
-            return;
-        }
         const char *const *maps = netDemoMaps(match_.rules.demo);
         for (int m = 0; m < kDemoMapsMost && maps[m] != nullptr; ++m)
         {
@@ -2071,7 +2075,7 @@ namespace hlrt
             // What it is said to come to, worked out the first time it is asked for.
             if (demoCrc_[m] == 0)
             {
-                if (std::FILE *file = std::fopen(global.dataPath(std::string("air/") + maps[m] + ".hgs").c_str(), "rb"))
+                if (std::FILE *file = std::fopen(global.dataPath(std::string("air/") + maps[m] + ".dsi.hgs").c_str(), "rb"))
                 {
                     static std::uint8_t chunk[4096];
                     std::uint32_t crc = kCrcStart;
@@ -2082,7 +2086,15 @@ namespace hlrt
                 }
             }
             demoTokens_[c] = match_.host.clients[c].token;
-            demoMapOf_[c] = static_cast<std::uint8_t>(m + 1);
+            // (What it is playing: whose textures it will ask for. All of it
+            // held already: that is all it says.)
+            if (event.a != 0)
+                demoMapOf_[c] = static_cast<std::uint8_t>(m + 1);
+            if (from == 0xFFFFFFFFu)
+            {
+                demoServer_.lost(demoTokens_[c]);
+                return;
+            }
             demoServer_.want(demoTokens_[c], c, map, event.a != 0, from, maps[m], demoLength_[m], demoCrc_[m],
                              static_cast<std::uint16_t>(m + 1));
             return;
@@ -2103,23 +2115,24 @@ namespace hlrt
             }
         }
         demoServer_.frame();
-        // The models and sounds all the maps have, to those who have come.
-        demoBases_ &= present;
-        if (demoBases_ != 0 && !air_.sending())
-        {
-            const char *group = kAirGroupNames[match_.rules.demo];
-            if (airBegin(AirStream::Base, group, std::string("air/") + group + ".base.hgs", demoBases_))
-                demoBases_ = 0;
-        }
         if (air_.sending())
             return 0; // (the lobby's frames send it)
         int sent = 0;
+        demoLiveNow_ = false;
         std::uint8_t piece[kAirPiece];
         std::uint8_t bytes[kNetCmdBytes];
         int stream;
         std::uint32_t index;
+        bool textures = false;
+        for (const FetchHost::Sending &sending : fetch_.sending)
+            textures = textures || sending.on;
         for (int n = 0; n < kAirServeFrames && demoServer_.next(stream, index); ++n)
         {
+            // (What is only being got ready waits for what is being looked at.)
+            const bool live = demoServer_.streamIsLive(stream);
+            if (textures && !live)
+                break;
+            demoLiveNow_ = demoLiveNow_ || live;
             if (demoFileMap_[stream] != demoServer_.streams[stream].map)
             {
                 if (demoFile_[stream] != nullptr)
@@ -2127,7 +2140,7 @@ namespace hlrt
                 demoFile_[stream] = nullptr;
                 demoFileMap_[stream] = demoServer_.streams[stream].map;
                 demoFile_[stream] = std::fopen(
-                    global.dataPath(std::string("air/") + demoServer_.streams[stream].air.name + ".hgs").c_str(), "rb");
+                    global.dataPath(std::string("air/") + demoServer_.streams[stream].air.name + ".dsi.hgs").c_str(), "rb");
             }
             if (demoFile_[stream] == nullptr)
                 break;

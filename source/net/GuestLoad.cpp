@@ -9,6 +9,7 @@
 #include <nds.h>
 
 #include "Global.hpp"
+#include "HlLevelReader.hpp"
 #include "net/AirDevice.hpp"
 #include "net/NetGame.hpp"
 #include "net/NetLink.hpp"
@@ -241,35 +242,66 @@ namespace hlrt::guest
         constexpr std::uint32_t kDemoCrcBytes = 8 * 1024; ///< checked, of a stream come, as a frame goes
         constexpr std::uint32_t kDemoAskVblanks = 120;
         constexpr std::uint32_t kDemoGiveUpVblanks = 3600;
+        /// What a full map needs beside its stream: its own blocks, and the
+        /// textures that come as they are looked at.
+        constexpr std::uint32_t kDemoPlayBytes = 5 * 1024 * 1024;
+        constexpr int kDemoLinksMost = 8;
         std::uint8_t *demoRoom = nullptr;
         hldata::DemoArena demoArena;
-        std::uint32_t demoMap = 0;
+        std::uint32_t demoMap = 0;    ///< the map played
+        std::uint32_t demoTaking = 0; ///< the map the receiver is on
         std::uint32_t demoAskedAt = 0;
         std::uint32_t demoCrcAt = 0, demoCrcSoFar = 0;
         int demoSaidDone = 0;
-        bool demoTwlWas = false;
+        std::uint32_t demoLinks[kDemoLinksMost];
+        int demoLinkCount = 0;
+        bool demoLoadingNow = false;
+        /// How far each place got, if it was left for something more urgent.
+        std::uint32_t demoFrom[hldata::DemoArena::kPlaces] = {};
+        std::uint32_t demoFromMap[hldata::DemoArena::kPlaces] = {};
+
+        const char *demoName(std::uint32_t map)
+        {
+            const char *const *maps = hldata::netDemoMaps(netGame.demo());
+            for (int m = 0; m < hldata::kDemoMapsMost && maps[m] != nullptr; ++m)
+            {
+                if (hldata::nameHash(maps[m]) == map)
+                    return maps[m];
+            }
+            return nullptr;
+        }
         std::uint8_t *demoPlaceOf(std::uint32_t map)
         {
             const int place = demoArena.find(map);
             return place < 0 ? nullptr : demoRoom + demoArena.offsetOf(place);
         }
-        void demoWant(const char *name)
+        /// The receiver on `map`, wanted now or for later, from as far as it got.
+        void demoWant(std::uint32_t map, bool live)
         {
-            const std::uint32_t map = hldata::nameHash(name);
-            const int place = demoArena.take(map, 0, hldata::DemoArena::Role::Current);
+            const char *name = demoName(map);
+            const int place = name == nullptr ? -1 : demoArena.take(map, 0, live ? hldata::DemoArena::Role::Current : hldata::DemoArena::Role::Next);
             if (place < 0)
                 return;
-            demoMap = map;
+            const int left = demoTaking != 0 ? demoArena.find(demoTaking) : -1;
+            std::uint32_t from;
             {
                 const Hold hold;
-                receiver.wantDirect(hldata::AirStream::Map, name, demoRoom + demoArena.offsetOf(place));
+                if (left >= 0)
+                {
+                    demoFrom[left] = receiver.base;
+                    demoFromMap[left] = demoTaking;
+                }
+                from = demoFromMap[place] == map ? demoFrom[place] : 0;
+                receiver.wantDirect(hldata::AirStream::MapFull, name, demoRoom + demoArena.offsetOf(place), from);
             }
+            demoTaking = map;
+            streamSince = Global::vblanks();
             demoCrcAt = 0;
             demoCrcSoFar = hldata::kCrcStart;
             demoSaidDone = 0;
             quietSince = Global::vblanks();
             netlink::setSink(sinkTake);
-            netGame.demoAsk(map, true, 0);
+            netGame.demoAsk(map, live, from);
             demoAskedAt = Global::vblanks();
         }
 
@@ -279,6 +311,7 @@ namespace hlrt::guest
         {
             void (*progress)(int) = nullptr;
             const std::uint8_t *data = nullptr;
+            std::uint32_t map = 0;
             std::uint32_t at = 0;
             int shown = -1;
             std::uint32_t heardAt = 0;
@@ -288,11 +321,17 @@ namespace hlrt::guest
                 since = Global::vblanks();
                 while (true)
                 {
-                    std::uint32_t come, all;
+                    std::uint32_t come = 0, all = 0;
                     {
                         const Hold hold;
-                        all = receiver.known ? receiver.length : 0;
-                        come = receiver.base * hldata::kAirPiece;
+                        const int place = demoArena.find(map);
+                        if (demoArena.isWhole(map))
+                            come = all = demoArena.places[place].length;
+                        else if (demoTaking == map && receiver.known)
+                        {
+                            all = receiver.length;
+                            come = receiver.base * hldata::kAirPiece;
+                        }
                     }
                     come = come > all ? all : come;
                     if (Global::vblanks() != heardAt)
@@ -424,6 +463,8 @@ namespace hlrt::guest
 
     bool offered(const std::string &map)
     {
+        if (demoRoom != nullptr)
+            return demoName(hldata::nameHash(map.c_str())) != nullptr;
         for (int i = 0; i < offerCount; ++i)
         {
             if (offers[i].map == map)
@@ -440,6 +481,8 @@ namespace hlrt::guest
         endMap();
         // (The last map's weapons, kept packed, go with it.)
         air::dropMapFiles();
+        if (demoRoom != nullptr && offerCount > 0)
+            offers[0].map = map;
         for (int i = 0; i < offerCount; ++i)
         {
             if (offers[i].map != map)
@@ -447,9 +490,28 @@ namespace hlrt::guest
             hldata::GuestSupply *supply = &mapSupply;
             if (offers[i].arena)
             {
+                const std::uint32_t hash = hldata::nameHash(map.c_str());
+                demoArena.changeTo(hash, 0);
+                demoMap = hash;
+                demoLinkCount = 0;
+                demoLoadingNow = true;
+                if (!demoArena.isWhole(hash))
+                {
+                    // (On its way for later already: now said to be wanted now.)
+                    if (demoTaking == hash)
+                    {
+                        netGame.demoAsk(hash, true, receiver.base);
+                        demoAskedAt = Global::vblanks();
+                    }
+                    else
+                        demoWant(hash, true);
+                }
+                else
+                    netGame.demoAsk(hash, true, 0xFFFFFFFFu); // (for whose textures)
                 arenaSupply = ArenaSupply();
                 arenaSupply.progress = mapProgress;
-                arenaSupply.data = demoPlaceOf(hldata::nameHash(map.c_str()));
+                arenaSupply.map = hash;
+                arenaSupply.data = demoPlaceOf(hash);
                 if (arenaSupply.data == nullptr)
                     return false;
                 supply = &arenaSupply;
@@ -545,12 +607,12 @@ namespace hlrt::guest
         replySize = 0;
         if (!hldata::airRead(bytes, size, head))
             return false;
-        // A demo's map: where it belongs (the first heard of it, sinkTake
-        // from then on), whoever it was sent for.
-        if (receiver.direct && head.stream == hldata::AirStream::Map)
+        // A demo's map: where it belongs (the first heard of it, sinkTake from
+        // then on), and never a match's to load.
+        if (netGame.demo() != 0 && (head.stream == hldata::AirStream::Map || head.stream == hldata::AirStream::MapFull))
         {
             const Hold hold;
-            if (receiver.frame(head))
+            if (receiver.direct && receiver.frame(head))
                 quietSince = Global::vblanks();
             return false;
         }
@@ -656,22 +718,25 @@ namespace hlrt::guest
 
     bool demoBegin(std::uint32_t longest, const char *map)
     {
-        // (All the three it may hold, else two: the last one's asked for
-        // again when it is gone back to.)
-        for (std::uint32_t count = hldata::DemoArena::kPlaces; count >= 2 && demoRoom == nullptr; --count)
+        // (This one and the next, if there is the room: else only this one,
+        // and the next comes as it is gone to.)
+        for (std::uint32_t count = 2; count >= 1 && demoRoom == nullptr; --count)
         {
             const std::uint32_t bytes = kDemoFolderBytes + count * longest;
+            if (global.heapHeadroom() < bytes + kDemoPlayBytes)
+                continue;
             demoRoom = static_cast<std::uint8_t *>(std::malloc(bytes));
             if (demoRoom != nullptr)
                 demoArena.plan(bytes, kDemoFolderBytes, longest);
         }
         if (demoRoom == nullptr)
             return false;
-        demoTwlWas = global.twlChild;
-        global.twlChild = false;
+        for (std::uint32_t &at : demoFromMap)
+            at = 0;
+        demoTaking = demoMap = 0;
+        demoLinkCount = 0;
         offerCount = 0;
         offers[offerCount++] = Offer{map, nullptr, 0, std::string(), false, true};
-        demoWant(map);
         return true;
     }
 
@@ -686,20 +751,48 @@ namespace hlrt::guest
         std::free(demoRoom);
         demoRoom = nullptr;
         demoArena = hldata::DemoArena();
-        demoMap = 0;
+        demoTaking = demoMap = 0;
+        demoLinkCount = 0;
+        demoLoadingNow = false;
         offerCount = 0;
-        global.twlChild = demoTwlWas;
     }
 
-    bool demoMapHere()
+    bool demoMapHere() { return demoArena.isWhole(demoMap) || (demoTaking == demoMap && receiver.done()); }
+
+    bool demoLoading() { return demoLoadingNow; }
+
+    void demoLoaded(const hldata::LevelView &view)
     {
-        const Hold hold;
-        return receiver.direct && receiver.done();
+        demoLoadingNow = false;
+        // Where its ways out lead, those further on in the demo first.
+        const char *const *maps = hldata::netDemoMaps(netGame.demo());
+        int here = 0;
+        for (int m = 0; m < hldata::kDemoMapsMost && maps[m] != nullptr; ++m)
+            here = hldata::nameHash(maps[m]) == demoMap ? m : here;
+        demoLinkCount = 0;
+        for (int pass = 0; pass < 2; ++pass)
+        {
+            for (int m = 0; m < hldata::kDemoMapsMost && maps[m] != nullptr; ++m)
+            {
+                if ((pass == 0) != (m > here) || m == here)
+                    continue;
+                const std::uint32_t hash = hldata::nameHash(maps[m]);
+                for (std::uint32_t i = 0; i < view.logicCount && demoLinkCount < kDemoLinksMost; ++i)
+                {
+                    if (static_cast<hldata::LogicKind>(view.logic[i].kind) == hldata::LogicKind::ChangeLevel &&
+                        hldata::nameHash(view.strings + view.logic[i].extra[0]) == hash)
+                    {
+                        demoLinks[demoLinkCount++] = hash;
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     int demoAnswer(std::uint8_t *reply)
     {
-        if (demoRoom == nullptr || !receiver.direct)
+        if (demoRoom == nullptr || demoTaking == 0)
             return 0;
         bool done;
         {
@@ -713,16 +806,16 @@ namespace hlrt::guest
             if (Global::vblanks() - demoAskedAt >= kDemoAskVblanks)
             {
                 demoAskedAt = Global::vblanks();
-                netGame.demoAsk(demoMap, true, receiver.base);
+                netGame.demoAsk(demoTaking, demoTaking == demoMap, receiver.base);
                 return 0;
             }
             const Hold hold;
             return receiver.known ? receiver.ask(reply) : 0;
         }
         // All here: is it what was sent? A little at a time: the game is on.
-        if (!demoArena.isWhole(demoMap))
+        if (!demoArena.isWhole(demoTaking))
         {
-            const std::uint8_t *data = demoPlaceOf(demoMap);
+            const std::uint8_t *data = demoPlaceOf(demoTaking);
             const std::uint32_t rest = receiver.length - demoCrcAt;
             const std::uint32_t step = rest < kDemoCrcBytes ? rest : kDemoCrcBytes;
             demoCrcSoFar = hldata::crc32Update(demoCrcSoFar, data + demoCrcAt, step);
@@ -730,23 +823,45 @@ namespace hlrt::guest
             if (demoCrcAt >= receiver.length)
             {
                 if (hldata::crc32Finish(demoCrcSoFar) == receiver.crc)
-                    demoArena.arrived(demoMap);
+                {
+                    demoArena.places[demoArena.find(demoTaking)].length = receiver.length;
+                    demoArena.arrived(demoTaking);
+                }
                 else
                 {
-                    char name[hldata::kAirNameBytes];
-                    std::memcpy(name, receiver.name, sizeof(name));
-                    demoArena.spoiled(demoMap);
-                    demoWant(name);
+                    const std::uint32_t map = demoTaking;
+                    const int place = demoArena.find(map);
+                    demoFromMap[place] = 0;
+                    demoTaking = 0;
+                    demoArena.spoiled(map);
+                    demoWant(map, map == demoMap);
                     return 0;
                 }
             }
         }
         // (Said for a while: one lost answer would keep the host sending.)
-        if (demoSaidDone >= kAirLingerVblanks)
-            return 0;
-        ++demoSaidDone;
-        const Hold hold;
-        return receiver.ask(reply);
+        if (demoSaidDone < kAirLingerVblanks)
+        {
+            ++demoSaidDone;
+            const Hold hold;
+            return receiver.ask(reply);
+        }
+        // Then what is wanted next: what comes after this map, or the rest of
+        // one left for it.
+        if (demoArena.isWhole(demoTaking))
+        {
+            for (int n = 0; n < demoLinkCount; ++n)
+            {
+                if (!demoArena.isWhole(demoLinks[n]) && demoArena.find(demoLinks[n]) >= 0)
+                {
+                    demoWant(demoLinks[n], false);
+                    return 0;
+                }
+            }
+            if (const std::uint32_t next = hldata::netDemoPrefetch(demoArena, demoLinks, demoLinkCount))
+                demoWant(next, false);
+        }
+        return 0;
     }
 
     void offerAir(const std::string &map)
@@ -810,7 +925,7 @@ namespace hlrt::guest
     int airRate()
     {
         const std::uint32_t frames = Global::vblanks() - streamSince;
-        return frames < 30 ? 0 : static_cast<int>(static_cast<std::uint64_t>(receiver.given) * hldata::kAirPiece * 60 / 1024 / frames);
+        return frames < 30 ? 0 : static_cast<int>(static_cast<std::uint64_t>(receiver.direct ? receiver.base : receiver.given) * hldata::kAirPiece * 60 / 1024 / frames);
     }
 
     const char *baseGroup() { return heldBase; }

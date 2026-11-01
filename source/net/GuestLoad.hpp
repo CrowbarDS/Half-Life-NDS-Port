@@ -25,6 +25,11 @@
 #include "HlGuest.hpp"
 #include "HlNetAir.hpp"
 
+namespace hldata
+{
+    struct LevelView;
+}
+
 namespace hlrt::guest
 {
     /// A stream already in memory, given out a piece at a time.
@@ -117,12 +122,15 @@ namespace hlrt::guest
 
     /// A console in DSi mode playing a demo: its memory for the demo's streams
     /// (longest: the longest), its first map asked for and offered. All its
-    /// lean streams, as a console in DS mode has them, till demoEnd. False:
-    /// not enough memory.
+    /// streams at full quality, till demoEnd. False: not enough memory.
     bool demoBegin(std::uint32_t longest, const char *map);
     void demoEnd();
     /// All of the map being played has come.
     bool demoMapHere();
+    /// A map being loaded: its textures wait, for the air it comes on.
+    bool demoLoading();
+    /// The map is loaded: where its ways out lead, to get them ready.
+    void demoLoaded(const hldata::LevelView &view);
     /// Once in a while as a frame is sent: what to say of the map coming, in
     /// place of the game's frame. 0: nothing.
     int demoAnswer(std::uint8_t *reply);

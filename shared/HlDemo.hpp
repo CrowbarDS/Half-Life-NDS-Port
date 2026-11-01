@@ -412,7 +412,7 @@ namespace hldata
             streams[free] = Stream();
             streams[free].on = true;
             streams[free].map = r.map;
-            streams[free].air.begin(AirStream::Map, r.name, r.length, r.serve, 0);
+            streams[free].air.begin(AirStream::MapFull, r.name, r.length, r.serve, 0);
             streams[free].air.crc = r.crc;
             join(r, free);
         }

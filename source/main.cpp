@@ -720,6 +720,8 @@ namespace
         // there, aside: the one in hand, if it could not be read before.)
         global.unmountMap();
         hlrt::modelCache.rewield();
+        if (hlrt::netGame.demo() != 0)
+            hlrt::guest::demoLoaded(hlrt::level.view);
 #endif
         hlrt::guard::check("map loaded");
         return LoadResult::Ok;
@@ -799,6 +801,27 @@ namespace
         hlrt::netGame.leave();
         return false;
     }
+#ifdef HLDS_CHILD
+    /// A demo's map loaded: its first textures got, behind the curtain, not to
+    /// begin flat.
+    void demoReady()
+    {
+        hlrt::bottomScreen.showProgress(hldata::netDemoTitle(hlrt::netGame.demo()), "Ready", "Getting the textures", 100, 100, false, true);
+        int heard = 0;
+        for (int n = 0; n < 15 * 60 && hlrt::netGame.on(); ++n)
+        {
+            swiWaitForVBlank();
+            hlrt::sound.frame();
+            hlrt::netGame.frame();
+            hlrt::textureStream.fetchTick();
+            heard += hlrt::textureStream.fetchHeard() ? 1 : 0;
+            if (hlrt::textureStream.prerolled() || heard >= 6 * 60)
+                break;
+        }
+        hlrt::bottomScreen.showPad();
+        hlrt::screenFade.curtainUp(curtainFrames());
+    }
+#endif
 
     /// HOST, on a card with multiplayer maps never photographed: each loaded
     /// in turn, behind the curtain, for its picture (takePreview), and let
@@ -857,6 +880,9 @@ namespace
     /// of the screen, even when it has to be written at once.
     bool saveNow(int slot, bool quiet = false)
     {
+#ifdef HLDS_CHILD
+        return false; // (nowhere to keep it)
+#endif
         if (!hlrt::level.loaded() || hlrt::player.noclip || hlrt::player.state.health <= 0)
             return false;
         hldata::SaveHeading heading = hlrt::game.heading(currentMap);
@@ -1449,16 +1475,6 @@ int main(int argc, char *argv[])
             if (demo != 0 && global.twlChild && !hlrt::menu.onHand() && hlrt::netGame.on() &&
                 hlrt::netGame.phase() == hlrt::NetGame::Phase::Lobby)
             {
-                static std::uint32_t askedAt = 0;
-                if (std::strcmp(hlrt::guest::baseGroup(), hldata::kAirGroupNames[demo]) != 0)
-                {
-                    if (Global::vblanks() - askedAt >= 120)
-                    {
-                        askedAt = Global::vblanks();
-                        hlrt::netGame.demoAsk(0, true, 0);
-                    }
-                }
-                else
                 {
                     const char *first = hldata::netDemoMaps(demo)[0];
                     leaving();
@@ -1474,7 +1490,9 @@ int main(int argc, char *argv[])
                         hlrt::game.crosshair = true;
                         guestMapName = first;
                         hlrt::guest::onMapProgress(guestMapProgress);
+                        holdLoad = true;
                         started = loadLevel(first, nullptr, error) == LoadResult::Ok;
+                        holdLoad = false;
                         // (A stream cut short loads as far as it goes.)
                         if (started && !hlrt::guest::demoMapHere())
                         {
@@ -1485,7 +1503,10 @@ int main(int argc, char *argv[])
                     else
                         error = "Not enough memory";
                     if (started)
+                    {
+                        demoReady();
                         break;
+                    }
                     hlrt::bottomScreen.showMessage("CANNOT LOAD", error.c_str());
                     for (int n = 0; n < 180; ++n)
                         swiWaitForVBlank();
@@ -1705,6 +1726,20 @@ int main(int argc, char *argv[])
     bool paused = false;
     // Out of a game between consoles, or QUIT TO MAIN MENU: the title again,
     // and whatever is chosen there.
+    // The end of a demo, said (anywhere else, nothing).
+    const auto demoClosing = []()
+    {
+#ifdef HLDS_CHILD
+        if (hlrt::netGame.demo() == 0)
+            return;
+        hlrt::bottomScreen.showMessage("END OF THE DEMO", hldata::netDemoTitle(hlrt::netGame.demo()));
+        for (int n = 0; n < 300; ++n)
+        {
+            swiWaitForVBlank();
+            hlrt::netGame.frame();
+        }
+#endif
+    };
     auto backToTitle = [&]()
     {
         hlrt::netGame.leave();
@@ -1992,6 +2027,7 @@ int main(int argc, char *argv[])
                     hlrt::game.logic.endSection = false;
                     if (!hlrt::netGame.playing())
                     {
+                        demoClosing();
                         backToTitle();
                         return;
                     }
@@ -2022,7 +2058,28 @@ int main(int argc, char *argv[])
                     const hldata::Arrival arrival = hlrt::game.makeArrival();
                     const std::string next =
                         hlrt::level.view.strings + hlrt::level.view.logic[record].extra[0];
-                    switch (loadLevel(next, &arrival, error))
+#ifdef HLDS_CHILD
+                    // A demo's own way to go on: the textures, as at its start.
+                    // Out of its maps: the end of it.
+                    const bool inDemo = hlrt::netGame.demo() != 0;
+                    if (inDemo && !hlrt::guest::offered(next))
+                    {
+                        hlrt::game.logic.pendingChange = -1;
+                        demoClosing();
+                        backToTitle();
+                        return;
+                    }
+                    holdLoad = inDemo;
+                    if (inDemo)
+                        guestMapName = next;
+#endif
+                    const LoadResult changed = loadLevel(next, &arrival, error);
+#ifdef HLDS_CHILD
+                    holdLoad = false;
+                    if (inDemo && changed == LoadResult::Ok)
+                        demoReady();
+#endif
+                    switch (changed)
                     {
                     case LoadResult::Ok:
                         // Every new map is somewhere to come back to: the

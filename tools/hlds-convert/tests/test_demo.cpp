@@ -69,7 +69,7 @@ namespace
         {
             if (arena.size() < f.bytes.size())
                 arena.resize(f.bytes.size());
-            taking.wantDirect(AirStream::Map, f.name, arena.data(), from);
+            taking.wantDirect(AirStream::MapFull, f.name, arena.data(), from);
         }
         void resumeFrom(const File &f)
         {
@@ -196,6 +196,21 @@ namespace
         arena.take(links[2], 100, DemoArena::Role::Spare);
         check(netDemoPrefetch(arena, links, 3) == 0, "all held: nothing");
         check(netDemoPrefetch(arena, links, 0) == 0, "the last map: nothing");
+    }
+
+    void testOnePlace()
+    {
+        // Room for the map played alone: nothing got ready, and the next
+        // takes its place when it is gone to.
+        DemoArena arena;
+        check(arena.plan(2500, 200, 2000), "one place fits");
+        check(arena.count == 1, "only one");
+        const std::uint32_t here = nameHash("here"), next = nameHash("next");
+        check(arena.take(here, 0, DemoArena::Role::Current) == 0, "the map played has it");
+        check(arena.take(next, 0, DemoArena::Role::Next) < 0, "the next has no room while it is played");
+        arena.arrived(here);
+        check(arena.changeTo(next, 0) == 0, "gone to: it takes the place");
+        check(arena.find(here) < 0 && !arena.isWhole(next), "the old map is gone, the new one to come");
     }
 
     void testOneStream()
@@ -339,6 +354,7 @@ int main()
     testRefusal();
     testArena();
     testPrefetch();
+    testOnePlace();
     testOneStream();
     testResume();
     testLiveFirst();
