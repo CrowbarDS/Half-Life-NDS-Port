@@ -4,6 +4,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <malloc.h>
 #include <new>
 
 #include <nds.h>
@@ -247,6 +248,8 @@ namespace hlrt::guest
         constexpr std::uint32_t kDemoPlayBytes = 5 * 1024 * 1024;
         constexpr int kDemoLinksMost = 8;
         std::uint8_t *demoRoom = nullptr;
+        std::uint32_t demoRoomBytes = 0;
+        bool demoOn = false;
         hldata::DemoArena demoArena;
         std::uint32_t demoMap = 0;    ///< the map played
         std::uint32_t demoTaking = 0; ///< the map the receiver is on
@@ -463,7 +466,7 @@ namespace hlrt::guest
 
     bool offered(const std::string &map)
     {
-        if (demoRoom != nullptr)
+        if (demoOn)
             return demoName(hldata::nameHash(map.c_str())) != nullptr;
         for (int i = 0; i < offerCount; ++i)
         {
@@ -481,7 +484,7 @@ namespace hlrt::guest
         endMap();
         // (The last map's weapons, kept packed, go with it.)
         air::dropMapFiles();
-        if (demoRoom != nullptr && offerCount > 0)
+        if (demoOn && offerCount > 0)
             offers[0].map = map;
         for (int i = 0; i < offerCount; ++i)
         {
@@ -719,17 +722,34 @@ namespace hlrt::guest
     bool demoBegin(std::uint32_t longest, const char *map)
     {
         // (This one and the next, if there is the room: else only this one,
-        // and the next comes as it is gone to.)
-        for (std::uint32_t count = 2; count >= 1 && demoRoom == nullptr; --count)
+        // and the next comes as it is gone to. Kept once had: a block this
+        // size let go of may not be had again, and it is wanted again by a
+        // console that comes back.)
+        for (std::uint32_t count = 2; count >= 1 && !demoOn; --count)
         {
             const std::uint32_t bytes = kDemoFolderBytes + count * longest;
-            if (global.heapHeadroom() < bytes + kDemoPlayBytes)
+            if (demoRoom != nullptr && demoRoomBytes >= bytes)
+            {
+                demoArena.plan(demoRoomBytes, kDemoFolderBytes, longest);
+                demoOn = true;
+                break;
+            }
+            std::free(demoRoom);
+            demoRoom = nullptr;
+            demoRoomBytes = 0;
+            // (What was let go of counts as well as what was never had.)
+            const struct mallinfo info = mallinfo();
+            if (global.heapHeadroom() + info.fordblks < bytes + kDemoPlayBytes)
                 continue;
             demoRoom = static_cast<std::uint8_t *>(std::malloc(bytes));
             if (demoRoom != nullptr)
+            {
+                demoRoomBytes = bytes;
                 demoArena.plan(bytes, kDemoFolderBytes, longest);
+                demoOn = true;
+            }
         }
-        if (demoRoom == nullptr)
+        if (!demoOn)
             return false;
         for (std::uint32_t &at : demoFromMap)
             at = 0;
@@ -742,14 +762,13 @@ namespace hlrt::guest
 
     void demoEnd()
     {
-        if (demoRoom == nullptr)
+        if (!demoOn)
             return;
         {
             const Hold hold;
             receiver = hldata::AirReceiver();
         }
-        std::free(demoRoom);
-        demoRoom = nullptr;
+        demoOn = false;
         demoArena = hldata::DemoArena();
         demoTaking = demoMap = 0;
         demoLinkCount = 0;
@@ -792,7 +811,7 @@ namespace hlrt::guest
 
     int demoAnswer(std::uint8_t *reply)
     {
-        if (demoRoom == nullptr || demoTaking == 0)
+        if (!demoOn || demoTaking == 0)
             return 0;
         bool done;
         {

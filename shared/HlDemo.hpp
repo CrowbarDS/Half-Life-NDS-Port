@@ -248,7 +248,7 @@ namespace hldata
                 return;
             // (Said again: nothing to begin over. What it has come to know of
             // what the console holds would be lost, and all of it sent again.)
-            if (r->on && r->map == map && r->stream >= 0 && r->seat == seat)
+            if (r->on && r->map == map && r->stream >= 0 && r->seat == seat && from >= streams[r->stream].air.wants[seat].base)
             {
                 r->live = live;
                 return;
