@@ -1,0 +1,30 @@
+# On every push to main, and for pull requests: everything is built and tested,
+# and what a release would hold is kept as artifacts.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+jobs:
+  rom:
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/rom.yml
+
+  converter:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/converter.yml
+
+  bundle:
+    needs: [rom, converter]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/bundle.yml
+    with:
+      version: ${{ github.sha }}

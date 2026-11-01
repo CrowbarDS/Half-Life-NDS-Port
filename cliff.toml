@@ -1,0 +1,26 @@
+# The release notes (git-cliff): the commits since the last tag, by their area.
+[changelog]
+header = ""
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group }}
+{% for commit in commits %}
+- {{ commit.message | split(pat="\n") | first | trim }}
+{%- endfor %}
+{% endfor %}
+"""
+trim = true
+
+[git]
+conventional_commits = false
+filter_unconventional = false
+split_commits = false
+commit_parsers = [
+    { message = "^(net|demo|dlp)\\b", group = "Multiplayer and Download Play" },
+    { message = "^(gui|install|convert)\\b", group = "Converter" },
+    { message = "^(ui|menu)\\b", group = "Interface" },
+    { message = "^(render|anim|world|sound|audio|dsp|shared|game)\\b", group = "Game" },
+    { message = "^(ci|build|test|repo|docs|agents|version)\\b", group = "Project" },
+    { message = ".*", group = "Other" },
+]
+tag_pattern = "v[0-9]*"

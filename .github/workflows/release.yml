@@ -1,0 +1,89 @@
+# A draft release, from a v* tag, or from the Run workflow button, which makes
+# the tag. The owner reviews the draft and publishes it.
+#
+# (All in this one run: a tag pushed with GITHUB_TOKEN starts no other workflow.)
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The version to release, such as v0.5.0
+        required: true
+
+permissions: {}
+
+jobs:
+  tag:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Settle the version, and make the tag if asked to
+        id: version
+        env:
+          INPUT: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            version="$INPUT"
+            if ! printf '%s\n' "$version" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+              echo "::error::Not a version: $version"
+              exit 1
+            fi
+            if git rev-parse -q --verify "refs/tags/$version" > /dev/null; then
+              echo "::error::The tag $version already exists"
+              exit 1
+            fi
+            git tag "$version"
+            git push origin "$version"
+          else
+            version="$GITHUB_REF_NAME"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  rom:
+    needs: tag
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/rom.yml
+
+  converter:
+    needs: tag
+    permissions:
+      contents: read
+    uses: ./.github/workflows/converter.yml
+
+  bundle:
+    needs: [tag, rom, converter]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/bundle.yml
+    with:
+      version: ${{ needs.tag.outputs.version }}
+
+  draft:
+    needs: [tag, bundle]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+
+      - name: Make the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.tag.outputs.version }}
+        run: |
+          gh release create "$VERSION" release/* --repo "$GITHUB_REPOSITORY" \
+            --draft --verify-tag --title "$VERSION" --notes-file release-notes.md

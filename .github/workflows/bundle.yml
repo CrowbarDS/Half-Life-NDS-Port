@@ -1,0 +1,57 @@
+# Everything a release has, in one artifact: the converter's packages, the ROM
+# zip, the checksums and the notes. Called after every other build, so that the
+# release is only ever made from builds that all passed.
+name: Bundle
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: The version the files are named for
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: artifacts
+
+      - name: Gather the files
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          mkdir -p "rom/half-life-nds-port-$VERSION" release
+          cp artifacts/rom/half-life-nds-port.nds THIRD_PARTY_LICENSES "rom/half-life-nds-port-$VERSION/"
+          (cd rom && zip -qr "../release/half-life-nds-port-$VERSION.zip" .)
+          for f in artifacts/converter-*/*; do
+            name="$(basename "$f")"
+            cp "$f" "release/${name/hlds-convert/hlds-convert-$VERSION}"
+          done
+          (cd release && sha256sum -- * > SHA256SUMS.txt)
+          ls -la release
+
+      - name: Write the notes
+        uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4.9.1
+        with:
+          config: cliff.toml
+          args: --latest --strip all
+        env:
+          OUTPUT: release-notes.md
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release
+          if-no-files-found: error
+          path: |
+            release/*
+            release-notes.md
