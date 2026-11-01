@@ -322,6 +322,34 @@ namespace
 
 namespace
 {
+    /// The numbers themselves: a colour keeps its largest and smallest
+    /// channels, and the hue says which is which. (Hue 21 is 29 degrees:
+    /// green is 29/60 of the way from 50 to 230, 137.) Needs no game data.
+    void testHues()
+    {
+        struct HueCase
+        {
+            std::uint8_t from[3];
+            int hue;
+            std::uint8_t to[3];
+        };
+        const HueCase hues[] = {
+            {{230, 60, 50}, 0, {230, 50, 50}},    {{230, 60, 50}, 21, {230, 137, 50}},
+            {{230, 60, 50}, 64, {140, 230, 50}},  {{230, 60, 50}, 85, {50, 230, 50}},
+            {{230, 60, 50}, 128, {50, 230, 230}}, {{230, 60, 50}, 170, {50, 50, 230}},
+            {{230, 60, 50}, 212, {227, 50, 230}}, {{230, 60, 50}, 255, {230, 50, 50}},
+            {{0, 0, 0}, 64, {0, 0, 0}},           {{128, 128, 128}, 64, {128, 128, 128}},
+        };
+        bool huesExact = true;
+        for (const HueCase &h : hues)
+        {
+            std::uint8_t one[1][3] = {{h.from[0], h.from[1], h.from[2]}};
+            hldata::hueReplace(one, h.hue, 0, 0);
+            huesExact = huesExact && std::memcmp(one[0], h.to, 3) == 0;
+        }
+        check(huesExact, "each hue gives exactly its colour; black and grey stay as they are");
+    }
+
     /// A player's colours, as the game lays them over the player model: the
     /// two runs of a "DM_Base" texture (or where a "RemapN_a_b_c" one says)
     /// take the hue they are given, keeping how bright and how strong each
@@ -390,11 +418,14 @@ namespace
 
 int main()
 {
+    testHues();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir == nullptr || *dir == '\0')
     {
-        std::printf("test_anim: HLDS_VALVE_DIR not set, nothing to read\ntest_anim: ok\n");
-        return 0;
+        std::printf("test_anim: HLDS_VALVE_DIR not set, the models not read\n");
+        if (g_failures == 0)
+            std::printf("test_anim: ok\n");
+        return g_failures == 0 ? 0 : 1;
     }
     testRemap(dir);
     checkModel(dir, "scientist.mdl",
