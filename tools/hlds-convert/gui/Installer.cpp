@@ -1,4 +1,5 @@
 #include "Installer.hpp"
+#include "hlds/Converter.hpp"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -672,7 +673,7 @@ private:
 
 Installer::Installer(QWidget *parent) : QWizard(parent)
 {
-    setWindowTitle(QStringLiteral("Half-Life DS Installer"));
+    setWindowTitle(QStringLiteral("Half-Life DS Installer %1").arg(QString::fromLatin1(hlds::kConverterVersion)));
     setWizardStyle(QWizard::ModernStyle);
     setOption(QWizard::NoBackButtonOnLastPage);
     setOption(QWizard::NoCancelButtonOnLastPage);

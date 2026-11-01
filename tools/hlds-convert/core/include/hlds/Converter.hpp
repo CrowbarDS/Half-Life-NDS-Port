@@ -23,7 +23,8 @@
 
 namespace hlds
 {
-    inline constexpr const char *kConverterVersion = "0.1.0";
+    /// `git describe` when it was built (cmake/Version.cmake).
+    extern const char kConverterVersion[];
     /// The map a new game starts in.
     inline constexpr const char *kDefaultStartMap = "c0a0";
 

@@ -1359,7 +1359,7 @@ int main(int argc, char *argv[])
     std::string startMap;
     std::vector<hldata::NetMapInfo> multiplayerMaps;
     std::string dataWhy;
-    const Global::DataStatus status = global.ReadManifest(startMap, &multiplayerMaps, &dataWhy);
+    const Global::DataStatus status = global.ReadManifest(startMap, &multiplayerMaps, &dataWhy, &global.dataVersion);
     hlrt::netGame.setMaps(multiplayerMaps);
 
     settings.load();

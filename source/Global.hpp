@@ -128,14 +128,18 @@ public:
         Damaged,      ///< a manifest that does not check out, or lists no maps
     };
 
+    /// The version of the converter that made the card's data ("": not known).
+    std::string dataVersion;
+
     /// Read the converter's manifest and with it the map to start in. Cheap --
     /// one small file -- and done before the 3D engine is up.
     /// (`multiplayer`, if given: the card's maps that a game between consoles
     /// can be played on -- each with its places to come in at, and whether
     /// it can be sent to a console without the game.)
     /// (`why`, if given: for OtherVersion, the two numbers that did not match.)
+    /// (`madeBy`, if given: the version of the converter that made the data.)
     DataStatus ReadManifest(std::string &startMap, std::vector<hldata::NetMapInfo> *multiplayer = nullptr,
-                            std::string *why = nullptr) const;
+                            std::string *why = nullptr, std::string *madeBy = nullptr) const;
 
     /// Two lines of player-facing explanation for a status: what is wrong and
     /// what to do about it. Never null.

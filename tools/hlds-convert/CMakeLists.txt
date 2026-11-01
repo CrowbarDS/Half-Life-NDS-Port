@@ -72,6 +72,16 @@ add_library(hlds_convert_core STATIC
     core/src/WadFile.cpp
 )
 
+# The version, from `git describe`: the same one the ROM gets (tools/buildid.py).
+# Run at every build; the file only changes when the version does.
+set(HLDS_VERSION_FILE "${CMAKE_CURRENT_BINARY_DIR}/generated/Version.gen.cpp")
+add_custom_target(hlds_version
+    COMMAND ${CMAKE_COMMAND} -DROOT=${REPO_ROOT} -DOUT=${HLDS_VERSION_FILE}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Version.cmake
+    BYPRODUCTS ${HLDS_VERSION_FILE})
+target_sources(hlds_convert_core PRIVATE ${HLDS_VERSION_FILE})
+add_dependencies(hlds_convert_core hlds_version)
+
 target_include_directories(hlds_convert_core PUBLIC
     core/include
     "${REPO_ROOT}/shared"      # the formats the DS also compiles

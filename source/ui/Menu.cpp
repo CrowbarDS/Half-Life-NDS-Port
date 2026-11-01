@@ -11,6 +11,7 @@
 #include "HlSkill.hpp"
 #include "Achievements.hpp"
 #include "Global.hpp"
+#include "Guard.hpp"
 #include "Settings.hpp"
 #include "audio/DspAudio.hpp"
 #include "game/Input.hpp"
@@ -500,6 +501,7 @@ namespace hlrt
         int drawFitted(Canvas &canvas, const FontView &font, int x, int y, const char *text, const Ink &ink, int width,
                        int count = -1);
         void drawBars(Canvas &canvas, int x, int y, int bars);
+        void drawVersion(Canvas &canvas);
     }
 
     void Menu::draw()
@@ -540,6 +542,8 @@ namespace hlrt
         }
         for (int row = 0; row < rowCount(); ++row)
             drawRow(row, false);
+        if (page_ == Page::Title)
+            drawVersion(canvas);
         if (page_ == Page::NetJoin)
         {
             const FontView &small = touchCanvas.font(kFontSmall);
@@ -614,6 +618,23 @@ namespace hlrt
         /// `count` characters of `text` (all of it if negative) at (x, y), in
         /// no more than `width`: what does not fit is left off, and "..."
         /// says so. Where it ends.
+        /// The version, small, at the very bottom of the title: and if the
+        /// card's data was made by another, that it was.
+        void drawVersion(Canvas &canvas)
+        {
+            const FontView &small = touchCanvas.font(kFontSmall);
+#ifndef HLDS_CHILD
+            if (!global.dataVersion.empty() && global.dataVersion != hlVersion)
+            {
+                char line[64];
+                std::snprintf(line, sizeof(line), "%s, card data %s", hlVersion, global.dataVersion.c_str());
+                drawFitted(canvas, small, 8, 176, line, inkFor(small, kUiOrange), 240);
+                return;
+            }
+#endif
+            drawTextCentred(canvas, small, 128, 176, hlVersion, inkFor(small, kUiGrey));
+        }
+
         int drawFitted(Canvas &canvas, const FontView &font, int x, int y, const char *text, const Ink &ink, int width,
                        int count)
         {

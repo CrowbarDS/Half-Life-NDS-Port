@@ -3,6 +3,7 @@
 #include <QApplication>
 
 #include "Installer.hpp"
+#include "hlds/Converter.hpp"
 
 int main(int argc, char *argv[])
 {
@@ -10,6 +11,7 @@ int main(int argc, char *argv[])
     // Where QSettings keeps the folder last used, and the cache goes.
     QApplication::setOrganizationName(QStringLiteral("hlds"));
     QApplication::setApplicationName(QStringLiteral("hlds-convert"));
+    QApplication::setApplicationVersion(QString::fromLatin1(hlds::kConverterVersion));
 
     Installer window;
     window.show();

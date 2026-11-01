@@ -280,12 +280,13 @@ std::size_t Global::heapHeadroom() const
 }
 
 Global::DataStatus Global::ReadManifest(std::string &startMap, std::vector<hldata::NetMapInfo> *multiplayer,
-                                        std::string *why) const
+                                        std::string *why, std::string *madeBy) const
 {
 #ifdef HLDS_CHILD
     // Sent the game, there is no manifest: the maps are the ones it was
     // sent, and the first is where it starts.
     (void)why;
+    (void)madeBy;
     for (int i = 0; i < hlrt::guest::offeredCount(); ++i)
     {
         const std::string map = hlrt::guest::offeredName(i);
@@ -339,6 +340,8 @@ Global::DataStatus Global::ReadManifest(std::string &startMap, std::vector<hldat
     if (manifest.startMap.empty() || manifest.find(manifest.startMap) == nullptr)
         return DataStatus::Damaged;
     startMap = manifest.startMap;
+    if (madeBy != nullptr)
+        *madeBy = manifest.converterVersion;
     for (const hldata::ManifestMap &map : manifest.maps)
     {
         if (multiplayer != nullptr && map.spawns != 0)

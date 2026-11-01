@@ -49,6 +49,7 @@ namespace hlrt::guard
 extern "C"
 {
     extern const char hlBuildId[]; // source/BuildId.gen.cpp (tools/buildid.py)
+    extern const char hlVersion[]; // ... and what the title shows
 
     // The guarded heap, in place of malloc and the rest (build.py: --wrap).
     void *__wrap_malloc(std::size_t size);

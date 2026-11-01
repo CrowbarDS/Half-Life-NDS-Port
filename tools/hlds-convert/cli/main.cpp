@@ -35,6 +35,7 @@ namespace
     {
         std::fprintf(stderr,
                      "usage:\n"
+                     "  hlds-convert --version\n"
                      "  hlds-convert info <map.bsp> [--valve <game folder>] [--entities]\n"
                      "      What the map holds and what it will cost the DS to draw.\n"
                      "      --valve also checks that every texture can be found.\n"
@@ -533,6 +534,11 @@ int main(int argc, char *argv[])
     if (argc < 2)
         return usage();
     const std::string command = argv[1];
+    if (command == "--version")
+    {
+        std::printf("hlds-convert %s\n", hlds::kConverterVersion);
+        return 0;
+    }
     const std::vector<std::string> args(argv + 2, argv + argc);
     if (command == "info")
         return cmdInfo(args);
