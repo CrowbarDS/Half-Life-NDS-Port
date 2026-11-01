@@ -2035,7 +2035,7 @@ namespace hlrt
             switch (dlsend::state())
             {
             case dlsend::State::Gathering:
-                std::snprintf(said, sizeof(said), "%d console%s here%s. START sends the game to them all at once.",
+                std::snprintf(said, sizeof(said), "%d console%s here%s. It is sent in a moment, or at START.",
                               here, here == 1 ? "" : "s", dlsend::full() ? " (the most there is room for)"
                                                                          : "; more can still come");
                 break;

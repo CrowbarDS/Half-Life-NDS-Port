@@ -29,6 +29,10 @@ namespace hlrt::dlsend
         std::size_t romSize = 0;
         int wanted = 2;
         unsigned seen = 0;
+        // How long more consoles are waited for, once one has come: four
+        // seconds with nobody new, twelve at most (START: at once).
+        constexpr std::uint32_t kQuietVblanks = 4 * 60, kMostVblanks = 12 * 60;
+        std::uint32_t firstAt = 0, newestAt = 0;
         std::uint32_t movedAt = 0, startedAt = 0;
         int lastSum = -1;
         // The radio's account, a second at a time (rate()).
@@ -134,6 +138,12 @@ namespace hlrt::dlsend
         int count = 0;
         for (int n = 1; n < 16; ++n)
             count += (here >> n) & 1;
+        if ((here & ~seen) != 0)
+        {
+            if (seen == 0)
+                firstAt = t;
+            newestAt = t;
+        }
         seen = here;
         // (What the radio did in the last second, for the page to say.)
         if (t - countedAt >= 60)
@@ -150,7 +160,7 @@ namespace hlrt::dlsend
         }
         switch (now)
         {
-        // (Those who come are held, all of them, until START: go().)
+        // (Those who come are held, then sent it all at once: go().)
         case State::Waiting:
             if (count > 0)
                 now = State::Gathering;
@@ -158,6 +168,8 @@ namespace hlrt::dlsend
         case State::Gathering:
             if (count == 0)
                 now = State::Waiting;
+            else if (t - newestAt >= kQuietVblanks || t - firstAt >= kMostVblanks || count >= wanted)
+                go();
             break;
         case State::Sending:
         {

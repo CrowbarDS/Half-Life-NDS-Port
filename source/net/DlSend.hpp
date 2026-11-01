@@ -9,10 +9,10 @@
 //
 // The radio does one thing at a time: while this goes on, the host's game is
 // closed. So it is done before anyone has joined. A console comes when its
-// owner chooses the game in its menu, and is held there; when the host says
-// START (go()), all who have come are sent it together -- one that came while
-// it was being sent would not be let in -- and started together once they
-// have it, as the consoles' own games do it.
+// owner chooses the game in its menu, and is held there; a few seconds with
+// nobody new (or at the host's START: go()), all who have come are sent it
+// together -- one that came while it was being sent would not be let in -- and
+// started together once they have it, as the consoles' own games do it.
 //
 // Download Play starts only a program signed by Nintendo, unless the console
 // has FlashMe (a DS, a DS Lite), or a Download Play that does not check.
@@ -40,7 +40,7 @@ namespace hlrt::dlsend
     bool begin(const char *description, int most, std::string &why);
     /// Once a frame while it is going on.
     void frame();
-    /// START: those who have come are sent it (Gathering).
+    /// Those who have come are sent it now (Gathering).
     void go();
     /// As many have come as the match has room for.
     bool full();
