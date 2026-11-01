@@ -163,7 +163,7 @@ namespace hldata
                     // (Q14; the length is never less than 0.7, two unit
                     // quaternions being never more than a right angle apart
                     // once the nearer is taken, so this fits 32 bits).
-                    const std::int32_t reciprocal = (1 << 28) / length;
+                    const auto reciprocal = static_cast<std::int32_t>((std::int64_t(1) << 28) / length);
                     for (int i = 0; i < 4; ++i)
                         quat[i] = (quat[i] * reciprocal) >> 14;
                 }
@@ -209,7 +209,7 @@ namespace hldata
             {
                 // (Two poses of an aim are well within a right angle of each
                 // other, bone by bone: as sampleTrack's, this fits.)
-                const std::int32_t reciprocal = (1 << 28) / length;
+                const auto reciprocal = static_cast<std::int32_t>((std::int64_t(1) << 28) / length);
                 for (int i = 0; i < 4; ++i)
                     quat[i] = (quat[i] * reciprocal) >> 14;
             }
