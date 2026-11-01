@@ -102,9 +102,17 @@ target_link_libraries(hlds-convert PRIVATE hlds_convert_core)
 # here runs on a level built in memory (tests/TestBspBuilder.hpp). Tests that
 # want real maps read HLDS_VALVE_DIR from the environment and skip without it.
 # ---------------------------------------------------------------------------
+# The installer's decisions: no Qt either, and tested with the rest.
+add_library(hlds_install STATIC install/Install.cpp)
+target_include_directories(hlds_install PUBLIC install)
+target_compile_features(hlds_install PUBLIC cxx_std_20)
+
 option(HLDS_BUILD_TESTS "Build the converter tests" ON)
 if(HLDS_BUILD_TESTS)
     enable_testing()
+    add_executable(test_install tests/test_install.cpp)
+    target_link_libraries(test_install PRIVATE hlds_install)
+    add_test(NAME test_install COMMAND test_install)
     foreach(test_name
             test_anim
             test_brush
