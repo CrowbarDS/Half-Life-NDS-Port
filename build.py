@@ -34,10 +34,6 @@ from architectds import *
 
 # HLDS_PROFILE=1 ./make.sh builds the frame-time readout in (see below).
 profile = ['HLDS_PROFILE=1'] if os.environ.get('HLDS_PROFILE') else []
-# The multiplayer menus, until a match has run between real consoles: in
-# every build but a release one (HLDS_RELEASE=1 ./make.sh), where the entry
-# is greyed out and says so.
-profile += [] if os.environ.get('HLDS_RELEASE') else ['HLDS_EXPERIMENTAL']
 
 arm9 = Arm9Binary(
     sourcedirs=['source'],

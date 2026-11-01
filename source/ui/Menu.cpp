@@ -3362,11 +3362,7 @@ namespace hlrt
         case kCommand:
             return title_ ? "The console is for a game being played" : nullptr;
         case kMultiplayer:
-#ifndef HLDS_EXPERIMENTAL
-            return "Multiplayer: experimental, not in this build";
-#else
             return netGame.maps().empty() ? "No multiplayer map on the card" : nullptr;
-#endif
         case kGameHalfLife:
             return gameThere_[0] ? nullptr : "Half-Life is not on the card";
         case kGameTraining:
