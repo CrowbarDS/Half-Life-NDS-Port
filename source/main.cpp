@@ -113,7 +113,8 @@ namespace
     void guestMapProgress(int percent)
     {
         const std::string step = "Receiving " + guestMapName;
-        guestPage("JOINING THE MATCH", step.c_str(), percent);
+        const int demo = hlrt::netGame.demo();
+        guestPage(demo != 0 ? hldata::netDemoTitle(demo) : "JOINING THE MATCH", step.c_str(), percent);
     }
     /// Waited for, a frame at a time with the radio heard, until the match
     /// says this console is in the host's lobby (or `frames` pass).
