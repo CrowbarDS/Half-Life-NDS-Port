@@ -347,7 +347,7 @@ class GenericBinary():
             'PTEXCONV    = ${BLOCKSDSEXT}/ptexconv/ptexconv\n'
             '\n'
             'rule makedir\n'
-            '  command = mkdir $out\n'
+            '  command = mkdir -p $out\n'
             '\n'
             'rule copy\n'
             '  command = cp $in $out\n'
