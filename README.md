@@ -1,47 +1,105 @@
-# Half-Life NDS Port
+# Half-Life for Nintendo DS
 
-A port of Half-Life to the Nintendo DS and DSi, written in C++ for
-[BlocksDS](https://blocksds.skylyrac.net/) on top of
-[Nitro Engine Advanced](https://github.com/Warioware64/nitro-engine).
+Half-Life running natively on the DS and DSi: the original campaign at DS scale, with local wireless multiplayer and Download Play.
 
-**No game data is in this repository or in the ROM.** A converter turns your
-own copy of Half-Life into the files the DS reads from its SD card.
+**No game data is in this repository or in the ROM.** You bring your own copy of Half-Life, and a converter turns it into the files the console reads from its SD card.
 
-## Where it is
+This is an unofficial fan project, not affiliated with or endorsed by Valve.
 
-One ROM for DS and DSi. Any of the game's maps converts and loads; the world
-is drawn with its lighting, textures, water, decals and the suit's lamp; the
-player moves, climbs and swims by the game's own numbers; doors, lifts,
-trains, buttons, breakables, pushable boxes, triggers and scripted scenes
-work; the crowbar, pistol, shotgun, MP5, .357 and grenades are in, with
-headcrabs, zombies, barnacles, turrets and soldiers to use them on; there is
-sound and music, a title screen, autosave, quick save and six save slots.
+| Top screen | Touch screen |
+|:--:|:--:|
+| ![The title's top screen](docs/screenshots/title-top.png) | ![The title menu](docs/screenshots/title-touch.png) |
+| ![People in a lobby of Black Mesa](docs/screenshots/lobby-top.png) | ![The touch controls in play](docs/screenshots/play-touch.png) |
+| ![A large machine hall, with the health and armour display](docs/screenshots/hall-top.png) | |
 
-Not yet: the rest of the weapons and monsters, friends who talk, and a good
-many smaller things. The whole list, and how each part works, is in
-[docs/TECHNICAL.md](docs/TECHNICAL.md).
+Screenshots are real captures of the port, showing art from the owner's copy of the game.
 
-## Building
+## Features
 
-There are two ways. Both end with `half-life-nds-port.nds` in this folder.
+- The game's maps, with their lighting, textures, water and decals, drawn by the DS's 3D hardware
+- Player movement that plays like the original: walking, climbing, swimming, ladders
+- Weapons, monsters and people, with the game's AI, scripted scenes, doors, lifts, trains and breakables
+- Three difficulties, the Hazard Course, and Half-Life: Uplink if your copy has it
+- Autosave, quick save and save slots
+- Achievements
+- Music and sound, with DSi-only extras where the extra memory allows
+- Multiplayer over local wireless, on the game's own maps
+- Download Play: consoles with no card can join a game hosted by one that has it
+- Touch screen controls, for either hand, with two button layouts
 
-### With Docker (any system)
+More detail, and what isn't done yet, is in [docs/TECHNICAL.md](docs/TECHNICAL.md).
 
-Nothing to install but [Docker](https://docs.docker.com/get-docker/). The
-image holds BlocksDS, the Nitro Engine Advanced and dswifi forks, ptexconv, a
-compiler and CMake.
+## Supported consoles
+
+One ROM covers all of them.
+
+| Console | Single player | Multiplayer and Download Play |
+|---|---|---|
+| DSi, in DSi mode | Tested on hardware | Tested on hardware |
+| 3DS, in DSi mode | Tested on hardware | Tested on hardware |
+| DSi or 3DS, in DS mode | Tested on hardware | Tested on hardware |
+| Original DS and DS Lite | Same ROM, in DS mode; not yet confirmed on hardware | Not yet confirmed on hardware |
+
+DSi mode has more memory, so it gets richer content than DS mode.
+
+## Quick start
+
+1. **Get the release.** Download the ROM zip and the converter for your system from the [Releases](https://github.com/Warioware64/Half-Life-NDS-Port/releases) page. `SHA256SUMS.txt` lists each file's checksum.
+2. **Run the converter on your own Half-Life copy.** Open the installer, which finds your game and your SD card, or use the command line:
+
+   ```sh
+   hlds-convert cook-all <path to>/Half-Life/valve -o <SD card root>
+   ```
+
+   Everything goes to `<card>/_nds/hl_nds/data/`. On macOS, right-click the app and choose Open the first time, because it isn't signed by a developer account.
+3. **Copy the ROM to the SD card** and start it from your console's homebrew loader.
+
+Use a converter and a ROM from the same release. The title screen shows the version at the bottom, and warns you if the card's data came from a different one.
+
+## Controls
+
+Choose between two layouts in OPTIONS > CONTROLS, which also explains each button.
+
+| | CLASSIC | MODERN |
+|---|---|---|
+| Stylus drag | Look | Look |
+| D-pad | Move | Move |
+| A B X Y | Move, like the D-pad | A jump, B reload, X and Y change weapon |
+| L | Fire | Fire |
+| R | Second trigger | Second trigger |
+| R + D-pad down or up | | Crouch and stay crouched, or stand |
+| One tap on the pad | | USE |
+| Two quick taps | Jump | Jump |
+
+With either layout:
+
+- Touch a weapon's slot to take it, or to reload the one in your hand.
+- Touch RELOAD, JUMP, DUCK or USE for what they say.
+- Start, or MENU on the touch screen, opens the pause menu.
+- Select, or the lamp on the touch screen, turns on the suit's lamp.
+
+**Stylus hand: left** mirrors the touch screen and swaps the buttons over.
+
+## Multiplayer
+
+On the title screen, choose MULTIPLAYER, then HOST GAME on one console and JOIN GAME on the others. The host presses START when everyone is in.
+
+Each console needs the ROM and a card with the game converted, or it can get the game from the host by Download Play.
+
+Multiplayer has been tested on Nintendo DSi and Nintendo 3DS, and also through Download Play in both DS mode and DSi mode.
+
+## Building from source
+
+The container has everything, pinned to exact versions in [docker/](docker/). Only [Docker](https://docs.docker.com/get-docker/) is needed:
 
 ```sh
 git clone https://github.com/Warioware64/Half-Life-NDS-Port.git
 cd Half-Life-NDS-Port
-
-./docker.sh ./make.sh                    # Linux, macOS: builds the image, then the ROM
-docker compose run --rm dev ./make.sh    # Windows (PowerShell), or anywhere
+./docker.sh ./make.sh                   # Linux, macOS
+docker compose run --rm dev ./make.sh   # Windows PowerShell, or anywhere
 ```
 
-The first run builds the image, which takes a few minutes. After that,
-anything can be run the same way, and `./docker.sh` alone gives a shell in
-the container:
+This builds `half-life-nds-port.nds`. To build the converter and run its tests:
 
 ```sh
 ./docker.sh cmake -S tools/hlds-convert -B build/convert -DHLDS_BUILD_GUI=OFF
@@ -49,181 +107,27 @@ the container:
 ./docker.sh ctest --test-dir build/convert
 ```
 
-(If you also build the converter outside the container, give the two
-different folders -- `build/convert-docker`, say: CMake remembers the paths
-it was configured with.) In VS Code the same things are tasks: *Terminal >
-Run Task*, the ones named "Docker: ...".
+Building without Docker, the DSP toolchain, and the converter's window are all covered in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-`WITH_QT=1` adds Qt 6.8 to the image, for the task "Docker: build converter
-GUI": a check that the converter's window builds. The window itself is built
-where it runs (below).
+## Credits
 
-To convert the game, or to run the tests that play its maps, say where your
-Half-Life `valve` folder is; it is readable inside the container as `/valve`:
+- **Warioware64:** the port
+- **NewGBAXL:** streaming textures, 60 fps character animation, save versioning
+- **Teiwazik:** the first CI work
+- [BlocksDS](https://blocksds.skylyrac.net/) and the [Wonderful Toolchain](https://wonderful.asie.pl/): the SDK and compilers
+- [Nitro Engine](https://github.com/AntonioND/nitro-engine) by Antonio Niño Díaz, through our [Nitro Engine Advanced fork](https://github.com/Warioware64/nitro-engine)
+- [dswifi](https://github.com/blocksds/dswifi), through our [fork](https://github.com/Warioware64/dswifi) with Download Play
+- [teak-llvm](https://github.com/Gericom/teak-llvm) by Gericom and [libteak](https://github.com/blocksds/libteak), through our forks
+- [ptexconv](https://github.com/Garhoogin/ptexconv) by Garhoogin, [meshoptimizer](https://github.com/zeux/meshoptimizer) by Arseny Kapoulkine, [minimp3](https://github.com/lieff/minimp3), [yas](https://github.com/niXman/yas), [Qt](https://www.qt.io/) and [ArchitectDS](https://github.com/AntonioND/architectds)
 
-```sh
-HLDS_VALVE_DIR=/path/to/Half-Life/valve ./docker.sh \
-    build/convert/hlds-convert cook-all /valve -o sdroot
-```
+Half-Life is a trademark of Valve Corporation. The port's game rules and monster behaviour are adapted from the Half-Life SDK, and parts of its engine code follow the structure of Xash3D FWGS.
 
-(With `docker compose` directly: add
-`-v "C:\path\to\Half-Life\valve:/valve:ro"` after `run --rm`.)
+## Licence
 
-If building the image stops with `Could not resolve host` (seen with
-Docker Desktop on Windows), it is Docker's name server and not the
-download: run the command again, and if it keeps happening give Docker a
-name server of your choosing -- Docker Desktop > Settings > Docker Engine,
-add `"dns": ["1.1.1.1", "8.8.8.8"]`, Apply & restart.
+Licence under review. The game code is adapted from the Half-Life SDK and distributed under Valve's [Half-Life 1 SDK licence](LICENSE-HALF-LIFE-SDK) (free, non-commercial). The rest of the code is by the authors; its final licence will be announced.
 
-The DSi's DSP audio is an experiment, off by default in the game, and its
-toolchain is not in the image unless asked for, because that means compiling
-clang (allow an hour): `WITH_TEAK=1 ./docker.sh ./make.sh`. Without it the
-ROM is built with no DSP audio and is otherwise the same.
+Each third-party component's licence is in [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES).
 
-### Without Docker (Linux)
+## Use of AI
 
-Install, under `$BLOCKSDSEXT` (`/opt/wonderful/thirdparty/blocksds/external`):
-
-| | |
-|---|---|
-| [BlocksDS](https://blocksds.skylyrac.net/docs/setup/) | the SDK and its ARM compiler (a current one: the code is C++26) |
-| `ptexconv` | `wf-pacman -S blocksds-ptexconv` |
-| [Nitro Engine Advanced](https://github.com/Warioware64/nitro-engine) | this fork, not the one BlocksDS packages: clone it and `make -f Makefile.blocksds install NEA_MAXMOD=1` |
-| [dswifi (DL)](https://github.com/Warioware64/dswifi) | the wireless: this fork, which also does DS Download Play; `make && make install` puts it beside the stock one as `dswifi_dl` |
-| [teak-llvm](https://github.com/Warioware64/teak-llvm) and [libteak](https://github.com/Warioware64/libteak) | optional, for DSP audio: `./build-teak.sh all` in the first, then `make install` in the second |
-
-and Python 3, CMake 3.20+, a C++20 compiler; Qt 6.8+ if you want the
-converter's window.
-
-```sh
-./setup-env.sh          # once: Python venv with the ROM build system
-./make.sh               # builds half-life-nds-port.nds
-HLDS_JOBS=4 ./make.sh   # ... with no more than four compilers at once
-
-cmake -S tools/hlds-convert -B build/convert
-cmake --build build/convert -j4
-ctest --test-dir build/convert
-```
-
-## Putting the game on the card
-
-```sh
-build/convert/hlds-convert cook-all <path to>/Half-Life/valve -o <SD card root>
-```
-
-or run `build/convert/gui/hlds-convert-gui` (in VS Code: the task "Run
-converter GUI", which configures and builds it first). On Windows the same
-tasks use [MSYS2](https://www.msys2.org/)'s Qt, installed in `C:\msys64` with
-`pacman -S mingw-w64-ucrt-x86_64-{toolchain,cmake,ninja,qt6-base}` (MSYS2
-somewhere else: change the `PATH` in `.vscode/tasks.json`). Everything goes to
-`<card>/_nds/hl_nds/data/`; copy the ROM to the card as well. `cook-map`
-converts one map; the other commands and what the files are made of are in
-[docs/TECHNICAL.md](docs/TECHNICAL.md#what-the-converter-writes).
-
-## Controls
-
-Two layouts, chosen in the pause menu under OPTIONS > CONTROLS. The page
-also says what each button does as it is set.
-
-| | CLASSIC | MODERN |
-|---|---|---|
-| Stylus drag | look around | look around |
-| D-pad | move | move |
-| A B X Y | move, as the D-pad | X: weapon before · Y: weapon after · B: reload · A: jump |
-| L | fire, or swing the crowbar | the same |
-| R | the second trigger: the pistol's fast fire, both barrels of the shotgun, the MP5's grenade launcher (the .357: reload) | the same |
-| R + D-pad down / up | | crouch, and stay crouched / stand |
-| One short tap on the pad | | USE |
-| Two quick taps | jump (hold the second to keep it held) | the same |
-
-Whichever the layout:
-
-| | |
-|---|---|
-| Touch a weapon's slot | take that weapon; the one in hand: reload it |
-| Touch RELOAD, JUMP, DUCK, USE | what they say (USE: press a button, open a use-only door, charge at a wall unit) |
-| Start, or touch MENU | pause menu: resume, quick save, save game, load game, new game, options, debug command line |
-| Select, or touch the lamp | the suit's lamp |
-
-**Stylus hand: left** mirrors the touch screen and changes the buttons over:
-A B X Y become the pad (X up, B down, Y left, A right), the D-pad takes the
-face buttons' work, and R fires with L as the second trigger.
-
-**Pad left/right: turn** and **Pad up/down: look** give that axis of the pad
-to the view; the stylus then moves on it instead, as a stick: push it away
-from where it touched down.
-
-The pause menu's COMMAND opens a debug command line on the on-screen
-keyboard: `map <name>` goes to a map, `give` hands over every weapon with its
-ammunition and the suit, `heal` restores health, `noclip` flies.
-
-## Multiplayer
-
-Deathmatch between up to four consoles over the DS's local wireless, on the
-game's own multiplayer maps (crossfire, bounce, stalkyard...). Each console
-needs the ROM and a card with the game converted.
-
-On the title: MULTIPLAYER, then HOST GAME on one console -- choose the map
-and the limits -- and JOIN GAME on the others, which find it by themselves.
-The host presses START when everyone is in. Nobody can join a match under
-way.
-
-- You come in with the crowbar and the pistol; what lies about comes back
-  twenty or thirty seconds after it is taken; dead, you are back in three.
-- The pause menu shows the scores and does not stop the game. LEAVE GAME goes
-  back to the title; if the host leaves, the match is over for everyone.
-- Weapons the port has not got yet are stood in for on these maps by ones it
-  has (the converter says how many when it cooks a map).
-- The others are seen as the game's player in the suit, moving as a whole
-  body: no aiming up and down yet, and nothing in their hands.
-
-This is new: it has been played between simulated consoles and between two
-linked emulator instances, not yet between real consoles. DS Download Play, for consoles
-with no card, is planned on the same radio code and is not in yet.
-
-## Contributing
-
-- `shared/` is compiled into both the ROM and the converter, so the tests on
-  the PC run the console's own code. Run `ctest --test-dir build/convert`
-  before sending a change; with `HLDS_VALVE_DIR` set it also plays the game's
-  maps (about a minute).
-- `build/convert/hlds-testmap <folder>` writes a small map with no game data
-  in it, for trying a change on the console in seconds.
-- `tools/emu/` runs the ROM in melonDS without a display and takes pictures;
-  `tools/ref/` does the same with the real game, to compare.
-- `HLDS_PROFILE=1 ./make.sh` builds a ROM that times itself, and
-  `tools/arm9-report.sh` says what the built program is made of.
-- Never commit anything made from the game: maps, textures, sounds,
-  pictures of it. `sdroot/` and `build/` are ignored for that reason.
-
-How and why things are done the way they are:
-[docs/TECHNICAL.md](docs/TECHNICAL.md).
-
-## Layout
-
-| | |
-|---|---|
-| `source/` | the ARM9 program. `*.arm.cpp` is built as ARM; `*.itcm.arm.cpp` also runs from ITCM; single functions by `HL_ARM` / `HL_ITCM` (`source/Hot.hpp`) |
-| `teak/` | the DSi's DSP program (music and echo), in assembly |
-| `shared/` | file formats, fixed-point maths, collision and movement: compiled by both the ROM and the converter, so the host tests run the console's code |
-| `tools/hlds-convert/` | the converter: `core` (no Qt), `cli`, `gui`, `tests` |
-| `architectds_nea_mod/` | the ROM build system (ArchitectDS with Nitro Engine Advanced support) |
-| `thirdparty/yas/` | serialization, used for the manifest |
-| `thirdparty/minimp3/` | MP3 decoder (CC0), used by the converter for the music |
-| `docs/` | the technical notes |
-| `docker/`, `compose.yaml`, `docker.sh` | the build environment as a container |
-
-## Third-party code
-
-- **meshoptimizer** 1.3 (`thirdparty/meshoptimizer/`), in the converter
-  only: Copyright (c) 2016-2026 Arseny Kapoulkine, MIT licence (its
-  `LICENSE.md` is beside it).
-- **minimp3** and **yas** (`thirdparty/`), under their own licences.
-
-## Provenance
-
-The runtime is a rewrite for the DS, not a port of the game's source. The
-hull trace and player movement follow the algorithms and constants of the
-Quake/GoldSrc engines (as seen in xash3d-fwgs and the Half-Life SDK's
-`pm_shared.c`) so that the game plays like itself; they were written anew in
-fixed point. No Valve code or assets are included.
+This project was developed with the help of AI coding assistants. Every change is reviewed and tested by the author.
