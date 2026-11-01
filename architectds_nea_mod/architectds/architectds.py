@@ -107,6 +107,9 @@ def gen_input_file_list(dir_path, extensions=None):
     '''
     in_files = []
     for root, dirs, files in os.walk(dir_path):
+        # Always the same order, whatever the file system's: it is the link order.
+        dirs.sort()
+        files.sort()
         for _file in files:
             if extensions is not None:
                 if not _file.endswith(extensions):
