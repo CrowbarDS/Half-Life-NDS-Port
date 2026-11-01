@@ -1,6 +1,6 @@
 // Textures that are more than one picture (hlds/TextureFamily.hpp, the
-// level's TextureRef, HlLogic's brush faces and conveyors), on the game's own
-// maps: a cycle's pictures in the level one after another and all one size,
+// level's TextureRef, HlLogic's brush faces and conveyors), on rooms made here
+// and on the game's own maps (HLDS_VALVE_DIR): a cycle's pictures in the level one after another and all one size,
 // a switched texture's other face, '-' textures varied face by face, which
 // face a brush shows as it is used, and a conveyor carrying and sliding.
 
@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -44,15 +45,13 @@ namespace
         return -1;
     }
 
-    void testCycles(const char *dir)
+    /// `screen` is the stem of a cycle of four, `switched` of a texture with
+    /// another face.
+    void cycles(Game &game, const char *screenStem, const char *switched)
     {
-        const std::unique_ptr<Game> game = load(dir, "c1a0");
-        check(game != nullptr, "the map cooks");
-        if (game == nullptr)
-            return;
-        const LevelView &v = game->view;
+        const LevelView &v = game.view;
         // A screen of four pictures.
-        const int screen = textureNamed(v, "+0~lab_crt2");
+        const int screen = textureNamed(v, (std::string("+0") + screenStem).c_str());
         check(screen >= 0, "a cycling texture the map uses is in the level by its first picture's name");
         if (screen >= 0)
         {
@@ -62,7 +61,7 @@ namespace
             {
                 const TextureRef &t = v.textures[screen + n];
                 char name[16];
-                std::snprintf(name, sizeof(name), "+%d~lab_crt2", n);
+                std::snprintf(name, sizeof(name), "+%d%s", n, screenStem);
                 inOrder = std::strcmp(t.name, name) == 0 && (n == 0 || t.frames == 1);
                 oneSize = oneSize && t.width == first.width && t.height == first.height;
             }
@@ -70,13 +69,13 @@ namespace
                   "its four pictures are one after another in the level, all one size; it has no other face");
         }
         // Something with another face.
-        const int kit = textureNamed(v, "+0medkit");
+        const int kit = textureNamed(v, (std::string("+0") + switched).c_str());
         check(kit >= 0, "a switched texture is there too");
         if (kit >= 0)
         {
             const TextureRef &t = v.textures[kit];
             check(t.frames == 1 && t.other != kNoTexture && t.otherFrames == 1 &&
-                      std::strcmp(v.textures[t.other].name, "+amedkit") == 0 &&
+                      std::string(v.textures[t.other].name) == std::string("+a") + switched &&
                       v.textures[t.other].width == t.width && v.textures[t.other].height == t.height,
                   "... with its other face, of the same size");
         }
@@ -98,10 +97,10 @@ namespace
         check(firsts && !later.empty(), "surfaces name first pictures only: which is shown is the console's to say");
 
         // The reader refuses a cycle that runs off the table.
-        std::vector<std::uint8_t> bad = game->bytes;
+        std::vector<std::uint8_t> bad = game.bytes;
         LevelView broken;
         auto *refs = const_cast<TextureRef *>(v.textures);
-        const std::size_t at = reinterpret_cast<const std::uint8_t *>(&refs[v.textureCount - 1]) - game->bytes.data();
+        const std::size_t at = reinterpret_cast<const std::uint8_t *>(&refs[v.textureCount - 1]) - game.bytes.data();
         TextureRef last;
         std::memcpy(&last, bad.data() + at, sizeof(last));
         last.frames = 2;
@@ -110,15 +109,19 @@ namespace
               "a level whose cycle runs off the end of its textures is refused");
     }
 
-    void testRandom(const char *dir)
+    void testCycles(const char *dir)
     {
-        BspFile bsp;
-        std::string error;
-        if (!bsp.load(std::string(dir) + "/maps/c2a4f.bsp", error))
-        {
-            check(false, (std::string(dir) + "/maps/c2a4f.bsp loads").c_str());
+        const std::unique_ptr<Game> game = load(dir, "c1a0");
+        check(game != nullptr, "the map cooks");
+        if (game == nullptr)
             return;
-        }
+        cycles(*game, "~lab_crt2", "medkit");
+    }
+
+    /// `label` for what it prints; at least `leastFamilies` of them and
+    /// `leastVaried` faces changed for it to be called varied.
+    void variety(BspFile &bsp, const char *label, int leastFamilies, int leastVaried)
+    {
         // Per family: which variants its faces wear.
         std::map<std::string, std::set<int>> worn;
         int varied = 0;
@@ -142,10 +145,10 @@ namespace
             ++families;
             spread += family.second.size() >= 2;
         }
-        std::printf("test_families: c2a4f has %d '-' families on its faces, %d of them worn in more than one variant; "
+        std::printf("test_families: %s has %d '-' families on its faces, %d of them worn in more than one variant; "
                     "%d faces changed\n",
-                    families, spread, varied);
-        check(families >= 5 && spread >= families / 2 && varied > 20,
+                    label, families, spread, varied);
+        check(families >= leastFamilies && spread >= families / 2 && varied > leastVaried,
               "the '-' textures are varied from face to face");
         setRandomTiling(false);
         bool plain = true;
@@ -155,12 +158,20 @@ namespace
         check(plain, "... unless that is switched off");
     }
 
-    void testFaces(const char *dir)
+    void testRandom(const char *dir)
     {
-        const std::unique_ptr<Game> game = load(dir, "c1a0");
-        if (game == nullptr)
+        BspFile bsp;
+        std::string error;
+        if (!bsp.load(std::string(dir) + "/maps/c2a4f.bsp", error))
+        {
+            check(false, (std::string(dir) + "/maps/c2a4f.bsp loads").c_str());
             return;
-        Game &g = *game;
+        }
+        variety(bsp, "c2a4f", 5, 20);
+    }
+
+    void faces(Game &g)
+    {
         const LevelView &v = g.view;
         for (int n = 0; n < 10; ++n)
             g.frame();
@@ -214,21 +225,24 @@ namespace
         }
     }
 
-    void testConveyor(const char *dir)
+    void testFaces(const char *dir)
     {
-        const std::unique_ptr<Game> game = load(dir, "c2a4c");
-        check(game != nullptr, "the map with the conveyors cooks");
+        const std::unique_ptr<Game> game = load(dir, "c1a0");
         if (game == nullptr)
             return;
-        Game &g = *game;
+        faces(*game);
+    }
+
+    void conveyor(Game &g, const char *label, int leastBelts)
+    {
         const LevelView &v = g.view;
         int belts = 0, sliding = 0;
         for (std::uint32_t i = 0; i < v.logicCount; ++i)
             belts += v.logic[i].kind == static_cast<std::uint8_t>(LogicKind::Conveyor);
         for (std::uint32_t i = 0; i < v.textureCount; ++i)
             sliding += (v.textures[i].flags & kTextureScroll) != 0;
-        std::printf("test_families: c2a4c has %d conveyors, %d sliding textures\n", belts, sliding);
-        check(belts >= 20 && sliding >= 1, "its conveyors are in the level, and their belts' textures slide");
+        std::printf("test_families: %s has %d conveyors, %d sliding textures\n", label, belts, sliding);
+        check(belts >= leastBelts && sliding >= 1, "its conveyors are in the level, and their belts' textures slide");
         const int belt = g.recordOfKind(LogicKind::Conveyor);
         if (belt < 0)
             return;
@@ -283,10 +297,139 @@ namespace
             along += static_cast<std::int64_t>(g.player.origin[a] - there[a]) * record.move[a];
         check(along < 0, "used, it runs the other way");
     }
+
+    void testConveyor(const char *dir)
+    {
+        const std::unique_ptr<Game> game = load(dir, "c2a4c");
+        check(game != nullptr, "the map with the conveyors cooks");
+        if (game == nullptr)
+            return;
+        conveyor(*game, "c2a4c", 20);
+    }
+
+    BrushBox box(const char *cls, float x, float y, float size, const char *texture, std::string keys = "")
+    {
+        BrushBox made;
+        made.className = cls;
+        made.mins[0] = x, made.mins[1] = y, made.mins[2] = 0;
+        made.maxs[0] = x + size, made.maxs[1] = y + size, made.maxs[2] = size;
+        made.textureName = texture;
+        made.keys = std::move(keys);
+        return made;
+    }
+
+    std::unique_ptr<Game> cook(const BoxRoom &room)
+    {
+        auto game = std::make_unique<Game>();
+        std::string error;
+        if (!game->bsp.parse(buildBoxRoom(room), error))
+            return nullptr;
+        finish(*game, nullptr);
+        return game->ok ? std::move(game) : nullptr;
+    }
+
+    /// The same on rooms made here. (Their textures are all of one size:
+    /// that a cycle's pictures are is carried over, but cannot fail here.)
+    void testRooms()
+    {
+        // A screen of four whose faces wear its third picture; a switched
+        // kit; one cycle that does not start at its first picture (no +0),
+        // which is only itself; a texture nothing wears.
+        BoxRoom room;
+        room.mins[0] = room.mins[1] = -512;
+        room.maxs[0] = room.maxs[1] = 512;
+        room.extraTextures = {"+0screen", "+1screen", "+3screen", "+amedkit", "+1broken", "unworn"};
+        room.brushes.push_back(box("func_wall", -300, 0, 32, "+2screen"));
+        room.brushes.push_back(box("func_wall", -200, 0, 32, "+0medkit"));
+        room.brushes.push_back(box("func_wall", -100, 0, 32, "+1broken"));
+        std::unique_ptr<Game> game = cook(room);
+        check(game != nullptr, "the room of cycles cooks");
+        if (game != nullptr)
+        {
+            cycles(*game, "screen", "medkit");
+            const LevelView &v = game->view;
+            const int broken = textureNamed(v, "+1broken");
+            check(broken >= 0 && v.textures[broken].frames == 1 && v.textures[broken].other == kNoTexture,
+                  "a cycle without its first picture is the texture as it is");
+            check(textureNamed(v, "unworn") < 0, "a texture no face wears is not in the level");
+        }
+
+        // Variants: two families, on many faces.
+        BoxRoom tiled;
+        tiled.mins[0] = tiled.mins[1] = -512;
+        tiled.maxs[0] = tiled.maxs[1] = 512;
+        tiled.extraTextures = {"-1tile", "-2tile", "-1slab"};
+        for (int n = 0; n < 12; ++n)
+        {
+            tiled.brushes.push_back(box("func_wall", -480.0f + n * 72, -400, 40, "-0tile"));
+            tiled.brushes.push_back(box("func_wall", -480.0f + n * 72, 300, 40, "-0slab"));
+        }
+        BspFile bsp;
+        std::string error;
+        check(bsp.parse(buildBoxRoom(tiled), error), "the room of variants parses");
+        variety(bsp, "a room", 2, 20);
+
+        // A charger, a named wall and a button, each wearing what has
+        // another face.
+        BoxRoom used;
+        used.mins[0] = used.mins[1] = -512;
+        used.maxs[0] = used.maxs[1] = 512;
+        used.extraTextures = {"+akit", "+alamp", "+apush"};
+        used.brushes.push_back(box("func_healthcharger", -300, 200, 32, "+0kit"));
+        used.brushes.push_back(box("func_wall", -200, 200, 32, "+0lamp", "\"targetname\" \"lamp\"\n"));
+        used.brushes.push_back(box("func_button", -100, 200, 32, "+0push", "\"wait\" \"-1\"\n\"angles\" \"0 90 0\"\n"));
+        game = cook(used);
+        check(game != nullptr, "the room of switched faces cooks");
+        if (game != nullptr)
+        {
+            check(game->recordOfKind(LogicKind::Static) >= 0 && game->recordOfKind(LogicKind::Button) >= 0,
+                  "it has its wall and its button");
+            faces(*game);
+        }
+
+        // A belt to stand on, that goes along x; one that says it pushes
+        // nobody; a scroll texture on something else, which stays still.
+        BoxRoom belts;
+        belts.mins[0] = belts.mins[1] = -1024;
+        belts.maxs[0] = belts.maxs[1] = 1024;
+        belts.maxs[2] = 512;
+        belts.brushes.push_back(box("func_conveyor", -256, -256, 256, "scrollbelt", "\"speed\" \"120\"\n\"angles\" \"0 0 0\"\n"));
+        belts.brushes.push_back(box("func_conveyor", 300, 300, 256, "scrollbelt", "\"speed\" \"120\"\n\"angles\" \"0 0 0\"\n\"spawnflags\" \"1\"\n"));
+        belts.brushes.push_back(box("func_wall", 600, -300, 64, "scrollstill"));
+        game = cook(belts);
+        check(game != nullptr, "the room of belts cooks");
+        if (game == nullptr)
+            return;
+        Game &g = *game;
+        conveyor(g, "a room", 2);
+        const int still = textureNamed(g.view, "scrollstill");
+        check(still >= 0 && !(g.view.textures[still].flags & kTextureScroll),
+              "a scroll texture on anything but a belt stays still");
+        const int idle = g.recordOfKind(LogicKind::Conveyor, 1);
+        if (idle >= 0)
+        {
+            const LogicRecord &record = g.view.logic[idle];
+            const MoverHull &mover = g.movers[record.brush];
+            const fx before = g.brushStates[record.brush].scroll;
+            g.player.origin[0] = (mover.mins[0] + mover.maxs[0]) / 2;
+            g.player.origin[1] = (mover.mins[1] + mover.maxs[1]) / 2;
+            g.player.origin[2] = mover.maxs[2] + fxFromInt(37);
+            const fx from = g.player.origin[0];
+            for (int n = 0; n < 10; ++n)
+            {
+                g.player.onGround = true;
+                g.player.groundMover = static_cast<std::int16_t>(record.brush);
+                logicTick(g.logic, g.player, 33);
+            }
+            check(g.player.origin[0] == from && g.brushStates[record.brush].scroll != before,
+                  "one that pushes nobody carries nobody, and still slides");
+        }
+    }
 } // namespace
 
 int main()
 {
+    testRooms();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir != nullptr && dir[0] != '\0')
     {
@@ -298,7 +441,6 @@ int main()
     else
     {
         std::printf("test_families: HLDS_VALVE_DIR not set, the game's maps were not read\n");
-        return 77;
     }
     if (g_failures == 0)
         std::printf("test_families: ok\n");

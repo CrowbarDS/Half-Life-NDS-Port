@@ -1,6 +1,8 @@
 // A map's whole state, saved and laid back (shared/HlSaveState.hpp).
 //
-// The test that matters is one that does not know what there is to forget:
+// What a state refuses, and that a door keeps its place through one, on rooms
+// made here. With HLDS_VALVE_DIR, the test that matters is one that does not
+// know what there is to forget:
 // a real map is played for a while with things made to happen in it, its
 // state taken; the same map begun afresh has that state laid over it; and
 // then BOTH are played on, the same way, and must be the same to the byte
@@ -226,13 +228,9 @@ namespace
         check(parted < 0, (map + ": played on from the save, it goes as it would have gone").c_str());
     }
 
-    void refusals(const char *dir)
+    /// What is refused: `a` and `other` being two maps; `fresh`, `a` begun again.
+    void refusals(Game *a, Game *other, Game *fresh)
     {
-        Globals globals;
-        std::unique_ptr<Game> a = load(dir, "c1a0", &globals);
-        std::unique_ptr<Game> other = load(dir, "c1a1", &globals);
-        if (a == nullptr || other == nullptr)
-            return;
         const std::uint32_t level = a->view.header->crc32;
         std::vector<std::uint8_t> saved = takeMapState(a->logic, a->player, level);
         check(!layMapState(saved.data(), saved.size(), other->logic, other->player, other->view.header->crc32),
@@ -252,9 +250,6 @@ namespace
         std::vector<std::uint8_t> older = takeMapState(a->logic, a->player, level, true);
         std::vector<std::uint8_t> current = takeMapState(a->logic, a->player, level);
         check(older.size() < current.size() && older != current, "a state of save version 6 is shorter");
-        std::unique_ptr<Game> fresh = load(dir, "c1a0", &globals);
-        if (fresh == nullptr)
-            return;
         fresh->logic.sharing = true;
         fresh->logic.struckCount = 3;
         fresh->logic.struck[0] = 7;
@@ -268,15 +263,102 @@ namespace
         check(!layMapState(older.data(), older.size(), fresh->logic, fresh->player, level),
               "... but not one with a layout of neither");
     }
+
+    void refusals(const char *dir)
+    {
+        Globals globals;
+        std::unique_ptr<Game> a = load(dir, "c1a0", &globals);
+        std::unique_ptr<Game> other = load(dir, "c1a1", &globals);
+        std::unique_ptr<Game> fresh = load(dir, "c1a0", &globals);
+        if (a == nullptr || other == nullptr || fresh == nullptr)
+            return;
+        refusals(a.get(), other.get(), fresh.get());
+    }
+
+    BrushBox door()
+    {
+        BrushBox box;
+        box.className = "func_door";
+        box.mins[0] = -32, box.mins[1] = -16, box.mins[2] = 0;
+        box.maxs[0] = 32, box.maxs[1] = 16, box.maxs[2] = 64;
+        box.keys = "\"targetname\" \"door\"\n\"speed\" \"50\"\n\"wait\" \"-1\"\n\"angles\" \"-90 0 0\"\n";
+        return box;
+    }
+
+    std::unique_ptr<Game> room(const BoxRoom &made, Globals *globals)
+    {
+        auto game = std::make_unique<Game>();
+        std::string error;
+        if (!game->bsp.parse(buildBoxRoom(made), error))
+            return nullptr;
+        finish(*game, globals);
+        return game->ok ? std::move(game) : nullptr;
+    }
+
+    /// The same on two rooms made here, one with a door and one with two;
+    /// and what a state is for: a door on its way, laid over the room begun
+    /// afresh, is on its way there, and goes on the same.
+    void testRooms()
+    {
+        Globals globals;
+        BoxRoom one;
+        one.brushes.push_back(door());
+        BoxRoom two = one;
+        two.brushes.push_back(door());
+        two.brushes[1].mins[1] = 40, two.brushes[1].maxs[1] = 72;
+        two.brushes[1].keys = "\"targetname\" \"other\"\n";
+        std::unique_ptr<Game> a = room(one, &globals), other = room(two, &globals), fresh = room(one, &globals);
+        check(a != nullptr && other != nullptr && fresh != nullptr, "the rooms cook");
+        if (a == nullptr || other == nullptr || fresh == nullptr)
+            return;
+        check(a->view.header->crc32 != other->view.header->crc32, "two rooms are two levels");
+        refusals(a.get(), other.get(), fresh.get());
+
+        std::unique_ptr<Game> played = room(one, &globals), begun = room(one, &globals);
+        if (played == nullptr || begun == nullptr)
+            return;
+        const std::uint32_t level = played->view.header->crc32;
+        const int door = played->recordOfKind(LogicKind::Door);
+        check(door >= 0 && played->view.logic[door].brush != kNoBrush, "the room has its door");
+        if (door < 0 || played->view.logic[door].brush == kNoBrush)
+            return;
+        const int brush = played->view.logic[door].brush;
+        played->player.origin[0] = fxFromInt(100);
+        begun->player.origin[0] = fxFromInt(100);
+        logicUse(played->logic, played->player, door, -1, kUseToggle);
+        for (int t = 0; t < 15; ++t)
+            played->frame();
+        const fx midway = played->brushStates[brush].pos[2];
+        check(midway > 0 && played->states[door].move == MoveState::GoingUp, "(the door is on its way up)");
+        const std::vector<std::uint8_t> saved = takeMapState(played->logic, played->player, level);
+        check(begun->brushStates[brush].pos[2] == 0, "(begun afresh, it is not)");
+        check(layMapState(saved.data(), saved.size(), begun->logic, begun->player, level),
+              "a state is laid over its own room begun afresh");
+        check(begun->brushStates[brush].pos[2] == midway && begun->states[door].move == MoveState::GoingUp,
+              "... and the door is where it was, going the way it went");
+        check(takeMapState(begun->logic, begun->player, level) == saved, "... and what is taken again is what was");
+        for (int t = 0; t < 120; ++t)
+        {
+            played->frame();
+            begun->frame();
+        }
+        check(played->brushStates[brush].pos[2] > midway &&
+                  begun->brushStates[brush].pos[2] == played->brushStates[brush].pos[2] &&
+                  takeMapState(begun->logic, begun->player, level) == takeMapState(played->logic, played->player, level),
+              "... and played on, both go the same");
+    }
 } // namespace
 
 int main()
 {
+    testRooms();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir == nullptr || dir[0] == '\0')
     {
         std::printf("test_savestate: HLDS_VALVE_DIR not set, the game's maps were not read\n");
-        return 77;
+        if (g_failures == 0)
+            std::printf("test_savestate: ok\n");
+        return g_failures == 0 ? 0 : 1;
     }
     refusals(dir);
     // (HLDS_STATE_MAPS: other maps than these, comma separated.)

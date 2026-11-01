@@ -1,7 +1,8 @@
 // The people who talk (shared/HlAiTalk.hpp, HlAiPeople.hpp) and the scripts
 // that direct them (HlLogic.hpp), held up against the game's own code
 // (dlls/talkmonster.cpp, scientist.cpp, barney.cpp, scripted.cpp), on the
-// game's maps (HLDS_VALVE_DIR):
+// game's maps (HLDS_VALVE_DIR). Without them, what is cooked for them to say,
+// from lists made up here. With them:
 //
 // a scientist met before the disaster will not follow, and says so; one
 // after greets the player, follows when USEd and stays when USEd again, says
@@ -157,13 +158,8 @@ namespace
 
     // ---------------------------------------------------------------- tests
 
-    void testTable(const char *dir)
+    void table(Game &g, const char *label)
     {
-        auto game = load(dir, "c1a2a");
-        check(game != nullptr, "c1a2a cooks");
-        if (!game)
-            return;
-        Game &g = *game;
         check(g.ai.speechCount > kTalkTableAt + kTalkHeading, "a map with people has what they say");
         int groups = 0, lines = 0;
         for (int voice = 0; voice < kVoices; ++voice)
@@ -175,10 +171,87 @@ namespace
                 lines += static_cast<int>(l.size());
             }
         }
-        std::printf("test_talk: c1a2a: %d groups, %d lines\n", groups, lines);
+        std::printf("test_talk: %s: %d groups, %d lines\n", label, groups, lines);
         check(!linesOf(g, kVoiceScientist, kTalkHello).empty() && !linesOf(g, kVoiceBarney, kTalkMad).empty() &&
                   linesOf(g, kVoiceScientist, kTalkPlHurt1).size() == 1 && linesOf(g, kVoiceBarney, kTalkPHello).empty(),
               "... a scientist's hello, a guard's anger, one line of 'you are hurt'; no pre-disaster hello for a guard");
+    }
+
+    void testTable(const char *dir)
+    {
+        auto game = load(dir, "c1a2a");
+        check(game != nullptr, "c1a2a cooks");
+        if (!game)
+            return;
+        table(*game, "c1a2a");
+    }
+
+    std::unique_ptr<Game> cookRoom(const std::vector<std::string> &people, const char *from)
+    {
+        auto game = std::make_unique<Game>();
+        std::string error;
+        game->pretendModels = people;
+        if (!game->bsp.parse(buildBoxRoom(), error))
+            return nullptr;
+        finish(*game, nullptr, from);
+        return game->ok ? std::move(game) : nullptr;
+    }
+
+    /// What is cooked for people to say, from lists made up here. (Models
+    /// are wanted for anyone to be in a room, so nobody speaks here: what
+    /// they do with it needs the game.)
+    void testLists()
+    {
+        std::string sentences =
+            "SC_CUREA scientist/one(p110) two\n"
+            "BA_CUREA barney/three\n"
+            "BA_MAD0 barney/four five, six\n"
+            "BA_PHELLO0 barney/seven\n" // (no voice but a scientist's has this)
+            "SC_IDLE0 scientist/eight\n"
+            "SC_IDLE7 scientist/nine\n";
+        for (int n = 0; n < 12; ++n) // (more than are kept)
+            sentences += "SC_HELLO" + std::to_string(n) + " scientist/hello" + std::to_string(n) + "\n";
+        FakeGame fake("talk", sentences, "");
+
+        std::unique_ptr<Game> game = cookRoom({"scientist", "barney"}, fake.dir.c_str());
+        check(game != nullptr, "the room with its people's lists cooks");
+        if (game == nullptr)
+            return;
+        Game &g = *game;
+        table(g, "a room");
+        check(linesOf(g, kVoiceScientist, kTalkHello).size() == kTalkLines, "no more of a group are kept than are said");
+        check(linesOf(g, kVoiceScientist, kTalkIdle).size() == 2, "a group's numbers may have gaps in them");
+        check(linesOf(g, kVoiceBarney, kTalkPlHurt1).size() == 1 && linesOf(g, kVoiceScientist, kTalkStare).empty(),
+              "the group that is one line is; one the list has not got is empty");
+
+        // The words of a line: which sounds, how they are said.
+        const LevelView &v = g.view;
+        const auto mad = linesOf(g, kVoiceBarney, kTalkMad);
+        const auto cure = linesOf(g, kVoiceScientist, kTalkPlHurt1);
+        check(mad.size() == 1 && cure.size() == 1, "(the lines looked at)");
+        if (mad.size() == 1 && cure.size() == 1)
+        {
+            auto wordOf = [&](std::uint16_t line, int n) { return v.sentenceWords[v.sentences[line].firstWord + n]; };
+            auto name = [&](std::uint16_t line, int n) { return std::string(v.sounds[wordOf(line, n).sound].name); };
+            auto card = [](const char *path) { return soundCardName(path, kSoundRate, false); };
+            check(v.sentences[mad[0]].wordCount == 4 && name(mad[0], 0) == card("barney/four.wav") &&
+                      name(mad[0], 1) == card("barney/five.wav") && name(mad[0], 2) == card("barney/_comma.wav") &&
+                      name(mad[0], 3) == card("barney/six.wav"),
+                  "a line's words are its sounds, its folder once for all, a comma a pause");
+            check(v.sentences[cure[0]].wordCount == 2 && wordOf(cure[0], 0).pitch == 110 && wordOf(cure[0], 1).pitch == 0,
+                  "... and a word's marks are its own");
+        }
+
+        // Only those of the voices the map has.
+        game = cookRoom({"scientist"}, fake.dir.c_str());
+        check(game != nullptr, "the room of a scientist cooks");
+        if (game != nullptr)
+            check(!linesOf(*game, kVoiceScientist, kTalkHello).empty() && linesOf(*game, kVoiceBarney, kTalkMad).empty(),
+                  "a map with scientists and no guards has nothing for a guard to say");
+        game = cookRoom({}, fake.dir.c_str());
+        check(game != nullptr, "the room of nobody cooks");
+        if (game != nullptr)
+            check(game->ai.speechCount == 0, "... and with nobody, nothing to say at all");
     }
 
     void testDecline(const char *dir)
@@ -1292,10 +1365,10 @@ int main()
         bench(valve, std::getenv("HLDS_BENCH"));
         return 0;
     }
+    testLists();
     if (valve == nullptr)
     {
         std::printf("test_talk: HLDS_VALVE_DIR not set, the game's maps were not read\n");
-        return 77;
     }
     else
     {

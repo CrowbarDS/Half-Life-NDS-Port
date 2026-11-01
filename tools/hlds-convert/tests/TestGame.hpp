@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -42,6 +43,9 @@ namespace hldstest
         std::vector<std::uint8_t> cornerState;
         // The map's models, cooked as the converter cooks them, and its actors.
         std::vector<std::vector<std::uint32_t>> modelBlocks;
+        /// Models to cook as if they had been, with no file behind them: what
+        /// the level keeps for a scientist is there without a scientist's model.
+        std::vector<std::string> pretendModels;
         std::vector<ModelView> modelViews;
         std::vector<ActorState> actorStates;
         std::vector<SolidBox> actorBoxes;
@@ -127,6 +131,29 @@ namespace hldstest
         }
     };
 
+    /// A game's folder of a test's own, there for as long as this is: the two
+    /// lists the cook reads, made up by the test (no Valve data is in this
+    /// repository), and no models -- cookModels passes over what is missing.
+    /// Give finish() its dir as modelsFrom.
+    struct FakeGame
+    {
+        std::filesystem::path root;
+        std::string dir;
+        FakeGame(const char *name, const std::string &sentences, const std::string &titles)
+            : root(std::filesystem::temp_directory_path() / (std::string("hlds_fake_game_") + name)), dir(root.string())
+        {
+            std::filesystem::remove_all(root);
+            std::filesystem::create_directories(root / "sound");
+            std::ofstream(root / "sound" / "sentences.txt", std::ios::binary) << sentences;
+            std::ofstream(root / "titles.txt", std::ios::binary) << titles;
+        }
+        ~FakeGame()
+        {
+            std::error_code ignored;
+            std::filesystem::remove_all(root, ignored);
+        }
+    };
+
     /// Cook the models `g`'s map needs, the way the converter does: its own
     /// actors' and those of whoever may walk in from next door.
     inline void cookModels(Game &g, const char *dir, CookOptions &options)
@@ -187,10 +214,15 @@ namespace hldstest
         CookReport report;
         CookOptions cookOptions;
         cookModels(g, modelsFrom, cookOptions);
+        cookOptions.models.insert(cookOptions.models.end(), g.pretendModels.begin(), g.pretendModels.end());
         // What the map's people say, if the game's list is there to be read.
+        // (Once for each folder: a made-up game's must not stand for the real
+        // one's in the same run.)
         static SentenceBook book;
-        if (modelsFrom != nullptr && book.lines.empty())
+        static std::string bookFrom;
+        if (modelsFrom != nullptr && bookFrom != modelsFrom)
         {
+            bookFrom = modelsFrom;
             std::ifstream file(std::string(modelsFrom) + "/sound/sentences.txt", std::ios::binary);
             const std::string text((std::istreambuf_iterator<char>(file)),
                                    std::istreambuf_iterator<char>());
@@ -201,8 +233,10 @@ namespace hldstest
             cookOptions.nodGraph = &g.nodGraph;
         // ... and what it writes on the screen.
         static TitlesBook titles;
-        if (modelsFrom != nullptr && titles.titles.empty())
+        static std::string titlesFrom;
+        if (modelsFrom != nullptr && titlesFrom != modelsFrom)
         {
+            titlesFrom = modelsFrom;
             std::ifstream file(std::string(modelsFrom) + "/titles.txt", std::ios::binary);
             const std::string text((std::istreambuf_iterator<char>(file)),
                                    std::istreambuf_iterator<char>());

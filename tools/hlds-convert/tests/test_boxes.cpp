@@ -1,4 +1,5 @@
-// The boxes that are pushed (func_pushable), on the game's own maps: a box
+// The boxes that are pushed (func_pushable), on rooms made here and on the
+// game's own maps (HLDS_VALVE_DIR): a box
 // collides as wide as it is -- it is never left inside a wall, another box,
 // or the player -- and the player who is put inside one is got out of it.
 // (It used to move as something a person wide, whatever it was: a crate 64
@@ -122,12 +123,8 @@ namespace
         return fxToInt(least);
     }
 
-    void pushedAbout(const char *dir, const char *map)
+    void pushedAbout(Game &g, const char *map)
     {
-        const std::unique_ptr<Game> game = load(dir, map);
-        if (game == nullptr)
-            return;
-        Game &g = *game;
         const std::vector<int> boxes = boxesOf(g);
         // Out of it: this is about the boxes.
         g.player.origin[2] += fxFromInt(6000);
@@ -239,23 +236,8 @@ namespace
         check(worstBox <= 2, (std::string(map) + ": nor inside another box").c_str());
     }
 
-    void playerAndBox(const char *dir)
+    void playerAndBox(Game &g, int box)
     {
-        const std::unique_ptr<Game> game = load(dir, "c1a2");
-        if (game == nullptr)
-            return;
-        Game &g = *game;
-        // The crate that is 64 each way and stands on an open floor.
-        int box = -1;
-        for (int candidate : boxesOf(g))
-        {
-            const MoverHull &hull = g.movers[g.view.logic[candidate].brush];
-            if (fxToInt(hull.mins[0]) == 256 && fxToInt(hull.mins[1]) == -833)
-                box = candidate;
-        }
-        check(box >= 0, "c1a2 has its crate");
-        if (box < 0)
-            return;
         const int brush = g.view.logic[box].brush;
         const MoverHull &hull = g.movers[brush];
         for (int n = 0; n < 10; ++n)
@@ -319,15 +301,127 @@ namespace
         check(inside == 0, "a player walking into a box is never inside it");
         check(worst <= 2, "... and does not walk it into a wall");
     }
+
+    void pushedAbout(const char *dir, const char *map)
+    {
+        const std::unique_ptr<Game> game = load(dir, map);
+        if (game == nullptr)
+            return;
+        pushedAbout(*game, map);
+    }
+
+    void playerAndBox(const char *dir)
+    {
+        const std::unique_ptr<Game> game = load(dir, "c1a2");
+        if (game == nullptr)
+            return;
+        Game &g = *game;
+        // The crate that is 64 each way and stands on an open floor.
+        int box = -1;
+        for (int candidate : boxesOf(g))
+        {
+            const MoverHull &hull = g.movers[g.view.logic[candidate].brush];
+            if (fxToInt(hull.mins[0]) == 256 && fxToInt(hull.mins[1]) == -833)
+                box = candidate;
+        }
+        check(box >= 0, "c1a2 has its crate");
+        if (box < 0)
+            return;
+        playerAndBox(g, box);
+    }
+
+    BrushBox crate(float x, float y, float size, float high)
+    {
+        BrushBox box;
+        box.className = "func_pushable";
+        box.mins[0] = x, box.mins[1] = y, box.mins[2] = 0;
+        box.maxs[0] = x + size, box.maxs[1] = y + size, box.maxs[2] = high;
+        box.keys = "\"friction\" \"0\"\n";
+        return box;
+    }
+
+    std::unique_ptr<Game> cook(const BoxRoom &room)
+    {
+        auto game = std::make_unique<Game>();
+        std::string error;
+        if (!game->bsp.parse(buildBoxRoom(room), error))
+            return nullptr;
+        finish(*game, nullptr);
+        return game->ok ? std::move(game) : nullptr;
+    }
+
+    /// The same on rooms made here, and what the maps cannot be asked for: a
+    /// crate shoved into a wall stops at it with its own side, however wide.
+    void testRooms()
+    {
+        BoxRoom room;
+        room.mins[0] = room.mins[1] = -512;
+        room.maxs[0] = room.maxs[1] = 512;
+        room.maxs[2] = 256;
+        room.brushes.push_back(crate(-300, -32, 64, 64));
+        room.brushes.push_back(crate(100, -48, 96, 64)); // (in the first's way)
+        room.brushes.push_back(crate(-32, 200, 64, 40)); // (low: moved as someone crouched)
+        std::unique_ptr<Game> game = cook(room);
+        check(game != nullptr, "the room of crates cooks");
+        if (game != nullptr)
+        {
+            check(boxesOf(*game).size() == 3 && game->view.logic[boxesOf(*game)[0]].extra[2] == fxFromInt(400) &&
+                      game->view.logic[boxesOf(*game)[0]].extra[3] == 0 && game->view.logic[boxesOf(*game)[2]].extra[3] != 0,
+                  "its crates are boxes that go by their height, as fast as their friction lets them");
+            pushedAbout(*game, "a room");
+        }
+
+        BoxRoom open;
+        open.mins[0] = open.mins[1] = -512;
+        open.maxs[0] = open.maxs[1] = 512;
+        open.maxs[2] = 256;
+        open.brushes.push_back(crate(100, -32, 64, 64));
+        game = cook(open);
+        check(game != nullptr, "the room of one crate cooks");
+        if (game != nullptr)
+            playerAndBox(*game, boxesOf(*game)[0]);
+
+        for (const float width : {32.0f, 64.0f, 128.0f})
+        {
+            BoxRoom hall;
+            hall.mins[0] = hall.mins[1] = -256;
+            hall.maxs[0] = hall.maxs[1] = 256;
+            hall.maxs[2] = 256;
+            hall.brushes.push_back(crate(-width / 2, -width / 2, width, 64));
+            game = cook(hall);
+            check(game != nullptr, "the hall cooks");
+            if (game == nullptr)
+                continue;
+            Game &g = *game;
+            g.player.origin[2] += fxFromInt(6000);
+            const int box = boxesOf(g)[0];
+            const MoverHull &hull = g.movers[g.view.logic[box].brush];
+            for (int tick = 0; tick < 150; ++tick)
+            {
+                g.logic.states[box].travel[0] = fxFromInt(200);
+                g.logic.states[box].travel[1] = 0;
+                logicTick(g.logic, g.player, 33);
+                g.drain();
+            }
+            const int reached = fxToInt(hull.maxs[0]);
+            std::printf("test_boxes: a crate %d wide, shoved at the wall at 256: its side gets to %d\n",
+                        static_cast<int>(width), reached);
+            check(reached > 256 - 4 && reached <= 256 + 1, "a crate shoved into a wall stops at it with its own side");
+            check(fxToInt(hull.maxs[0] - hull.mins[0]) == static_cast<int>(width), "... and is as wide as ever");
+        }
+    }
 } // namespace
 
 int main()
 {
+    testRooms();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir == nullptr || dir[0] == '\0')
     {
         std::printf("test_boxes: HLDS_VALVE_DIR not set, the game's maps were not read\n");
-        return 77;
+        if (g_failures == 0)
+            std::printf("test_boxes: ok\n");
+        return g_failures == 0 ? 0 : 1;
     }
     pushedAbout(dir, "c1a2");
     pushedAbout(dir, "c1a1b");

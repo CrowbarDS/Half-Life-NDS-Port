@@ -419,9 +419,27 @@ namespace
     }
 } // namespace
 
+/// Time: a clip that loops goes round, one that does not stops and says so.
+static void testClipTime()
+{
+    ModelClip clip{};
+    clip.frameCount = 31;
+    clip.fps = 15 << 8;
+    clip.flags = kClipLoops;
+    bool finished = false;
+    std::uint32_t frame = advanceClip(clip, 0, 1000, finished);
+    check(frame == (15u << 8) && !finished, "a second at 15 frames a second is 15 frames");
+    frame = advanceClip(clip, frame, 1500, finished);
+    check(frame == (7u << 8) + 128 && !finished, "a clip that loops goes round");
+    clip.flags = 0;
+    frame = advanceClip(clip, 15u << 8, 1500, finished);
+    check(frame == (30u << 8) && finished, "one that does not stops on its last frame, finished");
+}
+
 int main()
 {
     testHues();
+    testClipTime();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir == nullptr || *dir == '\0')
     {
@@ -542,20 +560,6 @@ int main()
                   "his second skin is the same parts with another picture on them");
         }
     }
-
-    // Time: a clip that loops goes round, one that does not stops and says so.
-    ModelClip clip{};
-    clip.frameCount = 31;
-    clip.fps = 15 << 8;
-    clip.flags = kClipLoops;
-    bool finished = false;
-    std::uint32_t frame = advanceClip(clip, 0, 1000, finished);
-    check(frame == (15u << 8) && !finished, "a second at 15 frames a second is 15 frames");
-    frame = advanceClip(clip, frame, 1500, finished);
-    check(frame == (7u << 8) + 128 && !finished, "a clip that loops goes round");
-    clip.flags = 0;
-    frame = advanceClip(clip, 15u << 8, 1500, finished);
-    check(frame == (30u << 8) && finished, "one that does not stops on its last frame, finished");
 
     if (g_failures == 0)
         std::printf("test_anim: ok\n");

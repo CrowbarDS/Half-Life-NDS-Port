@@ -1,8 +1,8 @@
 // What the game writes on the screen (hlds/TitlesFile.hpp, the level's
 // Messages, LogicKind::Message): its titles.txt read, a map's env_messages
-// cooked with what they say and how, and shown when the map uses them. With
-// HLDS_VALVE_DIR set, the first map's own: the title, the names of the
-// introduction as the tram goes by them.
+// cooked with what they say and how, and shown when the map uses them: on a
+// room and a titles.txt made up here, and with HLDS_VALVE_DIR set, the first
+// map's own: the title, the names of the introduction as the tram goes by them.
 
 #include <cstdio>
 #include <cstdlib>
@@ -73,6 +73,39 @@ namespace
         return game->ok ? std::move(game) : nullptr;
     }
 
+    /// (The lamp's line: what it falls on, and which way that faces.
+    /// Straight down from the eyes it is the floor, facing up; straight up,
+    /// something facing down.)
+    void lampLine(Game &g)
+    {
+        const fx eye[3] = {g.player.origin[0], g.player.origin[1], g.player.origin[2] + fxFromInt(28)};
+        const fx down[3] = {eye[0], eye[1], eye[2] - fxFromInt(600)}, up[3] = {eye[0], eye[1], eye[2] + fxFromInt(600)};
+        fx at[3], normal[3];
+        const bool floor = traceShotWall(g.move, eye, down, at, normal);
+        check(floor && normal[2] > 3900 && at[2] < eye[2] && at[2] > eye[2] - fxFromInt(120),
+              "a line down from the eyes finds the floor under them, facing up");
+        const bool roof = traceShotWall(g.move, eye, up, at, normal);
+        check(roof && normal[2] < -3000 && at[2] > eye[2], "... and up, what is overhead, facing down");
+        const fx nowhere[3] = {eye[0], eye[1], eye[2] - fxFromInt(4)};
+        check(!traceShotWall(g.move, eye, nowhere, at, normal), "a line that reaches nothing finds nothing");
+    }
+
+    /// Stuck fast in the floor, deeper than a step gets anyone out of: after
+    /// half a second somewhere clear is found, farther off.
+    void stuckFast(Game &g)
+    {
+        for (int n = 0; n < 30; ++n)
+            g.frame();
+        const fx stood = g.player.origin[2];
+        g.player.origin[2] -= fxFromInt(60);
+        g.frame();
+        const bool held = g.player.stuck;
+        for (int n = 0; n < 40; ++n)
+            g.frame();
+        check(held && !g.player.stuck && g.player.origin[2] > stood - fxFromInt(40),
+              "a player stuck fast in the floor is put somewhere clear after half a second");
+    }
+
     void testFirstMap(const char *dir)
     {
         const std::unique_ptr<Game> game = load(dir, "c0a0");
@@ -104,21 +137,7 @@ namespace
                       m.fadeOutMs == 500 && m.holdMs == 1200 && !(m.flags & (kMessageLogo | kMessageAtStart)),
                   "a name is where the game's file puts it, shown as it says");
         }
-        // (The lamp's line: what it falls on, and which way that faces.
-        // Straight down from the eyes it is the tram's floor, facing up;
-        // straight up, something facing down.)
-        {
-            const fx eye[3] = {g.player.origin[0], g.player.origin[1], g.player.origin[2] + fxFromInt(28)};
-            const fx down[3] = {eye[0], eye[1], eye[2] - fxFromInt(600)}, up[3] = {eye[0], eye[1], eye[2] + fxFromInt(600)};
-            fx at[3], normal[3];
-            const bool floor = traceShotWall(g.move, eye, down, at, normal);
-            check(floor && normal[2] > 3900 && at[2] < eye[2] && at[2] > eye[2] - fxFromInt(120),
-                  "a line down from the eyes finds the floor under them, facing up");
-            const bool roof = traceShotWall(g.move, eye, up, at, normal);
-            check(roof && normal[2] < -3000 && at[2] > eye[2], "... and up, what is overhead, facing down");
-            const fx nowhere[3] = {eye[0], eye[1], eye[2] - fxFromInt(4)};
-            check(!traceShotWall(g.move, eye, nowhere, at, normal), "a line that reaches nothing finds nothing");
-        }
+        lampLine(g);
         // The ride: the names come as the tram goes by what shows them.
         std::vector<int> seen;
         int first = -1, last = -1;
@@ -170,28 +189,104 @@ namespace
             }
         }
         check(named >= 3, "the maps that begin a chapter say its name");
-        // Stuck fast in the floor, deeper than a step gets anyone out of:
-        // after half a second somewhere clear is found, farther off.
         if (const std::unique_ptr<Game> game = load(dir, "c1a0"))
+            stuckFast(*game);
+    }
+
+    /// The same mechanics on a room and a titles.txt made up here. (A real
+    /// ride cannot carry over: here it is a trigger walked into.)
+    void testRoom()
+    {
+        FakeGame fake("titles", "",
+                      "$position -1 0.3\n"
+                      "$effect 0\n"
+                      "$color 100 100 100\n"
+                      "$color2 240 110 0\n"
+                      "GAMETITLE\n{\nThe Logo\n}\n"
+                      "OPENING\n{\nA Chapter\n}\n"
+                      "$position 0.1 0.8\n"
+                      "$effect 1\n"
+                      "$fadein 1.5\n"
+                      "$fadeout 0.5\n"
+                      "$holdtime 1.2\n"
+                      "TED\n{\nA Name\n}\n");
+        BoxRoom room;
+        room.worldKeys = "\"gametitle\" \"1\"\n\"chaptertitle\" \"OPENING\"\n";
+        BrushBox walked;
+        walked.className = "trigger_multiple";
+        walked.mins[0] = -120, walked.mins[1] = -120, walked.mins[2] = 0;
+        walked.maxs[0] = -60, walked.maxs[1] = 120, walked.maxs[2] = 96;
+        walked.keys = "\"target\" \"ted\"\n\"wait\" \"0.1\"\n";
+        room.brushes.push_back(walked);
+        room.extraEntities =
+            "{\n\"classname\" \"env_message\"\n\"targetname\" \"ted\"\n\"message\" \"TED\"\n\"spawnflags\" \"1\"\n}\n"
+            "{\n\"classname\" \"env_message\"\n\"targetname\" \"unknown\"\n\"message\" \"NOT IN THE FILE\"\n}\n";
+        auto game = std::make_unique<Game>();
+        std::string error;
+        if (game->bsp.parse(buildBoxRoom(room), error))
+            finish(*game, nullptr, fake.dir.c_str());
+        check(game->ok, "the room of messages cooks");
+        if (!game->ok)
+            return;
+        Game &g = *game;
+        const LevelView &v = g.view;
+        int logo = -1, chapter = -1, ted = -1, unknown = -1, records = 0;
+        for (std::uint32_t i = 0; i < v.messageCount; ++i)
         {
-            Game &g = *game;
-            for (int n = 0; n < 30; ++n)
-                g.frame();
-            const fx stood = g.player.origin[2];
-            g.player.origin[2] -= fxFromInt(60);
-            g.frame();
-            const bool held = g.player.stuck;
-            for (int n = 0; n < 40; ++n)
-                g.frame();
-            check(held && !g.player.stuck && g.player.origin[2] > stood - fxFromInt(40),
-                  "a player stuck fast in the floor is put somewhere clear after half a second");
+            const MessageRecord &m = v.messages[i];
+            const std::string text(v.strings + m.text);
+            if ((m.flags & kMessageLogo) && (m.flags & kMessageAtStart) && text == "The Logo")
+                logo = static_cast<int>(i);
+            if ((m.flags & kMessageAtStart) && !(m.flags & kMessageLogo) && text == "A Chapter")
+                chapter = static_cast<int>(i);
+            if (text == "A Name")
+                ted = static_cast<int>(i);
+            if (text == "NOT IN THE FILE")
+                unknown = static_cast<int>(i);
         }
+        for (std::uint32_t i = 0; i < v.logicCount; ++i)
+            records += v.logic[i].kind == static_cast<std::uint8_t>(LogicKind::Message);
+        check(logo >= 0, "the map says it shows the game's title as it is come into");
+        check(chapter >= 0, "... and its chapter's name");
+        check(ted >= 0 && records == 2, "... and has its names, each an entity that shows it");
+        check(unknown >= 0, "a name the file has not got is shown as it is");
+        if (ted < 0)
+            return;
+        const MessageRecord &m = v.messages[ted];
+        check(m.x == 26 && m.y == 205 && m.effect == kMessageFlicker && m.fadeInMs == 1500 && m.fadeOutMs == 500 &&
+                  m.holdMs == 1200 && !(m.flags & (kMessageLogo | kMessageAtStart)),
+              "a name is where the file puts it, shown as it says");
+        check(logo >= 0 && v.messages[logo].y == 77, "... and the title where it says for that");
+
+        lampLine(g);
+
+        // Walked into, shown; a second time, not: it shows once. A place away
+        // from it, nothing.
+        for (int t = 0; t < 10; ++t)
+            g.frame();
+        check(g.logic.shownCount == 0, "nothing is shown of itself");
+        std::vector<int> seen;
+        g.player.origin[0] = fxFromInt(-90);
+        for (int t = 0; t < 60; ++t)
+        {
+            g.frame();
+            for (int n = 0; n < g.logic.shownCount; ++n)
+                seen.push_back(g.logic.shown[n]);
+            g.logic.shownCount = 0;
+        }
+        check(seen.size() == 1 && seen[0] == ted, "the name is shown as what shows it is used, and once");
+
+        g.player.origin[0] = 0;
+        for (int n = 0; n < 5; ++n)
+            g.frame();
+        stuckFast(g);
     }
 } // namespace
 
 int main()
 {
     testParse();
+    testRoom();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir != nullptr && dir[0] != '\0')
     {

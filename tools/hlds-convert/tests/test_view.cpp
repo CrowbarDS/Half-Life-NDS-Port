@@ -1,7 +1,7 @@
 // What moves the view and what being hurt shows (shared/HlView.hpp): the
 // kick that dies away, the bob and the lean of a walk, the cost and the jolt
-// of a fall, the marks of a blow, the camera's fall at death. With
-// HLDS_VALVE_DIR set, a real fall in a real map.
+// of a fall, the marks of a blow, the camera's fall at death; a fall in a room
+// made here. With HLDS_VALVE_DIR set, a real fall in a real map.
 
 #include <cstdio>
 #include <cstdlib>
@@ -129,22 +129,10 @@ namespace
         check(view.deadMs == 0 && deathSink(0) == 0 && deathRoll(0) == 0, "alive again, it is as it was");
     }
 
-    /// A real fall: off something high in a real map, the landing is told
-    /// with how fast it was.
-    void testLanding(const char *dir)
+    /// A fall, wherever: off something high, the landing is told with how
+    /// fast it was.
+    void landing(Game &g)
     {
-        auto game = std::make_unique<Game>();
-        std::string error;
-        if (!game->bsp.load(std::string(dir) + "/maps/c1a0.bsp", error))
-        {
-            check(false, (std::string(dir) + "/maps/c1a0.bsp loads").c_str());
-            return;
-        }
-        finish(*game, nullptr, dir);
-        check(game->ok, "the map cooks");
-        if (!game->ok)
-            return;
-        Game &g = *game;
         for (int n = 0; n < 30; ++n)
             g.frame();
         const bool stood = g.player.onGround && g.player.landed == 0;
@@ -165,6 +153,50 @@ namespace
         check(stood && fxToInt(landed) > 260 && fxToInt(landed) < 340 && g.player.landed == 0 && g.player.onGround,
               "a drop is told once, as it lands, with how fast it was coming down");
         check(fallDamage(fxToInt(landed)) == 0, "... and one of 60 units costs nothing, as in the game");
+    }
+
+    /// The fall on a room of our own, and a longer one, which costs.
+    void testRoomLanding()
+    {
+        BoxRoom room;
+        room.maxs[2] = 1024;
+        auto game = std::make_unique<Game>();
+        std::string error;
+        if (game->bsp.parse(buildBoxRoom(room), error))
+            finish(*game, nullptr);
+        check(game->ok, "the tall room cooks");
+        if (!game->ok)
+            return;
+        Game &g = *game;
+        landing(g);
+        // (v = sqrt(2 * 800 * 400) = 800, well past what is safe.)
+        g.player.origin[2] += fxFromInt(400);
+        g.player.onGround = false;
+        fx landed = 0;
+        for (int n = 0; n < 120 && landed == 0; ++n)
+        {
+            g.frame();
+            landed = g.player.landed;
+        }
+        check(fxToInt(landed) > 740 && fxToInt(landed) < 860 && fallDamage(fxToInt(landed)) > 0,
+              "a drop of 400 lands the faster for it, and costs");
+    }
+
+    /// A real fall: off something high in a real map.
+    void testLanding(const char *dir)
+    {
+        auto game = std::make_unique<Game>();
+        std::string error;
+        if (!game->bsp.load(std::string(dir) + "/maps/c1a0.bsp", error))
+        {
+            check(false, (std::string(dir) + "/maps/c1a0.bsp loads").c_str());
+            return;
+        }
+        finish(*game, nullptr, dir);
+        check(game->ok, "the map cooks");
+        if (!game->ok)
+            return;
+        landing(*game);
     }
     /// Marks and pieces, on a real map: a shot leaves its hole and dust
     /// where it lands, blood stains what is behind, a blast scorches the
@@ -471,6 +503,7 @@ int main()
     testFall();
     testHurt();
     testDeath();
+    testRoomLanding();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir != nullptr && dir[0] != '\0')
     {

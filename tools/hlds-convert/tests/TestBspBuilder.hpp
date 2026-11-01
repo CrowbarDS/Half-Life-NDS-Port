@@ -54,6 +54,11 @@ namespace hldstest
         std::string externalTextureName;
         std::string extraEntities;
         std::vector<BrushBox> brushes;
+        /// Textures in the map's list that no face wears, as a cycle's later
+        /// pictures are until something shows them.
+        std::vector<std::string> extraTextures;
+        /// Extra keys of the worldspawn, as lump text.
+        std::string worldKeys;
     };
 
     namespace detail
@@ -314,6 +319,11 @@ namespace hldstest
             textureNames.push_back(room.externalTextureName);
             textureEmbedded.push_back(false);
         }
+        for (const std::string &name : room.extraTextures)
+        {
+            textureNames.push_back(name);
+            textureEmbedded.push_back(true);
+        }
 
         std::string brushEntities;
         for (const BrushBox &box : room.brushes)
@@ -486,7 +496,8 @@ namespace hldstest
 
         std::string entityText =
             "{\n\"classname\" \"worldspawn\"\n\"wad\" \"\\sierra\\half-life\\valve\\TestWad.WAD;"
-            "\\other\\second.wad\"\n}\n"
+            "\\other\\second.wad\"\n" +
+            room.worldKeys + "}\n"
             "{\n\"classname\" \"info_player_start\"\n\"origin\" \"0 0 40\"\n\"angle\" \"90\"\n}\n";
         entityText += brushEntities;
         entityText += room.extraEntities;

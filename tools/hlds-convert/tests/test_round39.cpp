@@ -4,7 +4,8 @@
 // env_blood, cycler_sprite; the three items; and the plants of Xen
 // (HlXen.hpp).
 //
-// Each on a synthetic room, as the converter cooks it and the DS runs it;
+// Each on a synthetic room, as the converter cooks it and the DS runs it (the
+// speaker's lines from a game's folder made up here);
 // and with HLDS_VALVE_DIR, on the game's own maps: c4a1's lights hide from
 // the player and switch their light off, c4a2's trees strike, t0a0b's
 // targets ride, c2a3e's camera looks.
@@ -275,6 +276,92 @@ namespace
         check(bursts > 0, "... used, a burst of yellow blood");
     }
 
+    /// A speaker: `pa`'s announcements, now and then, until switched off.
+    void speaks(Game &g)
+    {
+        const int pa = named(g, "pa", LogicKind::Speaker);
+        check(pa >= 0 && g.view.logic[pa].auxCount > 1, "a speaker has the announcements of its group");
+        if (pa >= 0)
+        {
+            ticks(g, 16 * 30);
+            const std::size_t first = g.said.size();
+            check(first >= 1, "... one is said within the first 15 seconds");
+            use(g, pa);
+            ticks(g, 140 * 30);
+            check(g.said.size() == first, "... and none once it is switched off");
+        }
+    }
+
+    /// The same, from lists made up here: which lines it has, that they are
+    /// what it says, and the ways of naming them. (The real group's size is
+    /// the game's, so here it is said exactly.)
+    void testSpeaker()
+    {
+        FakeGame fake("round39",
+                      "// a comment\n"
+                      "C1A0_0 vox/one two\n"
+                      "C1A0_1 vox/three\n"
+                      "C1A0_2 vox/four five six\n"
+                      "C1A1_ALONE vox/seven\n"
+                      "OWN_0 vox/eight\n"
+                      "OWN_5 vox/nine\n",
+                      "");
+        BoxRoom room;
+        room.extraEntities = entity("\"classname\" \"speaker\"\n\"targetname\" \"pa\"\n\"preset\" \"1\"\n"
+                                    "\"health\" \"5\"\n\"origin\" \"0 0 64\"\n");
+        auto game = cook(room, fake.dir.c_str());
+        check(game->ok, "the room of the speaker cooks");
+        if (!game->ok)
+            return;
+        speaks(*game);
+        Game &g = *game;
+        const int pa = named(g, "pa", LogicKind::Speaker);
+        if (pa < 0)
+            return;
+        const LogicRecord &r = g.view.logic[pa];
+        check(r.auxCount == 3, "... all three of its group");
+        check(r.extra[0] == 64, "... half as loud as its health of 5 says");
+        bool its = !g.said.empty();
+        for (const std::uint16_t line : g.said)
+        {
+            bool found = false;
+            for (int n = 0; n < r.auxCount; ++n)
+                found = found || g.view.logicAux[r.firstAux + n].target == line;
+            its = its && found;
+        }
+        check(its, "... and what it says is of them");
+        check(g.view.sentences[g.view.logicAux[r.firstAux].target].wordCount == 2 &&
+                  g.view.sentences[g.view.logicAux[r.firstAux + 2].target].wordCount == 3,
+              "... each of its own words");
+
+        // One line, after a '!'; a map's own group, past a gap in its numbers;
+        // a group nobody has; none said until it is switched on.
+        BoxRoom more;
+        more.extraEntities = entity("\"classname\" \"speaker\"\n\"targetname\" \"alone\"\n\"message\" \"!C1A1_ALONE\"\n"
+                                    "\"spawnflags\" \"1\"\n\"origin\" \"0 0 64\"\n") +
+                             entity("\"classname\" \"speaker\"\n\"targetname\" \"own\"\n\"message\" \"OWN_\"\n"
+                                    "\"spawnflags\" \"1\"\n\"origin\" \"0 0 64\"\n") +
+                             entity("\"classname\" \"speaker\"\n\"targetname\" \"nobody\"\n\"message\" \"NOBODY_\"\n"
+                                    "\"origin\" \"0 0 64\"\n");
+        auto second = cook(more, fake.dir.c_str());
+        check(second->ok, "the room of the other speakers cooks");
+        if (!second->ok)
+            return;
+        Game &h = *second;
+        const int alone = named(h, "alone", LogicKind::Speaker), own = named(h, "own", LogicKind::Speaker);
+        check(alone >= 0 && h.view.logic[alone].auxCount == 1, "a speaker of one line, after a '!'");
+        check(own >= 0 && h.view.logic[own].auxCount == 1, "... of its own group, as far as the numbers run on");
+        check(named(h, "nobody", LogicKind::Speaker) < 0, "... and one with no lines is not kept");
+        if (alone < 0)
+            return;
+        ticks(h, 20 * 30);
+        check(h.said.empty(), "one that starts off says nothing");
+        use(h, alone);
+        ticks(h, 10);
+        check(h.said.size() == 1 && h.said[0] == h.view.logicAux[h.view.logic[alone].firstAux].target,
+              "... and switched on, says its line straight away");
+    }
+
     void testWithTheGame(const char *valve)
     {
         // Speakers: the game's announcements, now and then, until switched off.
@@ -284,20 +371,7 @@ namespace
                                         "\"health\" \"10\"\n\"origin\" \"0 0 64\"\n");
             auto game = cook(room, valve);
             if (game->ok)
-            {
-                Game &g = *game;
-                const int pa = named(g, "pa", LogicKind::Speaker);
-                check(pa >= 0 && g.view.logic[pa].auxCount > 1, "a speaker has the announcements of its group");
-                if (pa >= 0)
-                {
-                    ticks(g, 16 * 30);
-                    const std::size_t first = g.said.size();
-                    check(first >= 1, "... one is said within the first 15 seconds");
-                    use(g, pa);
-                    ticks(g, 140 * 30);
-                    check(g.said.size() == first, "... and none once it is switched off");
-                }
-            }
+                speaks(*game);
         }
         // A zombie walks into a trigger_monsterjump: up it goes.
         {
@@ -466,6 +540,7 @@ int main()
     testCamera();
     testGunAndButtonTargets();
     testBloodAndSprite();
+    testSpeaker();
     const char *valve = std::getenv("HLDS_VALVE_DIR");
     if (valve != nullptr && *valve != '\0')
         testWithTheGame(valve);
