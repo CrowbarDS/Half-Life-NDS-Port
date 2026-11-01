@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "HlDemo.hpp"
+#include "HlDemoSave.hpp"
 #include "HlLevel.hpp"
 
 using namespace hldata;
@@ -198,6 +199,77 @@ namespace
         check(netDemoPrefetch(arena, links, 0) == 0, "the last map: nothing");
     }
 
+    /// A file up over a radio that loses every `lose`-th frame, either way.
+    /// How many frames it took; -1: never.
+    int upload(const Bytes &file, int lose, DemoUpTaker &taker, Bytes &room, bool spoil = false)
+    {
+        DemoUpSender sender;
+        sender.begin(55, file.data(), static_cast<std::uint32_t>(file.size()));
+        std::uint32_t n = 1;
+        for (int frames = 0; frames < 200000; ++frames)
+        {
+            std::uint8_t bytes[kNetReplyBytes];
+            const int size = sender.frame(bytes, sizeof(bytes));
+            if (size == 0)
+                continue;
+            n = n * 1103515245u + 12345u;
+            if (lose != 0 && (static_cast<unsigned>(n) >> 16) % lose == 0)
+                continue;
+            DemoUpHead head;
+            if (!demoUpRead(bytes, size, head))
+                return -1;
+            if (!taker.taking(head))
+            {
+                room.assign(head.total, 0);
+                taker.open(head, room.data());
+            }
+            std::uint8_t copy[kNetReplyBytes];
+            if (spoil && head.at == 0)
+            {
+                std::memcpy(copy, head.data, static_cast<std::size_t>(head.count));
+                copy[0] ^= 1;
+                head.data = copy;
+                spoil = false;
+            }
+            taker.take(head);
+            std::uint8_t ack[32];
+            const int said = demoAckWrite(1, head.what, head.crc, taker.upTo, ack, sizeof(ack));
+            n = n * 1103515245u + 12345u;
+            if (lose != 0 && (static_cast<unsigned>(n) >> 16) % lose == 0)
+                continue;
+            if (sender.heard(ack, said, 1))
+                return frames;
+        }
+        return -1;
+    }
+
+    void testProgressUp()
+    {
+        Bytes file(48000);
+        for (std::size_t i = 0; i < file.size(); ++i)
+            file[i] = static_cast<std::uint8_t>(i * 31 + (i >> 8));
+        for (const int lose : {0, 7, 3})
+        {
+            DemoUpTaker taker;
+            Bytes room;
+            check(upload(file, lose, taker, room) >= 0, "a save goes up, whatever is lost");
+            check(taker.whole && room == file, "... and is what was sent");
+        }
+        {
+            // Spoilt on the way: never whole until it has come again right.
+            DemoUpTaker taker;
+            Bytes room;
+            check(upload(file, 0, taker, room, true) >= 0, "a spoilt file comes again");
+            check(taker.whole && room == file, "... right");
+        }
+        // Another console's answer means nothing here.
+        DemoUpSender sender;
+        sender.begin(55, file.data(), 1000);
+        std::uint8_t ack[32];
+        const int said = demoAckWrite(2, 55, sender.crc, 1000, ack, sizeof(ack));
+        check(!sender.heard(ack, said, 1) && sender.on, "another's answer is not this one's");
+    }
+
     void testSaidAgain()
     {
         // A console that repeats what it wants keeps its place in the stream.
@@ -369,6 +441,7 @@ int main()
     testPrefetch();
     testOnePlace();
     testSaidAgain();
+    testProgressUp();
     testOneStream();
     testResume();
     testLiveFirst();

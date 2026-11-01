@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "HlDemo.hpp"
+#include "HlDemoSave.hpp"
 #include "HlNetAir.hpp"
 #include "HlNetGame.hpp"
 #include "HlNetMaps.hpp"
@@ -173,6 +174,16 @@ namespace hlrt
 #else
         /// A console in DSi mode playing a demo: this map wanted, from this piece.
         void demoAsk(std::uint32_t map, bool now, std::uint32_t from);
+        /// Who this console is, to the host (which says whether it holds its
+        /// progress: demoKnown); or that its progress is let go of.
+        void demoHello(bool letGo);
+        /// -1 not told yet, 0 nothing held, 1 held.
+        int demoKnown() const { return demoKnown_; }
+        /// 0 not chosen yet, 1 from the start, 2 from where it was left.
+        int demoChoice() const { return demoChoice_; }
+        void setDemoChoice(int choice) { demoChoice_ = choice; }
+        /// A file of its progress asked for: guest::demoFileCame.
+        void demoFile(std::uint32_t what);
         std::uint32_t demoLongest() const { return static_cast<std::uint32_t>(match_.rules.demoLongest) * 16384u; }
 #endif
         /// The match over, and the time for the vote: its page is up.
@@ -272,6 +283,7 @@ namespace hlrt
         char backSoon_[hldata::kNetTextBytes] = {};
         std::uint32_t backSoonAt_ = 0;
         std::uint32_t kickAt_[hldata::kNetPlayers] = {};
+        int demoKnown_ = -1, demoChoice_ = 0;
         int joinFrames_ = 0;
         bool fullGuests_ = true;
         bool fullTried_ = false;
@@ -373,6 +385,12 @@ namespace hlrt
         std::uint32_t demoLength_[hldata::kDemoMapsMost] = {};
         std::uint32_t demoCrc_[hldata::kDemoMapsMost] = {};
         bool demoLiveNow_ = false;    ///< a stream someone is waiting for went out this frame
+        std::uint32_t demoIds_[hldata::kNetPlayers] = {}; ///< who they are, from one day to the next
+        hldata::DemoUpTaker demoTakers_[hldata::kNetPlayers];
+        void demoHello(const hldata::NetEvent &event);
+        void demoUpHeard(int from, const std::uint8_t *bytes, int size);
+        std::string demoFolder(int c) const;
+        std::string demoFilePath(int c, std::uint32_t what) const;
         int fetchWho_ = 0;            ///< (who asked for what fetchFind is finding)
         std::uint16_t demoTokens_[hldata::kNetPlayers] = {};
         std::uint8_t demoMapOf_[hldata::kNetPlayers] = {}; ///< (its place among the demo's maps, + 1)

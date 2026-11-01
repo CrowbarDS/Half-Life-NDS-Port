@@ -56,6 +56,7 @@ namespace hldata
         PeopleFull,///< air/chr.dsi.bank
         Picture,   ///< the `what`-th map's picture the host has; small
         PictureFull,
+        DemoSave,  ///< the file of this console's demo progress (HlDemoSave.hpp)
         VotePicture, ///< the small picture of the `what`-th map of the vote
     };
     inline constexpr std::uint8_t kNetFrameFetchData = 6;

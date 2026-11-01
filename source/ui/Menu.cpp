@@ -116,6 +116,8 @@ namespace hlrt
             kDemoUplink,
             kDemoHazard,
             kDemoSend,
+            kDemoContinue,
+            kDemoRestart,
             kStopDemo,
             kProfile,      ///< ... the player's name, model, colours and spray
             kProfName,     ///< PROFILE's: the name the others see
@@ -181,6 +183,7 @@ namespace hlrt
         const Row kDemoRows[] = {{Kind::Button, kDemoUplink, "UPLINK"},
                                  {Kind::Button, kDemoHazard, "HAZARD COURSE"},
                                  {Kind::Button, kBack, "BACK"}};
+        const Row kDemoChoiceRows[] = {{Kind::Button, kDemoContinue, "CONTINUE"}, {Kind::Button, kDemoRestart, "RESTART"}};
         const Row kServeRows[] = {{Kind::Button, kDemoSend, "SEND THE GAME"}, {Kind::Button, kStopDemo, "STOP"}};
         const Row kNetPauseRows[] = {{Kind::Button, kResume, "RESUME"}, {Kind::Button, kOptions, "OPTIONS"},
                                      {Kind::Button, kEndMatch, "END MATCH"}, {Kind::Button, kLeave, "LEAVE GAME"}};
@@ -299,6 +302,7 @@ namespace hlrt
             case 5: count = 2; return kConfirmRows;
             case 20: count = 2; return kHandRows;
             case 21: count = 3; return kDemoRows;
+            case 23: count = 2; return kDemoChoiceRows;
             case 22: count = 2; return kServeRows;
             case 7: count = static_cast<int>(sizeof(kMultiRows) / sizeof(kMultiRows[0])); return kMultiRows;
             case 9: count = foundCount + 1; return foundRows;
@@ -323,6 +327,14 @@ namespace hlrt
         probeCard();
         title_ = true;
         page_ = Page::Title;
+        draw();
+    }
+
+    void Menu::openDemoChoice()
+    {
+        open(false);
+        title_ = true;
+        page_ = Page::DemoChoice;
         draw();
     }
 
@@ -399,7 +411,7 @@ namespace hlrt
     {
         return page_ == Page::Main || page_ == Page::Title || page_ == Page::Confirm || page_ == Page::Multiplayer ||
                page_ == Page::NetPause || page_ == Page::Difficulty || page_ == Page::NewGame || page_ == Page::Hand ||
-               page_ == Page::NetDemo || page_ == Page::NetServe;
+               page_ == Page::NetDemo || page_ == Page::NetServe || page_ == Page::DemoChoice;
     }
 
     /// What of the lobby is on the screen: who is there, what they are
@@ -523,6 +535,7 @@ namespace hlrt
                                    : page_ == Page::NewGame     ? "NEW GAME"
                                    : page_ == Page::Hand        ? "WHICH HAND?"
                                    : page_ == Page::NetDemo     ? "SEND DEMO"
+                                   : page_ == Page::DemoChoice  ? netDemoTitle(netGame.demo())
                                    : page_ == Page::NetServe    ? "SERVING THE DEMO"
                                                                 : question),
                             inkFor(title, kUiOrange));
@@ -3404,6 +3417,8 @@ namespace hlrt
         switch (item.id)
         {
         case kResume:  return Action::Resume;
+        case kDemoContinue: return Action::DemoContinue;
+        case kDemoRestart:  return Action::DemoRestart;
         case kHandLeft:
         case kHandRight:
             settings.leftHanded = item.id == kHandLeft;

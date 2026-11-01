@@ -902,6 +902,8 @@ namespace hldata
             case NetEventType::FetchAgain:
             case NetEventType::FetchNone:
             case NetEventType::DemoWant:
+            case NetEventType::DemoHello:
+            case NetEventType::DemoHave:
                 if (match.passedCount < NetMatch::kMostNotices)
                     match.passed[match.passedCount++] = event;
                 break;

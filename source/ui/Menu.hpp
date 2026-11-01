@@ -37,6 +37,8 @@ namespace hlrt
             /// first (main.cpp), then openHost().
             TakePreviews,
             EndMatch,   ///< the host's: the match over, for everyone
+            DemoContinue, ///< a demo come back to: from where it was left
+            DemoRestart,  ///< ... from its start, its progress let go of
             StopDemo,   ///< the host's: no more of the demo being served
             SendDemo,   ///< the host's: all out for a moment, to give the game to more
         };
@@ -63,6 +65,8 @@ namespace hlrt
         void openJoin();
         bool onJoin() const { return page_ == Page::NetJoin; }
         bool onHand() const { return page_ == Page::Hand; }
+        bool onDemoChoice() const { return page_ == Page::DemoChoice; }
+        void openDemoChoice();
         /// The list of saves that the load and save pages show (the
         /// caller's: SaveGame::index()).
         void setSaves(const hldata::SaveIndex *saves) { saves_ = saves; }
@@ -125,6 +129,7 @@ namespace hlrt
             NetSend = 18,     ///< a sheet: the host giving the game to consoles without it (Download Play)
             NetStarting = 19, ///< a sheet: the host's match beginning -- who is ready, who is on the way
             NetDemo = 21,     ///< SEND DEMO: which, and who can have it
+            DemoChoice = 23,  ///< a demo come back to: CONTINUE or RESTART
             NetServe = 22,    ///< the host serving a demo: who has got how far
             Hand = 20,        ///< a console sent the game, as it comes: which hand it is played with
         };

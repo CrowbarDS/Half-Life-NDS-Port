@@ -125,6 +125,20 @@ namespace hlrt::guest
     /// streams at full quality, till demoEnd. False: not enough memory.
     bool demoBegin(std::uint32_t longest, const char *map);
     void demoEnd();
+    // Its progress, kept by the host (HlDemoSave.hpp).
+    /// Room in the outbox for a file of `size`, waiting for what is before it
+    /// if need be; nullptr: none. Then demoSendReady, once it is written.
+    std::uint8_t *demoSendRoom(std::uint32_t size);
+    void demoSendReady(std::uint32_t what, std::uint8_t *at, std::uint32_t size);
+    /// A file back from the host, all of what was sent before it first
+    /// (malloc'd, the caller's). False: none, or the host did not answer.
+    bool demoFetch(std::uint32_t what, std::uint8_t *&data, std::uint32_t &size);
+    void demoFileCame(std::uint8_t *data, std::uint32_t size);
+    /// All on its way there has got there (or it never will: ten seconds).
+    void demoSent();
+    void demoAck(const std::uint8_t *bytes, int size);
+    bool demoPlaying();
+
     /// All of the map being played has come.
     bool demoMapHere();
     /// A map being loaded: its textures wait, for the air it comes on.

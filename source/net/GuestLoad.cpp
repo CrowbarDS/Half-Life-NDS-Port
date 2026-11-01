@@ -263,6 +263,28 @@ namespace hlrt::guest
         std::uint32_t demoFrom[hldata::DemoArena::kPlaces] = {};
         std::uint32_t demoFromMap[hldata::DemoArena::kPlaces] = {};
 
+        // What is on its way to the host: in the block's first part, one after
+        // the other, the first of them going. No heap: this is during play.
+        struct DemoOut
+        {
+            std::uint32_t what, offset, size;
+        };
+        constexpr int kDemoOutMost = 8;
+        DemoOut demoOut[kDemoOutMost];
+        int demoOutCount = 0;
+        std::uint32_t demoOutEnd = 0;
+        hldata::DemoUpSender demoUp;
+        bool demoFlip = false;
+        std::uint8_t *demoCame = nullptr;
+        std::uint32_t demoCameSize = 0;
+        bool demoCameDone = false;
+
+        void demoOutNext()
+        {
+            if (demoOutCount > 0 && !demoUp.on)
+                demoUp.begin(demoOut[0].what, demoRoom + demoOut[0].offset, demoOut[0].size);
+        }
+
         const char *demoName(std::uint32_t map)
         {
             const char *const *maps = hldata::netDemoMaps(netGame.demo());
@@ -753,6 +775,9 @@ namespace hlrt::guest
             return false;
         for (std::uint32_t &at : demoFromMap)
             at = 0;
+        demoUp = hldata::DemoUpSender();
+        demoOutCount = 0;
+        demoOutEnd = 0;
         demoTaking = demoMap = 0;
         demoLinkCount = 0;
         offerCount = 0;
@@ -769,11 +794,110 @@ namespace hlrt::guest
             receiver = hldata::AirReceiver();
         }
         demoOn = false;
+        demoUp = hldata::DemoUpSender();
+        demoOutCount = 0;
+        demoOutEnd = 0;
         demoArena = hldata::DemoArena();
         demoTaking = demoMap = 0;
         demoLinkCount = 0;
         demoLoadingNow = false;
         offerCount = 0;
+    }
+
+    bool demoPlaying() { return demoOn; }
+
+    std::uint8_t *demoSendRoom(std::uint32_t size)
+    {
+        if (!demoOn || size > kDemoFolderBytes)
+            return nullptr;
+        // (All sent: from the beginning again. Too full: what is going goes.)
+        const std::uint32_t since = Global::vblanks();
+        while (demoOutCount > 0 && demoOutEnd + size > kDemoFolderBytes)
+        {
+            if (Global::vblanks() - since > 30 * 60 || !netGame.on())
+                return nullptr;
+            netGame.frame();
+            swiWaitForVBlank();
+        }
+        if (demoOutCount == 0)
+            demoOutEnd = 0;
+        return demoRoom + demoOutEnd;
+    }
+
+    void demoSendReady(std::uint32_t what, std::uint8_t *at, std::uint32_t size)
+    {
+        // (A later one of what has not begun to go: only the later is sent.)
+        for (int n = 1; n < demoOutCount; ++n)
+        {
+            if (demoOut[n].what == what)
+            {
+                for (int m = n; m + 1 < demoOutCount; ++m)
+                    demoOut[m] = demoOut[m + 1];
+                --demoOutCount;
+                break;
+            }
+        }
+        if (demoOutCount == kDemoOutMost)
+            return;
+        demoOut[demoOutCount++] = DemoOut{what, static_cast<std::uint32_t>(at - demoRoom), size};
+        demoOutEnd = static_cast<std::uint32_t>(at - demoRoom) + size;
+        demoOutNext();
+    }
+
+    void demoAck(const std::uint8_t *bytes, int size)
+    {
+        if (demoUp.heard(bytes, size, netGame.match().me))
+        {
+            for (int m = 0; m + 1 < demoOutCount; ++m)
+                demoOut[m] = demoOut[m + 1];
+            --demoOutCount;
+            demoOutNext();
+        }
+    }
+
+    void demoSent()
+    {
+        const std::uint32_t since = Global::vblanks();
+        while (demoOutCount > 0 && netGame.on() && Global::vblanks() - since < 10 * 60)
+        {
+            netGame.frame();
+            swiWaitForVBlank();
+        }
+    }
+
+    void demoFileCame(std::uint8_t *data, std::uint32_t size)
+    {
+        demoCame = data;
+        demoCameSize = size;
+        demoCameDone = true;
+    }
+
+    bool demoFetch(std::uint32_t what, std::uint8_t *&data, std::uint32_t &size)
+    {
+        data = nullptr;
+        size = 0;
+        const std::uint32_t since = Global::vblanks();
+        const auto waited = [&]() { return Global::vblanks() - since > 30 * 60 || !netGame.on(); };
+        while (demoOutCount > 0)
+        {
+            if (waited())
+                return false;
+            netGame.frame();
+            swiWaitForVBlank();
+        }
+        demoCameDone = false;
+        netGame.demoFile(what);
+        while (!demoCameDone)
+        {
+            if (waited())
+                return false;
+            netGame.frame();
+            swiWaitForVBlank();
+        }
+        data = demoCame;
+        size = demoCameSize;
+        demoCame = nullptr;
+        return data != nullptr;
     }
 
     bool demoMapHere() { return demoArena.isWhole(demoMap) || (demoTaking == demoMap && receiver.done()); }
@@ -811,7 +935,17 @@ namespace hlrt::guest
 
     int demoAnswer(std::uint8_t *reply)
     {
-        if (!demoOn || demoTaking == 0)
+        if (!demoOn)
+            return 0;
+        // (Its progress, in turn with how the map is coming.)
+        demoFlip = !demoFlip;
+        if (demoUp.on && (demoFlip || demoTaking == 0))
+        {
+            const int size = demoUp.frame(reply, hldata::kNetReplyBytes);
+            if (size > 0)
+                return size;
+        }
+        if (demoTaking == 0)
             return 0;
         bool done;
         {

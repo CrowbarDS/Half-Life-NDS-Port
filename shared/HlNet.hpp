@@ -126,6 +126,8 @@ namespace hldata
         NextTally,///< host: v[0] have chosen the vote's map `a`
         NextOpen, ///< host: the vote is open
         NextTurn, ///< host: player `a` alone chooses the next map, from the vote's list
+        DemoHello, ///< client: `a` 0 who it is, 1 its progress let go of: the console v[0..1]
+        DemoHave,  ///< host: to player `a`, v[0] 1 if its progress is held
         DemoWant, ///< client: `a` 1 wanted now, 0 for later: the demo's map of hash v[0..1], from piece v[2..3]
     };
 

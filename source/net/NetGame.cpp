@@ -29,6 +29,7 @@
 #include "HlPreview.hpp"
 #include "HlAirBank.hpp"
 #include "HlLz77Stream.hpp"
+#include <dirent.h>
 #include <sys/stat.h>
 #ifdef HLDS_CHILD
 #include "net/GuestLoad.hpp"
@@ -327,6 +328,13 @@ namespace hlrt
     {
         const FetchFrom from = taking_.from;
         fetchDrop();
+#ifdef HLDS_CHILD
+        if (from == FetchFrom::DemoSave)
+        {
+            guest::demoFileCame(nullptr, 0);
+            return;
+        }
+#endif
         if (from == FetchFrom::VotePicture)
         {
             // (None there is a card with its name alone; no answer: asked again.)
@@ -472,6 +480,13 @@ namespace hlrt
         }
         const FetchFrom from = taking_.from;
         takingOn_ = false;
+#ifdef HLDS_CHILD
+        if (from == FetchFrom::DemoSave)
+        {
+            guest::demoFileCame(data, raw);
+            return;
+        }
+#endif
         if (from == FetchFrom::Map || from == FetchFrom::MapFull)
         {
             if (filePath_[0] != '\0')
@@ -567,7 +582,7 @@ namespace hlrt
         const bool map = phase_ == Phase::Playing || (phase_ == Phase::Lobby && played);
         // (The vote's pictures are had with or without a map.)
         const bool ofMap = taking_.from == FetchFrom::Map || taking_.from == FetchFrom::MapFull;
-        if ((!lobby && !map) || (takingOn_ && taking_.from != FetchFrom::VotePicture && ofMap != map))
+        if ((!lobby && !map) || (takingOn_ && taking_.from != FetchFrom::VotePicture && taking_.from != FetchFrom::DemoSave && ofMap != map))
         {
             if (takingOn_ && ofMap && filePath_[0] == '\0')
                 textureStream.fetchFailed(false);
@@ -750,6 +765,28 @@ namespace hlrt
                 return true;
             }
             return false;
+        }
+        if (asked.from == FetchFrom::DemoSave)
+        {
+            std::FILE *file = std::fopen(demoFilePath(fetchWho_, asked.what).c_str(), "rb");
+            if (file == nullptr)
+                return false;
+            std::fseek(file, 0, SEEK_END);
+            const long length = std::ftell(file);
+            std::fseek(file, 0, SEEK_SET);
+            data = length > 0 ? static_cast<std::uint8_t *>(std::malloc(static_cast<std::size_t>(length))) : nullptr;
+            const bool got = data != nullptr && std::fread(data, 1, static_cast<std::size_t>(length), file) ==
+                                                    static_cast<std::size_t>(length);
+            std::fclose(file);
+            if (!got)
+            {
+                std::free(data);
+                data = nullptr;
+                return false;
+            }
+            packed = raw = static_cast<std::uint32_t>(length);
+            name = asked.what;
+            return true;
         }
         // A member of a bank. (A demo's: of the map that console is playing.)
         const char *demoBank = match_.rules.demo != 0 && demoMapOf_[fetchWho_] != 0
@@ -964,6 +1001,8 @@ namespace hlrt
         demoStop();
 #else
         guest::demoEnd();
+        demoKnown_ = -1;
+        demoChoice_ = 0;
 #endif
     }
 
@@ -1648,6 +1687,20 @@ namespace hlrt
                 continue;
             }
 #endif
+#ifndef HLDS_CHILD
+            if (size > 3 && bytes[3] == kNetFrameDemoUp)
+            {
+                if (isHost())
+                    demoUpHeard(from, bytes, size);
+                continue;
+            }
+#else
+            if (size > 3 && bytes[3] == kNetFrameDemoAck)
+            {
+                guest::demoAck(bytes, size);
+                continue;
+            }
+#endif
             if (size > 3 && bytes[3] == kNetFrameFetchData)
             {
                 FetchHead head;
@@ -1825,10 +1878,23 @@ namespace hlrt
                 lobbyAsked_ = true;
                 continue;
             }
+#ifdef HLDS_CHILD
+            if (event.type == NetEventType::DemoHave)
+            {
+                if (event.a == match_.me)
+                    demoKnown_ = event.v[0] != 0 ? 1 : 0;
+                continue;
+            }
+#endif
 #ifndef HLDS_CHILD
             if (event.type == NetEventType::DemoWant && isHost())
             {
                 demoHeard(event);
+                continue;
+            }
+            if (event.type == NetEventType::DemoHello && isHost())
+            {
+                demoHello(event);
                 continue;
             }
             if (event.type == NetEventType::Fetch && isHost())
@@ -2021,6 +2087,7 @@ namespace hlrt
         {
             demoTokens_[c] = 0;
             demoMapOf_[c] = 0;
+            demoIds_[c] = 0;
         }
         sayRules();
         return true;
@@ -2037,6 +2104,11 @@ namespace hlrt
         }
         demoServer_ = DemoServer();
         demoLiveNow_ = false;
+        for (DemoUpTaker &taker : demoTakers_)
+        {
+            std::free(taker.room);
+            taker = DemoUpTaker();
+        }
     }
 
     bool NetGame::demoRow(int row, char *line, int room, int &bars)
@@ -2058,6 +2130,107 @@ namespace hlrt
             return true;
         }
         return false;
+    }
+
+    std::string NetGame::demoFolder(int c) const
+    {
+        char name[48];
+        std::snprintf(name, sizeof(name), "demo/%s/%08lx/", kAirGroupNames[match_.rules.demo],
+                      static_cast<unsigned long>(demoIds_[c]));
+        return global.savesDir() + name;
+    }
+
+    std::string NetGame::demoFilePath(int c, std::uint32_t what) const
+    {
+        char name[16];
+        std::snprintf(name, sizeof(name), "%08lx", static_cast<unsigned long>(what));
+        return demoFolder(c) + name;
+    }
+
+    void NetGame::demoHello(const NetEvent &event)
+    {
+        const int c = event.from;
+        if (c < 1 || c >= kNetPlayers)
+            return;
+        demoIds_[c] = static_cast<std::uint16_t>(event.v[0]) | static_cast<std::uint32_t>(static_cast<std::uint16_t>(event.v[1])) << 16;
+        // Its progress let go of: at the end of the demo, or to begin again.
+        if (event.a != 0)
+        {
+            const std::string folder = demoFolder(c);
+            if (DIR *dir = opendir(folder.c_str()))
+            {
+                while (const dirent *entry = readdir(dir))
+                {
+                    if (entry->d_name[0] != '.')
+                        std::remove((folder + entry->d_name).c_str());
+                }
+                closedir(dir);
+            }
+            return;
+        }
+        std::FILE *file = std::fopen(demoFilePath(c, kDemoFileAuto).c_str(), "rb");
+        if (file != nullptr)
+            std::fclose(file);
+        match_.host.out.add(netEvent(NetEventType::DemoHave, c, file != nullptr ? 1 : 0));
+    }
+
+    void NetGame::demoUpHeard(int from, const std::uint8_t *bytes, int size)
+    {
+        DemoUpHead head;
+        if (from < 1 || from >= kNetPlayers || demoIds_[from] == 0 || !demoUpRead(bytes, size, head) ||
+            head.total > kDemoFileMost)
+            return;
+        DemoUpTaker &taker = demoTakers_[from];
+        if (!taker.taking(head))
+        {
+            std::free(taker.room);
+            taker = DemoUpTaker();
+            auto *room = static_cast<std::uint8_t *>(std::malloc(head.total > 0 ? head.total : 1));
+            if (room == nullptr)
+                return;
+            taker.open(head, room);
+        }
+        if (taker.take(head))
+        {
+            // Whole and checked: it takes the place of the last, or it is not
+            // said to have come, and comes again.
+            std::string path = demoFilePath(from, head.what);
+            const std::string fresh = path + ".new";
+            const std::string folder = demoFolder(from);
+            mkdir((global.savesDir() + "demo").c_str(), 0777);
+            mkdir((global.savesDir() + "demo/" + kAirGroupNames[match_.rules.demo]).c_str(), 0777);
+            mkdir(folder.substr(0, folder.size() - 1).c_str(), 0777);
+            bool wrote = false;
+            if (std::FILE *file = std::fopen(fresh.c_str(), "wb"))
+            {
+                wrote = std::fwrite(taker.room, 1, taker.total, file) == taker.total;
+                wrote = std::fclose(file) == 0 && wrote;
+            }
+            if (wrote)
+            {
+                std::remove(path.c_str());
+                wrote = std::rename(fresh.c_str(), path.c_str()) == 0;
+            }
+            if (!wrote)
+            {
+                std::remove(fresh.c_str());
+                std::free(taker.room);
+                taker = DemoUpTaker();
+                return;
+            }
+            std::free(taker.room);
+            taker.room = nullptr;
+            taker.what = head.what;
+            taker.total = head.total;
+            taker.crc = head.crc;
+            taker.upTo = head.total;
+            taker.whole = true;
+        }
+        std::uint8_t ack[32];
+        const std::uint32_t upTo = taker.whole && taker.what == head.what ? head.total : taker.upTo;
+        const int length = demoAckWrite(from, head.what, head.crc, upTo, ack, sizeof(ack));
+        if (length > 0)
+            netlink::send(ack, length);
     }
 
     void NetGame::demoHeard(const NetEvent &event)
@@ -2160,6 +2333,24 @@ namespace hlrt
         return sent;
     }
 #else
+    void NetGame::demoHello(bool letGo)
+    {
+        std::uint8_t mac[6];
+        netlink::address(mac);
+        netSay(match_, netEvent(NetEventType::DemoHello, letGo ? 1 : 0, static_cast<std::int16_t>(mac[2] | mac[3] << 8),
+                                static_cast<std::int16_t>(mac[4] | mac[5] << 8)));
+    }
+
+    void NetGame::demoFile(std::uint32_t what)
+    {
+        const bool textures = takingOn_ && (taking_.from == FetchFrom::Map || taking_.from == FetchFrom::MapFull);
+        const bool file = filePath_[0] != '\0';
+        if (textures && !file)
+            textureStream.fetchFailed(false);
+        filePath_[0] = '\0';
+        fetchAsk(FetchFrom::DemoSave, what);
+    }
+
     void NetGame::demoAsk(std::uint32_t map, bool now, std::uint32_t from)
     {
         netSay(match_, netEvent(NetEventType::DemoWant, now ? 1 : 0, static_cast<std::int16_t>(map & 0xFFFF),

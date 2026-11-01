@@ -881,7 +881,8 @@ namespace
     bool saveNow(int slot, bool quiet = false)
     {
 #ifdef HLDS_CHILD
-        return false; // (nowhere to keep it)
+        if (hlrt::netGame.demo() == 0)
+            return false; // (nowhere to keep it)
 #endif
         if (!hlrt::level.loaded() || hlrt::player.noclip || hlrt::player.state.health <= 0)
             return false;
@@ -908,6 +909,11 @@ namespace
             // written at once.)
         }
         const bool saved = hlrt::SaveGame::write(hlrt::game.snapshot(currentMap), slot, heading);
+#ifdef HLDS_CHILD
+        // (The host may be out of reach: nothing the player can do about it.)
+        if (!saved)
+            return false;
+#endif
         if (!saved)
         {
             say("COULD NOT SAVE", "the card would not take it");
@@ -985,7 +991,11 @@ namespace
     /// The most recent save of those the player is shown; -1: none.
     int latestSave()
     {
+#ifdef HLDS_CHILD
+        return hlrt::netGame.demo() != 0 ? hldata::kSlotAuto : -1;
+#else
         return hldata::saveMostRecent(hlrt::SaveGame::index());
+#endif
     }
 
     /// The COMMAND line: a line typed on the pause menu's keyboard, read as
@@ -1393,7 +1403,9 @@ int main(int argc, char *argv[])
     hlrt::sound.vramTest(10);
 #endif
     std::string error;
+#ifndef HLDS_CHILD
     hlrt::menu.setSaves(&hlrt::SaveGame::index());
+#endif
     // (QUIT only where there is somewhere to go back to: the loader said
     // where the game was started from.)
     hlrt::menu.setQuittable(argc > 0 && argv[0] != nullptr && argv[0][0] != '\0');
@@ -1475,7 +1487,27 @@ int main(int argc, char *argv[])
             if (demo != 0 && global.twlChild && !hlrt::menu.onHand() && hlrt::netGame.on() &&
                 hlrt::netGame.phase() == hlrt::NetGame::Phase::Lobby)
             {
+                // (Who it is told to the host; back from where it was left, or
+                // from the start, if the host holds its progress.)
+                static std::uint32_t saidAt = 0;
+                if (hlrt::netGame.demoKnown() < 0)
                 {
+                    if (Global::vblanks() - saidAt >= 120)
+                    {
+                        saidAt = Global::vblanks();
+                        hlrt::netGame.demoHello(false);
+                    }
+                }
+                else if (hlrt::netGame.demoChoice() == 0)
+                {
+                    if (hlrt::netGame.demoKnown() == 0)
+                        hlrt::netGame.setDemoChoice(1);
+                    else if (!hlrt::menu.onDemoChoice())
+                        hlrt::menu.openDemoChoice();
+                }
+                if (hlrt::netGame.demoChoice() != 0)
+                {
+                    const bool again = hlrt::netGame.demoChoice() == 2;
                     const char *first = hldata::netDemoMaps(demo)[0];
                     leaving();
                     hlrt::netGame.forMapLoad();
@@ -1491,7 +1523,9 @@ int main(int argc, char *argv[])
                         guestMapName = first;
                         hlrt::guest::onMapProgress(guestMapProgress);
                         holdLoad = true;
-                        started = loadLevel(first, nullptr, error) == LoadResult::Ok;
+                        started = again && loadSave(error, hldata::kSlotAuto);
+                        if (!started)
+                            started = loadLevel(first, nullptr, error) == LoadResult::Ok;
                         holdLoad = false;
                         // (A stream cut short loads as far as it goes.)
                         if (started && !hlrt::guest::demoMapHere())
@@ -1505,6 +1539,8 @@ int main(int argc, char *argv[])
                     if (started)
                     {
                         demoReady();
+                        saveNow(hldata::kSlotArrival, true);
+                        saveNow(hldata::kSlotAuto, true);
                         break;
                     }
                     hlrt::bottomScreen.showMessage("CANNOT LOAD", error.c_str());
@@ -1599,6 +1635,15 @@ int main(int argc, char *argv[])
             }
             using hlrt::Menu;
             const Menu::Action item = hlrt::menu.frame();
+#ifdef HLDS_CHILD
+            if (item == Menu::Action::DemoContinue)
+                hlrt::netGame.setDemoChoice(2);
+            else if (item == Menu::Action::DemoRestart)
+            {
+                hlrt::netGame.demoHello(true);
+                hlrt::netGame.setDemoChoice(1);
+            }
+#endif
             if (item == Menu::Action::Continue || item == Menu::Action::Load)
             {
                 leaving();
@@ -1733,6 +1778,7 @@ int main(int argc, char *argv[])
         if (hlrt::netGame.demo() == 0)
             return;
         hlrt::bottomScreen.showMessage("END OF THE DEMO", hldata::netDemoTitle(hlrt::netGame.demo()));
+        hlrt::netGame.demoHello(true);
         for (int n = 0; n < 300; ++n)
         {
             swiWaitForVBlank();
@@ -1901,6 +1947,14 @@ int main(int argc, char *argv[])
                     const Menu::Action item = hlrt::menu.frame();
                     if (item == Menu::Action::Leave)
                     {
+#ifdef HLDS_CHILD
+                        // (A demo: where it was left, for when it is come back to.)
+                        if (hlrt::netGame.demo() != 0 && saveNow(hldata::kSlotAuto, true))
+                        {
+                            hlrt::bottomScreen.showMessage("SAVING", "with the host");
+                            hlrt::guest::demoSent();
+                        }
+#endif
                         backToTitle();
                         return;
                     }

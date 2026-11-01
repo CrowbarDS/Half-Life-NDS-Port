@@ -4,24 +4,159 @@
 
 #ifdef HLDS_CHILD
 // A console that was sent the game has no card to save on, and keeps no map
-// it left: every match begins its map afresh. Nothing is written or read.
+// it left: every match begins its map afresh. In a demo its progress is the
+// host's to keep (HlDemoSave.hpp).
+#include <cstdlib>
+#include <cstring>
+
+#include "game/Game.hpp"
+#include "net/GuestLoad.hpp"
+#include "HlDemoSave.hpp"
+#include "HlMapStore.hpp"
+#include "HlSave.hpp"
+
 namespace hlrt::SaveGame
 {
-    const hldata::SaveIndex &index()
+    namespace
     {
-        static const hldata::SaveIndex none;
-        return none;
+        // Who went on with the player from each map left.
+        struct Landed
+        {
+            std::uint32_t map;
+            std::uint8_t mask;
+        };
+        Landed landedMaps[8];
+        std::uint32_t slotFile(int slot)
+        {
+            return slot == hldata::kSlotAuto ? hldata::kDemoFileAuto : slot == hldata::kSlotArrival ? hldata::kDemoFileArrival : 0;
+        }
+        bool sinkTo(void *context, const std::uint8_t *bytes, std::size_t size)
+        {
+            auto *&at = *static_cast<std::uint8_t **>(context);
+            std::memcpy(at, bytes, size);
+            at += size;
+            return true;
+        }
+        struct From
+        {
+            const std::uint8_t *at;
+            std::size_t left;
+        };
+        std::size_t sourceFrom(void *context, std::uint8_t *bytes, std::size_t most)
+        {
+            auto &from = *static_cast<From *>(context);
+            const std::size_t take = most < from.left ? most : from.left;
+            std::memcpy(bytes, from.at, take);
+            from.at += take;
+            from.left -= take;
+            return take;
+        }
+        alignas(4) std::uint8_t piece[1024];
+    } // namespace
+
+    bool read(hldata::SaveData &out, int slot)
+    {
+        std::uint8_t *data = nullptr;
+        std::uint32_t size = 0;
+        if (!guest::demoPlaying() || slotFile(slot) == 0 || !guest::demoFetch(slotFile(slot), data, size))
+            return false;
+        const bool good = hldata::readSave(data, size, out, nullptr);
+        std::free(data);
+        return good;
     }
-    bool read(hldata::SaveData &, int) { return false; }
-    bool write(const hldata::SaveData &, int, const hldata::SaveHeading &) { return false; }
+    bool write(const hldata::SaveData &save, int slot, const hldata::SaveHeading &heading)
+    {
+        if (!guest::demoPlaying() || slotFile(slot) == 0)
+            return false;
+        const std::vector<std::uint8_t> bytes = hldata::writeSave(save, heading);
+        std::uint8_t *room = guest::demoSendRoom(static_cast<std::uint32_t>(bytes.size()));
+        if (room == nullptr)
+            return false;
+        std::memcpy(room, bytes.data(), bytes.size());
+        guest::demoSendReady(slotFile(slot), room, static_cast<std::uint32_t>(bytes.size()));
+        return true;
+    }
     bool remove(int) { return false; }
     bool begin(const hldata::SaveData &, int, const hldata::SaveHeading &) { return false; }
     hldata::SaveWriter::Result step() { return hldata::SaveWriter::Result::Done; }
     bool busy() { return false; }
     bool finish() { return true; }
-    bool leaveMap(const std::string &, std::uint32_t) { return false; }
-    int arriveMap(const std::string &, std::uint32_t) { return 0; }
-    void landed(const std::string &, std::uint8_t) {}
+    bool leaveMap(const std::string &name, std::uint32_t level)
+    {
+        if (!guest::demoPlaying())
+            return false;
+        const std::uint32_t body = game.storedBytes();
+        const std::uint32_t whole = sizeof(hldata::MapStoreHead) + body;
+        std::uint8_t *room = guest::demoSendRoom(whole);
+        if (room == nullptr)
+            return false;
+        hldata::MapStoreHead head{};
+        std::memcpy(head.magic, hldata::kMapStoreMagic, 4);
+        head.version = hldata::kMapStoreVersion;
+        head.map = hldata::nameHash(name.c_str());
+        head.level = level;
+        head.bytes = body;
+        for (int v = 0; v < hldata::kMaxVisitors; ++v)
+            head.sentAway[v] = game.leftWith()[v];
+        std::memcpy(room, &head, sizeof(head));
+        std::uint8_t *at = room + sizeof(head);
+        hldata::detail::StreamOut out;
+        out.sink = sinkTo;
+        out.context = &at;
+        out.buffer = piece;
+        out.capacity = sizeof(piece);
+        if (!game.storeMap(out) || !out.flush() || out.written != body)
+            return false;
+        guest::demoSendReady(head.map, room, whole);
+        return true;
+    }
+    int arriveMap(const std::string &name, std::uint32_t level)
+    {
+        if (!guest::demoPlaying())
+            return 0;
+        const std::uint32_t map = hldata::nameHash(name.c_str());
+        std::uint8_t *data = nullptr;
+        std::uint32_t size = 0;
+        if (!guest::demoFetch(map, data, size))
+            return 0;
+        int laid = 0;
+        hldata::MapStoreHead head;
+        if (size >= sizeof(head))
+        {
+            std::memcpy(&head, data, sizeof(head));
+            if (std::memcmp(head.magic, hldata::kMapStoreMagic, 4) == 0 && head.map == map && head.level == level &&
+                head.bytes == size - sizeof(head))
+            {
+                std::uint8_t mask = 0;
+                for (const Landed &entry : landedMaps)
+                    mask = entry.map == map ? entry.mask : mask;
+                From from{data + sizeof(head), head.bytes};
+                hldata::detail::StreamIn in;
+                in.source = sourceFrom;
+                in.context = &from;
+                in.buffer = piece;
+                in.capacity = sizeof(piece);
+                laid = game.layStored(in, head.sentAway, mask) ? 1 : -1;
+            }
+        }
+        std::free(data);
+        return laid;
+    }
+    void landed(const std::string &left, std::uint8_t mask)
+    {
+        const std::uint32_t map = hldata::nameHash(left.c_str());
+        static int next = 0;
+        for (Landed &entry : landedMaps)
+        {
+            if (entry.map == map)
+            {
+                entry.mask = mask;
+                return;
+            }
+        }
+        landedMaps[next] = Landed{map, mask};
+        next = (next + 1) % 8;
+    }
     void newRun(std::uint32_t) {}
     void fromSave(int, const hldata::SaveData &, std::uint32_t) {}
     const hldata::RunIndex &runIndex()
