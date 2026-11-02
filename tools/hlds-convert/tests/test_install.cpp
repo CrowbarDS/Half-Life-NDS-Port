@@ -182,6 +182,7 @@ namespace
         put(data / "air/a.hgs", "stream");
         put(data / "saves/stray.sav", "never");
         put(data / "settings.dat", "never");
+        put(data / "maps/b.npac.tmp12", "half written");
         put(root / "half-life-nds-port.nds", "rom");
         // What the player has, and an old install.
         put(out / "saves/auto.sav", "mine");
@@ -214,6 +215,7 @@ namespace
         check(read(out / "settings.dat") == "my settings" && read(out / "achievements.dat") == "mine too", "... and settings");
         check(!fs::exists(out / "saves/stray.sav"), "none of the cache's");
         check(!fs::exists(out / "manifest.bin.new"), "no temporary left");
+        check(!fs::exists(out / "maps/b.npac.tmp12"), "nor one a run left behind");
 
         plan = planCopy(data, root / "half-life-nds-port.nds", card);
         check(plan.copy.empty() && plan.remove.empty(), "the same again: nothing to do");

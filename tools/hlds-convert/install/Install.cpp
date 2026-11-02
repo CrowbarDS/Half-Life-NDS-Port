@@ -290,6 +290,9 @@ namespace hlds::install
             const std::string relative = fs::relative(it->path(), data, ec).generic_string();
             if (playersOwn(relative))
                 continue;
+            // (A file half written when the computer was turned off.)
+            if (it->path().extension().string().rfind(".tmp", 0) == 0)
+                continue;
             wanted.push_back(relative);
             items.push_back({it->path(), target / relative, sizeOf(it->path())});
         }
