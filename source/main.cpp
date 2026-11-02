@@ -998,7 +998,7 @@ namespace
             return false;
         hlrt::game.adoptProgress(save);
         // (The maps left on the way, as the save had them.)
-        hlrt::SaveGame::fromSave(slot, save, Global::vblanks() * 2654435761u + 1u);
+        const bool folderChanged = hlrt::SaveGame::fromSave(slot, save, Global::vblanks() * 2654435761u + 1u);
         leavingAbandoned = true;
         const std::string map = save.map; // loadLevel changes currentMap, which this may be
         // (Whoever came into that map with the player comes into it again.)
@@ -1013,6 +1013,13 @@ namespace
         if (!hlrt::game.layState(save))
             say("LOADED", "the map from its beginning");
         save = hldata::SaveData(); // (tens of kilobytes: not kept)
+#ifndef HLDS_CHILD
+        // (The saves that only name the folder named the one that was there.)
+        if (folderChanged && !hlrt::netGame.playing())
+            saveOnArrival();
+#else
+        (void)folderChanged;
+#endif
         return true;
     }
     /// The most recent save of those the player is shown; -1: none.
@@ -1767,8 +1774,12 @@ int main(int argc, char *argv[])
         // not one of the player's.)
         if (!test)
         {
+#ifdef HLDS_CHILD
             saveNow(hldata::kSlotAuto, true);
             saveNow(hldata::kSlotArrival, true);
+#else
+            saveOnArrival();
+#endif
         }
     };
     // At every start, as the game has it: the Valve intro (a button or the

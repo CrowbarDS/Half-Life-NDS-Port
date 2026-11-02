@@ -52,7 +52,8 @@ namespace hlrt::SaveGame
     /// No maps kept: a run of the game begun (a new game).
     void newRun(std::uint32_t runId);
     /// The maps kept as the save in `slot` (read: `save`) had them: call
-    /// before loading its map (HlMapStore.hpp's runFromSave).
-    void fromSave(int slot, const hldata::SaveData &save, std::uint32_t runId);
+    /// before loading its map (HlMapStore.hpp's runFromSave). True if that
+    /// changed the folder: the saves that only name it name what has gone.
+    bool fromSave(int slot, const hldata::SaveData &save, std::uint32_t runId);
     const hldata::RunIndex &runIndex();
 } // namespace hlrt::SaveGame

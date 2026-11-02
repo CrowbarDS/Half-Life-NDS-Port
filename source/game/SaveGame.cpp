@@ -158,7 +158,7 @@ namespace hlrt::SaveGame
         next = (next + 1) % 8;
     }
     void newRun(std::uint32_t) {}
-    void fromSave(int, const hldata::SaveData &, std::uint32_t) {}
+    bool fromSave(int, const hldata::SaveData &, std::uint32_t) { return false; }
     const hldata::RunIndex &runIndex()
     {
         static const hldata::RunIndex none;
@@ -366,6 +366,13 @@ namespace hlrt::SaveGame
         {
             std::vector<std::uint8_t>().swap(scratch);
         }
+        /// The game's own saves name the run's folder; the player's hold a
+        /// copy of it, to outlast it.
+        bool namesFolder(int slot)
+        {
+            return slot == hldata::kSlotAuto || slot == hldata::kSlotArrival;
+        }
+
         void needRun()
         {
             if (runKnown || !global.hasFat)
@@ -435,14 +442,16 @@ namespace hlrt::SaveGame
         hldata::runClear(card, run, runId);
     }
 
-    void fromSave(int slot, const hldata::SaveData &save, std::uint32_t runId)
+    bool fromSave(int slot, const hldata::SaveData &save, std::uint32_t runId)
     {
         if (!global.hasFat)
-            return;
+            return false;
         finish();
         needRun();
+        const std::uint32_t wasRun = run.runId, wasGeneration = run.generation;
         hldata::runFromSave(card, slot, save, run, runId, scratch);
         letGo();
+        return run.runId != wasRun || run.generation != wasGeneration;
     }
 
     const hldata::RunIndex &runIndex()
@@ -474,14 +483,14 @@ namespace hlrt::SaveGame
         need();
         finish();
         needRun();
-        // (With the maps left: copied in -- or, for the one coming into a
-        // map, only named: the folder changes only at a way out or a load,
-        // and either makes that one again.) The card's writing holds up the
+        // (With the maps left: copied in -- or, for the game's own two, only
+        // named: the folder changes only at a way out, a new game or a load,
+        // and each makes those again.) The card's writing holds up the
         // ARM7 on a DSi: the sound plays straight from its channels for
         // that long (Sound::holdPipeline).
         sound.holdPipeline(true);
         const bool wrote =
-            hldata::saveSlotWrite(card, list, slot, save, heading, &run, slot == hldata::kSlotArrival);
+            hldata::saveSlotWrite(card, list, slot, save, heading, &run, namesFolder(slot));
         sound.holdPipeline(false);
         return wrote;
     }
@@ -503,7 +512,7 @@ namespace hlrt::SaveGame
         need();
         needRun();
         // (While it is written, a piece a frame: as write's.)
-        const bool began = writer.begin(card, list, slot, save, heading, &run, slot == hldata::kSlotArrival);
+        const bool began = writer.begin(card, list, slot, save, heading, &run, namesFolder(slot));
         if (began)
             sound.holdPipeline(true);
         return began;
