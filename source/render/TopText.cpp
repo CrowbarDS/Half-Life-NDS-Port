@@ -384,7 +384,7 @@ namespace hlrt
         // in from the edge.
         MessageRecord m{};
         m.x = 24;
-        m.y = 6;
+        m.y = 18;
         m.effect = kMessageFade;
         m.colour = m.colour2 = static_cast<std::uint16_t>(31 | 20 << 5 | 2 << 10);
         m.fadeInMs = 250;
