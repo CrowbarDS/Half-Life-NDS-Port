@@ -11,7 +11,12 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <atomic>
+#include <chrono>
 #include <filesystem>
+#include <fstream>
+#include <memory>
+#include <thread>
 
 #include "TestBspBuilder.hpp"
 #include "hlds/AtomicWrite.hpp"
@@ -439,6 +444,28 @@ namespace
         check(accented.encode(image, 64, TextureFormat::Tex4x4, tex, error), "a temp folder with an accent and a space");
         fs::remove_all(dir);
     }
+
+    void testWriteOverOpenFile()
+    {
+        // On Windows the replacing has to wait for the reader to go.
+        const fs::path dir = fs::temp_directory_path() / "hlds_test_write_open";
+        fs::remove_all(dir);
+        const fs::path file = dir / "shared.bin";
+        std::string error;
+        check(writeFileAtomic(file, {1, 2, 3}, error), "the first write");
+        std::thread reader;
+        {
+            auto held = std::make_shared<std::ifstream>(file, std::ios::binary);
+            check(static_cast<bool>(*held), "the reader has it open");
+            reader = std::thread([held]() { std::this_thread::sleep_for(std::chrono::seconds(1)); });
+        }
+        check(writeFileAtomic(file, {4, 5}, error), "a write while another has it open");
+        reader.join();
+        std::ifstream in(file, std::ios::binary);
+        check(in.get() == 4 && in.get() == 5 && in.get() == EOF, "the new bytes are there");
+        in.close();
+        fs::remove_all(dir);
+    }
 } // namespace
 
 int main()
@@ -451,6 +478,7 @@ int main()
     testBudget();
     testHiddenTextures();
     testEncoder();
+    testWriteOverOpenFile();
     if (g_failures == 0)
         std::printf("test_texture: ok\n");
     return g_failures == 0 ? 0 : 1;

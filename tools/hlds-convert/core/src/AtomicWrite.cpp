@@ -6,7 +6,14 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <system_error>
 #include <thread>
+
+#ifdef _WIN32
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
 
 namespace hlds
 {
@@ -36,6 +43,36 @@ namespace hlds
         {
             return path.parent_path().filename() != "maps";
         }
+
+#ifdef _WIN32
+        /// Windows refuses to replace a file anything has open: another map's
+        /// cook reading the same shared file, or the antivirus looking at a
+        /// new one. Neither holds on to it for long. (The old file is not
+        /// removed first: its name stays taken until the last reader has
+        /// gone, and if this fails there would be no file at all.)
+        void moveIntoPlace(const std::filesystem::path &from, const std::filesystem::path &to,
+                           std::error_code &ec)
+        {
+            for (int attempt = 1;; ++attempt)
+            {
+                if (MoveFileExW(from.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING))
+                {
+                    ec.clear();
+                    return;
+                }
+                ec = std::error_code(static_cast<int>(GetLastError()), std::system_category());
+                if (attempt == 20) // (some ten seconds in all)
+                    return;
+                std::this_thread::sleep_for(std::chrono::milliseconds(50 * attempt));
+            }
+        }
+#else
+        void moveIntoPlace(const std::filesystem::path &from, const std::filesystem::path &to,
+                           std::error_code &ec)
+        {
+            std::filesystem::rename(from, to, ec);
+        }
+#endif
     } // namespace
 
     bool writeFileAtomic(const std::filesystem::path &path,
@@ -72,12 +109,7 @@ namespace hlds
                 return false;
             }
         }
-#ifdef _WIN32
-        // (Windows will not rename over a file.)
-        std::filesystem::remove(path, ec);
-        ec.clear();
-#endif
-        std::filesystem::rename(temp, path, ec);
+        moveIntoPlace(temp, path, ec);
         if (ec)
         {
             error = "cannot move " + temp.string() + " into place: " + ec.message();
