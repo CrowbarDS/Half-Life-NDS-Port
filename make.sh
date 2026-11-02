@@ -62,3 +62,5 @@ fi
 if [ -f build/arm9/arm9.elf ]; then
     tools/arm9-report.sh --summary || true
 fi
+# No interrupt handler may reach the divider or the square-root unit (AGENTS.md).
+python tools/irq-divider.py build/arm9/arm9.elf child/build/arm9/arm9.elf
