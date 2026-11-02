@@ -525,6 +525,10 @@ namespace
 #endif
     }
 
+#ifndef HLDS_CHILD
+    bool saveOnArrival();
+#endif
+
     LoadResult loadLevel(const std::string &name, const hldata::Arrival *arrival,
                          std::string &error)
     {
@@ -689,6 +693,13 @@ namespace
         }
         clock.mark("game");
         hearStream();
+#ifndef HLDS_CHILD
+        // Every new map is somewhere to come back to. Written here, with the
+        // picture still and no sound yet: play and the music begin once the
+        // card has done.
+        const bool arrivalSaved = !changing || hlrt::netGame.playing() || saveOnArrival();
+        clock.mark("save");
+#endif
         hlrt::sound.load();
         clock.mark("snd");
         clock.write(name.c_str());
@@ -699,6 +710,11 @@ namespace
         }
         if (!quietLoad && !holdLoad)
             hlrt::bottomScreen.showPad();
+#ifndef HLDS_CHILD
+        // (Said again: what was said while it was written has just gone.)
+        if (!arrivalSaved)
+            say("COULD NOT SAVE", "the card would not take it");
+#endif
         // Maps converted by an older converter still load, but without what
         // was fixed since in how a map is converted: said, once.
         static bool toldOld = false;
@@ -934,6 +950,17 @@ namespace
         }
         return saved;
     }
+#ifndef HLDS_CHILD
+    /// The saves of a map just come into, at once.
+    bool saveOnArrival()
+    {
+        // (What saveNow would not save, for reasons of its own, is no failure.)
+        if (hlrt::player.noclip || hlrt::player.state.health <= 0)
+            return true;
+        const bool arrival = saveNow(hldata::kSlotArrival, true);
+        return saveNow(hldata::kSlotAuto, true) && arrival;
+    }
+#endif
     /// Once a frame: a step of the save being written, if one is.
     void stepSave()
     {
@@ -2138,13 +2165,13 @@ int main(int argc, char *argv[])
                     switch (changed)
                     {
                     case LoadResult::Ok:
-                        // Every new map is somewhere to come back to: the
-                        // game's own save, and the one a run of deaths
-                        // goes back to.
-                        // (The one a death goes back to first, at once, while the
-                        // map comes up; the game's own a little at a time.)
+#ifdef HLDS_CHILD
+                        // Every new map is somewhere to come back to, for a
+                        // demo: with its host. (On a card: loadLevel, as the
+                        // map comes up.)
                         saveNow(hldata::kSlotArrival, true);
                         saveNow(hldata::kSlotAuto);
+#endif
                         break;
                     case LoadResult::NotOnCard:
                         // Not converted: say so, and do not ask again every
