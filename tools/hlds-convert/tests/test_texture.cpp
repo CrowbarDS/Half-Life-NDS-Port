@@ -433,6 +433,10 @@ namespace
         check(!broken.encode(image, 64, TextureFormat::Tex4x4, tex, error), "a missing encoder is an error");
         check(findPtexconv(dir / "no-such-program").empty(),
               "an explicit path that does not exist is not replaced by a guess");
+
+        // A user name with an accent and a space in it.
+        PtexconvEncoder accented(exe, dir / fs::path(L"caf\u00e9 tmp"));
+        check(accented.encode(image, 64, TextureFormat::Tex4x4, tex, error), "a temp folder with an accent and a space");
         fs::remove_all(dir);
     }
 } // namespace

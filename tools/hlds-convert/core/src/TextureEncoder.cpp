@@ -74,16 +74,36 @@ namespace hlds
             return slots;
         }
 
+#ifdef _WIN32
+        /// Run the encoder in `folder`, with no window, and say how it ended.
+        /// (Not by std::system: from a program with no console of its own,
+        /// each cmd.exe opens a window. And it hands on every file open in
+        /// the program at that moment: another thread's, then, which cannot
+        /// be moved into place until the encoder has finished.)
+        int runEncoder(const std::filesystem::path &executable, const std::filesystem::path &folder,
+                       const std::string &arguments)
+        {
+            // (Its arguments are plain ASCII: the names that may not be are
+            // the program's, and the folder's it is run in.)
+            std::wstring line = L"ptexconv " + std::wstring(arguments.begin(), arguments.end());
+            STARTUPINFOW startup{};
+            startup.cb = sizeof(startup);
+            PROCESS_INFORMATION process{};
+            if (!CreateProcessW(executable.c_str(), line.data(), nullptr, nullptr, FALSE,
+                                CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS, nullptr, folder.c_str(),
+                                &startup, &process))
+                return -1;
+            WaitForSingleObject(process.hProcess, INFINITE);
+            DWORD status = 1;
+            GetExitCodeProcess(process.hProcess, &status);
+            CloseHandle(process.hThread);
+            CloseHandle(process.hProcess);
+            return static_cast<int>(status);
+        }
+#else
         /// Quote a path for the shell. Paths here are ours (a temp directory
         /// and an executable the user pointed at), but a space in a home
         /// directory is common enough.
-#ifdef _WIN32
-        // (cmd.exe: quotes, and no backslash to double.)
-        std::string quoted(const std::filesystem::path &path)
-        {
-            return "\"" + path.generic_string() + "\"";
-        }
-#else
         std::string quoted(const std::filesystem::path &path)
         {
             std::string out = "\"";
@@ -122,7 +142,8 @@ namespace hlds
 
         std::error_code ec;
         std::filesystem::create_directories(tempDir_, ec);
-        const std::filesystem::path base = tempDir_ / ("t" + std::to_string(counter_++));
+        const std::string name = "t" + std::to_string(counter_++);
+        const std::filesystem::path base = tempDir_ / name;
         std::filesystem::path png = base;
         png += ".png";
         if (!writePng(png, image, error))
@@ -133,17 +154,13 @@ namespace hlds
         const bool a3i5 = format == TextureFormat::A3I5;
         const std::string formatArgs =
             a3i5 ? std::string(" -f a3i5") : " -f tex4x4 -cm " + std::to_string(maxColours);
+#ifndef _WIN32
         const std::string command = quoted(executable_) + " -gt -ob" + formatArgs + " -o " +
-                                    quoted(base) + " " + quoted(png) +
-#ifdef _WIN32
-                                    " > NUL 2>&1";
-#else
-                                    " > /dev/null 2>&1";
+                                    quoted(base) + " " + quoted(png) + " > /dev/null 2>&1";
 #endif
         encodeSlots().take();
 #ifdef _WIN32
-        // (cmd.exe takes off the first and last quote of what it is given.)
-        const int status = std::system(("\"" + command + "\"").c_str());
+        const int status = runEncoder(executable_, tempDir_, "-gt -ob" + formatArgs + " -o " + name + " " + name + ".png");
 #else
         const int status = std::system(command.c_str());
 #endif
