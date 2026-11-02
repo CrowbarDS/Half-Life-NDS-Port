@@ -38,6 +38,7 @@ Example:
 - Fixed point in hot paths.
 - No runtime division in hot paths. `tools/arm9-report.sh` lists what the hot list calls.
 - Nothing in a DS guest's match peak that a menu uses.
+- No interrupt handler may use the divider or the square-root unit, directly or through any call: that covers our 64-bit divide and root, and libnds's `div32`, `sqrt32`, `normalizef32` and the like. Each unit holds one sum, and libnds's routines don't hold interrupts off. `tools/irq-divider.py` fails the build otherwise; a new handler goes in its list.
 - Settings are written when leaving a page, not on every change.
 - `shared/` is compiled into the ROM and the converter, so it stays free of console-only code unless guarded.
 - `helpSrc/` is reference material and is git-ignored. Write new code from the behaviour you need; do not copy or translate code from it.
