@@ -28,6 +28,11 @@
 // jump anyway, the player can ask for the jump button to walk instead: the
 // screen's, and MODERN's.
 //
+// THE LONG JUMP. With the module, it is a crouch and a jump at once while
+// moving: on the pad and two taps, not to be done with one stylus. So the screen
+// has LONG JUMP then: a touch is both, and the crouch is held a moment longer
+// however short the touch, for the legs to come up.
+//
 // Either way, two quick taps on the aim pad jump (and holding the second
 // keeps the jump held, for swimming up); a touch that starts on a control is
 // that control and never turns the view, however far it then slides.
@@ -137,6 +142,9 @@ namespace hldata
         bool duckToggle = false; ///< the crouch button crouches, and again stands (else: held)
         bool walkToggle = false; ///< the walk button walks, and again runs (else: held)
         bool jumpWalks = false;  ///< the jump button walks (two taps still jump)
+        /// The player has the long jump module: the screen has LONG JUMP. Not
+        /// a setting: the game's state.
+        bool longJump = false;
         std::uint8_t firmness = 0; ///< 0..kFirmnessMost
         std::uint8_t firmPress = kFirmOff;
         /// CUSTOM: each action's buttons (kButton*; any of them does it).
@@ -246,6 +254,8 @@ namespace hldata
     inline constexpr int kPadLookPixels = 2;
     /// A stylus's finer reading: sixteenths of a pixel.
     inline constexpr int kFineShift = 4;
+    /// How long LONG JUMP keeps the crouch held, at least: a third of a second.
+    inline constexpr std::uint32_t kLongJumpBlanks = 20;
 
     /// What is held this frame.
     struct ControlsIn
@@ -320,6 +330,9 @@ namespace hldata
         /// run, as `crouched` is for the crouch.
         bool walkSlide = false;
         bool walking = false;
+        /// LONG JUMP touched: since when, and that the crouch is on it yet.
+        std::uint32_t longJumpBlank = 0;
+        bool longJumping = false;
         // The stylus, finely: the last reading used (and how hard), where the
         // view was last turned from, the firmest this stroke has been, and
         // how hard it began.
@@ -401,7 +414,7 @@ namespace hldata
         else if (!set.walkToggle)
             state.walking = false;
         // The stylus.
-        const TouchLayout layout = touchLayout(set.leftHanded, set.match, set.jumpWalks);
+        const TouchLayout layout = touchLayout(set.leftHanded, set.match, set.jumpWalks, set.longJump);
         int dragX = 0, dragY = 0;   // its travel this frame, on the aim pad
         int stickX = 0, stickY = 0; // ... and how far it is from where it came down
         if (in.touching)
@@ -433,6 +446,11 @@ namespace hldata
                 if (state.touch == kTouchWalk && set.walkToggle)
                     state.walking = !state.walking;
                 state.walkSlide = false;
+                if (state.touch == kTouchLongJump)
+                {
+                    state.longJumping = true;
+                    state.longJumpBlank = in.blank;
+                }
                 state.jumping = false;
                 state.strayed = false;
                 state.downBlank = in.blank;
@@ -621,9 +639,11 @@ namespace hldata
                 out.usePressed = true; // (once a press)
         }
 
-        out.jump = state.jumping || state.touch == kTouchJump || faceJump || (firmNow && set.firmPress == kFirmJump);
+        if (state.longJumping && state.touch != kTouchLongJump && in.blank - state.longJumpBlank >= kLongJumpBlanks)
+            state.longJumping = false;
+        out.jump = state.jumping || state.touch == kTouchJump || state.touch == kTouchLongJump || faceJump || (firmNow && set.firmPress == kFirmJump);
         out.duck = (state.touch == kTouchDuck && !set.duckToggle) || (state.duckSlide && state.touching) ||
-                   state.crouched || duckHeld;
+                   state.crouched || duckHeld || state.longJumping;
         out.walk = (state.touch == kTouchWalk && !set.walkToggle) || (state.walkSlide && state.touching) ||
                    state.walking || walkHeld;
         out.touchOn = !state.touching ? kTouchAim

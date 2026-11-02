@@ -127,7 +127,7 @@ namespace hlrt
         // (The bar has other buttons in a match: what was there before is
         // cleared, not drawn over.)
         matchBar_ = netGame.playing();
-        const TouchLayout at = touchLayout(mirrored_, matchBar_, settings.jumpWalks);
+        const TouchLayout at = touchLayout(mirrored_, matchBar_, settings.jumpWalks, longJump_);
         canvas.fill(0, 0, kTouchWidth, kTouchBarHeight, kUiBack);
         label(at.menu, "MENU", held_ == kTouchMenu);
         label(at.use, "USE", held_ == kTouchUse);
@@ -153,7 +153,7 @@ namespace hlrt
     void BottomScreen::drawPad()
     {
         Canvas &canvas = touchCanvas.canvas();
-        const TouchRect r = touchLayout(mirrored_, netGame.playing(), settings.jumpWalks).pad;
+        const TouchRect r = touchLayout(mirrored_, netGame.playing(), settings.jumpWalks, longJump_).pad;
         canvas.plate(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 6, kUiBack, kUiOrange);
         // The mark of the place in its middle, as faint as a line can be:
         // it is where the stylus rests, not something to read.
@@ -175,7 +175,7 @@ namespace hlrt
     HL_ARM void BottomScreen::drawColumn()
     {
         Canvas &canvas = touchCanvas.canvas();
-        const TouchLayout at = touchLayout(mirrored_, netGame.playing(), settings.jumpWalks);
+        const TouchLayout at = touchLayout(mirrored_, netGame.playing(), settings.jumpWalks, longJump_);
         const FontView &font = touchCanvas.font(kFontSmall);
         // (The jump button asked to walk: WALK is where JUMP was.)
         const bool walkOnTop = at.walk.y != 0;
@@ -191,9 +191,18 @@ namespace hlrt
         {
             plate(b.r, b.lit);
             const int cx = b.r.x + b.r.w / 2;
-            chevron(cx, b.r.y + (b.up ? 15 : b.r.h - 15), b.up, b.lit ? kUiWhite + 2 : kUiOrange + 1);
-            drawTextCentred(canvas, font, cx, b.up ? b.r.y + b.r.h - font.height() - 3 : b.r.y + 3, b.name,
+            // (Halved for LONG JUMP, it has room for its name and no more.)
+            if (b.r.h > 30)
+                chevron(cx, b.r.y + (b.up ? 15 : b.r.h - 15), b.up, b.lit ? kUiWhite + 2 : kUiOrange + 1);
+            drawTextCentred(canvas, font, cx, b.r.h <= 30 ? b.r.y + (b.r.h - font.height()) / 2 : (b.up ? b.r.y + b.r.h - font.height() - 3 : b.r.y + 3), b.name,
                             inkFor(font, b.lit ? kUiWhite : kUiOrange));
+        }
+        if (at.longJump.w > 0)
+        {
+            const bool lit = held_ == kTouchLongJump;
+            plate(at.longJump, lit);
+            drawTextCentred(canvas, font, at.longJump.x + at.longJump.w / 2,
+                            at.longJump.y + (at.longJump.h - font.height()) / 2, "LONG", inkFor(font, lit ? kUiWhite : kUiOrange));
         }
         // Between them the lamp: a bulb with its rays, lit while it is
         // alight, and under it what is left in it. Faint with no suit to
@@ -244,7 +253,7 @@ namespace hlrt
                                                          ".357", "XBOW", "SATCH", "MINE", "SNARK",
                                                          "RPG",  "TAU",  "EGON",  "HIVE"};
         Canvas &canvas = touchCanvas.canvas();
-        const TouchLayout at = touchLayout(mirrored_, netGame.playing(), settings.jumpWalks);
+        const TouchLayout at = touchLayout(mirrored_, netGame.playing(), settings.jumpWalks, longJump_);
         const FontView &font = touchCanvas.font(kFontSmall);
         loadIcons();
         for (int n = 0; n < kTouchSlots; ++n)
@@ -347,7 +356,7 @@ namespace hlrt
         static const char *const kFull[kWeaponCount] = {"",         "CROWBAR",  "9MM PISTOL", "SHOTGUN",  "GRENADES",
                                                         "MP5",      ".357",     "CROSSBOW",   "SATCHELS", "TRIPMINES",
                                                         "SNARKS",   "RPG",      "TAU CANNON", "GLUON GUN", "HIVEHAND"};
-        const TouchLayout at = touchLayout(mirrored_, netGame.playing(), settings.jumpWalks);
+        const TouchLayout at = touchLayout(mirrored_, netGame.playing(), settings.jumpWalks, longJump_);
         const TouchRect r = weaponListRect(list_, at);
         const int drop = (256 - list_.slide) * (r.h + 4) / 256;
         // (Drawn into the screen's rows down to the pad's bottom edge, and no
@@ -431,10 +440,24 @@ namespace hlrt
         walking_ = walking;
         if (shown_ != Shown::Pad)
             return;
-        if (touchLayout(mirrored_, netGame.playing(), settings.jumpWalks).walk.y == 0)
+        if (touchLayout(mirrored_, netGame.playing(), settings.jumpWalks, longJump_).walk.y == 0)
             drawBar();
         else
             drawColumn();
+    }
+
+    void BottomScreen::setLongJump(bool has)
+    {
+        if (has == longJump_)
+            return;
+        longJump_ = has;
+        if (shown_ != Shown::Pad)
+            return;
+        // (The top of the column is cut differently: what was there before is
+        // cleared, not drawn over.)
+        const TouchRect lamp = touchLayout(mirrored_, netGame.playing(), settings.jumpWalks, longJump_).lamp;
+        touchCanvas.canvas().fill(lamp.x, kTouchBarHeight, lamp.w, lamp.y - kTouchBarHeight, kUiBack);
+        drawColumn();
     }
 
     void BottomScreen::setPressed(int held)
@@ -450,7 +473,7 @@ namespace hlrt
         { return on == kTouchMenu || on == kTouchUse || on == kTouchReload || on == kTouchSpray || on == kTouchWalk; };
         if (onBar(was) || onBar(held))
             drawBar();
-        auto onColumn = [](int on) { return on == kTouchJump || on == kTouchDuck || on == kTouchLamp || on == kTouchWalk; };
+        auto onColumn = [](int on) { return on == kTouchJump || on == kTouchDuck || on == kTouchLamp || on == kTouchWalk || on == kTouchLongJump; };
         if (onColumn(was) || onColumn(held))
             drawColumn();
     }

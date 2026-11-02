@@ -19,7 +19,8 @@
 // The bar has WALK too, beside a narrower USE; or, if the player has asked for
 // the jump button to walk (a double tap still jumps), WALK is where JUMP was
 // and the bar is as drawn. In a match between consoles the bar has SPRAY too,
-// and everything on it is narrower.
+// and everything on it is narrower. Once the player has the long jump module,
+// the top of the column has LONG JUMP under JUMP (or WALK).
 //
 // That is for a stylus in the right hand. Mirrored, for the left, the column
 // and the bar's ends change sides; the weapons stay in their order.
@@ -56,12 +57,14 @@ namespace hldata
     inline constexpr int kTouchSlot = 7; ///< ... and the four after it
     inline constexpr int kTouchSpray = kTouchSlot + kTouchSlots; ///< (in a match)
     inline constexpr int kTouchWalk = kTouchSpray + 1;
+    inline constexpr int kTouchLongJump = kTouchWalk + 1;
 
     struct TouchLayout
     {
         TouchRect menu, use, reload, pad, jump, lamp, duck;
         TouchRect spray; ///< none (no width) but in a match
         TouchRect walk;
+        TouchRect longJump; ///< none (no width) without the module
         TouchRect slot[kTouchSlots];
     };
 
@@ -69,7 +72,8 @@ namespace hldata
     inline constexpr int kTouchBarHeight = 22;
     inline constexpr int kTouchSlotTop = 158;
 
-    inline constexpr TouchLayout touchLayout(bool mirrored, bool match = false, bool jumpWalks = false)
+    inline constexpr TouchLayout touchLayout(bool mirrored, bool match = false, bool jumpWalks = false,
+                                              bool longJump = false)
     {
         TouchLayout at{};
         at.menu = {0, 0, 64, kTouchBarHeight};
@@ -97,6 +101,11 @@ namespace hldata
         at.jump = {212, 24, 44, 48};
         at.lamp = {212, 74, 44, 32};
         at.duck = {212, 108, 44, 48};
+        if (longJump)
+        {
+            at.jump = {212, 24, 44, 23};
+            at.longJump = {212, 49, 44, 23};
+        }
         if (jumpWalks)
         {
             at.walk = at.jump;
@@ -104,7 +113,7 @@ namespace hldata
         }
         if (mirrored)
         {
-            for (TouchRect *r : {&at.menu, &at.use, &at.reload, &at.pad, &at.jump, &at.lamp, &at.duck, &at.spray, &at.walk})
+            for (TouchRect *r : {&at.menu, &at.use, &at.reload, &at.pad, &at.jump, &at.lamp, &at.duck, &at.spray, &at.walk, &at.longJump})
                 r->x = static_cast<std::int16_t>(kTouchWidth - r->x - r->w);
         }
         for (int n = 0; n < kTouchSlots; ++n)
@@ -125,6 +134,8 @@ namespace hldata
             return kTouchReload;
         if (at.walk.has(x, y))
             return kTouchWalk;
+        if (at.longJump.has(x, y))
+            return kTouchLongJump;
         if (at.jump.has(x, y))
             return kTouchJump;
         if (at.lamp.has(x, y))

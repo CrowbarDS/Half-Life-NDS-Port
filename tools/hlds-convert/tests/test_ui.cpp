@@ -526,15 +526,18 @@ namespace
                 all.push_back(slot);
             all.push_back(at.spray);
             all.push_back(at.walk);
+            all.push_back(at.longJump);
             return all;
         };
         bool whole = true, apart = true, hits = true;
         for (const TouchLayout &at : {right, left, touchLayout(false, true), touchLayout(true, true),
                                       touchLayout(false, false, true), touchLayout(true, false, true),
-                                      touchLayout(false, true, true), touchLayout(true, true, true)})
+                                      touchLayout(false, true, true), touchLayout(true, true, true),
+                                      touchLayout(false, false, false, true), touchLayout(true, false, false, true),
+                                      touchLayout(false, true, true, true)})
         {
             const std::vector<TouchRect> all = rects(at);
-            int counts[kTouchWalk + 1] = {};
+            int counts[kTouchLongJump + 1] = {};
             for (int y = 0; y < 192; ++y)
             {
                 for (int x = 0; x < 256; ++x)

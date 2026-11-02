@@ -1983,6 +1983,7 @@ int main(int argc, char *argv[])
                     {
                         hlrt::bottomScreen.setPressed(hlrt::input.touchOn);
                         hlrt::bottomScreen.setWalking(hlrt::input.walk);
+                        hlrt::bottomScreen.setLongJump((hlrt::player.arsenal.have & hldata::kArsenalLongJump) != 0);
                         hlrt::bottomScreen.setWeaponList(hlrt::input.weaponList());
                         // (The match over: nobody does anything more.)
                         if (inMatch && hlrt::netGame.match().over)

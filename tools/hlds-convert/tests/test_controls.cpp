@@ -885,6 +885,36 @@ namespace
         check(out.moveSide == 1 && !out.walk, "classic's A is still the pad's: it has no jump button to give");
     }
 
+    /// LONG JUMP: there with the module, a crouch and a jump at once, and the
+    /// crouch held a moment longer than the shortest touch.
+    void testLongJumpTouch()
+    {
+        ControlSettings set;
+        const TouchLayout none = touchLayout(false);
+        check(none.longJump.w == 0, "no LONG JUMP without the module");
+        set.longJump = true;
+        const TouchLayout at = touchLayout(false, false, false, true);
+        check(at.longJump.w > 0 && at.jump.y + at.jump.h <= at.longJump.y && at.jump.x == at.longJump.x,
+              "with it, LONG JUMP is under JUMP");
+        std::uint32_t blank = 500;
+        ControlsState state;
+        press(set, state, kButtonUp, blank);
+        ControlsOut out = touch(set, state, at.longJump.x + 5, at.longJump.y + 5, blank);
+        check(out.jump && out.duck && out.touchOn == kTouchLongJump && out.lookDx == 0, "a touch is a crouch and a jump, on the same frame");
+        out = press(set, state, 0, blank);
+        check(!out.jump && out.duck, "lifted at once, the crouch stays a moment");
+        for (std::uint32_t n = 0; n < kLongJumpBlanks; ++n)
+            out = press(set, state, 0, blank);
+        check(!out.duck, "... and then goes");
+        const TouchLayout walks = touchLayout(false, false, true, true);
+        check(walks.walk.y == at.jump.y && walks.walk.h == at.jump.h && walks.longJump.y == at.longJump.y,
+              "with the jump button walking, LONG JUMP is under WALK");
+        set.jumpWalks = true;
+        state = ControlsState();
+        out = touch(set, state, walks.longJump.x + 5, walks.longJump.y + 5, blank);
+        check(out.jump && out.duck, "... and still jumps");
+    }
+
     void testCustom()
     {
         ControlSettings set;
@@ -1074,6 +1104,7 @@ int main()
     testWeaponStep();
     testSettings();
     testWalk();
+    testLongJumpTouch();
     testCustom();
     testTouchFilter();
     testSensitivity();
