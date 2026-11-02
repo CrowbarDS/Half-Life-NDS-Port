@@ -700,6 +700,10 @@ namespace
         const bool arrivalSaved = !changing || hlrt::netGame.playing() || saveOnArrival();
         clock.mark("save");
 #endif
+        // Only a way out takes the music along. (A save puts back its own,
+        // after this.)
+        if (!changing)
+            hlrt::sound.setMusic(-1, 0);
         hlrt::sound.load();
         clock.mark("snd");
         clock.write(name.c_str());
@@ -2031,13 +2035,15 @@ int main(int argc, char *argv[])
                     }
                     else if (item == Menu::Action::Load)
                     {
+                        // (The sound stands still until it is done: what was
+                        // playing is not heard again on the way.)
                         paused = false;
-                        hlrt::sound.setPaused(false);
                         if (!loadSave(error, hlrt::menu.slot()))
                         {
                             hlrt::bottomScreen.showPad();
                             say("COULD NOT LOAD", "that save cannot be read");
                         }
+                        hlrt::sound.setPaused(false);
                         deathLoop = hldata::DeathLoop();
                         lastVblank = Global::vblanks();
                     }
@@ -2046,8 +2052,8 @@ int main(int argc, char *argv[])
                         // (No save of the player's is touched: only the
                         // game's own, which are this game's from here.)
                         paused = false;
-                        hlrt::sound.setPaused(false);
                         newGame(true);
+                        hlrt::sound.setPaused(false);
                         deathLoop = hldata::DeathLoop();
                         lastVblank = Global::vblanks();
                     }
