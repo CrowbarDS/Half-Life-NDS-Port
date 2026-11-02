@@ -53,11 +53,12 @@ ITCM_BUDGET = 30000
 
 # The helpers. "soft" ones are the library routines; the others are ours,
 # on the divider and the square-root unit (source/HwMath.s).
-HELPERS = ["__aeabi_ldivmod", "__aeabi_uldivmod", "hlHwSqrt64", "__aeabi_idiv", "__aeabi_uidiv",
+HELPERS = ["__wrap___aeabi_ldivmod", "__wrap___aeabi_uldivmod", "__aeabi_ldivmod", "__aeabi_uldivmod", "hlHwSqrt64", "__aeabi_idiv", "__aeabi_uidiv",
            "__aeabi_idivmod", "__aeabi_uidivmod", "__divsi3", "__udivsi3", "__aeabi_lmul", "__muldi3",
            "__aeabi_llsl", "__aeabi_llsr", "__aeabi_lasr", "__udivmoddi4", "__divmoddi4",
            "__clzsi2", "__clzdi2", "__aeabi_f2d", "__aeabi_d2f", "__aeabi_dmul", "__aeabi_fmul"]
-SHORT = {"__aeabi_ldivmod": "div64", "__aeabi_uldivmod": "udiv64", "hlHwSqrt64": "sqrt",
+SHORT = {"__wrap___aeabi_ldivmod": "div64", "__wrap___aeabi_uldivmod": "udiv64",
+         "__aeabi_ldivmod": "soft-div64", "__aeabi_uldivmod": "soft-udiv64", "hlHwSqrt64": "sqrt",
          "__aeabi_idiv": "div", "__divsi3": "div", "__aeabi_uidiv": "udiv", "__udivsi3": "udiv",
          "__aeabi_idivmod": "divmod", "__aeabi_uidivmod": "udivmod", "__aeabi_lmul": "lmul",
          "__muldi3": "lmul"}
@@ -185,7 +186,7 @@ for name, by in calls.items():
     if not game(name):
         continue
     for helper, count in by.items():
-        if helper in ("__aeabi_ldivmod", "__aeabi_uldivmod", "hlHwSqrt64"):
+        if helper in ("__wrap___aeabi_ldivmod", "__wrap___aeabi_uldivmod", "hlHwSqrt64"):
             hard += count
         else:
             soft += count

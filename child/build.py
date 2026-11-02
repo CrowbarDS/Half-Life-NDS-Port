@@ -62,6 +62,8 @@ arm9 = Arm9Binary(
     cxxflags='-Wall -Werror=stack-usage=4096 -O2 -std=gnu++26 -D_LITTLE_ENDIAN -include yas/detail/config/endian.hpp',
     ldflags=' '.join(['-Wl,--wrap=' + f for f in (
         'malloc', 'free', 'calloc', 'realloc', 'memalign', 'aligned_alloc', 'posix_memalign')] +
+        # (The divide: source/HwMath.s, and ../build.py.)
+        ['-Wl,--wrap=__aeabi_ldivmod', '-Wl,--wrap=__aeabi_uldivmod'] +
         ['-Wl,--undefined=calloc']),
 )
 # airpack_bin[] / airpack_bin_size: empty unless a test asked for a map.

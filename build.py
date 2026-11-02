@@ -35,6 +35,10 @@ from architectds import *
 # HLDS_PROFILE=1 ./make.sh builds the frame-time readout in (see below).
 profile = ['HLDS_PROFILE=1'] if os.environ.get('HLDS_PROFILE') else []
 
+# The 64-bit divide goes to the console's divider (source/HwMath.s), and to
+# the library's for what the divider would answer otherwise.
+HW_MATH_WRAPS = ['__aeabi_ldivmod', '__aeabi_uldivmod']
+
 arm9 = Arm9Binary(
     sourcedirs=['source'],
     # 'thirdparty' puts yas on the include path as <yas/...>, the same spelling
@@ -74,6 +78,7 @@ arm9 = Arm9Binary(
     # -- GameDll's resolver gives it the guarded one.)
     ldflags=' '.join(['-Wl,--wrap=' + f for f in (
         'malloc', 'free', 'calloc', 'realloc', 'memalign', 'aligned_alloc', 'posix_memalign')] +
+        ['-Wl,--wrap=' + f for f in HW_MATH_WRAPS] +
         ['-Wl,--undefined=calloc']),
 )
 
@@ -110,6 +115,8 @@ hl = Arm9DynamicLibrary(
         '${BLOCKSDSEXT}/nitro-engine-advanced',
     ],
     cxxflags='-Wall -Werror=stack-usage=4096 -O2 -std=gnu++26 -D_LITTLE_ENDIAN -include yas/detail/config/endian.hpp',
+    # (By these names it finds the program's: without them, the library's.)
+    ldflags=' '.join(['-Wl,--wrap=' + f for f in HW_MATH_WRAPS]),
 )
 hl.generate_dsl()
 

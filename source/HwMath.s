@@ -3,12 +3,18 @@
 @
 @ The compiler turns every 64-bit "/" and "%" into a call to __aeabi_ldivmod
 @ (or the unsigned one): in the library that is a loop of a bit at a time,
-@ some hundreds of cycles. The hardware takes 34 of the bus's. Defining the
-@ same names here is enough: the linker takes these and never looks for the
-@ library's.
+@ some hundreds of cycles. The hardware takes 34 of the bus's. The link asks
+@ for --wrap on those names (build.py), so every call comes here first, and
+@ __real_ is still the library's.
 @ Nothing in the shared code changes, so the host's tests go on testing the
 @ same arithmetic -- and the answers are the same: a divide that rounds
 @ towards zero, a root rounded down.
+@
+@ What the unit would answer otherwise, or cannot do, goes to the library, so
+@ that the contract is the library's whole: a divide by zero (the unit says +1
+@ or -1, the library the largest number of that sign), a divide by -1 (the one
+@ that can overflow), and an unsigned number with its top bit set.
+@ tools/hwtest/divcontract/ holds this against the library, on the console.
 @
 @ Interrupts are held off from the first operand to the last word of the
 @ answer: an interrupt handler that divided in between would leave its own
@@ -34,9 +40,15 @@
     .align  2
 
 @ (r1:r0) / (r3:r2), signed. Quotient in r1:r0, remainder in r3:r2.
-    .global __aeabi_ldivmod
-    .type   __aeabi_ldivmod, %function
-__aeabi_ldivmod:
+    .global __wrap___aeabi_ldivmod
+    .type   __wrap___aeabi_ldivmod, %function
+__wrap___aeabi_ldivmod:
+    orrs    r12, r2, r3
+    beq     .Lsigned_library            @ by zero
+    and     r12, r2, r3
+    cmn     r12, #1
+    beq     .Lsigned_library            @ by -1
+.Lhardware:
     push    {r4}
 #ifdef HLDS_PROFILE
     ldr     r12, =hlHwCount             @ (a build that measures counts them)
@@ -61,28 +73,24 @@ __aeabi_ldivmod:
     msr     cpsr_c, r4
     pop     {r4}
     bx      lr
-    .size   __aeabi_ldivmod, . - __aeabi_ldivmod
+.Lsigned_library:
+    ldr     r12, =__real___aeabi_ldivmod
+    bx      r12
+    .size   __wrap___aeabi_ldivmod, . - __wrap___aeabi_ldivmod
 
 @ The same, unsigned. The unit divides signed numbers, which is the same
-@ thing while neither has its top bit set (nothing in the game has); for
-@ the rest, the library's bit-at-a-time routine.
-    .global __aeabi_uldivmod
-    .type   __aeabi_uldivmod, %function
-__aeabi_uldivmod:
+@ thing while neither has its top bit set (nothing in the game has).
+    .global __wrap___aeabi_uldivmod
+    .type   __wrap___aeabi_uldivmod, %function
+__wrap___aeabi_uldivmod:
     orrs    r12, r1, r3
-    bpl     __aeabi_ldivmod
-    push    {r4, lr}
-    sub     sp, sp, #16                 @ its fifth argument, and the remainder
-    add     r12, sp, #8
-    str     r12, [sp]
-    ldr     r12, =__udivmoddi4
-    blx     r12
-    ldr     r2, [sp, #8]
-    ldr     r3, [sp, #12]
-    add     sp, sp, #16
-    pop     {r4, lr}
-    bx      lr
-    .size   __aeabi_uldivmod, . - __aeabi_uldivmod
+    bmi     .Lunsigned_library
+    orrs    r12, r2, r3
+    bne     .Lhardware
+.Lunsigned_library:
+    ldr     r12, =__real___aeabi_uldivmod
+    bx      r12
+    .size   __wrap___aeabi_uldivmod, . - __wrap___aeabi_uldivmod
 
 @ uint32_t hlHwSqrt64(uint64_t value): its square root, rounded down.
     .global hlHwSqrt64

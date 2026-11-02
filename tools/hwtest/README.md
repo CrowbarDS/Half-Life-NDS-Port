@@ -118,3 +118,15 @@ What follows:
 - 32-bit divides stay in the library. It is 2 to 4 times quicker when in the
   cache and 4 to 8 times slower when not, so the unit only wins where the
   library's code is out of the cache often (about 1 call in 8 at 20/10).
+
+## divcontract/ — the game's 64-bit divide against the library's
+
+The routines of `source/HwMath.s`, reached through `--wrap` as in the game,
+beside the library's: quotient and remainder, word for word, on the edge cases
+(by zero, by -1, the largest and smallest numbers, top bits set) and on random
+numbers of every width. It also checks that r4-r11 are kept, that the CPU's
+interrupt bit comes back as it went in (on or off), and the root against one
+worked out bit by bit, over the range `isqrt64` gives the unit. The screen ends
+in PASS or FAIL, with the first differences above it.
+
+Roots of 2^62 and above are outside that range: melonDS gets them one too high.
