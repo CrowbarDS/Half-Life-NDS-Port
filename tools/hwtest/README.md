@@ -63,3 +63,58 @@ exactly as libnds does (PCFG before PADR for writes, PADR before PCFG for
 reads, a short wait before each access, no waiting on the write-busy bit);
 the probe's first version did not, and every transfer stalled on a DSi while
 melonDS accepted it.
+
+## divmath/ — what the divider and the square-root unit cost
+
+Times each way of driving the units, in bus-clock ticks per call, and counts
+wrong answers (the count must be 0). A goes to the next page:
+
+1. The 64-bit divide: the old code, then STM/LDM with the IME guard, with the
+   CPSR guard, and with no guard (about what an inline divide would run).
+2. The root, and both units left in the wrong mode, which must restart cleanly.
+3. 32-bit divides: the library's routine against the unit's 32-by-32 mode, by
+   size of number.
+4. A fixed wait instead of polling: the fewest idle loops that still give right
+   answers, what that costs, and what one loop fewer does.
+
+The "cold" column empties the instruction cache before each call. melonDS does
+not charge for that, so only a console's cold column means anything, and it is
+what decides whether 32-bit divides should move to the hardware.
+
+Results on a DSi, 2026-11-02, in bus ticks per call, every answer right. Not
+yet run on a DS.
+
+| 64-bit divide | Ticks |
+|---|---|
+| Old code | 78 |
+| STM/LDM, IME guard | 61 |
+| STM/LDM, CPSR guard | 54 |
+| STM/LDM, no guard | 52 |
+| Left in the wrong mode (CPSR guard) | 61 |
+| Fixed wait of 31 loops, no polling, no guard | 45 |
+
+| 64-bit root | Ticks |
+|---|---|
+| Old code | 41 |
+| STM, CPSR guard | 28 |
+| Left in the wrong mode | 36 |
+
+| 32-bit divide, numerator/denominator bits | Library warm | Library cold | Hardware |
+|---|---|---|---|
+| 12/6 | 10.1 | 170.2 | 38 |
+| 20/10 | 13.6 | 208.7 | 38 |
+| 30/16 | 16.6 | 244.0 | 38 |
+| 30/4 | 22.5 | 313.7 | 38 |
+| 20/10 with the remainder | 17.6 | 232.9 | 38 |
+
+What follows:
+
+- The game uses STM/LDM with the CPSR guard: about 30% off both units.
+- Polling stays. A fixed wait saves 7 ticks of 52, needs a count for each kind
+  of console and has no margin: 30 loops gave wrong answers on the DSi, and
+  melonDS needs 35, so a count right for the console is wrong in the emulator.
+- Inlining would save little: without the guard the routine, called, is only 2
+  ticks quicker, and that figure already leaves out the cost of a bare call.
+- 32-bit divides stay in the library. It is 2 to 4 times quicker when in the
+  cache and 4 to 8 times slower when not, so the unit only wins where the
+  library's code is out of the cache often (about 1 call in 8 at 20/10).
