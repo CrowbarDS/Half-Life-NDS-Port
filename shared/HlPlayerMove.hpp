@@ -44,6 +44,12 @@ namespace hldata
     inline constexpr fx kWalkWishSpeed = fxFromInt(120);
     /// sqrt(2 * 800 * 45): the take-off speed that reaches 45 units.
     inline constexpr fx kJumpSpeed = 1099072;
+    /// The long jump: how fast along the view (PLAYER_LONGJUMP_SPEED, 350, by
+    /// 1.6), and sqrt(2 * 800 * 56) up. A crouch pressed no longer ago than this.
+    inline constexpr fx kLongJumpSpeed = fxFromInt(560);
+    inline constexpr fx kLongJumpUp = 1226066;
+    inline constexpr fx kLongJumpLeast = fxFromInt(50);
+    inline constexpr int kLongJumpDuckMs = 1000;
     /// Movement keys count for a third while crouched.
     inline constexpr fx kDuckSpeedScale = 1364;
     /// A floor is a plane whose normal's z is at least 0.7.
@@ -158,6 +164,9 @@ namespace hldata
         // item_security). (In a save from version 9: HlSave.hpp.)
         std::int16_t antidotes = 0;
         std::int16_t securityCards = 0;
+        /// The last move was a long jump: the view's kick is whoever looks's.
+        /// (Not in a save.)
+        bool longJumped = false;
 
         template <class Ar>
         void serialize(Ar &ar)
@@ -171,7 +180,9 @@ namespace hldata
     inline constexpr std::uint16_t kArsenalWeapons = (1u << (kWeaponCount - kWeaponFirstMore)) - 1u;
     inline constexpr std::uint16_t kArsenalRpgLoaded = 1u << 15; ///< a rocket in the RPG
     inline constexpr std::uint16_t kArsenalLaserOff = 1u << 14;  ///< the RPG's laser is off
-    inline constexpr std::uint16_t kArsenalKept = kArsenalWeapons | kArsenalRpgLoaded | kArsenalLaserOff;
+    inline constexpr std::uint16_t kArsenalLongJump = 1u << 13;  ///< the long jump module is worn
+    inline constexpr std::uint16_t kArsenalKept =
+        kArsenalWeapons | kArsenalRpgLoaded | kArsenalLaserOff | kArsenalLongJump;
 
     /// The kinds of hurt the head-up display shows a picture of, as bits:
     /// the game's own (its health.cpp's giDmgFlags), in its order.
@@ -266,12 +277,13 @@ namespace hldata
         kSuitHeal7, ///< morphine
         kSuitHlth2, ///< health critical
         kSuitHlth3, ///< near death
+        kSuitLongJump, ///< the long jump module taken
         kSuitLines
     };
     /// The sentences.txt names, by SuitLine.
     inline constexpr const char *kSuitLineNames[kSuitLines] = {
         "HEV_DMG0", "HEV_DMG1", "HEV_DMG2", "HEV_DMG3", "HEV_DMG4", "HEV_DMG5",  "HEV_DMG6",  "HEV_DMG7",
-        "HEV_DET0", "HEV_DET1", "HEV_DET2", "HEV_MED1", "HEV_HEAL7", "HEV_HLTH2", "HEV_HLTH3"};
+        "HEV_DET0", "HEV_DET1", "HEV_DET2", "HEV_MED1", "HEV_HEAL7", "HEV_HLTH2", "HEV_HLTH3", "HEV_A1"};
 
     /// The suit's lines to come (CSUITPLAYLIST), and how long before each
     /// may be said again (its no-repeat time).
@@ -1162,7 +1174,19 @@ namespace hldata
                     for (int i = 0; i < 3; ++i)
                         s.velocity[i] = static_cast<fx>((s.velocity[i] * scale) >> kFxShift);
                 }
-                s.velocity[2] = kJumpSpeed;
+                // With the module, running, and a crouch just pressed: far.
+                if (cmd.duck && (s.ducked || s.ducking) && s.duckMs < kLongJumpDuckMs && s.arsenal != nullptr &&
+                    (s.arsenal->have & kArsenalLongJump) && fxLength(s.velocity) > kLongJumpLeast)
+                {
+                    s.velocity[0] = fxMul(cmd.viewForward[0], kLongJumpSpeed);
+                    s.velocity[1] = fxMul(cmd.viewForward[1], kLongJumpSpeed);
+                    s.velocity[2] = kLongJumpUp;
+                    s.arsenal->longJumped = true;
+                }
+                else
+                {
+                    s.velocity[2] = kJumpSpeed;
+                }
                 halfGravity();
                 s.jumpHeld = true;
             }
@@ -1330,7 +1354,12 @@ namespace hldata
                     return;
                 }
                 if (s.ducked)
+                {
+                    // (How long since it was pressed: a long jump's window.)
+                    if (s.duckMs < kLongJumpDuckMs)
+                        s.duckMs += ms;
                     return;
+                }
                 if (pressed || !s.ducking)
                 {
                     s.ducking = true;

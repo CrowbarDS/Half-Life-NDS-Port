@@ -900,6 +900,13 @@ namespace hldata
                 return add(ars->antidotes, 1, 99);
             case ItemKind::Security:
                 return add(ars->securityCards, 1, 99);
+            case ItemKind::LongJump:
+                // (Only for someone in the suit, and only once.)
+                if (!(inv.have & 1) || (ars->have & kArsenalLongJump))
+                    return false;
+                ars->have = static_cast<std::uint16_t>(ars->have | kArsenalLongJump);
+                suitUpdate(player, kSuitLongJump, 0);
+                return true;
             default:
                 return false;
             }

@@ -395,6 +395,79 @@ namespace
         check(speedAfter(0, false, false) > 250, "not asked for, a run");
     }
 
+    /// The long jump: moving, the crouch just pressed, with the module; and
+    /// an ordinary jump for each thing missing.
+    void testLongJump()
+    {
+        World w;
+        BoxRoom hall;
+        hall.mins[0] = hall.mins[1] = -2000;
+        hall.maxs[0] = hall.maxs[1] = 2000;
+        boxWorld(w, hall);
+        if (!w.ok)
+            return;
+        Arsenal module;
+        module.have = kArsenalLongJump;
+        Arsenal none;
+        // How far it carries, in the air: up to the ground again, measured in
+        // a slice of time (the room is small: by the speed, not the walls).
+        struct Result
+        {
+            double along, up;
+        };
+        auto jump = [&](const Arsenal *has, bool moving, int duckFirstTicks, fx look)
+        {
+            Sim sim = spawn(w);
+            Arsenal copy = *has;
+            sim.s.arsenal = &copy;
+            sim.run(30);
+            sim.cmd.viewForward[0] = look;
+            if (moving)
+            {
+                sim.cmd.forward = 1;
+                sim.run(2);
+            }
+            sim.cmd.duck = true;
+            sim.run(duckFirstTicks);
+            sim.cmd.jump = true;
+            sim.run(1);
+            const Result out{toUnits(sim.s.velocity[0]), toUnits(sim.s.velocity[2])};
+            return out;
+        };
+        const Result yes = jump(&module, true, 0, kFxOne);
+        check(std::fabs(yes.along - 560) < 45 && yes.up > 270 && yes.up < 300, "the module, moving, duck and jump together: 560 along, 299 up");
+        // How far it carries on the flat: 560 units a second, for most of 0.75 s.
+        {
+            Sim sim = spawn(w);
+            Arsenal copy = module;
+            sim.s.arsenal = &copy;
+            sim.run(30);
+            sim.cmd.forward = 1;
+            sim.run(3);
+            sim.cmd.forward = 0;
+            sim.cmd.duck = sim.cmd.jump = true;
+            const double from = sim.x();
+            sim.run(1);
+            while (!sim.s.onGround && sim.z() < 400)
+                sim.run(1);
+            const double far = sim.x() - from;
+            std::printf("test_physics: a long jump carries %.1f units on the flat\n", far);
+            // (Crouched in the air the feet are 18 units higher, and so have
+            // that much further to fall: 0.8 s, not 0.75.)
+            check(far > 430 && far < 470, "it carries about 450 units on the flat");
+        }
+        const Result soon = jump(&module, true, 25, kFxOne);
+        check(soon.up > 270, "... and with the crouch pressed under a second ago");
+        const Result late = jump(&module, true, 35, kFxOne);
+        check(late.along < 200 && late.up < 270, "... but not over a second ago");
+        const Result still = jump(&module, false, 0, kFxOne);
+        check(still.along < 1 && still.up < 270, "standing still it is an ordinary jump");
+        const Result without = jump(&none, true, 0, kFxOne);
+        check(without.along < 320 && without.up < 270, "without the module it is an ordinary jump");
+        const Result down = jump(&module, true, 0, kFxOne / 2);
+        check(down.along < yes.along * 0.6, "looking down takes it from how far it goes, as the game's");
+    }
+
     void testJump()
     {
         World w;
@@ -607,6 +680,7 @@ int main()
     testTraces();
     testMovement();
     testWalk();
+    testLongJump();
     testJump();
     testDuck();
     testStuck();

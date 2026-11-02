@@ -389,6 +389,35 @@ namespace
                       "a zombie in a trigger_monsterjump is thrown up");
             }
         }
+        // The long jump module: for someone in the suit, and once.
+        {
+            BoxRoom room;
+            room.extraEntities = entity("\"classname\" \"item_longjump\"\n\"origin\" \"0 0 8\"\n");
+            auto game = cook(room, valve);
+            if (game->ok && game->actors.count >= 1)
+            {
+                Game &g = *game;
+                Arsenal more;
+                g.player.arsenal = &more;
+                int module = -1;
+                for (int i = 0; i < g.actors.count; ++i)
+                {
+                    if (g.actors.states[i].item == static_cast<std::uint8_t>(ItemKind::LongJump))
+                        module = i;
+                }
+                check(module >= 0, "the long jump module lies in the room");
+                if (module >= 0)
+                {
+                    g.player.inv.have = 0;
+                    check(!itemPickUp(g.logic, g.player, module) && g.actors.states[module].active,
+                          "... no use without the suit");
+                    g.player.inv.have = 1;
+                    check(itemPickUp(g.logic, g.player, module) && (more.have & kArsenalLongJump) && !g.actors.states[module].active,
+                          "... taken in the suit");
+                    check((more.have & kArsenalKept & kArsenalLongJump) != 0, "... and a save keeps it");
+                }
+            }
+        }
         // The air tank and the antidote.
         {
             BoxRoom room;

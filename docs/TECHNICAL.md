@@ -196,6 +196,9 @@ Milestone 11, "levels of detail".
   (`shared/HlLogic.hpp`, `pushableTick`; `test_boxes` shoves every box of
   four of the game's maps every way and looks.) Not yet: pulling one with
   USE, and floating.
+- The long jump module (`item_longjump`), for someone in the suit: running,
+  with the crouch pressed under a second ago, a jump goes 560 units a second
+  along the view, about 450 on the flat with the legs tucked.
 - Water: swimming, sinking, jumping out onto a ledge, drowning, slime and
   lava; liquid surfaces sway. The sky, as a box of six pictures behind the
   world.

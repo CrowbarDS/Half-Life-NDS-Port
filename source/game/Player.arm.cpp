@@ -199,6 +199,11 @@ namespace hlrt
                 cmd.viewRight[a] = camera.right[a];
             }
             playerMove(state, cmd, game.world, kVblankTime * vblanks);
+            if (arsenal.longJumped)
+            {
+                arsenal.longJumped = false;
+                viewKick(view, 5 * kViewDegree);
+            }
         }
 
         // What the move did to the view: a landing jolts it and, hard

@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 44;
+    inline constexpr std::uint16_t kLevelVersion = 45;
     /// The oldest level format this build reads.
     inline constexpr std::uint16_t kLevelMinVersion = 28;
     /// The oldest build that can read what it writes. (32: what the people
@@ -70,8 +70,9 @@ namespace hldata
     /// a body falling among the common sounds, and the view models a map
     /// was not cooked with, named in its models to be loaded when needed.)
     /// 44: each node's own surfaces (NodeMarks, NodeSpans), as two sections
-    /// a build before does not know of.
-    inline constexpr std::uint16_t kLevelMinReader = 44;
+    /// a build before does not know of. 45: the long jump module, an item a
+    /// build before would refuse.
+    inline constexpr std::uint16_t kLevelMinReader = 45;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,
     /// 28 -> 29 a func_train's global name (extra[3], 0 before: read as
@@ -1222,6 +1223,8 @@ namespace hldata
         /// Air for the player under water (item_airtank): it stays, and
         /// gives again 30 seconds on; shot, it bursts.
         Airtank,
+        // From level version 45, cooked last of all.
+        LongJump, ///< the long jump module (kArsenalLongJump): for someone wearing the suit
         Count
     };
     /// The first of those: an actor of one of these is cooked after every

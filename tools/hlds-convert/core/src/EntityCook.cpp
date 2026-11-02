@@ -71,7 +71,7 @@ namespace hlds
                 "weapon_egon", "weapon_hornetgun", "weaponbox", "monster_cockroach", "monster_leech",
                 "monster_alien_grunt", "monster_alien_controller", "monster_snark", "monster_osprey",
                 "xen_hair", "xen_spore_small", "xen_spore_medium", "xen_spore_large", "xen_tree", "xen_plantlight",
-                "item_antidote", "item_security", "item_airtank",
+                "item_antidote", "item_security", "item_airtank", "item_longjump",
                 "monster_gargantua", "monster_babycrab", "monster_hevsuit_dead",
                 "monster_human_assassin", "monster_ichthyosaur",
                 "func_tank", "func_tanklaser", "func_tankrocket", "func_tankmortar", "func_tankcontrols",
@@ -190,6 +190,7 @@ namespace hlds
             {"item_antidote", ItemKind::Antidote, "models/w_antidote.mdl"},
             {"item_security", ItemKind::Security, "models/w_security.mdl"},
             {"item_airtank", ItemKind::Airtank, "models/w_oxygen.mdl"},
+            {"item_longjump", ItemKind::LongJump, "models/w_longjump.mdl"},
         };
 
         /// What a func_breakable or func_pushable leaves when it breaks: its
@@ -3297,7 +3298,7 @@ namespace hlds
         // so an actor a save points at keeps its place -- the later items,
         // then the last ones, then round 3's monsters, then round 4's, then
         // round 5's.)
-        for (int round = 0; round < 7; ++round)
+        for (int round = 0; round < 8; ++round)
         for (std::size_t e = 0; e < entities.size(); ++e)
         {
             const Entity &entity = entities[e];
@@ -3312,7 +3313,8 @@ namespace hlds
             // (Round 6: level version 39's -- Xen's plants, and three items.)
             const bool round6 = info.kind == ActorKind::Xen ||
                                 static_cast<int>(info.item) >= static_cast<int>(ItemKind::Antidote);
-            const int itemRound = round6 ? 6
+            const int itemRound = info.item == ItemKind::LongJump ? 7 // (level version 45's)
+                                  : round6 ? 6
                                   : round5 ? 5
                                   : round4 ? 4
                                   : info.item == ItemKind::None
