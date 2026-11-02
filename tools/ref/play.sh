@@ -63,6 +63,8 @@ bind 3 "weapon_egon"
 bind h "weapon_hornetgun"
 bind u "+use"
 bind SPACE "+jump"
+bind SHIFT "+speed"
+bind CTRL "+duck"
 bind m "give monster_zombie"
 crosshair 1
 cl_bob 0
@@ -79,6 +81,15 @@ sv_cheats 1
 echo REF-START
 CFG
 
+# REF_AUDIO=<file>: the game's sound, written to that file (SDL's own disk
+# driver, as tools/emu/play.sh's EMU_AUDIO): nothing is played, and nothing of
+# the computer's sound is touched.
+SOUND=-nosound
+if [ -n "${REF_AUDIO:-}" ]; then
+    SOUND=
+    export SDL_AUDIODRIVER=disk SDL_DISKAUDIOFILE="$REF_AUDIO"
+    rm -f "$REF_AUDIO"
+fi
 rm -f "$LOG"
 DISP=":$((70 + RANDOM % 20))"
 Xvfb "$DISP" -screen 0 800x600x24 >/dev/null 2>&1 &
@@ -101,7 +112,7 @@ trap 'exit 1' INT TERM
 sleep 1
 cd "$HL" || exit 1
 DISPLAY="$DISP" LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 SteamAppId=70 SteamGameId=70 \
-    setsid "$RUNTIME" ./hl.sh -game hlds_ref -windowed -w 640 -h 480 -novid -nosound -nomouse -condebug \
+    setsid "$RUNTIME" ./hl.sh -game hlds_ref -windowed -w 640 -h 480 -novid $SOUND -nomouse -condebug \
     +sv_cheats 1 +map "$MAP" +exec ref.cfg >"$REF/run.log" 2>&1 &
 GAME=$!
 cd "$ROOT" || exit 1

@@ -45,6 +45,12 @@ removed when the run is over.)
   port is beside the game, by how bright the game is there. (A place where
   the game's menu came up instead of the map shows as a row of black: look
   at `build/ref/<name>_NN.png` before believing a table.)
+- **The sound.** `REF_AUDIO=<file>` writes the game's sound to a file instead
+  of playing it (raw 16-bit stereo, about 5% slow against the clock).
+  `REF_BARE=1` keeps only the world and the start in the map's copy, so that
+  nothing is heard but the player; `REF_KEEP=<pattern>` keeps those classes too.
+  Giving the player everything sets off the suit's speech: wait about 25 seconds
+  before listening.
 - **The pictures** are of an 800x600 screen with the game's 640x480 in the
   middle (`compare.sh` cuts it out). They are the game's own pictures: keep
   them under `build/`, not in the repository.
