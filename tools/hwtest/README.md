@@ -89,6 +89,7 @@ yet run on a DS.
 | Old code | 78 |
 | STM/LDM, IME guard | 61 |
 | STM/LDM, CPSR guard | 54 |
+| ... address by MOV and ADD, not a literal | 54 |
 | STM/LDM, no guard | 52 |
 | Left in the wrong mode (CPSR guard) | 61 |
 | Fixed wait of 31 loops, no polling, no guard | 45 |
@@ -97,6 +98,7 @@ yet run on a DS.
 |---|---|
 | Old code | 41 |
 | STM, CPSR guard | 28 |
+| ... address by MOV and ADD, not a literal | 28 |
 | Left in the wrong mode | 36 |
 
 | 32-bit divide, numerator/denominator bits | Library warm | Library cold | Hardware |

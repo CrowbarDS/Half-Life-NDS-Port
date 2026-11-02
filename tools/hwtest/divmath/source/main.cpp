@@ -23,10 +23,12 @@ extern "C"
     void divOld();
     void divStmIme();
     void divStmCpsr();
+    void divMovAdd();
     void divBare();
     void divWait();
     void sqrtOld();
     void sqrtStmCpsr();
+    void sqrtMovAdd();
     void hwIdiv();
     void __aeabi_idiv();
     void __aeabi_idivmod();
@@ -205,6 +207,7 @@ namespace
         show("old", measure(reinterpret_cast<const void *>(divOld), 4));
         show("stm, IME", measure(reinterpret_cast<const void *>(divStmIme), 4));
         show("stm, CPSR", measure(reinterpret_cast<const void *>(divStmCpsr), 4));
+        show("mov+add", measure(reinterpret_cast<const void *>(divMovAdd), 4));
         show("stm, no guard", measure(reinterpret_cast<const void *>(divBare), 4));
         waitForA();
     }
@@ -216,6 +219,7 @@ namespace
         REG_SQRTCNT = 1;
         show("old", measure(reinterpret_cast<const void *>(sqrtOld), 1));
         show("stm, CPSR", measure(reinterpret_cast<const void *>(sqrtStmCpsr), 1));
+        show("mov+add", measure(reinterpret_cast<const void *>(sqrtMovAdd), 1));
         show("wrong mode", measure(reinterpret_cast<const void *>(sqrtStmCpsr), 1, [] { REG_SQRTCNT = 0; }));
 
         fillDiv64();

@@ -114,6 +114,30 @@ divStmCpsr:
     pop     {r4}
     bx      lr
 
+@ The same, with the address made by MOV and ADD rather than loaded.
+    .global divMovAdd
+    .type   divMovAdd, %function
+divMovAdd:
+    push    {r4}
+    mrs     r4, cpsr
+    orr     r12, r4, #0x80
+    msr     cpsr_c, r12
+    mov     r12, #0x04000000
+    add     r12, r12, #0x290
+    stm     r12!, {r0-r3}
+    ldrh    r0, [r12, #-0x20]
+    and     r0, r0, #3
+    cmp     r0, #2
+    movne   r0, #2
+    strhne  r0, [r12, #-0x20]
+1:  ldrh    r0, [r12, #-0x20]
+    tst     r0, #0x8000
+    bne     1b
+    ldm     r12, {r0-r3}
+    msr     cpsr_c, r4
+    pop     {r4}
+    bx      lr
+
 @ No guard, no stack: what a divide written inline would run, less the call.
     .global divBare
     .type   divBare, %function
@@ -172,6 +196,27 @@ sqrtStmCpsr:
     orr     r2, r3, #0x80
     msr     cpsr_c, r2
     ldr     r12, =REG_PARAM
+    stm     r12, {r0, r1}
+    ldrh    r0, [r12, #-8]
+    tst     r0, #1
+    moveq   r0, #1
+    strheq  r0, [r12, #-8]
+1:  ldrh    r0, [r12, #-8]
+    tst     r0, #0x8000
+    bne     1b
+    ldr     r0, [r12, #-4]
+    msr     cpsr_c, r3
+    bx      lr
+
+@ The same, with the address made by MOV and ADD rather than loaded.
+    .global sqrtMovAdd
+    .type   sqrtMovAdd, %function
+sqrtMovAdd:
+    mrs     r3, cpsr
+    orr     r2, r3, #0x80
+    msr     cpsr_c, r2
+    mov     r12, #0x04000000
+    add     r12, r12, #0x2B8
     stm     r12, {r0, r1}
     ldrh    r0, [r12, #-8]
     tst     r0, #1

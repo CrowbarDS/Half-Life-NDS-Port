@@ -32,9 +32,10 @@
     .cpu    arm946e-s
     .arm
 
-    .set    REG_DIV_NUMER,  0x04000290  @ -0x10 control, +0x08 denominator,
+    @ From the registers' 0x04000000.
+    .set    REG_DIV_NUMER,  0x290       @ -0x10 control, +0x08 denominator,
                                         @ +0x10 quotient, +0x18 remainder
-    .set    REG_SQRT_PARAM, 0x040002B8  @ -0x08 control, -0x04 root
+    .set    REG_SQRT_PARAM, 0x2B8       @ -0x08 control, -0x04 root
 
     .section .itcm.text.hwmath, "ax", %progbits
     .align  2
@@ -59,7 +60,8 @@ __wrap___aeabi_ldivmod:
     mrs     r4, cpsr
     orr     r12, r4, #0x80
     msr     cpsr_c, r12
-    ldr     r12, =REG_DIV_NUMER
+    mov     r12, #0x04000000            @ (two instructions and no literal)
+    add     r12, r12, #REG_DIV_NUMER
     stm     r12!, {r0-r3}               @ (r12 is left at the quotient)
     ldrh    r0, [r12, #-0x20]
     and     r0, r0, #3
@@ -105,7 +107,8 @@ hlHwSqrt64:
     mrs     r3, cpsr
     orr     r2, r3, #0x80
     msr     cpsr_c, r2
-    ldr     r12, =REG_SQRT_PARAM
+    mov     r12, #0x04000000
+    add     r12, r12, #REG_SQRT_PARAM
     stm     r12, {r0, r1}
     ldrh    r0, [r12, #-8]
     tst     r0, #1                      @ of 64 bits
