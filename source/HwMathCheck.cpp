@@ -1,9 +1,11 @@
 // A check, for builds that measure (HLDS_PROFILE): the console's divider
 // and square-root unit (HwMath.s) against the same sums done a bit at a
-// time. They must agree on every one.
+// time. They must agree on every one, whichever mode the unit was left in.
 
 #include <cstdint>
 #include <cstdio>
+
+#include <nds.h>
 
 #include "Global.hpp"
 #include "HlFixed.hpp"
@@ -71,6 +73,7 @@ namespace hlrt
             volatile std::int64_t d = static_cast<std::int64_t>(next()) >> (next() % 62);
             if (d == 0)
                 d = 3;
+            REG_DIVCNT = i % 3;
             const std::int64_t q = n / d;
             const std::int64_t r = n % d;
             std::uint64_t rest;
@@ -81,12 +84,14 @@ namespace hlrt
             const std::int64_t wantR = n < 0 ? -static_cast<std::int64_t>(rest) : static_cast<std::int64_t>(rest);
             wrongSigned += q != wantQ || r != wantR;
             // Unsigned, the top bit set now and then (the library's way).
+            REG_DIVCNT = (i + 1) % 3;
             volatile std::uint64_t a = next() >> (next() % 8), b = (next() >> (next() % 62)) | 1;
             const std::uint64_t uq2 = a / b, ur2 = a % b;
             const std::uint64_t want2 = slowDivide(a, b, rest);
             const bool big = (a | b) >> 63;
             (big ? wrongBig : wrongUnsigned) += uq2 != want2 || ur2 != rest;
             volatile std::uint64_t v = next() >> (next() % 64);
+            REG_SQRTCNT = i % 2;
             if (hldata::isqrt64(v) != slowRoot(v))
             {
                 if (wrongRoot < 4)

@@ -3,15 +3,21 @@
 @
 @ The compiler turns every 64-bit "/" and "%" into a call to __aeabi_ldivmod
 @ (or the unsigned one): in the library that is a loop of a bit at a time,
-@ some hundreds of cycles. The hardware takes 34. Defining the same names
-@ here is enough: the linker takes these and never looks for the library's.
+@ some hundreds of cycles. The hardware takes 34 of the bus's. Defining the
+@ same names here is enough: the linker takes these and never looks for the
+@ library's.
 @ Nothing in the shared code changes, so the host's tests go on testing the
 @ same arithmetic -- and the answers are the same: a divide that rounds
 @ towards zero, a root rounded down.
 @
 @ Interrupts are held off from the first operand to the last word of the
 @ answer: an interrupt handler that divided in between would leave its own
-@ answer in the unit.
+@ answer in the unit. The CPU's own bit does that without a trip on the bus,
+@ which REG_IME would take three of.
+@
+@ The mode is looked at after the operands: libnds leaves the unit in other
+@ modes, but the last operand has started it by then, so the look costs what
+@ waiting would have. Only a wrong mode costs anything: writing it starts again.
 @
 @ In ITCM: the code that divides most (the collision trace) is there too.
 
@@ -20,10 +26,9 @@
     .cpu    arm946e-s
     .arm
 
-    .set    REG_IME,     0x04000208
-    .set    REG_DIVCNT,  0x04000280     @ +0x10 numerator, +0x18 denominator,
-                                        @ +0x20 quotient, +0x28 remainder
-    .set    REG_SQRTCNT, 0x040002B0     @ +0x04 root, +0x08 its argument
+    .set    REG_DIV_NUMER,  0x04000290  @ -0x10 control, +0x08 denominator,
+                                        @ +0x10 quotient, +0x18 remainder
+    .set    REG_SQRT_PARAM, 0x040002B8  @ -0x08 control, -0x04 root
 
     .section .itcm.text.hwmath, "ax", %progbits
     .align  2
@@ -32,33 +37,29 @@
     .global __aeabi_ldivmod
     .type   __aeabi_ldivmod, %function
 __aeabi_ldivmod:
-    push    {r4, r5}
+    push    {r4}
 #ifdef HLDS_PROFILE
     ldr     r12, =hlHwCount             @ (a build that measures counts them)
     ldr     r4, [r12]
     add     r4, r4, #1
     str     r4, [r12]
 #endif
-    ldr     r12, =REG_DIVCNT
-    ldr     r4, =REG_IME
-    ldrh    r5, [r4]
-    strh    r4, [r4]                    @ (its own address: bit 0 clear, off)
-    mov     r4, #2                      @ 64 by 64
-    strh    r4, [r12]
-    str     r0, [r12, #0x10]
-    str     r1, [r12, #0x14]
-    str     r2, [r12, #0x18]
-    str     r3, [r12, #0x1C]
-1:  ldrh    r4, [r12]
-    tst     r4, #0x8000
+    mrs     r4, cpsr
+    orr     r12, r4, #0x80
+    msr     cpsr_c, r12
+    ldr     r12, =REG_DIV_NUMER
+    stm     r12!, {r0-r3}               @ (r12 is left at the quotient)
+    ldrh    r0, [r12, #-0x20]
+    and     r0, r0, #3
+    cmp     r0, #2                      @ 64 by 64
+    movne   r0, #2
+    strhne  r0, [r12, #-0x20]
+1:  ldrh    r0, [r12, #-0x20]
+    tst     r0, #0x8000
     bne     1b
-    ldr     r0, [r12, #0x20]
-    ldr     r1, [r12, #0x24]
-    ldr     r2, [r12, #0x28]
-    ldr     r3, [r12, #0x2C]
-    ldr     r4, =REG_IME
-    strh    r5, [r4]
-    pop     {r4, r5}
+    ldm     r12, {r0-r3}
+    msr     cpsr_c, r4
+    pop     {r4}
     bx      lr
     .size   __aeabi_ldivmod, . - __aeabi_ldivmod
 
@@ -93,19 +94,20 @@ hlHwSqrt64:
     add     r2, r2, #1
     str     r2, [r12, #4]
 #endif
-    ldr     r12, =REG_SQRTCNT
-    ldr     r2, =REG_IME
-    ldrh    r3, [r2]
-    strh    r2, [r2]                    @ (0x04000208: bit 0 clear)
-    str     r0, [r12, #0x08]
-    str     r1, [r12, #0x0C]
-    mov     r0, #1                      @ of 64 bits
-    strh    r0, [r12]
-1:  ldrh    r0, [r12]
+    mrs     r3, cpsr
+    orr     r2, r3, #0x80
+    msr     cpsr_c, r2
+    ldr     r12, =REG_SQRT_PARAM
+    stm     r12, {r0, r1}
+    ldrh    r0, [r12, #-8]
+    tst     r0, #1                      @ of 64 bits
+    moveq   r0, #1
+    strheq  r0, [r12, #-8]
+1:  ldrh    r0, [r12, #-8]
     tst     r0, #0x8000
     bne     1b
-    ldr     r0, [r12, #0x04]
-    strh    r3, [r2]
+    ldr     r0, [r12, #-4]
+    msr     cpsr_c, r3
     bx      lr
     .size   hlHwSqrt64, . - hlHwSqrt64
 

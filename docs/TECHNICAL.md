@@ -453,7 +453,8 @@ Milestone 11, "levels of detail".
   (the build tool had been compiling the `.arm.cpp` files as Thumb, where
   every 64-bit multiply is a call), and the compiler's 64-bit divide and
   the fixed-point square root go to the console's own divider and
-  square-root unit (`source/HwMath.s`): same answers, a tenth of the time.
+  square-root unit (`source/HwMath.s`): same answers, 54 bus ticks a divide
+  and 28 a root on a DSi (`tools/hwtest/divmath/`).
   A build with `HLDS_PROFILE` checks the hardware's sums against the slow
   way at start-up and says so in `perf.txt`.
 - Where the code runs from. The DS has 32 KB of memory that is always as
