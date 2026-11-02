@@ -511,19 +511,14 @@ namespace hlrt::SaveGame
         guard::check("save");
         need();
         needRun();
-        // (While it is written, a piece a frame: as write's.)
-        const bool began = writer.begin(card, list, slot, save, heading, &run, namesFolder(slot));
-        if (began)
-            sound.holdPipeline(true);
-        return began;
+        // (A piece a frame, each short enough for the sound to go on through
+        // it: the pipeline, and the music in it, are left running.)
+        return writer.begin(card, list, slot, save, heading, &run, namesFolder(slot));
     }
 
     hldata::SaveWriter::Result step()
     {
-        const hldata::SaveWriter::Result result = writer.step();
-        if (result != hldata::SaveWriter::Result::Busy)
-            sound.holdPipeline(false);
-        return result;
+        return writer.step();
     }
 
     bool busy()
@@ -535,6 +530,8 @@ namespace hlrt::SaveGame
     {
         if (!writer.busy())
             return true;
+        // (All that is left in one go: as write's.)
+        sound.holdPipeline(true);
         const bool done = writer.finish();
         sound.holdPipeline(false);
         return done;
