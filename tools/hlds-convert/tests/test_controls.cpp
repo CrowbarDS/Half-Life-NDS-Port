@@ -718,6 +718,39 @@ namespace
             check(readSettings(file11.data(), file11.size(), read11) && read11.autoaim == 0 &&
                       read11.achievementPopups == 1,
                   "settings of version 11 are read, with the pop-ups on");
+
+            // Version 17: the game's own save, on unless turned off; autoaim
+            // off unless asked for -- and off once for a file from before.
+            check(SettingsData().autosave == 1 && SettingsData().autoaim == 0, "autosave is on and autoaim off to begin with");
+            SettingsData chosen;
+            chosen.autosave = 0;
+            chosen.autoaim = 1;
+            written = writeSettings(chosen);
+            SettingsData read17;
+            check(readSettings(written.data(), written.size(), read17) && read17.autosave == 0 && read17.autoaim == 1,
+                  "both choices are kept");
+            chosen.autosave = 2;
+            written = writeSettings(chosen);
+            check(!readSettings(written.data(), written.size(), read17), "... and nonsense is not believed");
+
+            SettingsData sixteen;
+            sixteen.autoaim = 1;
+            yas::mem_ostream os16;
+            yas::binary_oarchive<yas::mem_ostream, flags> oa16(os16);
+            sixteen.serializeSixteen(oa16);
+            const auto buf16 = os16.get_intrusive_buffer();
+            SettingsHeader h16{};
+            std::memcpy(h16.magic, kSettingsMagic, sizeof(h16.magic));
+            h16.version = kSettingsVersionSixteen;
+            h16.payloadBytes = static_cast<std::uint16_t>(buf16.size);
+            h16.crc32 = crc32(reinterpret_cast<const std::uint8_t *>(buf16.data), static_cast<std::uint32_t>(buf16.size));
+            std::vector<std::uint8_t> file16(sizeof(h16) + buf16.size);
+            std::memcpy(file16.data(), &h16, sizeof(h16));
+            std::memcpy(file16.data() + sizeof(h16), buf16.data, buf16.size);
+            SettingsData read16;
+            read16.autosave = 0;
+            check(readSettings(file16.data(), file16.size(), read16) && read16.autoaim == 0 && read16.autosave == 1,
+                  "settings of version 16 are read, with autoaim off and autosave on");
         }
     }
 

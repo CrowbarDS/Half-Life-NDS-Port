@@ -159,6 +159,7 @@ namespace hlrt::SaveGame
     }
     void newRun(std::uint32_t) {}
     bool fromSave(int, const hldata::SaveData &, std::uint32_t) { return false; }
+    void dropNamedAuto() {}
     const hldata::RunIndex &runIndex()
     {
         static const hldata::RunIndex none;
@@ -452,6 +453,21 @@ namespace hlrt::SaveGame
         hldata::runFromSave(card, slot, save, run, runId, scratch);
         letGo();
         return run.runId != wasRun || run.generation != wasGeneration;
+    }
+
+    void dropNamedAuto()
+    {
+        if (!global.hasFat)
+            return;
+        need();
+        finish();
+        if (list.slots[hldata::kSlotAuto].status != hldata::kSaveGood)
+            return;
+        static hldata::SaveData held; // not on the stack: it holds vectors of vectors
+        held = hldata::SaveData();
+        if (hldata::saveSlotRead(card, hldata::kSlotAuto, held) && held.visitedByRef)
+            hldata::saveSlotForget(card, list, hldata::kSlotAuto);
+        held = hldata::SaveData();
     }
 
     const hldata::RunIndex &runIndex()

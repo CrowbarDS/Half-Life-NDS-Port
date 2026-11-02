@@ -950,7 +950,23 @@ namespace
         }
         return saved;
     }
+    /// The game's own save, unless the player has turned it off. (Not for a
+    /// demo a console was sent: its host keeps it, and it is how it goes on.)
+    bool autosaving()
+    {
+        return settings.autosave || hlrt::netGame.demo() != 0;
+    }
 #ifndef HLDS_CHILD
+    /// The maps left have changed (a way out, a new game, a load), and the
+    /// game's own save only names them: made again, or, turned off, let go
+    /// of, rather than listed with the maps gone from it.
+    bool autosaveAgain()
+    {
+        if (autosaving())
+            return saveNow(hldata::kSlotAuto, true);
+        hlrt::SaveGame::dropNamedAuto();
+        return true;
+    }
     /// The saves of a map just come into, at once.
     bool saveOnArrival()
     {
@@ -958,7 +974,7 @@ namespace
         if (hlrt::player.noclip || hlrt::player.state.health <= 0)
             return true;
         const bool arrival = saveNow(hldata::kSlotArrival, true);
-        return saveNow(hldata::kSlotAuto, true) && arrival;
+        return autosaveAgain() && arrival;
     }
 #endif
     /// Once a frame: a step of the save being written, if one is.
@@ -2130,7 +2146,7 @@ int main(int argc, char *argv[])
                 if (hlrt::game.logic.saveRequested)
                 {
                     hlrt::game.logic.saveRequested = false;
-                    if (!hlrt::netGame.playing())
+                    if (!hlrt::netGame.playing() && autosaving())
                         saveNow(hldata::kSlotAuto);
                 }
                 // (No way out of a map in a game between consoles.)

@@ -122,8 +122,8 @@ Milestone 11, "levels of detail".
   tosses a grenade as he runs for cover and fires his launcher again
   sooner, an assassin standing still fades almost out of sight, an alien
   slave's zap goes half again as fast; on EASY the Apache does not fire its
-  rockets with its gun. And autoaim (the OPTIONS' CONTROLS, AUTOAIM: the
-  game's `sv_aim`): on EASY and MEDIUM the pistol, the python, the MP5 and
+  rockets with its gun. And autoaim (the OPTIONS' CONTROLS, AUTOAIM, off
+  unless asked for: the game's `sv_aim`): on EASY and MEDIUM the pistol, the python, the MP5 and
   the shotgun bend their aim to the monster nearest it within their cone
   (10 or 5 degrees) -- a third of the way on EASY, nine tenths on MEDIUM, as
   the game's GetAutoaimVector has it -- and the crosshair moves with it (red
@@ -209,7 +209,12 @@ Milestone 11, "levels of detail".
   targets it. Still missing: the wheels that are HELD (`momentary_rot_button`,
   `momentary_door`: nineteen, in eight maps).
 - Saving, as the game has it: AUTOSAVE, which the game writes itself at a
-  map's own save points and on arriving in a map; QUICK, the pause menu's
+  map's own save points and on arriving in a map (the OPTIONS' OTHER, AUTO
+  SAVE, turns it off; the hidden save a death falls back to is still made).
+  On arriving it is written behind the frozen picture, before the sound
+  starts; at a save point a piece a frame, the game and the music going on.
+  It only names the maps left, in the run's folder, rather than copying
+  them, so it is made again whenever that folder changes. QUICK, the pause menu's
   one-touch save; and **as many of the player's own as they make**, up to
   99 (`save1.sav` ... `save99.sav`: the six slots there used to be are the
   first six), each made new or put in another's place, and each deletable.

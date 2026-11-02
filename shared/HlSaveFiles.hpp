@@ -777,10 +777,8 @@ namespace hldata
     /// One of the player's saves gone: its file (and any left half-written)
     /// off the card, and out of the list. False if it is not theirs, or its
     /// file would not go.
-    inline bool saveSlotDelete(SaveCard &card, SaveIndex &index, int slot)
+    inline bool saveSlotForget(SaveCard &card, SaveIndex &index, int slot)
     {
-        if (slot < kSlotManual || slot >= kSlotCount)
-            return false;
         std::vector<std::uint8_t> probe;
         card.remove(detail::freshName(slot).c_str());
         if (card.read(saveSlotFile(slot), probe, 1) && !card.remove(saveSlotFile(slot)))
@@ -788,6 +786,12 @@ namespace hldata
         index.slots[slot] = SaveSlot();
         saveIndexWrite(card, index);
         return true;
+    }
+
+    /// One of the player's saves gone (the game's own are not theirs to delete).
+    inline bool saveSlotDelete(SaveCard &card, SaveIndex &index, int slot)
+    {
+        return slot >= kSlotManual && slot < kSlotCount && saveSlotForget(card, index, slot);
     }
 
     /// A line for the list: how long was played, the map, when (if the

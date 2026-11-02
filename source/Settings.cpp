@@ -44,6 +44,7 @@ void Settings::load()
         for (int a = 0; a < hldata::kActionCount; ++a)
             keys[a] = data.keys[a];
         autoaim = data.autoaim != 0;
+        autosave = data.autosave != 0;
         achievementPopups = data.achievementPopups != 0;
         std::memcpy(name, data.name, sizeof(name));
         playerModel = data.playerModel;
@@ -133,6 +134,7 @@ void Settings::reset(int category)
         viewBob = first.viewBob;
         debugReadout = first.debugReadout;
         achievementPopups = first.achievementPopups;
+        autosave = first.autosave;
         break;
     }
 }
@@ -165,6 +167,7 @@ bool Settings::save() const
     for (int a = 0; a < hldata::kActionCount; ++a)
         data.keys[a] = keys[a];
     data.autoaim = autoaim ? 1 : 0;
+    data.autosave = autosave ? 1 : 0;
     data.achievementPopups = achievementPopups ? 1 : 0;
     std::memcpy(data.name, name, sizeof(name));
     data.playerModel = playerModel;

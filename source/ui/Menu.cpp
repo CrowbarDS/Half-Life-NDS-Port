@@ -108,6 +108,7 @@ namespace hlrt
             kSkillHard,
             kAchievementsOpen,
             kPopups,       ///< the achievements' pop-ups (a setting)
+            kAutosave,     ///< the game's own save (a setting)
             kGameHalfLife, ///< NEW GAME's: the game itself
             kGameTraining, ///< ... the Hazard Course
             kGameUplink,   ///< ... Half-Life: Uplink
@@ -879,7 +880,8 @@ namespace hlrt
                                   {Kind::Value, kFirmPress, "Firm press"}};
         const Row kOtherRows[] = {{Kind::Value, kBob, "View bob"},
                                   {Kind::Value, kReadout, "Debug readout"},
-                                  {Kind::Value, kPopups, "Achievement pop-ups"}};
+                                  {Kind::Value, kPopups, "Achievement pop-ups"},
+                                  {Kind::Value, kAutosave, "Auto save"}};
         /// Category `chapter`'s rows (BUTTONS: one an action, made here).
         const Row *settingsRows(int chapter, int &count)
         {
@@ -1276,6 +1278,7 @@ namespace hlrt
             case kBob: std::snprintf(out, size, "%s", settings.viewBob ? "on" : "off"); break;
             case kAutoaim: std::snprintf(out, size, "%s", settings.autoaim ? "on" : "off"); break;
             case kPopups: std::snprintf(out, size, "%s", settings.achievementPopups ? "on" : "off"); break;
+            case kAutosave: std::snprintf(out, size, "%s", settings.autosave ? "on" : "off"); break;
             case kFog: std::snprintf(out, size, "%s", kFogTypeName[settings.graphics.fog]); break;
             case kFogColour: std::snprintf(out, size, "%s", kFogColourName[settings.graphics.fogColour]); break;
             case kModelDetail: std::snprintf(out, size, "%s", kDetailName[settings.graphics.modelDetail]); break;
@@ -1362,6 +1365,7 @@ namespace hlrt
             case kBob: return "The view bobs with a walk and leans into a step aside, as the game's does.";
             case kReadout: return "Numbers along the top of the touch screen: how fast, where, how much.";
             case kPopups: return "An achievement earned is shown on the top screen as it is. Off, it is still earned.";
+            case kAutosave: return "The game saves at a map's save points and on arriving in a map. Off, only your own saves are made.";
             case kKey: return "Touch an action, then press its button. START: leave it as it was.";
 #ifdef HLDS_CHILD
             case kProfName: return "The name the others see in a match: this console's own.";
@@ -1453,6 +1457,7 @@ namespace hlrt
             case kBob: settings.viewBob = !settings.viewBob; return true;
             case kAutoaim: settings.autoaim = !settings.autoaim; return true;
             case kPopups: settings.achievementPopups = !settings.achievementPopups; return true;
+            case kAutosave: settings.autosave = !settings.autosave; return true;
             case kFog: cycle(settings.graphics.fog, kFogTypes); return true;
             case kFogColour: cycle(settings.graphics.fogColour, kFogColours); return true;
             case kModelDetail: cycle(settings.graphics.modelDetail, kDetailLevels); return true;

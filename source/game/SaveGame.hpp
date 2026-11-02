@@ -55,5 +55,8 @@ namespace hlrt::SaveGame
     /// before loading its map (HlMapStore.hpp's runFromSave). True if that
     /// changed the folder: the saves that only name it name what has gone.
     bool fromSave(int slot, const hldata::SaveData &save, std::uint32_t runId);
+    /// The game's own save off the card, if it only names the folder: for
+    /// when the folder changes and it is not to be made again.
+    void dropNamedAuto();
     const hldata::RunIndex &runIndex();
 } // namespace hlrt::SaveGame

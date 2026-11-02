@@ -286,6 +286,23 @@ namespace
                   "... read back, by reference");
             runFromSave(card, kSlotArrival, arrival, emptied, 7, scratch);
             check(emptied.count == 1, "... and loaded on the same run, the folder is kept as it is");
+            // The game's own save names the folder too, and can be let go of
+            // though it is not the player's to delete.
+            check(saveSlotWrite(card, list, kSlotAuto, save, heading, &emptied, true), "the game's own save names the folder");
+            SaveData own;
+            check(saveSlotRead(card, kSlotAuto, own) && own.visitedByRef && own.visitedRunId == emptied.runId,
+                  "... read back, by reference");
+            const std::size_t ownBytes = card.files.at(saveSlotFile(kSlotAuto)).size();
+            check(saveSlotWrite(card, list, kSlotManual, save, heading, &emptied) &&
+                      card.files.at(saveSlotFile(kSlotManual)).size() > ownBytes,
+                  "... smaller than a save holding the maps left");
+            RunIndex same = emptied;
+            runFromSave(card, kSlotAuto, own, same, 77, scratch);
+            check(same.count == emptied.count && same.runId == emptied.runId, "... loaded on the same folder, it stays");
+            check(!saveSlotDelete(card, list, kSlotAuto), "the player cannot delete it");
+            check(saveSlotForget(card, list, kSlotAuto) && list.slots[kSlotAuto].status != kSaveGood &&
+                      card.files.count(saveSlotFile(kSlotAuto)) == 0,
+                  "... the game can");
             RunIndex other = emptied;
             other.runId = 99;
             runFromSave(card, kSlotArrival, arrival, other, 8, scratch);

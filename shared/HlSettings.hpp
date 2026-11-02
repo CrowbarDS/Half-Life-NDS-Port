@@ -89,8 +89,11 @@ namespace hldata
         /// The CUSTOM layout: each action's buttons (kButton*).
         std::uint16_t keys[kActionCount] = {};
         /// The guns bend their aim towards a monster near it, on EASY and
-        /// MEDIUM (the game's sv_aim: HlAutoaim.hpp). On unless asked off.
-        std::uint8_t autoaim = 1;
+        /// MEDIUM (the game's sv_aim: HlAutoaim.hpp). Off unless asked for.
+        std::uint8_t autoaim = 0;
+        /// The game writes its own save at a map's save points and on
+        /// arriving in a map. On unless asked off.
+        std::uint8_t autosave = 1;
         /// An achievement earned is shown on the top screen as it is
         /// (Achievements.cpp). On unless asked off: off, it is still earned.
         std::uint8_t achievementPopups = 1;
@@ -191,6 +194,13 @@ namespace hldata
         template <class Ar>
         void serialize(Ar &ar)
         {
+            serializeSixteen(ar);
+            ar &autosave;
+        }
+        /// ... and of version 16: no choice about the game's own save.
+        template <class Ar>
+        void serializeSixteen(Ar &ar)
+        {
             serializeFifteen(ar);
             ar &voteSeconds;
         }
@@ -224,13 +234,15 @@ namespace hldata
     inline constexpr std::uint8_t kQualityStandard = 0, kQualityHigh = 1, kQualityChoices = 2;
 
     inline constexpr char kSettingsMagic[4] = {'H', 'L', 'S', 'T'};
-    inline constexpr std::uint16_t kSettingsVersion = 16;
-    /// The versions before, which are still read: 13 had no profile and no
+    inline constexpr std::uint16_t kSettingsVersion = 17;
+    /// The versions before, which are still read: 16 had no autosave to turn
+    /// off, and its autoaim was on by default, so is read as off; 13 had no profile and no
     /// match hosted; 12 had no room effects,
     /// output or quality (its DSP switch is the room effects' Enhanced);
     /// 11 had no achievements' pop-ups to turn off; 10 had no autoaim; 9 had
     /// the layouts but no aim speed, custom buttons or stylus pressure; 8 no
     /// controls to choose.
+    inline constexpr std::uint16_t kSettingsVersionSixteen = 16;
     inline constexpr std::uint16_t kSettingsVersionFifteen = 15;
     inline constexpr std::uint16_t kSettingsVersionFourteen = 14;
     inline constexpr std::uint16_t kSettingsVersionThirteen = 13;
@@ -286,7 +298,8 @@ namespace hldata
             return false;
         std::memcpy(&header, bytes, sizeof(header));
         if (std::memcmp(header.magic, kSettingsMagic, sizeof(header.magic)) != 0 ||
-            (header.version != kSettingsVersion && header.version != kSettingsVersionFifteen &&
+            (header.version != kSettingsVersion && header.version != kSettingsVersionSixteen &&
+             header.version != kSettingsVersionFifteen &&
              header.version != kSettingsVersionFourteen &&
              header.version != kSettingsVersionThirteen &&
              header.version != kSettingsVersionTwelve &&
@@ -319,8 +332,13 @@ namespace hldata
             read.serializeFourteen(ia);
         else if (header.version == kSettingsVersionFifteen)
             read.serializeFifteen(ia);
+        else if (header.version == kSettingsVersionSixteen)
+            read.serializeSixteen(ia);
         else
             ia &read;
+        // (Autoaim was on until asked off: off now until asked for, once.)
+        if (header.version < kSettingsVersion)
+            read.autoaim = 0;
         // (Before 13: the DSP switched on is the DSP's rooms; else the
         // game's own.)
         if (header.version < kSettingsVersionThirteen)
@@ -339,7 +357,7 @@ namespace hldata
             if (key & ~kAssignable)
                 return false;
         }
-        if (read.dspAudio > 1 || read.autoaim > 1 || read.achievementPopups > 1 ||
+        if (read.dspAudio > 1 || read.autoaim > 1 || read.autosave > 1 || read.achievementPopups > 1 ||
             read.debugReadout > 1 || read.leftHanded > 1 || read.viewBob > 1 || !read.graphics.valid())
             return false;
         for (std::uint8_t level : read.volume)

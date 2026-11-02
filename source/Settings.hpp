@@ -40,7 +40,9 @@ public:
     /// The CUSTOM layout's buttons, each action's.
     std::uint16_t keys[hldata::kActionCount] = {};
     /// The guns' aim bends towards a monster near it (EASY and MEDIUM).
-    bool autoaim = true;
+    bool autoaim = false;
+    /// The game writes its own save at save points and on arriving in a map.
+    bool autosave = true;
     /// An achievement earned is shown as it is (else only listed).
     bool achievementPopups = true;
     /// All of it, for whoever reads the buttons.
