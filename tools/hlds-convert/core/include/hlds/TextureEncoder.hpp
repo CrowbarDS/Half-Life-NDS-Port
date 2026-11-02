@@ -65,8 +65,10 @@ namespace hlds
     {
     public:
         /// `tempDir` is created if needed and holds the files exchanged with
-        /// the tool; they are removed after each texture.
-        PtexconvEncoder(std::filesystem::path executable, std::filesystem::path tempDir);
+        /// the tool; they are removed after each texture. `cancel`, if given,
+        /// makes each texture from then on fail without being encoded.
+        PtexconvEncoder(std::filesystem::path executable, std::filesystem::path tempDir,
+                        const std::atomic<bool> *cancel = nullptr);
 
         bool encode(const RgbaImage &image, int maxColours, TextureFormat format,
                     CookedTexture &out, std::string &error) override;
@@ -75,6 +77,7 @@ namespace hlds
     private:
         std::filesystem::path executable_;
         std::filesystem::path tempDir_;
+        const std::atomic<bool> *cancel_ = nullptr;
         std::atomic<int> counter_{0}; ///< names the temp files: one set per call
     };
 

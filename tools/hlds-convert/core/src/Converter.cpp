@@ -1257,7 +1257,7 @@ namespace hlds
                 return result;
             }
             const fs::path temp = fs::temp_directory_path() / ("hlds-convert-" + result.name);
-            PtexconvEncoder encoder(exe, temp);
+            PtexconvEncoder encoder(exe, temp, cancel_);
             TextureCookReport texReport;
             // (And a guest's smaller ones, beside them: each size is a file
             // of its own.)
@@ -1332,6 +1332,13 @@ namespace hlds
             fs::remove_all(temp, ec);
             if (!ok)
                 return result;
+            // (A skin not made is only a warning; not when it was stopped, or
+            // the map would pass for finished.)
+            if (cancel_ != nullptr && cancel_->load())
+            {
+                result.error = "stopped";
+                return result;
+            }
             result.texturesEncoded = texReport.encoded;
             for (const std::string &missing : texReport.missing)
                 result.warnings.push_back("texture '" + missing + "' was found in no WAD");
@@ -1492,7 +1499,7 @@ namespace hlds
         if (exe.empty())
             return result;
         const fs::path temp = fs::temp_directory_path() / "hlds-convert-ui";
-        PtexconvEncoder encoder(exe, temp);
+        PtexconvEncoder encoder(exe, temp, cancel_);
         auto texture = [&](const RgbaImage &image, TextureFormat format, int colours, std::uint32_t flags,
                            const char *name) -> bool
         {
@@ -1878,6 +1885,12 @@ namespace hlds
                 options_.status(what);
         };
         const auto cancelled = [&]() { return cancel != nullptr && cancel->load(); };
+        struct Holding
+        {
+            const std::atomic<bool> *&held;
+            ~Holding() { held = nullptr; }
+        } holding{cancel_};
+        cancel_ = cancel;
         say("Preparing what all the maps share");
         common_ = cookCommon();
         if (cancelled())

@@ -141,11 +141,16 @@ bool InstallWorker::convert(QString &why)
             [&](const hlds::MapResult &r)
             {
                 const QString name = QString::fromStdString(r.name);
+                // (What stopping it left unfinished is no fault of the map's.)
+                const bool stopped = !r.ok && stop_.load();
                 for (const std::string &warning : r.warnings)
-                    emit logLine(name + QStringLiteral(": ") + QString::fromStdString(warning));
-                if (!r.ok)
+                {
+                    if (!stopped)
+                        emit logLine(name + QStringLiteral(": ") + QString::fromStdString(warning));
+                }
+                if (!r.ok && !stopped)
                     emit logLine(name + QStringLiteral(": FAILED: ") + QString::fromStdString(r.error));
-                else
+                else if (r.ok)
                 {
                     QFile stamp(stamps + QLatin1Char('/') + name);
                     if (stamp.open(QIODevice::WriteOnly))

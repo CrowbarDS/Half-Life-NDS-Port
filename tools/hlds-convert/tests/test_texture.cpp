@@ -442,6 +442,11 @@ namespace
         // A user name with an accent and a space in it.
         PtexconvEncoder accented(exe, dir / fs::path(L"caf\u00e9 tmp"));
         check(accented.encode(image, 64, TextureFormat::Tex4x4, tex, error), "a temp folder with an accent and a space");
+
+        std::atomic<bool> stop{true};
+        PtexconvEncoder stopped(exe, dir / "stopped", &stop);
+        check(!stopped.encode(image, 64, TextureFormat::Tex4x4, tex, error) && error == "stopped",
+              "once stopped, nothing more is encoded");
         fs::remove_all(dir);
     }
 

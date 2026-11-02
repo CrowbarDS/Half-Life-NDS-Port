@@ -120,8 +120,9 @@ namespace hlds
     } // namespace
 
     PtexconvEncoder::PtexconvEncoder(std::filesystem::path executable,
-                                     std::filesystem::path tempDir)
-        : executable_(std::move(executable)), tempDir_(std::move(tempDir))
+                                     std::filesystem::path tempDir,
+                                     const std::atomic<bool> *cancel)
+        : executable_(std::move(executable)), tempDir_(std::move(tempDir)), cancel_(cancel)
     {
     }
 
@@ -139,6 +140,16 @@ namespace hlds
             error = "the image is entirely transparent";
             return false;
         }
+
+        const auto stopped = [&]()
+        {
+            if (cancel_ == nullptr || !cancel_->load())
+                return false;
+            error = "stopped";
+            return true;
+        };
+        if (stopped())
+            return false;
 
         std::error_code ec;
         std::filesystem::create_directories(tempDir_, ec);
@@ -159,6 +170,13 @@ namespace hlds
                                     quoted(base) + " " + quoted(png) + " > /dev/null 2>&1";
 #endif
         encodeSlots().take();
+        // (It may have waited a long time for its turn.)
+        if (stopped())
+        {
+            encodeSlots().give();
+            std::filesystem::remove(png, ec);
+            return false;
+        }
 #ifdef _WIN32
         const int status = runEncoder(executable_, tempDir_, "-gt -ob" + formatArgs + " -o " + name + " " + name + ".png");
 #else

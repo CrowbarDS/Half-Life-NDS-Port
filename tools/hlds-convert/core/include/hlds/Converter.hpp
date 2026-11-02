@@ -186,7 +186,8 @@ namespace hlds
         /// Cook several maps and then write the manifest, which lists every
         /// map cooked now or by an earlier run that is still on the card.
         /// `progress` is called before each map with its index; `cancel`, if
-        /// given, is checked between maps, and a run cancelled leaves its
+        /// given, is checked between maps and between a map's textures (a map
+        /// stopped that way has failed), and a run cancelled leaves its
         /// archives as they are, with no new manifest. Returns the number
         /// that failed.
         int cookMaps(const std::vector<std::string> &names,
@@ -203,6 +204,7 @@ namespace hlds
 
         ConvertOptions options_;
         CommonResult common_;
+        const std::atomic<bool> *cancel_ = nullptr; ///< only during cookMaps
     };
     /// Which chapter `map` is part of: the name, in the game's titles.txt,
     /// of that chapter's title. A map that opens a chapter says so itself
