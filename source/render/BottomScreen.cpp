@@ -34,7 +34,7 @@ namespace hlrt
         /// copied from `from` to `to`, both laid out as the screen's.
         void copyPad(std::uint32_t *to, const std::uint32_t *from, bool mirrored)
         {
-            const TouchRect r = touchLayout(mirrored, netGame.playing()).pad;
+            const TouchRect r = touchLayout(mirrored, netGame.playing(), settings.jumpWalks).pad;
             const int left = r.x / 8, right = (r.x + r.w + 7) / 8, top = r.y / 8, bottom = (r.y + r.h + 7) / 8;
             for (int ty = top; ty < bottom; ++ty)
             {
@@ -127,10 +127,12 @@ namespace hlrt
         // (The bar has other buttons in a match: what was there before is
         // cleared, not drawn over.)
         matchBar_ = netGame.playing();
-        const TouchLayout at = touchLayout(mirrored_, matchBar_);
+        const TouchLayout at = touchLayout(mirrored_, matchBar_, settings.jumpWalks);
         canvas.fill(0, 0, kTouchWidth, kTouchBarHeight, kUiBack);
         label(at.menu, "MENU", held_ == kTouchMenu);
         label(at.use, "USE", held_ == kTouchUse);
+        if (at.walk.y == 0)
+            label(at.walk, "WALK", walking_ || held_ == kTouchWalk);
         if (at.spray.w > 0)
             label(at.spray, "SPRAY", held_ == kTouchSpray);
         // RELOAD is faint while there is nothing to reload: no gun in
@@ -151,7 +153,7 @@ namespace hlrt
     void BottomScreen::drawPad()
     {
         Canvas &canvas = touchCanvas.canvas();
-        const TouchRect r = touchLayout(mirrored_, netGame.playing()).pad;
+        const TouchRect r = touchLayout(mirrored_, netGame.playing(), settings.jumpWalks).pad;
         canvas.plate(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 6, kUiBack, kUiOrange);
         // The mark of the place in its middle, as faint as a line can be:
         // it is where the stylus rests, not something to read.
@@ -173,14 +175,18 @@ namespace hlrt
     HL_ARM void BottomScreen::drawColumn()
     {
         Canvas &canvas = touchCanvas.canvas();
-        const TouchLayout at = touchLayout(mirrored_, netGame.playing());
+        const TouchLayout at = touchLayout(mirrored_, netGame.playing(), settings.jumpWalks);
         const FontView &font = touchCanvas.font(kFontSmall);
+        // (The jump button asked to walk: WALK is where JUMP was.)
+        const bool walkOnTop = at.walk.y != 0;
         const struct
         {
             const TouchRect &r;
             const char *name;
             bool up, lit;
-        } buttons[] = {{at.jump, "JUMP", true, held_ == kTouchJump}, {at.duck, "DUCK", false, held_ == kTouchDuck}};
+        } buttons[] = {{walkOnTop ? at.walk : at.jump, walkOnTop ? "WALK" : "JUMP", true,
+                        walkOnTop ? walking_ || held_ == kTouchWalk : held_ == kTouchJump},
+                       {at.duck, "DUCK", false, held_ == kTouchDuck}};
         for (const auto &b : buttons)
         {
             plate(b.r, b.lit);
@@ -238,7 +244,7 @@ namespace hlrt
                                                          ".357", "XBOW", "SATCH", "MINE", "SNARK",
                                                          "RPG",  "TAU",  "EGON",  "HIVE"};
         Canvas &canvas = touchCanvas.canvas();
-        const TouchLayout at = touchLayout(mirrored_, netGame.playing());
+        const TouchLayout at = touchLayout(mirrored_, netGame.playing(), settings.jumpWalks);
         const FontView &font = touchCanvas.font(kFontSmall);
         loadIcons();
         for (int n = 0; n < kTouchSlots; ++n)
@@ -341,7 +347,7 @@ namespace hlrt
         static const char *const kFull[kWeaponCount] = {"",         "CROWBAR",  "9MM PISTOL", "SHOTGUN",  "GRENADES",
                                                         "MP5",      ".357",     "CROSSBOW",   "SATCHELS", "TRIPMINES",
                                                         "SNARKS",   "RPG",      "TAU CANNON", "GLUON GUN", "HIVEHAND"};
-        const TouchLayout at = touchLayout(mirrored_, netGame.playing());
+        const TouchLayout at = touchLayout(mirrored_, netGame.playing(), settings.jumpWalks);
         const TouchRect r = weaponListRect(list_, at);
         const int drop = (256 - list_.slide) * (r.h + 4) / 256;
         // (Drawn into the screen's rows down to the pad's bottom edge, and no
@@ -418,6 +424,19 @@ namespace hlrt
             drawSlots();
     }
 
+    void BottomScreen::setWalking(bool walking)
+    {
+        if (walking == walking_)
+            return;
+        walking_ = walking;
+        if (shown_ != Shown::Pad)
+            return;
+        if (touchLayout(mirrored_, netGame.playing(), settings.jumpWalks).walk.y == 0)
+            drawBar();
+        else
+            drawColumn();
+    }
+
     void BottomScreen::setPressed(int held)
     {
         if (held == held_)
@@ -428,10 +447,10 @@ namespace hlrt
             return;
         // (A slot shows what is in hand, not what is touched.)
         auto onBar = [](int on)
-        { return on == kTouchMenu || on == kTouchUse || on == kTouchReload || on == kTouchSpray; };
+        { return on == kTouchMenu || on == kTouchUse || on == kTouchReload || on == kTouchSpray || on == kTouchWalk; };
         if (onBar(was) || onBar(held))
             drawBar();
-        auto onColumn = [](int on) { return on == kTouchJump || on == kTouchDuck || on == kTouchLamp; };
+        auto onColumn = [](int on) { return on == kTouchJump || on == kTouchDuck || on == kTouchLamp || on == kTouchWalk; };
         if (onColumn(was) || onColumn(held))
             drawColumn();
     }

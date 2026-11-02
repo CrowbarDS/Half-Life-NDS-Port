@@ -81,6 +81,10 @@ namespace hldata
         std::uint8_t invertPitch = 0;
         /// The crouch button toggles (else it is held).
         std::uint8_t duckToggle = 0;
+        /// The walk toggles (else it is held), and the jump button walks
+        /// (HlControls.hpp).
+        std::uint8_t walkToggle = 0;
+        std::uint8_t jumpWalks = 0;
         /// How strict the stylus is about light touches (0..10), and what a
         /// firm press on the aim pad does (kFirm*): HlControls.hpp. Only
         /// where the console can say how hard it is pressed.
@@ -166,8 +170,9 @@ namespace hldata
         {
             serializeNine(ar);
             ar &aimSpeed &pitchSpeed &invertPitch &duckToggle &firmness &firmPress;
-            for (std::uint16_t &key : keys)
-                ar &key;
+            // (All the actions there were then: a later one is kept later.)
+            for (int a = 0; a < kActionsBeforeWalk; ++a)
+                ar &keys[a];
         }
         /// ... and of version 11: no achievements' pop-ups to turn off.
         template <class Ar>
@@ -193,6 +198,13 @@ namespace hldata
         }
         template <class Ar>
         void serialize(Ar &ar)
+        {
+            serializeSeventeen(ar);
+            ar &walkToggle &jumpWalks &keys[kActionWalk];
+        }
+        /// ... and of version 17: no walk.
+        template <class Ar>
+        void serializeSeventeen(Ar &ar)
         {
             serializeSixteen(ar);
             ar &autosave;
@@ -234,14 +246,15 @@ namespace hldata
     inline constexpr std::uint8_t kQualityStandard = 0, kQualityHigh = 1, kQualityChoices = 2;
 
     inline constexpr char kSettingsMagic[4] = {'H', 'L', 'S', 'T'};
-    inline constexpr std::uint16_t kSettingsVersion = 17;
-    /// The versions before, which are still read: 16 had no autosave to turn
+    inline constexpr std::uint16_t kSettingsVersion = 18;
+    /// The versions before, which are still read: 17 had no walk; 16 had no autosave to turn
     /// off, and its autoaim was on by default, so is read as off; 13 had no profile and no
     /// match hosted; 12 had no room effects,
     /// output or quality (its DSP switch is the room effects' Enhanced);
     /// 11 had no achievements' pop-ups to turn off; 10 had no autoaim; 9 had
     /// the layouts but no aim speed, custom buttons or stylus pressure; 8 no
     /// controls to choose.
+    inline constexpr std::uint16_t kSettingsVersionSeventeen = 17;
     inline constexpr std::uint16_t kSettingsVersionSixteen = 16;
     inline constexpr std::uint16_t kSettingsVersionFifteen = 15;
     inline constexpr std::uint16_t kSettingsVersionFourteen = 14;
@@ -298,7 +311,8 @@ namespace hldata
             return false;
         std::memcpy(&header, bytes, sizeof(header));
         if (std::memcmp(header.magic, kSettingsMagic, sizeof(header.magic)) != 0 ||
-            (header.version != kSettingsVersion && header.version != kSettingsVersionSixteen &&
+            (header.version != kSettingsVersion && header.version != kSettingsVersionSeventeen &&
+             header.version != kSettingsVersionSixteen &&
              header.version != kSettingsVersionFifteen &&
              header.version != kSettingsVersionFourteen &&
              header.version != kSettingsVersionThirteen &&
@@ -334,10 +348,12 @@ namespace hldata
             read.serializeFifteen(ia);
         else if (header.version == kSettingsVersionSixteen)
             read.serializeSixteen(ia);
+        else if (header.version == kSettingsVersionSeventeen)
+            read.serializeSeventeen(ia);
         else
             ia &read;
         // (Autoaim was on until asked off: off now until asked for, once.)
-        if (header.version < kSettingsVersion)
+        if (header.version < kSettingsVersionSeventeen)
             read.autoaim = 0;
         // (Before 13: the DSP switched on is the DSP's rooms; else the
         // game's own.)
@@ -350,7 +366,7 @@ namespace hldata
             return false;
         if (read.aimSpeed < 1 || read.aimSpeed > kAimSpeedMost || read.pitchSpeed < 1 ||
             read.pitchSpeed > kAimSpeedMost || read.invertPitch > 1 || read.duckToggle > 1 ||
-            read.firmness > kFirmnessMost || read.firmPress >= kFirmActions)
+            read.walkToggle > 1 || read.jumpWalks > 1 || read.firmness > kFirmnessMost || read.firmPress >= kFirmActions)
             return false;
         for (std::uint16_t key : read.keys)
         {

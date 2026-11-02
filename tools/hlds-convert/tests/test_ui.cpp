@@ -524,13 +524,17 @@ namespace
             std::vector<TouchRect> all = {at.menu, at.use, at.jump, at.duck, at.reload, at.lamp};
             for (const TouchRect &slot : at.slot)
                 all.push_back(slot);
+            all.push_back(at.spray);
+            all.push_back(at.walk);
             return all;
         };
         bool whole = true, apart = true, hits = true;
-        for (const TouchLayout &at : {right, left})
+        for (const TouchLayout &at : {right, left, touchLayout(false, true), touchLayout(true, true),
+                                      touchLayout(false, false, true), touchLayout(true, false, true),
+                                      touchLayout(false, true, true), touchLayout(true, true, true)})
         {
             const std::vector<TouchRect> all = rects(at);
-            int counts[kTouchSlot + kTouchSlots] = {};
+            int counts[kTouchWalk + 1] = {};
             for (int y = 0; y < 192; ++y)
             {
                 for (int x = 0; x < 256; ++x)
@@ -554,6 +558,9 @@ namespace
             }
             for (std::size_t i = 0; i < all.size(); ++i)
             {
+                // (What this layout has not got: SPRAY, JUMP.)
+                if (all[i].w == 0)
+                    continue;
                 whole = whole && all[i].x >= 0 && all[i].y >= 0 && all[i].x + all[i].w <= 256 &&
                         all[i].y + all[i].h <= 192 && counts[i + 1] == all[i].w * all[i].h && all[i].w >= 40 &&
                         all[i].h >= 22;
@@ -564,12 +571,18 @@ namespace
               "every control is whole on the screen, big enough for a thumb, apart from the rest, and found by a touch on it");
         check(right.jump.x > right.pad.x + right.pad.w - 1 && left.jump.x + left.jump.w <= left.pad.x &&
                   left.jump.x == 256 - right.jump.x - right.jump.w && left.menu.x == 256 - right.menu.x - right.menu.w &&
-                  left.reload.x == 0 && right.reload.x + right.reload.w == 256 && left.use.x == right.use.x &&
-                  right.use.x > right.menu.x + right.menu.w && right.use.x + right.use.w < right.reload.x &&
-                  right.use.w > right.menu.w && left.pad.w == right.pad.w && left.duck.y == right.duck.y &&
+                  left.reload.x == 0 && right.reload.x + right.reload.w == 256 &&
+                  left.walk.x == 256 - right.walk.x - right.walk.w && right.use.x > right.menu.x + right.menu.w &&
+                  right.walk.x > right.use.x + right.use.w && right.walk.x + right.walk.w < right.reload.x &&
+                  left.pad.w == right.pad.w && left.duck.y == right.duck.y &&
                   right.jump.y < right.lamp.y && right.lamp.y < right.duck.y && right.lamp.x == right.jump.x &&
                   left.lamp.x == left.jump.x,
-              "for the left hand the column and the bar's ends change sides; USE is in the middle either way");
+              "for the left hand the column and the bar's ends change sides, and USE and WALK change places");
+        const TouchLayout walks = touchLayout(false, false, true), walksLeft = touchLayout(true, false, true);
+        check(walks.jump.w == 0 && walks.walk.x == right.jump.x && walks.walk.y == right.jump.y &&
+                  walks.walk.h == right.jump.h && walksLeft.use.x == walks.use.x && walks.use.w > walks.menu.w &&
+                  touchHit(walks, walks.walk.x + 5, walks.walk.y + 5) == kTouchWalk,
+              "the jump button asked to walk: WALK is where JUMP was, and USE has the middle of the bar again");
         bool order = true;
         for (int n = 0; n < kTouchSlots; ++n)
         {

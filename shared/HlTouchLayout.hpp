@@ -16,7 +16,10 @@
 //  158 |[crow][9mm ][shot][gren][mp5 ][357]|   a slot for each weapon
 //  192 +--------------------------------+
 //
-// In a match between consoles the bar has SPRAY too, beside a narrower USE.
+// The bar has WALK too, beside a narrower USE; or, if the player has asked for
+// the jump button to walk (a double tap still jumps), WALK is where JUMP was
+// and the bar is as drawn. In a match between consoles the bar has SPRAY too,
+// and everything on it is narrower.
 //
 // That is for a stylus in the right hand. Mirrored, for the left, the column
 // and the bar's ends change sides; the weapons stay in their order.
@@ -52,11 +55,13 @@ namespace hldata
     inline constexpr int kTouchLamp = 6;
     inline constexpr int kTouchSlot = 7; ///< ... and the four after it
     inline constexpr int kTouchSpray = kTouchSlot + kTouchSlots; ///< (in a match)
+    inline constexpr int kTouchWalk = kTouchSpray + 1;
 
     struct TouchLayout
     {
         TouchRect menu, use, reload, pad, jump, lamp, duck;
         TouchRect spray; ///< none (no width) but in a match
+        TouchRect walk;
         TouchRect slot[kTouchSlots];
     };
 
@@ -64,7 +69,7 @@ namespace hldata
     inline constexpr int kTouchBarHeight = 22;
     inline constexpr int kTouchSlotTop = 158;
 
-    inline constexpr TouchLayout touchLayout(bool mirrored, bool match = false)
+    inline constexpr TouchLayout touchLayout(bool mirrored, bool match = false, bool jumpWalks = false)
     {
         TouchLayout at{};
         at.menu = {0, 0, 64, kTouchBarHeight};
@@ -74,15 +79,32 @@ namespace hldata
         {
             at.use = {68, 0, 62, kTouchBarHeight};
             at.spray = {134, 0, 54, kTouchBarHeight};
+            if (!jumpWalks)
+            {
+                at.menu = {0, 0, 44, kTouchBarHeight};
+                at.walk = {46, 0, 44, kTouchBarHeight};
+                at.use = {92, 0, 50, kTouchBarHeight};
+                at.spray = {144, 0, 46, kTouchBarHeight};
+            }
+        }
+        else if (!jumpWalks)
+        {
+            at.use = {68, 0, 62, kTouchBarHeight};
+            at.walk = {134, 0, 54, kTouchBarHeight};
         }
         at.reload = {192, 0, 64, kTouchBarHeight};
         at.pad = {0, 24, 208, 132};
         at.jump = {212, 24, 44, 48};
         at.lamp = {212, 74, 44, 32};
         at.duck = {212, 108, 44, 48};
+        if (jumpWalks)
+        {
+            at.walk = at.jump;
+            at.jump = {0, 0, 0, 0};
+        }
         if (mirrored)
         {
-            for (TouchRect *r : {&at.menu, &at.use, &at.reload, &at.pad, &at.jump, &at.lamp, &at.duck, &at.spray})
+            for (TouchRect *r : {&at.menu, &at.use, &at.reload, &at.pad, &at.jump, &at.lamp, &at.duck, &at.spray, &at.walk})
                 r->x = static_cast<std::int16_t>(kTouchWidth - r->x - r->w);
         }
         for (int n = 0; n < kTouchSlots; ++n)
@@ -101,6 +123,8 @@ namespace hldata
             return kTouchSpray;
         if (at.reload.has(x, y))
             return kTouchReload;
+        if (at.walk.has(x, y))
+            return kTouchWalk;
         if (at.jump.has(x, y))
             return kTouchJump;
         if (at.lamp.has(x, y))

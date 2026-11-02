@@ -182,6 +182,7 @@ namespace hlrt
             cmd.side = input.moveSide;
             cmd.jump = input.jump;
             cmd.duck = input.duck;
+            cmd.walk = input.walk;
             // libnds angles are 32768 to the circle; ours are 65536.
             const fx s = sinLerp(static_cast<s16>(camera.yaw >> 1));
             const fx c = cosLerp(static_cast<s16>(camera.yaw >> 1));

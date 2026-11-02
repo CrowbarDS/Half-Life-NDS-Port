@@ -1982,6 +1982,7 @@ int main(int argc, char *argv[])
                     else
                     {
                         hlrt::bottomScreen.setPressed(hlrt::input.touchOn);
+                        hlrt::bottomScreen.setWalking(hlrt::input.walk);
                         hlrt::bottomScreen.setWeaponList(hlrt::input.weaponList());
                         // (The match over: nobody does anything more.)
                         if (inMatch && hlrt::netGame.match().over)

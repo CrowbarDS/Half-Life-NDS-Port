@@ -39,6 +39,8 @@ void Settings::load()
         pitchSpeed = data.pitchSpeed;
         invertPitch = data.invertPitch != 0;
         duckToggle = data.duckToggle != 0;
+        walkToggle = data.walkToggle != 0;
+        jumpWalks = data.jumpWalks != 0;
         firmness = data.firmness;
         firmPress = data.firmPress;
         for (int a = 0; a < hldata::kActionCount; ++a)
@@ -104,6 +106,8 @@ void Settings::reset(int category)
             controlScheme = first.controlScheme;
         leftHanded = first.leftHanded;
         duckToggle = first.duckToggle;
+        walkToggle = first.walkToggle;
+        jumpWalks = first.jumpWalks;
         padTurns = first.padTurns;
         padLooks = first.padLooks;
         autoaim = first.autoaim;
@@ -162,6 +166,8 @@ bool Settings::save() const
     data.pitchSpeed = pitchSpeed;
     data.invertPitch = invertPitch ? 1 : 0;
     data.duckToggle = duckToggle ? 1 : 0;
+    data.walkToggle = walkToggle ? 1 : 0;
+    data.jumpWalks = jumpWalks ? 1 : 0;
     data.firmness = firmness;
     data.firmPress = firmPress;
     for (int a = 0; a < hldata::kActionCount; ++a)

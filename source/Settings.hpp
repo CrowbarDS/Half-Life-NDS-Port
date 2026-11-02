@@ -33,6 +33,9 @@ public:
     bool invertPitch = false;
     /// The crouch button toggles (else it is held).
     bool duckToggle = false;
+    /// The walk toggles (else it is held), and the jump button walks.
+    bool walkToggle = false;
+    bool jumpWalks = false;
     /// How strict the stylus is about light touches, and what a firm press
     /// does (HlControls.hpp).
     std::uint8_t firmness = 4;
@@ -54,6 +57,8 @@ public:
         set.padTurns = padTurns;
         set.padLooks = padLooks;
         set.duckToggle = duckToggle;
+        set.walkToggle = walkToggle;
+        set.jumpWalks = jumpWalks;
         set.firmness = firmness;
         set.firmPress = firmPress;
         for (int a = 0; a < hldata::kActionCount; ++a)

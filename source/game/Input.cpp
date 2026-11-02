@@ -77,7 +77,7 @@ namespace hlrt
         }
         // A slot's list of weapons first: a touch that is the list's is not
         // the controls'.
-        const hldata::TouchLayout at = hldata::touchLayout(settings.leftHanded, netGame.playing());
+        const hldata::TouchLayout at = hldata::touchLayout(settings.leftHanded, netGame.playing(), settings.jumpWalks);
         const bool landed = in.touching && !touchWas_;
         touchWas_ = in.touching;
         const hldata::WeaponListTouch list =

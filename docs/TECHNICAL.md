@@ -692,7 +692,9 @@ Milestone 11, "levels of detail".
   DUCK on the screen is held to crouch and can be slid off onto the pad
   to look about still crouched (lifted, the player stands); with the
   crouch a toggle it is tapped once to crouch and once to stand, which
-  leaves the stylus free to aim and to touch USE. One table (`shared/HlTouchLayout.hpp`) says where everything
+  leaves the stylus free to aim and to touch USE. WALK (the game's +speed,
+  three tenths of the speed) works the same way, and can take the jump
+  button's place, since two taps jump anyway. One table (`shared/HlTouchLayout.hpp`) says where everything
   is, to the code that draws and the code that tests a touch alike. For
   a stylus in the left hand, "Buttons: left" in the options mirrors it.
 - The weapon in hand is never cut by a wall: the game gives it a depth

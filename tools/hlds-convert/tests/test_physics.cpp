@@ -366,6 +366,35 @@ namespace
         check(sim.speed2d() == 0, "friction 0: the keys add nothing");
     }
 
+    /// The walk: three tenths of what the keys ask for, whichever way they
+    /// ask (and so more across a corner, as the game's), and less crouched.
+    void testWalk()
+    {
+        World w;
+        boxWorld(w);
+        if (!w.ok)
+            return;
+        // (Each from a stand, and looked at before the room's wall is reached.)
+        auto speedAfter = [&](int side, bool walk, bool duck)
+        {
+            Sim sim = spawn(w);
+            sim.cmd.duck = duck;
+            sim.run(30);
+            sim.cmd.forward = 1;
+            sim.cmd.side = side;
+            sim.cmd.walk = walk;
+            sim.run(8);
+            return sim.speed2d();
+        };
+        check(std::fabs(speedAfter(0, true, false) - 120) < 0.5, "a walk is 120 units a second");
+        check(std::fabs(speedAfter(1, true, false) - 169.7) < 1, "... about 170 across a corner, as the game's");
+        // (Asking for 40, the ground's friction takes as much as the keys add:
+        // the game's sums, whose answer depends on the frame's length.)
+        const double crouched = speedAfter(0, true, true);
+        check(crouched > 5 && crouched <= 40.5, "... and no more than 40 crouched");
+        check(speedAfter(0, false, false) > 250, "not asked for, a run");
+    }
+
     void testJump()
     {
         World w;
@@ -577,6 +606,7 @@ int main()
 {
     testTraces();
     testMovement();
+    testWalk();
     testJump();
     testDuck();
     testStuck();

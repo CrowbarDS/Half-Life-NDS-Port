@@ -40,6 +40,8 @@ namespace hldata
     inline constexpr fx kAirSpeedCap = fxFromInt(30);
     /// The speed the movement keys ask for; clamped to kMaxSpeed.
     inline constexpr fx kWishSpeed = fxFromInt(400);
+    /// ... and with the walk held: three tenths of that (cl_movespeedkey).
+    inline constexpr fx kWalkWishSpeed = fxFromInt(120);
     /// sqrt(2 * 800 * 45): the take-off speed that reaches 45 units.
     inline constexpr fx kJumpSpeed = 1099072;
     /// Movement keys count for a third while crouched.
@@ -70,6 +72,7 @@ namespace hldata
         int side = 0;    ///< -1 left, 1 right
         bool jump = false;
         bool duck = false;
+        bool walk = false; ///< the keys ask for a walk, not a run
         /// The view's horizontal axes, unit length, Q12: forward is
         /// (cos yaw, sin yaw) and right is (sin yaw, -cos yaw).
         fx forwardXY[2] = {kFxOne, 0};
@@ -764,10 +767,11 @@ namespace hldata
             /// no gravity, and left alone they sink slowly.
             void waterMove(const MoveCommand &cmd)
             {
+                const fx asked = cmd.walk ? kWalkWishSpeed : kWishSpeed;
                 fx wishVel[3];
                 for (int i = 0; i < 3; ++i)
-                    wishVel[i] = fxMul(cmd.viewForward[i], kWishSpeed * cmd.forward) +
-                                 fxMul(cmd.viewRight[i], kWishSpeed * cmd.side);
+                    wishVel[i] = fxMul(cmd.viewForward[i], asked * cmd.forward) +
+                                 fxMul(cmd.viewRight[i], asked * cmd.side);
                 if (cmd.forward == 0 && cmd.side == 0 && !cmd.jump)
                     wishVel[2] -= fxFromInt(60);
                 fx wishSpeed = fxLength(wishVel);
@@ -1015,7 +1019,7 @@ namespace hldata
             /// The direction and speed the keys ask for.
             fx wish(const MoveCommand &cmd, fx *wishDir) const
             {
-                fx scale = kWishSpeed;
+                fx scale = cmd.walk ? kWalkWishSpeed : kWishSpeed;
                 if (s.ducked)
                     scale = fxMul(scale, kDuckSpeedScale);
                 fx wishVel[3];
@@ -1174,10 +1178,9 @@ namespace hldata
                         continue;
                     // (Not the game's to the unit: a hair below its foot,
                     // and -- to take hold, not to stay on -- 8 above its top.
-                    // The console's pad has no walk: one cannot step slowly
-                    // off a ledge onto a ladder whose top is just under it,
-                    // as c1a2b's shafts have, and at a run the ladder is
-                    // crossed before the drop reaches it.)
+                    // At a run a ladder whose top is just under a ledge, as
+                    // c1a2b's shafts have, is crossed before the drop
+                    // reaches it.)
                     const fx below = fxFromInt(1);
                     const fx above = s.onLadder ? 0 : fxFromInt(8);
                     bool touching = true;

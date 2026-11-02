@@ -33,6 +33,7 @@ namespace
         int touch_ = kTouchAim;
         bool touching_ = false, jumping_ = false;
         bool duckSlide_ = false; ///< (since: DUCK held, slid off, turns the view still crouched)
+        bool walkSlide_ = false; ///< (the same of WALK)
         std::uint32_t lastTapBlank_ = 0;
         int lastTapX_ = -1000, lastTapY_ = -1000;
         std::uint32_t lastHeld_ = 0;
@@ -59,6 +60,7 @@ namespace
                 {
                     tapped = true;
                     duckSlide_ = false;
+                    walkSlide_ = false;
                     tapX = in.touchX;
                     tapY = in.touchY;
                     touch_ = touchHit(touchLayout(leftHanded), in.touchX, in.touchY);
@@ -66,7 +68,7 @@ namespace
                     menuPressed = touch_ == kTouchMenu;
                     reloadPressed = touch_ == kTouchReload;
                     lampPressed = lampPressed || touch_ == kTouchLamp;
-                    if (touch_ >= kTouchSlot)
+                    if (touch_ >= kTouchSlot && touch_ < kTouchSlot + kTouchSlots)
                         weaponPick = touch_ - kTouchSlot + 1;
                     jumping_ = false;
                     if (touch_ == kTouchAim)
@@ -84,6 +86,11 @@ namespace
                     touch_ = kTouchAim;
                     duckSlide_ = true;
                 }
+                else if (touch_ == kTouchWalk && touchHit(touchLayout(leftHanded), in.touchX, in.touchY) != kTouchWalk)
+                {
+                    touch_ = kTouchAim;
+                    walkSlide_ = true;
+                }
                 else if (touch_ == kTouchAim)
                 {
                     lookDx = in.touchX - lastX_;
@@ -99,10 +106,11 @@ namespace
                 touch_ = kTouchAim;
                 jumping_ = false;
                 duckSlide_ = false;
+                walkSlide_ = false;
             }
             jump = jumping_ || touch_ == kTouchJump;
             duck = touch_ == kTouchDuck || duckSlide_;
-            touchOn = touching_ ? (duckSlide_ ? kTouchDuck : touch_) : kTouchAim;
+            touchOn = touching_ ? (duckSlide_ ? kTouchDuck : (walkSlide_ ? kTouchWalk : touch_)) : kTouchAim;
             attack = (held & kButtonL) != 0;
             second = (held & kButtonR) != 0;
         }
@@ -751,7 +759,130 @@ namespace
             read16.autosave = 0;
             check(readSettings(file16.data(), file16.size(), read16) && read16.autoaim == 0 && read16.autosave == 1,
                   "settings of version 16 are read, with autoaim off and autosave on");
+
+            // The last before the walk: its custom buttons stay each action's,
+            // and autoaim as it was chosen.
+            SettingsData seventeen;
+            seventeen.autoaim = 1;
+            seventeen.autosave = 0;
+            seventeen.keys[kActionLamp] = static_cast<std::uint16_t>(kButtonX);
+            yas::mem_ostream os17;
+            yas::binary_oarchive<yas::mem_ostream, flags> oa17(os17);
+            seventeen.serializeSeventeen(oa17);
+            const auto buf17 = os17.get_intrusive_buffer();
+            SettingsHeader h17{};
+            std::memcpy(h17.magic, kSettingsMagic, sizeof(h17.magic));
+            h17.version = kSettingsVersionSeventeen;
+            h17.payloadBytes = static_cast<std::uint16_t>(buf17.size);
+            h17.crc32 = crc32(reinterpret_cast<const std::uint8_t *>(buf17.data), static_cast<std::uint32_t>(buf17.size));
+            std::vector<std::uint8_t> file17(sizeof(h17) + buf17.size);
+            std::memcpy(file17.data(), &h17, sizeof(h17));
+            std::memcpy(file17.data() + sizeof(h17), buf17.data, buf17.size);
+            SettingsData from17;
+            check(readSettings(file17.data(), file17.size(), from17) && from17.autoaim == 1 && from17.autosave == 0 &&
+                      from17.keys[kActionLamp] == kButtonX && from17.keys[kActionWalk] == 0 && from17.walkToggle == 0 &&
+                      from17.jumpWalks == 0,
+                  "settings of version 17 are read as chosen, with no walk");
+            // The newest, and its size: what the console reads it into.
+            SettingsData walks;
+            walks.walkToggle = 1;
+            walks.jumpWalks = 1;
+            walks.keys[kActionWalk] = static_cast<std::uint16_t>(kButtonY);
+            written = writeSettings(walks);
+            SettingsData read18;
+            check(readSettings(written.data(), written.size(), read18) && read18.walkToggle == 1 && read18.jumpWalks == 1 &&
+                      read18.keys[kActionWalk] == kButtonY && written.size() <= kSettingsMostBytes,
+                  "the walk's settings are kept, and the file still fits");
+            walks.walkToggle = 2;
+            written = writeSettings(walks);
+            check(!readSettings(written.data(), written.size(), read18), "... and nonsense is not believed");
         }
+    }
+
+    /// The walk: on the screen, on a button, held or toggled; and the jump
+    /// button asked to walk.
+    void testWalk()
+    {
+        std::uint32_t blank = 100;
+        ControlSettings set;
+        set.scheme = kControlsModern;
+        ControlsState state;
+        const TouchLayout at = touchLayout(false);
+        const int wx = at.walk.x + at.walk.w / 2, wy = at.walk.y + at.walk.h / 2;
+        ControlsOut out = press(set, state, 0, blank);
+        check(!out.walk, "a run, unless told otherwise");
+        out = touch(set, state, wx, wy, blank);
+        check(out.walk && out.touchOn == kTouchWalk, "the screen's WALK, held, walks");
+        out = touch(set, state, 100, 90, blank);
+        check(out.walk && out.touchOn == kTouchWalk && out.lookDx == 0, "... slid off it, still walks, with no jerk");
+        out = touch(set, state, 110, 90, blank);
+        check(out.walk && out.lookDx == 10, "... and turns the view");
+        out = press(set, state, 0, blank);
+        check(!out.walk && !out.usePressed && !out.jump, "... and lifted, runs: it was no tap");
+
+        set.walkToggle = true;
+        state = ControlsState();
+        out = touch(set, state, wx, wy, blank);
+        check(out.walk, "toggled: touched once, walks");
+        out = press(set, state, 0, blank);
+        check(out.walk, "... and goes on when lifted");
+        out = touch(set, state, 100, 90, blank);
+        out = touch(set, state, 110, 90, blank);
+        check(out.walk && out.lookDx == 10 && out.touchOn == kTouchAim, "... with the stylus free to look");
+        out = press(set, state, 0, blank);
+        out = touch(set, state, wx, wy, blank);
+        check(!out.walk, "... and touched again, runs");
+        out = press(set, state, 0, blank);
+        check(!out.walk, "... and goes on running");
+        out = touch(set, state, wx, wy, blank);
+        set.walkToggle = false;
+        out = press(set, state, 0, blank);
+        check(!out.walk, "the toggle turned off leaves nobody walking");
+
+        // A button of a custom layout: held, and toggled.
+        ControlSettings custom;
+        custom.scheme = kControlsCustom;
+        defaultKeys(kControlsModern, false, custom.keys);
+        assignKey(custom.keys, kActionWalk, kButtonSelect);
+        state = ControlsState();
+        check(press(custom, state, kButtonSelect, blank).walk, "a custom layout's button walks while held");
+        check(!press(custom, state, 0, blank).walk, "... and runs when let go");
+        custom.walkToggle = true;
+        check(press(custom, state, kButtonSelect, blank).walk, "... or, toggled, walks when pressed");
+        check(press(custom, state, 0, blank).walk, "... goes on");
+        press(custom, state, kButtonSelect, blank);
+        check(!press(custom, state, 0, blank).walk, "... and pressed again, runs");
+
+        // The jump button asked to walk.
+        for (const bool left : {false, true})
+        {
+            ControlSettings walks;
+            walks.scheme = kControlsModern;
+            walks.leftHanded = left;
+            walks.jumpWalks = true;
+            const std::uint32_t button = left ? kButtonRight : kButtonA;
+            state = ControlsState();
+            out = press(walks, state, button, blank);
+            check(out.walk && !out.jump, "modern's jump button walks, by either hand");
+            press(walks, state, 0, blank);
+            const TouchLayout where = touchLayout(left, false, true);
+            out = touch(walks, state, where.walk.x + 5, where.walk.y + 5, blank);
+            check(out.walk && !out.jump, "... so does the screen's");
+            press(walks, state, 0, blank);
+            blank += 100;
+            const int mid = where.pad.x + where.pad.w / 2;
+            touch(walks, state, mid, 90, blank);
+            press(walks, state, 0, blank);
+            out = touch(walks, state, mid, 90, blank);
+            check(out.jump, "... and two taps still jump");
+            press(walks, state, 0, blank);
+        }
+        ControlSettings classicWalks;
+        classicWalks.scheme = kControlsClassic;
+        classicWalks.jumpWalks = true;
+        state = ControlsState();
+        out = press(classicWalks, state, kButtonA, blank);
+        check(out.moveSide == 1 && !out.walk, "classic's A is still the pad's: it has no jump button to give");
     }
 
     void testCustom()
@@ -942,6 +1073,7 @@ int main()
     testSticks();
     testWeaponStep();
     testSettings();
+    testWalk();
     testCustom();
     testTouchFilter();
     testSensitivity();

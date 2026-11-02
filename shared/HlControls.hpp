@@ -22,6 +22,12 @@
 // buttons each action is (defaultKeys); a custom one starts as a copy of the
 // layout it was made from.
 //
+// THE WALK. Half-Life runs unless told otherwise: there is a WALK on the touch
+// screen, held or touched once to walk and again to run, and an action for a
+// custom layout. No button of the other two is free for it; but as two taps
+// jump anyway, the player can ask for the jump button to walk instead: the
+// screen's, and MODERN's.
+//
 // Either way, two quick taps on the aim pad jump (and holding the second
 // keeps the jump held, for swimming up); a touch that starts on a control is
 // that control and never turns the view, however far it then slides.
@@ -92,14 +98,17 @@ namespace hldata
         kActionNextWeapon,
         kActionPrevWeapon,
         kActionLamp,
+        kActionWalk,
         kActionCount
     };
+    /// How many a settings file before version 18 keeps (HlSettings.hpp).
+    inline constexpr int kActionsBeforeWalk = kActionWalk;
     /// Their names, for the options.
     inline const char *actionName(int action)
     {
         static const char *const kNames[kActionCount] = {"Forward", "Back",   "Left",   "Right",       "Fire",
                                                      "Alt fire", "Jump",  "Duck",   "Reload",      "Use",
-                                                     "Next weapon", "Weapon before", "Flashlight"};
+                                                     "Next weapon", "Weapon before", "Flashlight", "Walk"};
         return action >= 0 && action < kActionCount ? kNames[action] : "";
     }
     /// The buttons that may be given an action: all but Start.
@@ -126,6 +135,8 @@ namespace hldata
         bool padTurns = false; ///< the pad's left and right turn; the stylus sidesteps
         bool padLooks = false; ///< the pad's up and down look; the stylus moves
         bool duckToggle = false; ///< the crouch button crouches, and again stands (else: held)
+        bool walkToggle = false; ///< the walk button walks, and again runs (else: held)
+        bool jumpWalks = false;  ///< the jump button walks (two taps still jump)
         std::uint8_t firmness = 0; ///< 0..kFirmnessMost
         std::uint8_t firmPress = kFirmOff;
         /// CUSTOM: each action's buttons (kButton*; any of them does it).
@@ -136,7 +147,7 @@ namespace hldata
     };
 
     /// Each action's buttons in a layout (not CUSTOM, whose are its own).
-    inline void defaultKeys(std::uint8_t scheme, bool leftHanded, std::uint16_t *keys)
+    inline void defaultKeys(std::uint8_t scheme, bool leftHanded, std::uint16_t *keys, bool jumpWalks = false)
     {
         // The pad, the four with work of their own, and the shoulders, by
         // the hand the stylus is in.
@@ -164,7 +175,7 @@ namespace hldata
             keys[kActionNextWeapon] = static_cast<std::uint16_t>(faceTop);
             keys[kActionReload] = static_cast<std::uint16_t>(faceLeft);
             keys[kActionDuck] = static_cast<std::uint16_t>(faceBottom);
-            keys[kActionJump] = static_cast<std::uint16_t>(faceRight);
+            keys[jumpWalks ? kActionWalk : kActionJump] = static_cast<std::uint16_t>(faceRight);
             return;
         }
         // CLASSIC: the face buttons are a second pad.
@@ -184,7 +195,7 @@ namespace hldata
         }
         else
         {
-            defaultKeys(set.scheme, set.leftHanded, keys);
+            defaultKeys(set.scheme, set.leftHanded, keys, set.jumpWalks);
         }
     }
 
@@ -258,6 +269,7 @@ namespace hldata
         int moveSide = 0;    ///< -1 left, 1 right
         bool jump = false;
         bool duck = false;
+        bool walk = false; ///< a walk, not a run
         bool usePressed = false;
         /// USE is held down (its button, the touch screen's USE, a firm press
         /// that is USE): what is used for as long as it is held -- a wall
@@ -304,6 +316,10 @@ namespace hldata
         /// has slid off it: from there it turns the view, and the player
         /// stays crouched until it is lifted.
         bool duckSlide = false;
+        /// ... and the same of the screen's WALK; and walking until told to
+        /// run, as `crouched` is for the crouch.
+        bool walkSlide = false;
+        bool walking = false;
         // The stylus, finely: the last reading used (and how hard), where the
         // view was last turned from, the firmest this stroke has been, and
         // how hard it began.
@@ -379,7 +395,13 @@ namespace hldata
             // held -- or, crouching by a toggle, tapped.)
             state.crouched = false;
         }
+        const bool walkHeld = !set.walkToggle && on(kActionWalk);
+        if (set.walkToggle && now(kActionWalk))
+            state.walking = !state.walking;
+        else if (!set.walkToggle)
+            state.walking = false;
         // The stylus.
+        const TouchLayout layout = touchLayout(set.leftHanded, set.match, set.jumpWalks);
         int dragX = 0, dragY = 0;   // its travel this frame, on the aim pad
         int stickX = 0, stickY = 0; // ... and how far it is from where it came down
         if (in.touching)
@@ -390,7 +412,7 @@ namespace hldata
                 out.tapX = in.touchX;
                 out.tapY = in.touchY;
                 // Where a touch STARTS decides what it is for its whole life.
-                state.touch = touchHit(touchLayout(set.leftHanded, set.match), in.touchX, in.touchY);
+                state.touch = touchHit(layout, in.touchX, in.touchY);
                 // USE, MENU, RELOAD and a weapon's slot are presses, not
                 // holds: they happen on the frame the stylus lands on them.
                 out.usePressed = out.usePressed || state.touch == kTouchUse;
@@ -408,6 +430,9 @@ namespace hldata
                 if (state.touch == kTouchDuck)
                     state.crouched = set.duckToggle ? !state.crouched : false;
                 state.duckSlide = false;
+                if (state.touch == kTouchWalk && set.walkToggle)
+                    state.walking = !state.walking;
+                state.walkSlide = false;
                 state.jumping = false;
                 state.strayed = false;
                 state.downBlank = in.blank;
@@ -427,14 +452,15 @@ namespace hldata
                     state.lastTapY = in.touchY;
                 }
             }
-            else if (state.touch == kTouchDuck && !set.duckToggle &&
-                     touchHit(touchLayout(set.leftHanded, set.match), in.touchX, in.touchY) != kTouchDuck)
+            else if (((state.touch == kTouchDuck && !set.duckToggle) || (state.touch == kTouchWalk && !set.walkToggle)) &&
+                     touchHit(layout, in.touchX, in.touchY) != state.touch)
             {
-                // Held DUCK slid off it: the view turns from here on (from
-                // where it is now: no jerk), still crouched -- and it is no
-                // tap, nor the second of two.
+                // Held DUCK or WALK slid off it: the view turns from here on
+                // (from where it is now: no jerk), still crouched or walking
+                // -- and it is no tap, nor the second of two.
+                state.duckSlide = state.touch == kTouchDuck;
+                state.walkSlide = state.touch == kTouchWalk;
                 state.touch = kTouchAim;
-                state.duckSlide = true;
                 state.strayed = true;
                 state.jumping = false;
                 state.downX = in.touchX;
@@ -471,6 +497,7 @@ namespace hldata
             state.touch = kTouchAim;
             state.jumping = false;
             state.duckSlide = false;
+            state.walkSlide = false;
         }
 
         // The two sticks, an axis at a time.
@@ -597,7 +624,10 @@ namespace hldata
         out.jump = state.jumping || state.touch == kTouchJump || faceJump || (firmNow && set.firmPress == kFirmJump);
         out.duck = (state.touch == kTouchDuck && !set.duckToggle) || (state.duckSlide && state.touching) ||
                    state.crouched || duckHeld;
-        out.touchOn = state.touching ? (state.duckSlide ? kTouchDuck : state.touch) : kTouchAim;
+        out.walk = (state.touch == kTouchWalk && !set.walkToggle) || (state.walkSlide && state.touching) ||
+                   state.walking || walkHeld;
+        out.touchOn = !state.touching ? kTouchAim
+                                      : (state.duckSlide ? kTouchDuck : (state.walkSlide ? kTouchWalk : state.touch));
         out.useHeld = on(kActionUse) || (state.touching && state.touch == kTouchUse) ||
                       (firmNow && set.firmPress == kFirmUse);
         state.lastHeld = held;
@@ -657,7 +687,9 @@ namespace hldata
         switch (line)
         {
         case 0: return pair(kActionFire, "fire", kActionAltFire, "second fire");
-        case 1: return pair(kActionJump, "jump", kActionDuck, set.duckToggle ? "crouch/stand" : "crouch");
+        case 1:
+            return pair(set.jumpWalks ? kActionWalk : kActionJump, set.jumpWalks ? "walk" : "jump", kActionDuck,
+                        set.duckToggle ? "crouch/stand" : "crouch");
         case 2: return pair(kActionReload, "reload", kActionNextWeapon, "weapon");
         case 3: return "tap: use   double tap: jump";
         default: return nullptr;

@@ -51,6 +51,8 @@ namespace hlrt
         /// The lamp's button: whether there is a suit to have one, whether
         /// it is alight, and how much is in it (0..100).
         void setLamp(bool suit, bool on, int percent);
+        /// The player is walking: WALK stays lit (it may be a toggle).
+        void setWalking(bool walking);
         /// Which control the stylus is on (a kTouch*).
         void setPressed(int held);
         /// Two lines in the middle of the screen, in place of the pad: for
@@ -148,6 +150,7 @@ namespace hlrt
         unsigned empty_ = 0;
         bool canReload_ = false;
         bool lampSuit_ = false, lampOn_ = false;
+        bool walking_ = false;
         int lampBar_ = -1; ///< the gauge as drawn, in pixels
         int weapon_ = 0;
         int clip_ = 0;
