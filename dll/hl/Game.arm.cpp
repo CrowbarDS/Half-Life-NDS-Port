@@ -1095,7 +1095,6 @@ namespace hlrt
                 }
             }
         }
-        const fx stoodAt[3] = {player.state.origin[0], player.state.origin[1], player.state.origin[2]};
         player.frame(vblanks);
         cameraView();
         // A game between consoles: what this player did goes out, what the
@@ -1122,7 +1121,8 @@ namespace hlrt
         if (!player.noclip)
         {
             // (A footstep, a rung, a slosh or a wade: HlPlayerMove.hpp.)
-            const StepsHeard steps = playerSteps(player.state, stoodAt);
+            const StepsHeard steps = playerSteps(player.state, ms);
+            int floorLouder = 0;
             static constexpr CommonSound kFirst[] = {CommonSound::Step1, CommonSound::Ladder1, CommonSound::Slosh1,
                                                      CommonSound::Wade1};
             CommonSound first = kFirst[static_cast<int>(steps.kind)];
@@ -1136,8 +1136,14 @@ namespace hlrt
                 switch (floorMaterial(level.view, feet, on, on >= 0 ? logic.brushStates[on].pos : nullptr))
                 {
                 case Material::Metal: first = CommonSound::Metal1; break;
-                case Material::Dirt:  first = CommonSound::Dirt1; break;
-                case Material::Vent:  first = CommonSound::Duct1; break;
+                case Material::Dirt:
+                    first = CommonSound::Dirt1;
+                    floorLouder = 5;
+                    break;
+                case Material::Vent:
+                    first = CommonSound::Duct1;
+                    floorLouder = 20;
+                    break;
                 case Material::Grate: first = CommonSound::Grate1; break;
                 case Material::Tile:  first = CommonSound::Tile1; break;
                 case Material::Slosh: first = CommonSound::Slosh1; break;
@@ -1150,7 +1156,7 @@ namespace hlrt
             }
             for (int n = steps.count; n > 0; --n)
                 heard.add(static_cast<std::uint16_t>(static_cast<int>(first) + (stepCount_++ & 3)), nullptr,
-                          steps.kind == StepKind::Floor ? 70 : 90, 0);
+                          stepVolume(steps, floorLouder), 0);
             // Into the water to the waist, or out of it: heard.
             const bool deep = player.state.waterLevel >= 2;
             if (deep != wasDeep_)

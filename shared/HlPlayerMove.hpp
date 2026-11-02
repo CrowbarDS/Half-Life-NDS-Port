@@ -355,8 +355,7 @@ namespace hldata
         /// The COMMAND line's cheats (owned by the game; not saved). Null:
         /// none.
         const Cheats *cheats = nullptr;
-        /// How far there is still to walk before the next footstep is heard
-        /// (playerFootsteps).
+        /// How many ms until the next footstep may be heard (playerSteps).
         fx stepLeft = 0;
         /// How deep in liquid: 0 not at all, 1 feet, 2 waist, 3 over the
         /// eyes. And what the liquid is (kContents*).
@@ -1580,34 +1579,12 @@ namespace hldata
 
     /// One thirtieth of a second, Q16.
     inline constexpr std::int32_t kPlayerTick = 2185;
-    /// How many footsteps were heard in a move that took the player from
-    /// `before` to where they are now: one for every ninety units walked on
-    /// the ground at more than a creep (crouched, nobody hears them).
-    inline int playerFootsteps(PlayerState &s, const fx *before)
-    {
-        const fx d[3] = {s.origin[0] - before[0], s.origin[1] - before[1], 0};
-        const fx moved = fxLength(d);
-        const fx speed[3] = {s.velocity[0], s.velocity[1], 0};
-        if (!s.onGround || s.ducked || s.waterLevel >= 2 || fxLength(speed) < fxFromInt(120) ||
-            moved > fxFromInt(64))
-        {
-            // (A jump in place over 64 units is a teleport, not a stride.)
-            return 0;
-        }
-        int steps = 0;
-        s.stepLeft -= moved;
-        while (s.stepLeft <= 0)
-        {
-            s.stepLeft += fxFromInt(90);
-            ++steps;
-        }
-        return steps;
-    }
-
-    /// What the player's going sounded like over a move from `before`: how
-    /// many steps, and of which kind. The game's own rules: a rung for every
-    /// so far up or down a ladder, a wade for every stride through water to
-    /// the waist or deeper (swum or walked), a slosh where it is only round
+    /// What the player's going sounds like, by the game's own rules
+    /// (PM_UpdateStepSound, and checked against it): a step when the time since
+    /// the last is up, for as long as they are moving at all. Under a run it
+    /// is quieter and further apart -- so a walk is quiet, not silent -- and
+    /// crouched, quieter and further apart again. A rung on a ladder, a wade
+    /// through water to the waist or deeper, a slosh where it is only round
     /// the feet, and otherwise a footstep.
     enum class StepKind
     {
@@ -1618,44 +1595,68 @@ namespace hldata
     };
     struct StepsHeard
     {
-        int count = 0;
+        int count = 0; ///< 0 or 1
         StepKind kind = StepKind::Floor;
+        bool ran = false;     ///< at a run's speed
+        bool ducked = false;  ///< crouched
     };
-    inline StepsHeard playerSteps(PlayerState &s, const fx *before)
+    /// How loud a step is, 0..127. `floor`: how much louder than the plain
+    /// one the floor it falls on makes it, in hundredths of full volume at
+    /// the walk and at the run (dirt 5, a vent's 20).
+    inline int stepVolume(const StepsHeard &heard, int floor = 0)
+    {
+        int percent = heard.ran ? 50 : 20;
+        if (heard.kind == StepKind::Ladder)
+            percent = 35;
+        else if (heard.kind == StepKind::Wade)
+            percent = 65;
+        else
+            percent += floor;
+        if (heard.ducked)
+            percent = percent * 35 / 100;
+        return percent * 127 / 100;
+    }
+    /// The step that falls in the `ms` just gone, if one does. stepLeft: the
+    /// ms until the next.
+    inline StepsHeard playerSteps(PlayerState &s, int ms)
     {
         StepsHeard heard;
-        const fx all[3] = {s.origin[0] - before[0], s.origin[1] - before[1], s.origin[2] - before[2]};
-        if (fxLength(all) > fxFromInt(64))
-            return heard; // (a teleport, not a stride)
-        fx moved = 0, stride = fxFromInt(90);
+        // (A save from before this counted units in it, and far more.)
+        if (s.stepLeft > 600)
+            s.stepLeft = 600;
+        if (s.stepLeft > 0)
+        {
+            s.stepLeft -= ms;
+            if (s.stepLeft > 0)
+                return heard;
+            s.stepLeft = 0;
+        }
+        const fx speed = fxLength(s.velocity);
+        const bool wading = s.waterLevel >= 2;
+        // (Swum as well as walked: it is the only sound a swimmer makes here.)
+        if (speed == 0 || (wading && speed < fxFromInt(60)) || (!wading && !s.onLadder && !s.onGround))
+            return heard;
+        heard.ducked = s.ducked && !s.onLadder && !wading;
+        heard.ran = speed >= fxFromInt(heard.ducked || s.onLadder ? 80 : 210);
+        int wait = heard.ran ? 300 : 400;
         if (s.onLadder)
         {
-            // (Up and down count on a ladder, and nothing else does.)
             heard.kind = StepKind::Ladder;
-            moved = all[2] < 0 ? -all[2] : all[2];
-            stride = fxFromInt(48);
+            wait = 350;
         }
-        else if (s.waterLevel >= 2)
+        else if (wading)
         {
             heard.kind = StepKind::Wade;
-            moved = fxLength(all);
-            stride = fxFromInt(120);
-            const fx speed[3] = {s.velocity[0], s.velocity[1], s.velocity[2]};
-            if (fxLength(speed) < fxFromInt(60))
-                moved = 0;
+            wait = 600;
         }
-        else
+        else if (s.waterLevel == 1)
         {
-            heard.kind = s.waterLevel == 1 ? StepKind::Slosh : StepKind::Floor;
-            heard.count = playerFootsteps(s, before);
-            return heard;
+            heard.kind = StepKind::Slosh;
         }
-        s.stepLeft -= moved;
-        while (s.stepLeft <= 0)
-        {
-            s.stepLeft += stride;
-            ++heard.count;
-        }
+        if (s.ducked || s.onLadder)
+            wait += 100;
+        s.stepLeft = wait;
+        heard.count = 1;
         return heard;
     }
 } // namespace hldata

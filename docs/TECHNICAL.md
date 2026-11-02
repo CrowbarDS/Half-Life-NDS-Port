@@ -694,7 +694,10 @@ Milestone 11, "levels of detail".
   crouch a toggle it is tapped once to crouch and once to stand, which
   leaves the stylus free to aim and to touch USE. WALK (the game's +speed,
   three tenths of the speed) works the same way, and can take the jump
-  button's place, since two taps jump anyway. One table (`shared/HlTouchLayout.hpp`) says where everything
+  button's place, since two taps jump anyway. As in the game a walk is quiet,
+  not silent: footsteps go by time and speed, measured against the real game
+  (a run 0.5 each 300 ms, a walk 0.2 each 400 ms, crouched 0.35 of that each
+  100 ms later). One table (`shared/HlTouchLayout.hpp`) says where everything
   is, to the code that draws and the code that tests a touch alike. For
   a stylus in the left hand, "Buttons: left" in the options mirrors it.
 - The weapon in hand is never cut by a wall: the game gives it a depth

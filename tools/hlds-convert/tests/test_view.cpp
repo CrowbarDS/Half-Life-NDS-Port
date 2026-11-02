@@ -458,41 +458,50 @@ void testBloodAndSteps()
         check(count == 2, "two of the map's stains side by side stay two, and one put twice is one");
     }
 
-    // A ladder: a rung for every 48 units up or down, none for standing.
-    PlayerState s;
-    s.onLadder = true;
-    s.stepLeft = 0;
-    fx before[3] = {0, 0, 0};
-    int rungs = 0;
-    for (int n = 0; n < 30; ++n)
+    // The steps, as the real game's were measured (tools/ref): how many in a
+    // second and a half of each way of going, and how loud.
+    auto steps = [](fx speed, bool ducked, bool ladder, int water, StepsHeard &last)
     {
-        before[2] = s.origin[2];
-        s.origin[2] += fxFromInt(8);
-        const StepsHeard heard = playerSteps(s, before);
-        check(heard.kind == StepKind::Ladder, "on a ladder, what is heard is rungs");
-        rungs += heard.count;
-    }
-    check(rungs == 5 || rungs == 6, "a rung for every 48 units climbed");
-    before[2] = s.origin[2];
-    check(playerSteps(s, before).count == 0, "and none for holding still");
-    // Water: to the waist it is wading, whatever is underfoot.
-    PlayerState w;
-    w.waterLevel = 2;
-    w.velocity[0] = fxFromInt(150);
-    int wades = 0;
-    fx from[3] = {0, 0, 0};
-    for (int n = 0; n < 40; ++n)
+        PlayerState p;
+        p.onGround = !ladder;
+        p.onLadder = ladder;
+        p.ducked = ducked;
+        p.waterLevel = static_cast<std::uint8_t>(water);
+        p.velocity[0] = speed;
+        int count = 0;
+        for (int n = 0; n < 45; ++n)
+        {
+            const StepsHeard heard = playerSteps(p, 33);
+            if (heard.count != 0)
+                last = heard;
+            count += heard.count;
+        }
+        return count;
+    };
+    StepsHeard last;
+    check(steps(fxFromInt(320), false, false, 0, last) == 5 && stepVolume(last) == 63, "a run: a step each 0.3 s, at half volume");
+    check(steps(fxFromInt(120), false, false, 0, last) == 4 && stepVolume(last) == 25, "a walk: each 0.4 s, at a fifth: quiet, not silent");
+    check(steps(fxFromInt(20), false, false, 0, last) == 4, "... and however slow the walk");
+    check(stepVolume(last, 5) == 31 && stepVolume(last, 20) == 50, "dirt and a vent are louder than the plain floor");
+    check(steps(fxFromInt(40), true, false, 0, last) == 3 && stepVolume(last) == 8, "crouched: each 0.5 s, at 7 percent");
+    check(steps(fxFromInt(100), true, false, 0, last) == 4 && last.ran, "crouched, a run is from 80");
+    check(steps(fxFromInt(200), false, true, 0, last) == 4 && last.kind == StepKind::Ladder && stepVolume(last) == 44, "a rung each 0.45 s");
+    check(steps(0, false, true, 0, last) == 0 && steps(0, false, false, 0, last) == 0, "and nothing for holding still");
+    check(steps(fxFromInt(150), false, false, 2, last) == 3 && last.kind == StepKind::Wade && stepVolume(last) == 82, "water to the waist: a wade each 0.6 s");
+    check(steps(fxFromInt(320), false, false, 1, last) == 5 && last.kind == StepKind::Slosh, "water round the feet is a slosh");
     {
-        from[0] = w.origin[0];
-        w.origin[0] += fxFromInt(6);
-        const StepsHeard heard = playerSteps(w, from);
-        wades += heard.kind == StepKind::Wade ? heard.count : 100;
+        PlayerState air;
+        air.velocity[0] = fxFromInt(320);
+        check(playerSteps(air, 33).count == 0, "nothing in the air");
+        PlayerState old;
+        old.onGround = true;
+        old.stepLeft = fxFromInt(90);
+        old.velocity[0] = fxFromInt(320);
+        int waited = 0;
+        while (playerSteps(old, 33).count == 0 && waited < 100)
+            ++waited;
+        check(waited <= 19, "what an old save kept there does not silence the player");
     }
-    check(wades == 2 || wades == 3, "a wade for every 120 units through deep water");
-    PlayerState feet;
-    feet.waterLevel = 1;
-    feet.origin[0] = from[0];
-    check(playerSteps(feet, from).kind == StepKind::Slosh, "water round the feet is a slosh");
 }
 
 int main()
