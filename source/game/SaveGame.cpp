@@ -435,6 +435,9 @@ namespace hlrt::SaveGame
         const int k = hldata::runFind(run, left.c_str());
         if (k < 0 || run.entries[k].landed == mask)
             return;
+        // (A save being written a step at a time is finished first: the
+        // index's write would let go of its file half-way.)
+        finish();
         run.entries[k].landed = mask;
         hldata::runIndexWrite(card, run);
     }
