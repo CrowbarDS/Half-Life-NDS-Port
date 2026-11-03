@@ -81,6 +81,8 @@ namespace hlrt
         void levelsText(char *out, int size) const;
 
     private:
+        /// The actor being drawn is a hologram: lit by nothing but itself.
+        bool glow_ = false;
         /// `turn` is the actor's own turning: its nine, row by row, Q12
         /// (world = turn * model).
         /// `level`: which of the model's levels of detail.

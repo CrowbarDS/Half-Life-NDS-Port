@@ -73,6 +73,30 @@ namespace hlrt
                            static_cast<NEA_OtherFormatEnum>(static_cast<int>(worldDraw.polygonMode()) | NEA_TRANS_DEPTH_UPDATE));
         }
 
+        /// A monster drawn see-through as the map has it (a hologram): `alpha`
+        /// of 31, under IDs of its own, round and round, its back faces left
+        /// out and its depth kept, as a fading body is. `pale`: with the toon
+        /// table's grey added to its picture (highlight shading, lightOn) --
+        /// the game adds a hologram to what is behind it, which a blend
+        /// cannot: this is as near as it comes.
+        int nextGlassId = 0;
+        void glassAlpha(int alpha, bool pale)
+        {
+            NEA_PolyFormat(alpha < 1 ? 1 : alpha, kIdGlassFirst + nextGlassId++ % kIdGlassCount,
+                           static_cast<NEA_LightEnum>(NEA_LIGHT_0 | NEA_LIGHT_1), NEA_CULL_FRONT,
+                           static_cast<NEA_OtherFormatEnum>(static_cast<int>(worldDraw.polygonMode()) |
+                                                            NEA_TRANS_DEPTH_UPDATE |
+                                                            (pale ? NEA_TOON_HIGHLIGHT_SHADING : 0)));
+        }
+
+        /// The hologram's flicker: new each time it is asked.
+        std::uint32_t flicker = 1;
+        int flickerNoise()
+        {
+            flicker = flicker * 1664525u + 1013904223u;
+            return static_cast<int>((flicker >> 16) & 63) - 32;
+        }
+
         /// How many steps to pose an actor; lower is better.
         /// 256: full frame, 128: half frame, 64: quarter frame.
         constexpr std::uint32_t kPoseStep = 64;
@@ -324,6 +348,15 @@ namespace hlrt
         GFX_DIFFUSE_AMBIENT = RGB15(20, 20, 20) | (RGB15(13, 13, 13) << 16);
         // (Bit 15: the specular light goes by the shininess table.)
         GFX_SPECULAR_EMISSION = lamp > 0 ? (RGB15(lamp * 2 / 3, lamp * 2 / 3, lamp * 5 / 9) | 0x8000u) : 0u;
+        // A hologram is its own light, whatever is round it (the game draws
+        // it added to the picture, unlit): its picture as it is, pale.
+        if (glow_)
+        {
+            GFX_LIGHT_COLOR = RGB15(31, 31, 31);
+            GFX_LIGHT_COLOR = RGB15(31, 31, 31) | (1u << 30);
+            GFX_DIFFUSE_AMBIENT = RGB15(31, 31, 31) << 16;
+            GFX_SPECULAR_EMISSION = RGB15(31, 31, 31);
+        }
 
         for (int n = 0; n < model.header->batchCount; ++n)
         {
@@ -937,13 +970,37 @@ namespace hlrt
             // assassin cloaked: its renderamt, of 255.)
             const int fading = corpseFadeLeft(actor);
             const int cloaked = actor.cloak.value != 0 ? (255 - actor.cloak.value) * 31 / 255 : -1;
+            // (A monster_generic the map has see-through, or a hologram:
+            // fading with distance and flickering, as the game's does.)
+            const std::uint32_t look =
+                actor.kind == static_cast<std::uint8_t>(ActorKind::Generic) && order[n] < actors.recordCount
+                    ? (actors.records[order[n]].item >> kActorLookShift) & kActorLookMask
+                    : 0;
+            int glass = -1;
+            if (look == kActorLookHologram)
+            {
+                const int d[3] = {fxToInt(actor.pos[0] - camera.pos[0]), fxToInt(actor.pos[1] - camera.pos[1]),
+                                  fxToInt(actor.pos[2] - camera.pos[2])};
+                const int along = (d[0] * camera.forward[0] + d[1] * camera.forward[1] + d[2] * camera.forward[2]) >> 12;
+                glass = hologramBlend(along, flickerNoise()) >> 3;
+                if (glass < 1)
+                    continue;
+                glow_ = true;
+            }
+            else if (look != 0)
+            {
+                glass = static_cast<int>(look) * 31 / 7;
+            }
             if (fading >= 0)
                 modelAlpha(1 + (fading * 30) / kCorpseFadeMs);
             else if (cloaked >= 0)
                 modelAlpha(cloaked);
+            else if (glass >= 0)
+                glassAlpha(glass, glow_);
             drawActor(actor, model, actor.model, ceiling ? over : turn, order[n], level_[n]);
             drawGun(actor, model, ceiling ? over : turn, order[n]);
-            if (fading >= 0 || cloaked >= 0)
+            glow_ = false;
+            if (fading >= 0 || cloaked >= 0 || glass >= 0)
                 modelAlpha(31);
             ++drawn;
         }
@@ -1142,6 +1199,10 @@ namespace hlrt
                 GFX_SHININESS = word;
             }
         }
+        // What a hologram's picture has added to it (glassAlpha): a pale grey,
+        // the same however it is lit. (Nothing else is drawn highlighted.)
+        NEA_ToonHighlightEnable(true);
+        NEA_ToonTableFill(RGB15(5, 5, 5));
         NEA_PolyFormat(31, 0, static_cast<NEA_LightEnum>(NEA_LIGHT_0 | NEA_LIGHT_1), kCull, worldDraw.polygonMode());
     }
 

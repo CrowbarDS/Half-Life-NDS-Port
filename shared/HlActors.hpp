@@ -661,6 +661,19 @@ namespace hldata
                        actor.kind == static_cast<std::uint8_t>(ActorKind::Furniture);
     }
 
+    /// How much of a hologram is drawn (of 255), `along` units ahead of the
+    /// eye along the view, as the game's CL_FxBlend has it: all of its 180
+    /// up to 100 units, none at 500, and none behind the eye; give or take
+    /// `noise` (-32..31), new each frame.
+    inline int hologramBlend(int along, int noise)
+    {
+        if (along <= 0)
+            return 0;
+        int blend = along <= 100 ? 180 : 180 * (500 - along) / 400;
+        blend += noise;
+        return blend < 0 ? 0 : (blend > 255 ? 255 : blend);
+    }
+
     /// The first clip of `model` that is for `activity` (its ModelClip flags,
     /// kClipActivityShift); -1 if none is.
     inline int clipOfActivity(const ModelView &model, std::uint8_t activity)

@@ -3549,6 +3549,18 @@ namespace hlds
                 // One of the people before the disaster: will not follow.
                 if (spawnflags & 256)
                     actor.item |= kPersonPreDisaster;
+                // How a monster_generic is drawn: see-through (the game's
+                // render modes 2 and 5), or as its hologram (renderfx 16).
+                const int mode = static_cast<int>(numberKey(entity, "rendermode"));
+                if (info.kind == ActorKind::Generic && (mode == 2 || mode == 5))
+                {
+                    const std::uint32_t look =
+                        static_cast<int>(numberKey(entity, "renderfx")) == 16
+                            ? kActorLookHologram
+                            : static_cast<std::uint32_t>(
+                                  std::clamp(std::lround(numberKey(entity, "renderamt") * 7 / 255), 1L, 6L));
+                    actor.item |= look << kActorLookShift;
+                }
                 // (Luther's head is darker: the model's second skin.)
                 if (info.kind == ActorKind::Scientist && actor.body % 4 == 2)
                     actor.item |= 1u << kActorSkinShift;

@@ -499,6 +499,19 @@ namespace
         std::printf("test_monsters: t0a0: the holograms' middles at %.1f (on the projector) and %.1f\n", introZ, genZ);
         check(std::fabs(introZ + 5) < 1.5, "the hologram on the projector is where the map has it");
         check(std::fabs(genZ + 9) < 1.5, "... the other stands on the floor, its middle 36 above it");
+        // Drawn as the game's hologram: see-through, fading with distance,
+        // flickering.
+        const auto lookOf = [&](int actor)
+        {
+            return actor < static_cast<int>(g.view.actorCount)
+                       ? (g.view.actors[actor].item >> kActorLookShift) & kActorLookMask
+                       : 0u;
+        };
+        check(lookOf(intro) == kActorLookHologram && lookOf(gen) == kActorLookHologram,
+              "the holograms keep the map's hologram look");
+        check(hologramBlend(50, 0) == 180 && hologramBlend(300, 0) == 90 && hologramBlend(500, 0) == 0 &&
+                  hologramBlend(-5, 0) == 0 && hologramBlend(50, 31) == 211 && hologramBlend(480, -32) == 0,
+              "... all of 180 near, fading to none at 500 ahead, none behind, give or take its flicker");
         // Standing about, as the game's do: in its talking idle, not a walk.
         const ModelView *model = actorModel(g.actors, g.actors.states[intro]);
         const auto clipNamed = [&](int clip)

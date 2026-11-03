@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 47;
+    inline constexpr std::uint16_t kLevelVersion = 48;
     /// The oldest level format this build reads.
     inline constexpr std::uint16_t kLevelMinVersion = 28;
     /// The oldest build that can read what it writes. (32: what the people
@@ -71,8 +71,9 @@ namespace hldata
     /// was not cooked with, named in its models to be loaded when needed.)
     /// 44: each node's own surfaces (NodeMarks, NodeSpans), as two sections
     /// a build before does not know of. 45: the long jump module, an item a
-    /// build before would refuse. (46, how a box floats, and 47, a tank's
-    /// sprites, are in fields 45's builds leave alone: they read them.)
+    /// build before would refuse. (46, how a box floats, 47, a tank's
+    /// sprites, and 48, how a monster_generic is drawn, are in fields 45's
+    /// builds leave alone: they read them.)
     inline constexpr std::uint16_t kLevelMinReader = 45;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,
@@ -1106,6 +1107,14 @@ namespace hldata
     /// word: met before the disaster (the game's SF_MONSTER_PREDISASTER):
     /// he will not follow.
     inline constexpr std::uint32_t kPersonPreDisaster = 1;
+    /// A monster_generic, in bits 1..3 of the same word (from level version
+    /// 48): how it is drawn (the map's rendermode and renderamt). 0 solid;
+    /// 1..6 see-through, that many sevenths of it there; kActorLookHologram
+    /// the game's hologram (renderfx 16), which fades and flickers as the
+    /// game's does (hologramBlend).
+    inline constexpr int kActorLookShift = 1;
+    inline constexpr std::uint32_t kActorLookMask = 7;
+    inline constexpr std::uint32_t kActorLookHologram = 7;
 
     // What a soldier calls out (Section::Speech): the game's HG_ groups.
     inline constexpr int kSpeakGrenade = 0; ///< a grenade lands by him
