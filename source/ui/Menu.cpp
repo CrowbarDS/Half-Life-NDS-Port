@@ -1352,10 +1352,10 @@ namespace hlrt
             case kFogStrength: return "How thick the fog is.";
             case kFogDistance: return "How near the fog begins.";
             case kFogColour: return "The colour the far distance fades into.";
-            case kModelDetail: return "How much of the people and monsters is drawn. Lower is faster.";
-            case kWorldDetail: return "How much of the walls is drawn far off. Lower is faster.";
+            case kModelDetail: return "How much of the people and monsters is drawn.";
+            case kWorldDetail: return "How much of the walls is drawn far off.";
             case kModelLimit: return "How many people and monsters are drawn at once: auto, or a number.";
-            case kDrawDistance: return "How far the world is drawn. Nearer is faster.";
+            case kDrawDistance: return "How far the world is drawn.";
             case kScheme: return "Which button does what: classic, modern, or your own (BUTTONS).";
             case kHand: return "Which hand holds the stylus: the touch screen's buttons go to the other side.";
             case kDuck: return "Crouch held down, or pressed once to crouch and again to stand.";
