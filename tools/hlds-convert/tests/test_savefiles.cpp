@@ -99,6 +99,60 @@ namespace
         }
     };
 
+    /// A card that starts refusing, as a worn one does, while the rest of it
+    /// goes on working: the calls of `kinds` (to files whose name has
+    /// `only` in it, if given), counted from 0 as they are made, from `from`
+    /// on, `count` of them (-1: all). A refused write leaves half the file.
+    struct RefusingCard : ListingCard
+    {
+        enum Kind
+        {
+            kWrite = 1,
+            kRemove = 2,
+            kRename = 4,
+            kList = 8
+        };
+        int kinds = 0, from = 0, count = -1, made = 0;
+        std::string only;
+        bool refuse(int kind, const char *name)
+        {
+            if ((kinds & kind) == 0 || (!only.empty() && std::strstr(name, only.c_str()) == nullptr))
+                return false;
+            const int n = made++;
+            return n >= from && (count < 0 || n < from + count);
+        }
+        void works() { kinds = 0; }
+        bool write(const char *name, const std::uint8_t *bytes, std::size_t size) override
+        {
+            if (refuse(kWrite, name))
+            {
+                files[name].assign(bytes, bytes + size / 2);
+                return false;
+            }
+            return ListingCard::write(name, bytes, size);
+        }
+        bool remove(const char *name) override { return !refuse(kRemove, name) && ListingCard::remove(name); }
+        bool rename(const char *from_, const char *to) override
+        {
+            return !refuse(kRename, from_) && ListingCard::rename(from_, to);
+        }
+        bool list(std::vector<std::string> &names) override
+        {
+            return !refuse(kList, "") && ListingCard::list(names);
+        }
+        bool leftBeside() const
+        {
+            for (const auto &file : files)
+            {
+                const std::string &name = file.first;
+                if (name.size() > 4 && (name.compare(name.size() - 4, 4, ".new") == 0 ||
+                                        name.compare(name.size() - 4, 4, ".old") == 0))
+                    return true;
+            }
+            return false;
+        }
+    };
+
     SaveData game(const char *map, int health)
     {
         SaveData data;
@@ -209,12 +263,191 @@ namespace
         check(saveMostRecent(now) == kSlotManual + 5 && saveMostRecent(now, true) == kSlotArrival,
               "... the most recent known (the arrival only when asked for)");
     }
+
+    /// A session on a card that starts refusing: the game's three and one of
+    /// the player's saved again and again, some refused. After it, and a
+    /// start on the card refusing still, then on one that works: every slot
+    /// that had a save has one -- the last that was said to be saved, or one
+    /// tried after it -- whole, and listed as what it is. Never none.
+    struct Attempt
+    {
+        int slot;
+        const char *map;
+    };
+    bool sessionKeepsSaves(int kinds, int from, int count, const char *only, std::string &why)
+    {
+        RefusingCard card;
+        SaveIndex index;
+        saveIndexLoad(card, index);
+        const Attempt first[] = {{kSlotAuto, "a0"}, {kSlotQuick, "q0"}, {kSlotManual, "m0"}};
+        for (const Attempt &a : first)
+            saveSlotWrite(card, index, a.slot, game(a.map, 50), heading(a.map, "C", 10));
+        const Attempt session[] = {{kSlotAuto, "a1"}, {kSlotQuick, "q1"}, {kSlotManual, "m1"}, {kSlotAuto, "a2"},
+                                   {kSlotQuick, "q2"}, {kSlotAuto, "a3"},  {kSlotManual, "m2"}, {kSlotQuick, "q3"}};
+        // What each slot may hold after: from the last said to be saved on.
+        std::map<int, std::vector<std::string>> may = {{kSlotAuto, {"a0"}}, {kSlotQuick, {"q0"}}, {kSlotManual, {"m0"}}};
+        card.kinds = kinds;
+        card.from = from;
+        card.count = count;
+        card.only = only != nullptr ? only : "";
+        card.made = 0;
+        for (const Attempt &a : session)
+        {
+            if (saveSlotWrite(card, index, a.slot, game(a.map, 50), heading(a.map, "C", 20)))
+                may[a.slot] = {a.map};
+            else
+                may[a.slot].push_back(a.map);
+        }
+        // A start on the card as it is: nothing it holds is lost -- each
+        // slot's save is in the slot, or set aside, or new beside it.
+        {
+            SaveIndex during;
+            saveIndexLoad(card, during);
+            for (const auto &[slot, maps] : may)
+            {
+                bool found = false;
+                for (const std::string &name : {std::string(saveSlotFile(slot)), std::string(saveSlotFile(slot)) + ".old",
+                                                std::string(saveSlotFile(slot)) + ".new"})
+                {
+                    const auto at = card.files.find(name);
+                    if (at == card.files.end() || !saveFileWhole(card, name.c_str()))
+                        continue;
+                    SaveHeading h;
+                    if (readSaveHeading(at->second.data(), at->second.size(), h) == kSaveGood &&
+                        std::find(maps.begin(), maps.end(), std::string(h.map)) != maps.end())
+                        found = true;
+                }
+                if (!found)
+                {
+                    why = std::string("on the refusing card, nothing whole for ") + saveSlotFile(slot);
+                    return false;
+                }
+            }
+        }
+        // ... and on a card that works again: each in its place, listed.
+        card.works();
+        SaveIndex after;
+        saveIndexLoad(card, after);
+        for (const auto &[slot, maps] : may)
+        {
+            SaveData back;
+            if (after.slots[slot].status != kSaveGood || !saveSlotRead(card, slot, back))
+            {
+                why = std::string("no save in ") + saveSlotFile(slot);
+                return false;
+            }
+            if (std::find(maps.begin(), maps.end(), back.map) == maps.end() ||
+                std::string(after.slots[slot].heading.map) != back.map)
+            {
+                why = std::string(saveSlotFile(slot)) + " holds " + back.map + ", an older save than it should";
+                return false;
+            }
+        }
+        if (card.leftBeside())
+        {
+            why = "files left beside the saves";
+            return false;
+        }
+        for (int i = 0; i < kSlotCount; ++i)
+        {
+            if (may.count(i) == 0 && after.slots[i].status != kSaveNone)
+            {
+                why = "a slot listed that has no save";
+                return false;
+            }
+        }
+        // ... and saved into again.
+        if (!saveSlotWrite(card, after, kSlotQuick, game("later", 50), heading("later", "C", 30)))
+        {
+            why = "not saved into again";
+            return false;
+        }
+        return true;
+    }
+
+    void testRefusingCard()
+    {
+        // How many calls a session makes, to refuse each of them in turn.
+        RefusingCard counting;
+        counting.kinds = RefusingCard::kWrite | RefusingCard::kRemove | RefusingCard::kRename;
+        counting.from = 1 << 30;
+        std::string why;
+        check(sessionKeepsSaves(counting.kinds, counting.from, -1, nullptr, why), "a session on a card that works");
+        const int calls = 400;
+        struct Case
+        {
+            int kinds;
+            const char *what;
+        };
+        const Case cases[] = {
+            {RefusingCard::kRename, "renames"},
+            {RefusingCard::kRemove, "removes"},
+            {RefusingCard::kWrite, "writes"},
+            {RefusingCard::kRename | RefusingCard::kRemove, "renames and removes"},
+            {RefusingCard::kWrite | RefusingCard::kRemove | RefusingCard::kRename, "everything"},
+        };
+        for (const Case &c : cases)
+        {
+            for (const int count : {1, 3, -1})
+            {
+                bool always = true;
+                std::string first;
+                for (int from = 0; from < calls && always; ++from)
+                {
+                    if (!sessionKeepsSaves(c.kinds, from, count, nullptr, why))
+                    {
+                        always = false;
+                        first = why + " (from call " + std::to_string(from) + ")";
+                    }
+                }
+                const std::string what = std::string("a card refusing ") + c.what +
+                                         (count < 0 ? " from a point on" : (count == 1 ? " once" : " a few times")) +
+                                         ": no save lost" + (always ? "" : " -- " + first);
+                check(always, what.c_str());
+            }
+        }
+        // Only the list refused: a stale list is not believed.
+        bool always = true;
+        for (int from = 0; from < 60 && always; ++from)
+            always = sessionKeepsSaves(RefusingCard::kWrite | RefusingCard::kRemove, from, -1, "index", why);
+        check(always, "the list's writes refused: the list made again from the files at the next start");
+
+        // A listing refused at the start: what the list has is probed, and a
+        // save it has that is not there makes it again.
+        {
+            RefusingCard card;
+            SaveIndex index;
+            saveIndexLoad(card, index);
+            saveSlotWrite(card, index, kSlotQuick, game("q0", 50), heading("q0", "C", 10));
+            saveSlotWrite(card, index, kSlotManual, game("m0", 50), heading("m0", "C", 10));
+            card.files.erase("save1.sav"); // (gone behind the list's back)
+            card.kinds = RefusingCard::kList;
+            SaveIndex after;
+            saveIndexLoad(card, after);
+            check(after.slots[kSlotManual].status == kSaveNone && after.slots[kSlotQuick].status == kSaveGood,
+                  "with no listing, a save the list has that is not there is found out");
+        }
+        // One of the player's the list does not know of is not written over.
+        {
+            RefusingCard card;
+            SaveIndex index;
+            saveIndexLoad(card, index);
+            saveSlotWrite(card, index, kSlotManual, game("m0", 50), heading("m0", "C", 10));
+            SaveIndex stale;
+            check(!saveSlotWrite(card, stale, kSlotManual, game("m1", 50), heading("m1", "C", 20)) &&
+                      stale.slots[kSlotManual].status == kSaveGood,
+                  "a save in a slot the list has as empty is not written over, and is listed");
+            SaveData back;
+            check(saveSlotRead(card, kSlotManual, back) && back.map == "m0", "... it is as it was");
+        }
+    }
 } // namespace
 
 int main()
 {
     testMany();
     testOldCard();
+    testRefusingCard();
     // An empty card: an empty list, nothing most recent.
     {
         MemoryCard card;

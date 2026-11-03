@@ -14,10 +14,13 @@
 // card is the slow part. The index is only a copy -- it is made again from
 // the files if it is not there or cannot be believed.
 //
-// A save is written to a file of another name beside the old one, and takes
-// its place only when it is whole. Whatever is found half-way at the next
-// start -- the new one there and the old one gone, or both -- is put right
-// then (saveRecover).
+// A save is written to a file of another name beside the old one (.new), and
+// takes its place only when it is whole: the old one is renamed aside (.old)
+// first and removed last, so that at every moment one whole save is on the
+// card under a name the game knows. Nothing is removed before what replaces
+// it is in its place -- a card that starts refusing (a worn one) costs the
+// saves it refuses, never one it had. Whatever is found half-way at the next
+// start is put right then (saveRecover).
 //
 // All of it is over a small interface to "a folder of files" (SaveCard), so
 // that the host tests run it against a folder of their own, and against one
@@ -148,6 +151,20 @@ namespace hldata
     {
         SaveSlot slots[kSlotCount];
         std::uint32_t nextSerial = 1;
+        /// (Not on the card.) A slot whose last write could not be put in its
+        /// place: its files are put right before it is written again.
+        bool unsettled[kSlotCount] = {};
+
+        /// As new, in place. (Not `= SaveIndex()`: that is ten kilobytes made
+        /// on the stack first, more than a DS's functions may take.)
+        void clear()
+        {
+            for (SaveSlot &slot : slots)
+                slot = SaveSlot();
+            for (bool &u : unsettled)
+                u = false;
+            nextSerial = 1;
+        }
     };
 
     namespace detail
@@ -177,26 +194,41 @@ namespace hldata
         {
             return std::string(saveSlotFile(slot)) + ".new";
         }
+        /// The save a slot had, set aside while a new one takes its place.
+        inline std::string oldName(int slot)
+        {
+            return std::string(saveSlotFile(slot)) + ".old";
+        }
 
-        /// Which slots have a file, and which a file left half-written, if
-        /// the card can list itself; false if it cannot.
-        inline bool slotsOnCard(SaveCard &card, std::vector<bool> &has, std::vector<bool> &fresh)
+        /// Which slots have a file, which a new one beside it (half-written,
+        /// or not yet in its place), and which an old one set aside, if the
+        /// card can list itself; false if it cannot.
+        inline bool slotsOnCard(SaveCard &card, std::vector<bool> &has, std::vector<bool> &fresh,
+                                std::vector<bool> &aside)
         {
             std::vector<std::string> names;
             if (!card.list(names))
                 return false;
             has.assign(kSlotCount, false);
             fresh.assign(kSlotCount, false);
+            aside.assign(kSlotCount, false);
             for (std::string &name : names)
             {
                 const bool isFresh = name.size() > 4 && name.compare(name.size() - 4, 4, ".new") == 0;
-                if (isFresh)
+                const bool isOld = name.size() > 4 && name.compare(name.size() - 4, 4, ".old") == 0;
+                if (isFresh || isOld)
                     name.resize(name.size() - 4);
                 const int slot = saveSlotOfFile(name.c_str());
                 if (slot >= 0)
-                    (isFresh ? fresh : has)[slot] = true;
+                    (isFresh ? fresh : (isOld ? aside : has))[slot] = true;
             }
             return true;
+        }
+
+        inline bool exists(SaveCard &card, const char *name)
+        {
+            std::vector<std::uint8_t> probe;
+            return card.read(name, probe, 1);
         }
 
         inline void noteHeader(const std::vector<std::uint8_t> &bytes, SaveSlot &slot)
@@ -294,28 +326,60 @@ namespace hldata
         return true;
     }
 
-    /// One slot put right after a write that was cut off, and what it is
-    /// now. The new file, if it is whole, is the save (the old one goes);
-    /// if it is not, it goes.
+    /// A slot's new file (whole: checked) put in its place. The save there
+    /// is renamed aside first and removed last; if the new one cannot be put
+    /// in, the old one is put back. False if the new one is not in its place
+    /// -- the old one is then the slot's still, or, if the card would not even
+    /// put it back, aside where saveRecover finds it. Never is one removed
+    /// before another whole one has its name.
+    inline bool savePlaceFresh(SaveCard &card, int slot)
+    {
+        const char *file = saveSlotFile(slot);
+        const std::string fresh = detail::freshName(slot), old = detail::oldName(slot);
+        const bool had = detail::exists(card, file);
+        if (had)
+        {
+            // (An old one left aside before, with the slot's own file there:
+            // the slot's is the newer. FAT renames over nothing.)
+            if (detail::exists(card, old.c_str()) && !card.remove(old.c_str()))
+                return false;
+            if (!card.rename(file, old.c_str()))
+                return false;
+        }
+        if (!card.rename(fresh.c_str(), file))
+        {
+            if (had)
+                card.rename(old.c_str(), file);
+            return false;
+        }
+        if (had)
+            card.remove(old.c_str()); // (failed, it is found and removed at the next start)
+        return true;
+    }
+
+    /// One slot put right after a write that was cut off or refused, and what
+    /// it is now: an old save left aside with nothing in its place put back;
+    /// a whole new one put in its place; what is left beside a whole save
+    /// removed. Nothing is removed unless the slot has a whole save.
     inline SaveSlot saveRecover(SaveCard &card, int slot)
     {
         SaveSlot out;
-        const std::string fresh = detail::freshName(slot);
+        const char *file = saveSlotFile(slot);
+        const std::string fresh = detail::freshName(slot), old = detail::oldName(slot);
         std::vector<std::uint8_t> bytes;
-        if (card.read(fresh.c_str(), bytes, kSaveHeadBytes))
+        if (!detail::exists(card, file) && detail::exists(card, old.c_str()))
+            card.rename(old.c_str(), file);
+        if (detail::exists(card, fresh.c_str()))
         {
             if (saveFileWhole(card, fresh.c_str()))
-            {
-                card.remove(saveSlotFile(slot));
-                card.rename(fresh.c_str(), saveSlotFile(slot));
-            }
-            else
-            {
-                card.remove(fresh.c_str());
-            }
+                savePlaceFresh(card, slot);
+            else if (saveFileWhole(card, file))
+                card.remove(fresh.c_str()); // (half-written: the slot's own is whole)
         }
+        if (detail::exists(card, old.c_str()) && saveFileWhole(card, file))
+            card.remove(old.c_str());
         bytes.clear();
-        if (card.read(saveSlotFile(slot), bytes, kSaveHeadBytes))
+        if (card.read(file, bytes, kSaveHeadBytes))
         {
             out.status = readSaveHeading(bytes.data(), bytes.size(), out.heading);
             detail::noteHeader(bytes, out);
@@ -349,7 +413,13 @@ namespace hldata
         std::memcpy(bytes.data(), &head, sizeof(head));
         if (entryBytes != 0)
             std::memcpy(bytes.data() + sizeof(head), entries.data(), entryBytes);
-        return card.write(kSaveIndexFile, bytes.data(), bytes.size());
+        if (card.write(kSaveIndexFile, bytes.data(), bytes.size()))
+            return true;
+        // (Not written: an index that is whole but behind is worse than
+        // none -- it would be believed at the next start. Gone, the list is
+        // made again from the files then.)
+        card.remove(kSaveIndexFile);
+        return false;
     }
 
     /// The list made again from the files themselves (each put right
@@ -357,14 +427,17 @@ namespace hldata
     /// which.)
     inline void saveIndexRebuild(SaveCard &card, SaveIndex &index)
     {
-        index = SaveIndex();
-        std::vector<bool> has, fresh;
-        const bool listed = detail::slotsOnCard(card, has, fresh);
+        index.clear();
+        std::vector<bool> has, fresh, aside;
+        const bool listed = detail::slotsOnCard(card, has, fresh, aside);
         for (int i = 0; i < kSlotCount; ++i)
         {
-            if (listed && !has[i] && !fresh[i])
+            if (listed && !has[i] && !fresh[i] && !aside[i])
                 continue;
             index.slots[i] = saveRecover(card, i);
+            // (A new one the card would not put in its place: kept, and not
+            // written over by the next save of the slot.)
+            index.unsettled[i] = (!listed || fresh[i]) && detail::exists(card, detail::freshName(i).c_str());
             if (index.slots[i].status == kSaveGood && index.slots[i].heading.serial >= index.nextSerial)
                 index.nextSerial = index.slots[i].heading.serial + 1;
         }
@@ -390,21 +463,33 @@ namespace hldata
                    bytes.size() == sizeof(head) + entryBytes &&
                    head.crc == crc32(bytes.data() + sizeof(head), static_cast<std::uint32_t>(entryBytes));
         }
-        // (A new file left beside a save means the index is behind.)
+        // The index is believed only if the card agrees with it: a file
+        // left beside a save (new, or old set aside) means a write was cut
+        // off; a save it lists that is not there, or one there it does not
+        // list, that it is behind (a write of it the card refused).
         if (good && recover)
         {
-            std::vector<bool> has, fresh;
-            if (detail::slotsOnCard(card, has, fresh))
+            std::vector<bool> listedSlot(kSlotCount, false);
+            for (std::uint32_t e = 0; e < head.count; ++e)
+            {
+                detail::IndexEntry entry;
+                std::memcpy(&entry, bytes.data() + sizeof(head) + e * sizeof(entry), sizeof(entry));
+                if (entry.slot < kSlotCount && entry.status != static_cast<std::uint32_t>(kSaveNone))
+                    listedSlot[entry.slot] = true;
+            }
+            std::vector<bool> has, fresh, aside;
+            if (detail::slotsOnCard(card, has, fresh, aside))
             {
                 for (int i = 0; good && i < kSlotCount; ++i)
-                    good = !fresh[i];
+                    good = !fresh[i] && !aside[i] && has[i] == listedSlot[i];
             }
             else
             {
                 for (int i = 0; good && i < kSlotCount; ++i)
                 {
-                    std::vector<std::uint8_t> probe;
-                    if (card.read(detail::freshName(i).c_str(), probe, 1))
+                    if (detail::exists(card, detail::freshName(i).c_str()) ||
+                        detail::exists(card, detail::oldName(i).c_str()) ||
+                        (listedSlot[i] && !detail::exists(card, saveSlotFile(i))))
                         good = false;
                 }
             }
@@ -414,7 +499,7 @@ namespace hldata
             saveIndexRebuild(card, index);
             return;
         }
-        index = SaveIndex();
+        index.clear();
         index.nextSerial = head.nextSerial;
         for (std::uint32_t e = 0; e < head.count; ++e)
         {
@@ -463,13 +548,42 @@ namespace hldata
                    const RunIndex *run = nullptr, bool byRef = false)
         {
             stage_ = Stage::Idle;
+            failedAt_ = "begin";
             if (slot < 0 || slot >= kSlotCount)
                 return false;
+            // A write of this slot the card would not put in its place: put
+            // right first. Its new file may be the newest save there is; if it
+            // is still there after, it is not written over -- this save is
+            // refused instead.
+            if (index.unsettled[slot])
+            {
+                const SaveSlot now = saveRecover(card, slot);
+                if (detail::exists(card, detail::freshName(slot).c_str()))
+                {
+                    failedAt_ = "unsettled";
+                    return false;
+                }
+                index.slots[slot] = now;
+                index.unsettled[slot] = false;
+            }
+            // (One of the player's the list has as empty, with a file there
+            // after all -- a list the card would not let be brought up to
+            // date: that save is not written over. The list learns of it.)
+            if (slot >= kSlotManual && index.slots[slot].status == kSaveNone && detail::exists(card, saveSlotFile(slot)))
+            {
+                index.slots[slot] = saveRecover(card, slot);
+                failedAt_ = "taken";
+                return false;
+            }
             heading.kind = saveSlotKind(slot);
             heading.serial = index.nextSerial;
             bytes_ = writeSave(data, heading);
             if (bytes_.size() > kSaveMaxBytes + kSaveHeadBytes)
+            {
+                failedAt_ = "too big";
+                letGo();
                 return false;
+            }
             // The maps left: a heading and their table, here; their files
             // after, copied a piece at a time (Copy).
             files_.clear();
@@ -509,6 +623,8 @@ namespace hldata
 
         bool busy() const { return stage_ != Stage::Idle; }
         int slot() const { return slot_; }
+        /// Where the last write that failed stopped ("write", "swap" ...).
+        const char *failedAt() const { return failedAt_; }
 
         Result step()
         {
@@ -520,7 +636,7 @@ namespace hldata
             {
                 const std::size_t n = piece();
                 if (!card_->append(fresh_.c_str(), bytes_.data() + at_, n, at_ == 0))
-                    return fail();
+                    return fail("write");
                 at_ += n;
                 if (at_ == bytes_.size())
                 {
@@ -539,9 +655,10 @@ namespace hldata
                 runFileOf(entry.name, name);
                 const std::size_t left = entry.bytes - fileAt_;
                 const std::size_t n = left < kSaveStepBytes ? left : kSaveStepBytes;
-                if (!card_->readAt(name, fileAt_, n, piece_) || piece_.size() != n ||
-                    !card_->append(fresh_.c_str(), piece_.data(), n, false))
-                    return fail();
+                if (!card_->readAt(name, fileAt_, n, piece_) || piece_.size() != n)
+                    return fail("read map");
+                if (!card_->append(fresh_.c_str(), piece_.data(), n, false))
+                    return fail("write map");
                 fileAt_ += n;
                 if (fileAt_ == entry.bytes)
                 {
@@ -554,7 +671,7 @@ namespace hldata
             }
             case Stage::Close:
                 if (!card_->finish(fresh_.c_str()))
-                    return fail();
+                    return fail("close");
                 at_ = 0;
                 stage_ = Stage::Check;
                 return Result::Busy;
@@ -565,9 +682,10 @@ namespace hldata
                 const std::size_t n = piece();
                 std::vector<std::uint8_t> back;
                 const bool last = at_ + n == bytes_.size() && files_.empty();
-                if (!card_->readAt(fresh_.c_str(), at_, n + (last ? 1 : 0), back) ||
-                    back.size() != n || std::memcmp(back.data(), bytes_.data() + at_, n) != 0)
-                    return fail();
+                if (!card_->readAt(fresh_.c_str(), at_, n + (last ? 1 : 0), back))
+                    return fail("read back");
+                if (back.size() != n || std::memcmp(back.data(), bytes_.data() + at_, n) != 0)
+                    return fail("not as written");
                 at_ += n;
                 if (at_ == bytes_.size())
                 {
@@ -586,29 +704,30 @@ namespace hldata
                 std::uint32_t crc = 0;
                 if (entry.bytes < 8 || !cardCrc(*card_, fresh_.c_str(), fileAt_, entry.bytes - 8, piece_, crc) ||
                     crc != entry.crc)
-                    return fail();
+                    return fail("map read back");
                 fileAt_ += entry.bytes;
                 if (++file_ == files_.size())
                 {
                     // (... and nothing after the last.)
                     std::vector<std::uint8_t> more;
                     if (!card_->readAt(fresh_.c_str(), fileAt_, 1, more) || !more.empty())
-                        return fail();
+                        return fail("map read back");
                     card_->finish(fresh_.c_str());
                     stage_ = Stage::Swap;
                 }
                 return Result::Busy;
             }
             case Stage::Swap:
-                card_->remove(saveSlotFile(slot_));
-                stage_ = Stage::Rename;
-                return Result::Busy;
-            case Stage::Rename:
                 stage_ = Stage::Idle;
-                if (!card_->rename(fresh_.c_str(), saveSlotFile(slot_)))
+                if (!savePlaceFresh(*card_, slot_))
                 {
+                    // (The new one is whole, beside the old: neither is
+                    // removed. Put right before this slot is written again,
+                    // or at the next start.)
+                    index_->unsettled[slot_] = true;
+                    failedAt_ = "swap";
                     letGo();
-                    return Result::Failed; // (the new one is still there under its other name: saveRecover finds it)
+                    return Result::Failed;
                 }
                 index_->slots[slot_].status = kSaveGood;
                 index_->slots[slot_].heading = heading_;
@@ -639,8 +758,7 @@ namespace hldata
             Close,
             Check,
             CheckFiles,
-            Swap,
-            Rename
+            Swap
         };
 
         std::size_t piece() const
@@ -648,8 +766,10 @@ namespace hldata
             const std::size_t left = bytes_.size() - at_;
             return left < kSaveStepBytes ? left : kSaveStepBytes;
         }
-        Result fail()
+        /// (Before the swap: the new file is not whole, and goes.)
+        Result fail(const char *where)
         {
+            failedAt_ = where;
             card_->finish(fresh_.c_str());
             card_->remove(fresh_.c_str());
             stage_ = Stage::Idle;
@@ -667,6 +787,7 @@ namespace hldata
         }
 
         Stage stage_ = Stage::Idle;
+        const char *failedAt_ = "";
         SaveCard *card_ = nullptr;
         SaveIndex *index_ = nullptr;
         int slot_ = -1;
@@ -781,9 +902,11 @@ namespace hldata
     {
         std::vector<std::uint8_t> probe;
         card.remove(detail::freshName(slot).c_str());
+        card.remove(detail::oldName(slot).c_str());
         if (card.read(saveSlotFile(slot), probe, 1) && !card.remove(saveSlotFile(slot)))
             return false;
         index.slots[slot] = SaveSlot();
+        index.unsettled[slot] = false;
         saveIndexWrite(card, index);
         return true;
     }

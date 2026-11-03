@@ -172,6 +172,7 @@ namespace hlrt::SaveGame
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <cerrno>
 #include <cstring>
 
 #include "Global.hpp"
@@ -331,7 +332,11 @@ namespace hlrt::SaveGame
                     dir.pop_back();
                 DIR *folder = opendir(dir.c_str());
                 if (folder == nullptr)
-                    return true; // (no folder: no saves)
+                {
+                    // (No folder: no saves. Any other refusal is not "none":
+                    // the files are asked for by name instead.)
+                    return errno == ENOENT;
+                }
                 while (const dirent *entry = readdir(folder))
                 {
                     if (entry->d_type != DT_DIR)
