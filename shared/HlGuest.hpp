@@ -84,8 +84,10 @@ namespace hldata
     // the map nearest the limit, doublecross, was 128 KB under it; and again
     // with the host's and the lobby's pages (0x0217154C): about 96 KB under.
     // Lowered when the child stopped carrying the saves (0x02168D24, 30 Oct
-    // 2026: phase 6's second round).
-    inline constexpr std::uint32_t kGuestImageBytes = 0x165B6C + 64 * 1024;
+    // 2026: phase 6's second round). Raised 2 KB for the long jump, pulled
+    // and floating boxes and the tanks' sprites (3 Nov 2026): subtransit,
+    // the map nearest the limit, is then 3 KB under it.
+    inline constexpr std::uint32_t kGuestImageBytes = 0x165B6C + 66 * 1024;
     /// The heap's end: the end of main RAM less what the start-up code keeps.
     inline constexpr std::uint32_t kGuestRamBytes = 0x3F4000;
     /// What the engine holds beside a map's data -- its tables, the world's
