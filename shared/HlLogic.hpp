@@ -309,6 +309,9 @@ namespace hldata
         /// the record and how hard, in pairs -- for the other consoles to
         /// be told. Only kept while `sharing`; whoever reads it empties it.
         bool sharing = false;
+        /// The player holds USE: a box they walk into is not pushed (it is
+        /// theirs to pull, logicPull). Whoever reads the buttons sets it.
+        Unsaved<bool> useHeld;
         /// The guns' aim is NOT to bend towards a monster near it (it may on
         /// EASY and MEDIUM: the game's sv_aim, HlAutoaim.hpp). The caller's
         /// setting, given each frame: not the game's state.
@@ -372,7 +375,8 @@ namespace hldata
     }
 
     /// What is used again each frame while USE is held on it
-    /// (FCAP_CONTINUOUS_USE): the wall chargers.
+    /// (FCAP_CONTINUOUS_USE): the wall chargers. (A box too, but that is
+    /// logicPull's.)
     inline bool logicContinuousUse(const LogicRecord &record)
     {
         return record.kind == static_cast<std::uint8_t>(LogicKind::HealthCharger) ||
@@ -2059,6 +2063,34 @@ namespace hldata
             return best;
         }
 
+        /// A box's scrape along the floor, no oftener than the game has it.
+        inline void boxScrape(LogicWorld &w, int index)
+        {
+            LogicState &state = w.states[index];
+            if (state.base[0] > 0 || state.bits == 0 || w.heard == nullptr)
+                return;
+            state.base[0] = 700;
+            w.effectSeed = w.effectSeed * 1664525u + 1013904223u;
+            const MoverHull &hull = w.movers[w.records[index].brush];
+            const fx from[3] = {(hull.mins[0] + hull.maxs[0]) / 2, (hull.mins[1] + hull.maxs[1]) / 2, hull.mins[2]};
+            const int which = static_cast<int>((w.effectSeed >> 12) % 3);
+            w.heard->add(which == 0 ? CommonSound::PushBox1 : (which == 1 ? CommonSound::PushBox2 : CommonSound::PushBox3),
+                         from, 64, kRadiusMedium);
+        }
+
+        /// A box no faster than its top speed, its direction kept.
+        inline void boxLimit(const LogicRecord &record, fx *v)
+        {
+            const fx flat[3] = {v[0], v[1], 0};
+            const fx speed = fxLength(flat);
+            const fx top = static_cast<fx>(record.extra[2]);
+            if (speed > top && speed > 0)
+            {
+                v[0] = static_cast<fx>((static_cast<std::int64_t>(v[0]) * top) / speed);
+                v[1] = static_cast<fx>((static_cast<std::int64_t>(v[1]) * top) / speed);
+            }
+        }
+
         inline void pushableTick(LogicWorld &w, PlayerState &player, int index, int ms)
         {
             const LogicRecord &record = w.records[index];
@@ -2073,30 +2105,13 @@ namespace hldata
             // their feet on the ground, and not from someone standing on it.
             if (state.base[0] > 0)
                 state.base[0] -= ms; // (until its scrape may be heard again)
-            if (player.touchedMover == brush && player.onGround && player.groundMover != brush)
+            if (player.touchedMover == brush && player.onGround && player.groundMover != brush && !w.useHeld.value)
             {
-                // Its scrape along the floor, no oftener than the game has it.
-                if (state.base[0] <= 0 && state.bits != 0 && w.heard != nullptr &&
-                    (player.touchVelocity[0] != 0 || player.touchVelocity[1] != 0))
-                {
-                    state.base[0] = 700;
-                    w.effectSeed = w.effectSeed * 1664525u + 1013904223u;
-                    const MoverHull &hull = w.movers[brush];
-                    const fx from[3] = {(hull.mins[0] + hull.maxs[0]) / 2, (hull.mins[1] + hull.maxs[1]) / 2, hull.mins[2]};
-                    const int which = static_cast<int>((w.effectSeed >> 12) % 3);
-                    w.heard->add(which == 0 ? CommonSound::PushBox1 : (which == 1 ? CommonSound::PushBox2 : CommonSound::PushBox3),
-                                 from, 64, kRadiusMedium);
-                }
+                if (player.touchVelocity[0] != 0 || player.touchVelocity[1] != 0)
+                    boxScrape(w, index);
                 v[0] += player.touchVelocity[0];
                 v[1] += player.touchVelocity[1];
-                const fx flat[3] = {v[0], v[1], 0};
-                const fx speed = fxLength(flat);
-                const fx top = static_cast<fx>(record.extra[2]);
-                if (speed > top && speed > 0)
-                {
-                    v[0] = static_cast<fx>((static_cast<std::int64_t>(v[0]) * top) / speed);
-                    v[1] = static_cast<fx>((static_cast<std::int64_t>(v[1]) * top) / speed);
-                }
+                boxLimit(record, v);
                 // The pusher goes at the pace of the box.
                 player.velocity[0] = v[0];
                 player.velocity[1] = v[1];
@@ -5131,14 +5146,15 @@ namespace hldata
             const LogicRecord &record = w.records[i];
             const auto kind = static_cast<LogicKind>(record.kind);
             // Asked what a blow would land on, the answer is what breaks;
-            // asked what USE would work, it is buttons and the doors that
-            // open by hand.
+            // asked what USE would work, it is buttons, the doors that open
+            // by hand, and the boxes to pull.
             const bool usable =
                 toStrike ? (detail::isBreakable(record) && !(record.flags & kLogicTriggerOnly) &&
                             record.extra[1] != 7)
                          : ((kind == LogicKind::Button && !(record.flags & kLogicTouch)) ||
                             kind == LogicKind::MomentaryButton ||
                             kind == LogicKind::HealthCharger || kind == LogicKind::SuitCharger ||
+                            kind == LogicKind::Pushable ||
                             ((kind == LogicKind::Door || kind == LogicKind::DoorRotating) &&
                              (record.flags & kLogicUseOnly)));
             if (!usable || w.states[i].dead || record.brush == kNoBrush ||
@@ -5177,6 +5193,29 @@ namespace hldata
             }
         }
         return best;
+    }
+
+    /// USE held on a box (CPushable::Use): the player's own speed along the
+    /// floor comes to it bit by bit -- a quarter a frame at the game's 60 --
+    /// each way only while it is slower than they are. (USE held already has them
+    /// at a third of their speed, MoveCommand::use: that keeps it in reach.)
+    /// Only from someone with their feet on the ground, and not on the box.
+    inline void logicPull(LogicWorld &w, const PlayerState &player, int index, int ms)
+    {
+        const LogicRecord &record = w.records[index];
+        if (!player.onGround || player.groundMover == record.brush ||
+            (player.velocity[0] == 0 && player.velocity[1] == 0))
+            return;
+        fx *v = w.states[index].travel;
+        for (int a = 0; a < 2; ++a)
+        {
+            const fx gain = static_cast<fx>((static_cast<std::int64_t>(player.velocity[a]) * ms * 15) / 1000);
+            const fx limit = player.velocity[a] - gain;
+            if ((v[a] < 0 ? -v[a] : v[a]) < (limit < 0 ? -limit : limit))
+                v[a] += gain;
+        }
+        detail::boxLimit(record, v);
+        detail::boxScrape(w, index);
     }
 
     // ------------------------------------------------------------------ driving the tram

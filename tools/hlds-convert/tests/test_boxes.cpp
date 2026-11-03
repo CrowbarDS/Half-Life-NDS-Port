@@ -350,6 +350,138 @@ namespace
         return game->ok ? std::move(game) : nullptr;
     }
 
+    /// USE held on a box: it is not pushed, and it follows someone walking off.
+    void testPull(const BoxRoom &room)
+    {
+        std::unique_ptr<Game> game = cook(room);
+        check(game != nullptr, "the room to pull a crate in cooks");
+        if (game == nullptr)
+            return;
+        Game &g = *game;
+        const int box = boxesOf(g)[0];
+        const int brush = g.view.logic[box].brush;
+        const MoverHull &hull = g.movers[brush];
+        for (int tick = 0; tick < 30; ++tick)
+            logicTick(g.logic, g.player, 16);
+        const fx startX = hull.mins[0];
+        const fx feet = hull.mins[2];
+        g.player.origin[0] = startX - fxFromInt(17);
+        g.player.origin[1] = 0;
+        g.player.origin[2] = feet + fxFromInt(36);
+        g.player.onGround = true;
+        g.player.groundMover = -1;
+
+        const fx eye[3] = {g.player.origin[0], 0, g.player.origin[2] + fxFromInt(28)};
+        const fx east[3] = {kFxOne, 0, 0}, west[3] = {-kFxOne, 0, 0};
+        check(logicFindUsable(g.logic, eye, east) == box, "USE, facing a box, is the box");
+        check(logicFindUsable(g.logic, eye, west) == -1, "... and not with its back to it");
+
+        // Walking into it, holding USE: it stays where it is.
+        g.logic.useHeld.value = true;
+        for (int tick = 0; tick < 30; ++tick)
+        {
+            g.player.touchedMover = static_cast<std::int16_t>(brush);
+            g.player.touchVelocity[0] = g.player.velocity[0] = fxFromInt(100);
+            logicTick(g.logic, g.player, 16);
+        }
+        check(hull.mins[0] == startX, "holding USE, walking into a box doesn't push it");
+        g.player.touchedMover = -1;
+        g.player.touchVelocity[0] = 0;
+
+        // In the air, or standing on it: no pull.
+        g.player.velocity[0] = -fxFromInt(200);
+        g.player.onGround = false;
+        logicPull(g.logic, g.player, box, 16);
+        check(g.logic.states[box].travel[0] == 0, "someone in the air doesn't pull a box");
+        g.player.onGround = true;
+        g.player.groundMover = static_cast<std::int16_t>(brush);
+        logicPull(g.logic, g.player, box, 16);
+        check(g.logic.states[box].travel[0] == 0, "nor someone standing on it");
+        g.player.groundMover = -1;
+
+        // Walking off: it follows, never faster than they go, and they
+        // aren't slowed.
+        fx fastest = 0;
+        for (int tick = 0; tick < 60; ++tick)
+        {
+            logicPull(g.logic, g.player, box, 16);
+            fastest = std::max(fastest, static_cast<fx>(-g.logic.states[box].travel[0]));
+            g.player.origin[0] -= fxFromInt(200) * 16 / 1000;
+            logicTick(g.logic, g.player, 16);
+        }
+        const int went = fxToInt(startX - hull.mins[0]);
+        std::printf("test_boxes: pulled for about a second by someone going 200: it came %d, at up to %d\n", went,
+                    fxToInt(fastest));
+        check(went > 60 && went < 192, "a pulled box follows, and falls behind");
+        check(fastest <= fxFromInt(200), "... no faster than the one pulling");
+        check(g.player.velocity[0] == -fxFromInt(200), "... who isn't slowed by it");
+
+        // Let go: it pushes again.
+        g.logic.useHeld.value = false;
+        for (int tick = 0; tick < 120; ++tick)
+            logicTick(g.logic, g.player, 16);
+        const fx rest = hull.mins[0];
+        g.player.origin[0] = rest - fxFromInt(17);
+        g.player.touchedMover = static_cast<std::int16_t>(brush);
+        g.player.touchVelocity[0] = g.player.velocity[0] = fxFromInt(100);
+        logicTick(g.logic, g.player, 16);
+        logicTick(g.logic, g.player, 16);
+        check(hull.mins[0] > rest, "with USE let go, it is pushed again");
+    }
+
+    /// A crate of the Hazard Course, pulled as the game does it: USE looks for
+    /// what is in view each frame, from a pace in front of it.
+    void testPullOnMap(const char *dir)
+    {
+        std::unique_ptr<Game> game = load(dir, "t0a0b");
+        if (game == nullptr)
+            return;
+        Game &g = *game;
+        int box = -1;
+        for (const int b : boxesOf(g))
+        {
+            if (fxToInt(g.movers[g.view.logic[b].brush].mins[0]) == 1152)
+                box = b;
+        }
+        check(box >= 0, "t0a0b has its crate at 1152");
+        if (box < 0)
+            return;
+        const MoverHull &hull = g.movers[g.view.logic[box].brush];
+        for (int tick = 0; tick < 30; ++tick)
+            logicTick(g.logic, g.player, 17);
+        const fx startX = hull.mins[0];
+        g.player.origin[0] = fxFromInt(1112);
+        g.player.origin[1] = fxFromInt(-424);
+        g.player.origin[2] = fxFromInt(-184);
+        g.player.onGround = true;
+        g.player.groundMover = -1;
+        g.player.viewHeight = fxFromInt(28);
+        g.logic.useHeld.value = true;
+        const fx east[3] = {kFxOne, 0, 0};
+        // (Going back at USE's third of the top speed, and speeding up to it.)
+        int frames = 0;
+        fx speed = 0;
+        for (int tick = 0; tick < 60; ++tick)
+        {
+            speed = std::min(speed + fxFromInt(45), kMaxSpeed / 3);
+            g.player.velocity[0] = -speed;
+            g.player.origin[0] -= speed * 17 / 1000;
+            logicTick(g.logic, g.player, 17);
+            g.drain();
+            const fx eye[3] = {g.player.origin[0], g.player.origin[1], g.player.origin[2] + g.player.viewHeight};
+            if (logicFindUsable(g.logic, eye, east) == box)
+            {
+                logicPull(g.logic, g.player, box, 17);
+                ++frames;
+            }
+        }
+        std::printf("test_boxes: t0a0b's crate, pulled for a second: it came %d, in reach for %d frames of 60\n",
+                    fxToInt(startX - hull.mins[0]), frames);
+        // (It goes a little slower than they do: in the end it is out of reach, as
+        // in the game.)
+        check(frames >= 45 && startX - hull.mins[0] > fxFromInt(50), "a crate on the Hazard Course comes when pulled, and stays in reach a while");
+    }
+
     /// The same on rooms made here, and what the maps cannot be asked for: a
     /// crate shoved into a wall stops at it with its own side, however wide.
     void testRooms()
@@ -380,6 +512,8 @@ namespace
         check(game != nullptr, "the room of one crate cooks");
         if (game != nullptr)
             playerAndBox(*game, boxesOf(*game)[0]);
+
+        testPull(open);
 
         for (const float width : {32.0f, 64.0f, 128.0f})
         {
@@ -423,6 +557,7 @@ int main()
             std::printf("test_boxes: ok\n");
         return g_failures == 0 ? 0 : 1;
     }
+    testPullOnMap(dir);
     pushedAbout(dir, "c1a2");
     pushedAbout(dir, "c1a1b");
     pushedAbout(dir, "c1a1c");

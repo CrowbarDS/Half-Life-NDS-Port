@@ -12,6 +12,7 @@
 #include "game/Game.hpp"
 #include "game/GameApi.hpp"
 #include "game/Input.hpp"
+#include "net/NetGame.hpp"
 #include "render/Camera.hpp"
 #include "render/HudDraw.hpp"
 
@@ -183,6 +184,8 @@ namespace hlrt
             cmd.jump = input.jump;
             cmd.duck = input.duck;
             cmd.walk = input.walk;
+            // (Not in a match: a guest's USE isn't sent as it is held.)
+            cmd.use = input.useHeld && !netGame.playing();
             // libnds angles are 32768 to the circle; ours are 65536.
             const fx s = sinLerp(static_cast<s16>(camera.yaw >> 1));
             const fx c = cosLerp(static_cast<s16>(camera.yaw >> 1));

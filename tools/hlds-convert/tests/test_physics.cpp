@@ -393,6 +393,12 @@ namespace
         const double crouched = speedAfter(0, true, true);
         check(crouched > 5 && crouched <= 40.5, "... and no more than 40 crouched");
         check(speedAfter(0, false, false) > 250, "not asked for, a run");
+        Sim held = spawn(w);
+        held.run(30);
+        held.cmd.forward = 1;
+        held.cmd.use = true;
+        held.run(8);
+        check(std::fabs(held.speed2d() - 320.0 / 3) < 1, "USE held, on the ground: a third of the top speed");
     }
 
     /// The long jump: moving, the crouch just pressed, with the module; and

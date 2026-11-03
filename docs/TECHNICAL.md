@@ -194,8 +194,11 @@ Milestone 11, "levels of detail".
   a box in its way, or is stopped by it as it is by the player, and carries
   one that stands on it. Its scrape along the floor is the game's.
   (`shared/HlLogic.hpp`, `pushableTick`; `test_boxes` shoves every box of
-  four of the game's maps every way and looks.) Not yet: pulling one with
-  USE, and floating.
+  four of the game's maps every way and looks.) Holding USE on one stops
+  the push and pulls it instead: it takes on the player's speed a quarter a
+  frame at 60 frames a second. USE held on the ground cuts the player's top
+  speed to a third, with or without a box, as the game does. Not in a match, where a
+  guest's USE isn't sent while held. Not yet: floating.
 - The long jump module (`item_longjump`), for someone in the suit: running,
   with the crouch pressed under a second ago, a jump goes 560 units a second
   along the view, about 450 on the flat with the legs tucked.

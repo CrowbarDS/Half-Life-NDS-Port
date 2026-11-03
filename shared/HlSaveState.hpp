@@ -47,7 +47,7 @@ namespace hldata
     HL_FIELDS(BrushState, 6);
     HL_FIELDS(LogicState, 12);
     HL_FIELDS(LogicEvent, 6);
-    HL_FIELDS(LogicWorld, 76);
+    HL_FIELDS(LogicWorld, 77);
     HL_FIELDS(Hull, 4);
     HL_FIELDS(MoverHull, 10);
     HL_FIELDS(LadderVolume, 3);

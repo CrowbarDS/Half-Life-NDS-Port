@@ -789,6 +789,9 @@ namespace hlrt
         if (!player.noclip)
         {
             const DebugLog::Perf::Scope scope(DebugLog::Section::Logic);
+            // (A box isn't pushed by someone holding USE, who is pulling it.
+            // Not in a match: a guest's USE isn't sent as it is held.)
+            logic.useHeld.value = input.useHeld && !netGame.playing();
             // Sixtieths of a second to milliseconds.
             logicTick(logic, player.state, (vblanks * 1000 + 30) / 60);
             // What the player rides has turned: so has their view.
@@ -815,16 +818,19 @@ namespace hlrt
                 // wpn_select; nothing there to use, wpn_denyselect -- each
                 // at four tenths.)
                 constexpr int kUseVolume = 51;
+                const bool box = target >= 0 && logic.records[target].kind == static_cast<std::uint8_t>(LogicKind::Pushable);
                 if (target == -2)
                 {
                 }
-                else if (target >= 0)
+                else if (target >= 0 && !box)
                 {
                     logicUse(logic, player.state, target, -1, kUseSet);
                     netGame.used(target); // (a game between consoles: they are told)
                     sound.ui(kUiSoundWeapon, kUseVolume);
                 }
                 else if (personUse(logic, player.state, eye, camera.forward)) // (a scientist or a guard: follow, or stay)
+                    sound.ui(kUiSoundWeapon, kUseVolume);
+                else if (box)
                     sound.ui(kUiSoundWeapon, kUseVolume);
                 else
                     sound.ui(kUiSoundDeny, kUseVolume);
@@ -839,6 +845,8 @@ namespace hlrt
                 const int target = logicFindUsable(logic, eye, camera.forward);
                 if (target >= 0 && logicContinuousUse(logic.records[target]))
                     logicUse(logic, player.state, target, -1, kUseSet);
+                else if (target >= 0 && logic.useHeld.value && logic.records[target].kind == static_cast<std::uint8_t>(LogicKind::Pushable))
+                    logicPull(logic, player.state, target, (vblanks * 1000 + 30) / 60);
             }
         }
         // What fights, what lies about, and what is in hand.

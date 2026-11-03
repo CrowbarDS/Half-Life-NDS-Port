@@ -79,6 +79,7 @@ namespace hldata
         bool jump = false;
         bool duck = false;
         bool walk = false; ///< the keys ask for a walk, not a run
+        bool use = false;  ///< USE is held: a third of the top speed, on the ground
         /// The view's horizontal axes, unit length, Q12: forward is
         /// (cos yaw, sin yaw) and right is (sin yaw, -cos yaw).
         fx forwardXY[2] = {kFxOne, 0};
@@ -774,6 +775,12 @@ namespace hldata
                 }
             }
 
+            /// The fastest the keys may ask for.
+            fx topSpeed(const MoveCommand &cmd) const
+            {
+                return cmd.use && s.onGround ? kMaxSpeed / 3 : kMaxSpeed;
+            }
+
             /// Swimming: the keys move along where the player LOOKS, there is
             /// no gravity, and left alone they sink slowly.
             void waterMove(const MoveCommand &cmd)
@@ -793,8 +800,8 @@ namespace hldata
                         wishDir[i] = static_cast<fx>(
                             (static_cast<std::int64_t>(wishVel[i]) << kFxShift) / wishSpeed);
                 }
-                if (wishSpeed > kMaxSpeed)
-                    wishSpeed = kMaxSpeed;
+                if (wishSpeed > topSpeed(cmd))
+                    wishSpeed = topSpeed(cmd);
                 wishSpeed = (wishSpeed * 8) / 10;
                 carry(1, true);
 
@@ -1049,7 +1056,7 @@ namespace hldata
                     wishDir[i] = static_cast<fx>(
                         (static_cast<std::int64_t>(wishVel[i]) << kFxShift) / speed);
                 }
-                return speed > kMaxSpeed ? kMaxSpeed : speed;
+                return speed > topSpeed(cmd) ? topSpeed(cmd) : speed;
             }
 
             void walkMove(const MoveCommand &cmd)
