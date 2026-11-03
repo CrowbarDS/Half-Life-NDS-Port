@@ -20,10 +20,15 @@ namespace hldata
     /// See-through monsters (a hologram), round and round.
     inline constexpr int kIdGlassFirst = 53;
     inline constexpr int kIdGlassCount = 4; ///< 53..56
+    /// Marks on the walls, round and round by their place, so that two that
+    /// overlap blend (the hardware does not blend two polygons of one ID).
+    inline constexpr int kIdMarksFirst = 57;
+    inline constexpr int kIdMarksCount = 3; ///< 57..59
     inline constexpr int kIdLamp = 62;     ///< the lamp's light on the world
 
     static_assert(kIdSeeThroughFirst + kIdSeeThroughCount <= kIdFadeFirst);
     static_assert(kIdFadeFirst + kIdFadeCount <= kIdMarks);
     static_assert(kIdMarks < kIdGlassFirst && kIdGlassFirst + kIdGlassCount <= kIdLamp);
+    static_assert(kIdGlassFirst + kIdGlassCount <= kIdMarksFirst && kIdMarksFirst + kIdMarksCount <= kIdLamp);
     static_assert(kIdLamp <= 63);
 } // namespace hldata

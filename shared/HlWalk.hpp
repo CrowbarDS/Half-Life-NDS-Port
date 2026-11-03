@@ -228,8 +228,8 @@ namespace hldata
     // ------------------------------------------------------------ marks
 
     inline constexpr std::uint16_t kMarkShot = 3 | 3 << 5 | 3 << 10;    ///< a hole: nearly black
-    inline constexpr std::uint16_t kMarkBlood = 15 | 2 << 5 | 2 << 10; ///< dried dark, as the game's is on a wall
-    inline constexpr std::uint16_t kMarkAlien = 21 | 22 << 5 | 3 << 10;
+    inline constexpr std::uint16_t kMarkBlood = 10 | 1 << 5 | 1 << 10; ///< dried dark, as the game's is on a wall
+    inline constexpr std::uint16_t kMarkAlien = 13 | 14 << 5 | 2 << 10; ///< a dull yellow, not a bright one
     inline constexpr std::uint16_t kMarkSoot = 2 | 2 << 5 | 2 << 10;
     /// A wall's own cracks and dents (the map's): thin and faint in the
     /// game, which a picture this small cannot be -- so not black either.

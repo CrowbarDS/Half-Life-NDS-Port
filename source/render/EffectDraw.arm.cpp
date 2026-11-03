@@ -638,21 +638,23 @@ namespace hlrt
         // attribute NEA has no name for): a mark lies in its wall's plane,
         // and is drawn where the wall is and nowhere else.
         constexpr int kDepthEqual = 1 << 14;
-        constexpr int kDecalId = kIdMarks;
+        // (How much of a mark is drawn over its wall at most, of 31: the
+        // rest is the wall's own light through it -- a mark in a dark
+        // corridor is dark, not as bright as it would be lit.)
+        constexpr int kDecalAlpha = 22;
         // No more of them than this much of the screen between them (in
         // pixels, as they are seen: a stain on the floor far ahead covers a
         // sliver of what it would face on): see-through things one on
         // another are what the hardware runs out of time on.
         // (A quarter less of both when an enemy has had to be made room for
         // this frame: the stains give way before it does.)
-        const bool tight = modelDraw.strained();
+        // (... eased into and out of, an eighth of it a pass.)
+        decalYield_ += modelDraw.strained() ? (decalYield_ < 8 ? 1 : 0) : (decalYield_ > 0 ? -1 : 0);
         int kMostArea = isDSiMode() ? 30000 : 18000;
         int most = isDSiMode() ? kDecalPolygons : kDecalPolygons / 2;
-        if (tight)
-        {
-            kMostArea -= kMostArea / 4;
-            most -= most / 4;
-        }
+        kMostArea -= kMostArea * decalYield_ / 32;
+        most -= most * decalYield_ / 32;
+        std::uint64_t shown = 0;
         // (The last fifth of the room is drawn thinning out, so that a mark
         // the room runs out for goes over a few frames, not at once.)
         const int softArea = kMostArea - kMostArea / 5;
@@ -685,7 +687,12 @@ namespace hlrt
         for (int next = 0; next < listed; ++next)
         {
             Decal &decal = a.decals[order[next]];
-            if (!decal.active || drawn >= most || area > kMostArea)
+            const std::uint64_t bit = std::uint64_t(1) << order[next];
+            // (One shown the pass before keeps its place to the edge of the
+            // room; one new comes in only with a tenth of it to spare: at the
+            // edge, a mark does not come and go as the view turns.)
+            const int roomFor = (decalShown_ & bit) ? kMostArea : kMostArea - kMostArea / 10;
+            if (!decal.active || drawn >= most || area > roomFor)
                 continue;
             fx at[3] = {decal.at[0], decal.at[1], decal.at[2]};
             if (decal.brush >= 0)
@@ -741,14 +748,14 @@ namespace hlrt
             }
             // Its last three seconds it fades; and as it nears where it is no
             // longer drawn, by distance or for want of room.
-            int alpha = decal.leftMs >= 3000 ? 31 : 1 + (decal.leftMs * 30) / 3000;
+            int alpha = decal.leftMs >= 3000 ? kDecalAlpha : 1 + (decal.leftMs * (kDecalAlpha - 1)) / 3000;
             const std::int32_t thinFrom = far - far / 4;
             if (away > thinFrom)
                 alpha = alpha * (far - away) / (far - thinFrom);
             if (area > softArea)
                 alpha = alpha * (kMostArea - area) / (kMostArea - softArea);
             alpha = alpha < 1 ? 1 : (alpha > 31 ? 31 : alpha);
-            NEA_PolyFormat(alpha, kDecalId, static_cast<NEA_LightEnum>(0), NEA_CULL_NONE,
+            NEA_PolyFormat(alpha, kIdMarksFirst + order[next] % kIdMarksCount, static_cast<NEA_LightEnum>(0), NEA_CULL_NONE,
                            static_cast<NEA_OtherFormatEnum>(static_cast<int>(worldDraw.polygonMode()) | kDepthEqual));
             // Two directions across the wall.
             const fx *n = decal.normal;
@@ -781,8 +788,10 @@ namespace hlrt
                 GFX_TEX_COORD = TEXTURE_PACK(coordinate[0] << 4, coordinate[1] << 4);
                 corner(p);
             }
+            shown |= bit;
             ++drawn;
         }
+        decalShown_ = shown;
         if (bound)
         {
             GFX_TEX_FORMAT = 0;

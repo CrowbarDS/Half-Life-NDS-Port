@@ -104,6 +104,13 @@ namespace hlrt
         void drawPiece(int index);
         bool pieceSeen(const hldata::Piece &piece) const;
         void pieceCorners(const hldata::Piece &piece, bool textured);
+
+        /// The marks drawn the pass before (a bit each, by their place):
+        /// those keep the room they had, a little more of it than one new.
+        std::uint64_t decalShown_ = 0;
+        /// How far the marks have given way to a frame short of room for its
+        /// enemies (0..8 eighths of a quarter): a step a pass, not at once.
+        int decalYield_ = 0;
     };
 
     extern EffectDraw effectDraw;
