@@ -50,7 +50,7 @@ __wrap___aeabi_ldivmod:
     cmn     r12, #1
     beq     .Lsigned_library            @ by -1
 .Lhardware:
-    push    {r4}
+    push    {r4, lr}
 #ifdef HLDS_PROFILE
     ldr     r12, =hlHwCount             @ (a build that measures counts them)
     ldr     r4, [r12]
@@ -73,8 +73,7 @@ __wrap___aeabi_ldivmod:
     bne     1b
     ldm     r12, {r0-r3}
     msr     cpsr_c, r4
-    pop     {r4}
-    bx      lr
+    pop     {r4, pc}                    @ (on ARMv5 a pop to pc returns to Thumb too)
 .Lsigned_library:
     ldr     r12, =__real___aeabi_ldivmod
     bx      r12

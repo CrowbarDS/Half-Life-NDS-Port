@@ -24,6 +24,7 @@ extern "C"
     void divStmIme();
     void divStmCpsr();
     void divMovAdd();
+    void divPopPc();
     void divBare();
     void divWait();
     void sqrtOld();
@@ -208,6 +209,7 @@ namespace
         show("stm, IME", measure(reinterpret_cast<const void *>(divStmIme), 4));
         show("stm, CPSR", measure(reinterpret_cast<const void *>(divStmCpsr), 4));
         show("mov+add", measure(reinterpret_cast<const void *>(divMovAdd), 4));
+        show("... pop pc", measure(reinterpret_cast<const void *>(divPopPc), 4));
         show("stm, no guard", measure(reinterpret_cast<const void *>(divBare), 4));
         waitForA();
     }

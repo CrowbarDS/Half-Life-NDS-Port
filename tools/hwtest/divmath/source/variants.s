@@ -138,6 +138,30 @@ divMovAdd:
     pop     {r4}
     bx      lr
 
+@ The same, returning by popping the return address into pc (ARMv5 does
+@ that with a switch back to Thumb where needed): one instruction fewer.
+    .global divPopPc
+    .type   divPopPc, %function
+divPopPc:
+    push    {r4, lr}
+    mrs     r4, cpsr
+    orr     r12, r4, #0x80
+    msr     cpsr_c, r12
+    mov     r12, #0x04000000
+    add     r12, r12, #0x290
+    stm     r12!, {r0-r3}
+    ldrh    r0, [r12, #-0x20]
+    and     r0, r0, #3
+    cmp     r0, #2
+    movne   r0, #2
+    strhne  r0, [r12, #-0x20]
+1:  ldrh    r0, [r12, #-0x20]
+    tst     r0, #0x8000
+    bne     1b
+    ldm     r12, {r0-r3}
+    msr     cpsr_c, r4
+    pop     {r4, pc}
+
 @ No guard, no stack: what a divide written inline would run, less the call.
     .global divBare
     .type   divBare, %function

@@ -90,6 +90,7 @@ yet run on a DS.
 | STM/LDM, IME guard | 61 |
 | STM/LDM, CPSR guard | 54 |
 | ... address by MOV and ADD, not a literal | 54 |
+| ... and returning by `pop {r4, pc}` (2026-11-03, warm and cold) | 54 |
 | STM/LDM, no guard | 52 |
 | Left in the wrong mode (CPSR guard) | 61 |
 | Fixed wait of 31 loops, no polling, no guard | 45 |
