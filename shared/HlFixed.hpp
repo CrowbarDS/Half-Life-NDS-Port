@@ -104,10 +104,10 @@ namespace hldata
     constexpr std::uint32_t isqrt64(std::uint64_t value)
     {
 #ifdef HL_HW_MATH
-        // (Not the very largest numbers, whose root does not fit 31 bits:
-        // none of the game's is one, and the emulator's unit gets those a
-        // unit out, whatever the console's does.)
-        if (!std::is_constant_evaluated() && (value >> 62) == 0)
+        // (The console's unit is exact over the whole range: measured,
+        // tools/hwtest/divcontract. melonDS's gets about a third of the roots
+        // from 2^62 up one too high, where the game has no numbers.)
+        if (!std::is_constant_evaluated())
             return hlHwSqrt64(value);
 #endif
         std::uint64_t result = 0;

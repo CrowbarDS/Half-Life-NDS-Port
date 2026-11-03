@@ -128,7 +128,12 @@ beside the library's: quotient and remainder, word for word, on the edge cases
 (by zero, by -1, the largest and smallest numbers, top bits set) and on random
 numbers of every width. It also checks that r4-r11 are kept, that the CPU's
 interrupt bit comes back as it went in (on or off), and the root against one
-worked out bit by bit, over the range `isqrt64` gives the unit. The screen ends
-in PASS or FAIL, with the first differences above it.
+worked out bit by bit. Every root is checked by integers alone, `r*r <= v <
+(r+1)*(r+1)`, never through a double (53 bits cannot hold every 64-bit value:
+a double's root of 9007199326062755 is one too high). The screen ends in PASS
+or FAIL, with the first differences above it.
 
-Roots of 2^62 and above are outside that range: melonDS gets them one too high.
+Roots of 2^62 and above are also counted apart. 2026-11-03: on a console,
+PASS, 0 of 20439 wrong from 2^62 up, so `isqrt64` gives the unit the whole
+range. melonDS gets every root below 2^62 right and 6997 of those 20439 one
+too high: there the probe says FAIL, and the emulator is wrong, not the game.

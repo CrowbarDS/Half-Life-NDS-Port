@@ -640,6 +640,15 @@ namespace
         cosine = static_cast<std::int32_t>(cosines[quadrant]);
     }
 
+    /// Whether `root` is the square root of `value` rounded down, in integers
+    /// alone: root^2 <= value < (root + 1)^2. (Never through a double, whose
+    /// 53 bits cannot hold every 64-bit value.)
+    bool isRootOf(std::uint32_t root, std::uint64_t value)
+    {
+        const std::uint64_t r = root;
+        return r * r <= value && (r == 0xFFFFFFFFu || (r + 1) * (r + 1) > value);
+    }
+
     void testArithmetic()
     {
         int wrong = 0;
@@ -651,6 +660,24 @@ namespace
             wrong += s != s0 || c != c0;
         }
         check(wrong == 0, "fine sines: every angle as with 64-bit divides");
+
+        std::vector<std::uint64_t> values = {0, 1, 2, 3, 4, 15, 16, 17, 0xFFFFFFFFull, 0x100000000ull,
+                                             9007199326062755ull, // (where a double's root is one too high)
+                                             (1ull << 62) - 1, 1ull << 62, (1ull << 62) + 1, 0x7FFFFFFFFFFFFFFFull,
+                                             0x8000000000000000ull, 0xFFFFFFFE00000001ull, 0xFFFFFFFFFFFFFFFFull};
+        for (std::uint64_t r = 1; r < (1ull << 32); r = r * 3 + 1)
+        {
+            values.push_back(r * r - 1);
+            values.push_back(r * r);
+            values.push_back(r * r + 1);
+        }
+        std::mt19937_64 random(12345);
+        for (int n = 0; n < 100000; ++n)
+            values.push_back(random() >> (n % 64));
+        wrong = 0;
+        for (std::uint64_t value : values)
+            wrong += !isRootOf(isqrt64(value), value);
+        check(wrong == 0, "integer square root: root^2 <= value < (root + 1)^2, over the whole range");
     }
 
     /// The same checks on a real map, where planes are not axis-aligned.

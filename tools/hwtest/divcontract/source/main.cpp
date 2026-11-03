@@ -118,19 +118,32 @@ namespace
         return static_cast<std::uint32_t>(root);
     }
 
-    int rootsWrong = 0, rootMaskBad = 0;
+    /// Whether `root` is `value`'s square root rounded down, in integers
+    /// alone: root^2 <= value < (root + 1)^2.
+    bool isRootOf(std::uint32_t root, std::uint64_t value)
+    {
+        const std::uint64_t r = root;
+        return r * r <= value && (r == 0xFFFFFFFFu || (r + 1) * (r + 1) > value);
+    }
+
+    // The whole range, as isqrt64 asks it. (From 2^62 up counted apart too:
+    // melonDS gets a third of those wrong; a console none.)
+    int rootsWrong = 0, rootsWrongHigh = 0, rootsHigh = 0, rootMaskBad = 0;
     void root(std::uint64_t value, std::uint32_t mask)
     {
-        // (As isqrt64 asks it, HlFixed.hpp: larger numbers do not go to the unit.)
-        value &= (1ull << 62) - 1;
         const std::uint32_t in[4] = {static_cast<std::uint32_t>(value), static_cast<std::uint32_t>(value >> 32), 0, 0};
         std::uint32_t out[6];
         probeMask(mask);
         probeCall(reinterpret_cast<const void *>(hlHwSqrt64), in, out);
         probeMask(0x80);
-        if (out[0] != softRoot(value))
+        const bool high = (value >> 62) != 0;
+        rootsHigh += high;
+        if (!isRootOf(softRoot(value), value))
+            std::printf("the reference is wrong!\n");
+        if (!isRootOf(out[0], value))
         {
             ++rootsWrong;
+            rootsWrongHigh += high;
             if (rootsWrong <= 3)
                 std::printf("root %08lx%08lx\n got %08lx want %08lx\n", (unsigned long)in[1], (unsigned long)in[0],
                             (unsigned long)out[0], (unsigned long)softRoot(value));
@@ -157,6 +170,17 @@ int main()
             root(x, mask);
         }
     }
+    // Around the squares at the top of the range, and a value whose root a
+    // double gets one too high.
+    for (const std::uint64_t r : {0x7FFFFFFEull, 0x7FFFFFFFull, 0x80000000ull, 0x80000001ull, 0xBFFFFFFFull,
+                                  0xFFFFFFFDull, 0xFFFFFFFEull, 0xFFFFFFFFull})
+    {
+        root(r * r - 1, 0);
+        root(r * r, 0x80);
+        if (r != 0xFFFFFFFFull)
+            root(r * r + 1, 0);
+    }
+    root(9007199326062755ull, 0);
     const int edges = compared;
     constexpr int kRandom = 20000;
     for (int n = 0; n < kRandom; ++n)
@@ -168,6 +192,7 @@ int main()
         both(static_cast<std::uint64_t>(-static_cast<std::int64_t>(x)), y, mask);
         both(x, static_cast<std::uint64_t>(-static_cast<std::int64_t>(y)), mask);
         root(next() >> (next() & 63), mask);
+        root(next() | (1ull << 62), mask); // (2^62 and up)
     }
     probeMask(0);
     std::printf("\nedge cases %d, random %d\n", edges, compared - edges);
@@ -175,6 +200,7 @@ int main()
     std::printf("registers changed  %d\n", kept);
     std::printf("interrupt bit bad  %d\n", maskBad);
     std::printf("roots wrong        %d\n", rootsWrong);
+    std::printf("2^62 and up wrong  %d of %d\n", rootsWrongHigh, rootsHigh);
     std::printf("root's bit bad     %d\n", rootMaskBad);
     const bool pass = wrong == 0 && kept == 0 && maskBad == 0 && rootsWrong == 0 && rootMaskBad == 0;
     std::printf("\n%s\n", pass ? "PASS" : "FAIL");
