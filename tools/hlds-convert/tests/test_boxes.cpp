@@ -429,6 +429,77 @@ namespace
         check(hull.mins[0] > rest, "with USE let go, it is pushed again");
     }
 
+    /// The boxes in water on a map: they come up and float, their tops out of
+    /// it, and none of them goes off into the air or through the bottom.
+    void testFloating(const char *dir, const char *map)
+    {
+        std::unique_ptr<Game> game = load(dir, map);
+        if (game == nullptr)
+            return;
+        Game &g = *game;
+        g.player.origin[2] += fxFromInt(6000); // (out of the way)
+        std::vector<int> wet;
+        for (const int b : boxesOf(g))
+        {
+            fx depth;
+            if (hldata::detail::boxInWater(g.logic, g.view.logic[b].brush, &depth) > 0)
+                wet.push_back(b);
+        }
+        std::vector<int> lowest(wet.size(), 1 << 30), highest(wet.size(), -(1 << 30));
+        for (int tick = 0; tick < 60 * 20; ++tick)
+        {
+            logicTick(g.logic, g.player, 17);
+            g.drain();
+            for (std::size_t k = 0; k < wet.size() && tick >= 60 * 10; ++k)
+            {
+                const int z = fxToInt(g.movers[g.view.logic[wet[k]].brush].mins[2]);
+                lowest[k] = std::min(lowest[k], z);
+                highest[k] = std::max(highest[k], z);
+            }
+        }
+        int afloat = 0;
+        for (std::size_t k = 0; k < wet.size(); ++k)
+        {
+            const MoverHull &hull = g.movers[g.view.logic[wet[k]].brush];
+            fx depth;
+            const int level = hldata::detail::boxInWater(g.logic, g.view.logic[wet[k]].brush, &depth);
+            const fx top[3] = {(hull.mins[0] + hull.maxs[0]) / 2, (hull.mins[1] + hull.maxs[1]) / 2, hull.maxs[2] + kFxOne};
+            const bool out = !isLiquid(pointContents(g.move, top));
+            afloat += level > 0 && out ? 1 : 0;
+            std::printf("test_boxes: %s box %d (buoyancy %d): its foot %d deep, between %d and %d, its top %s\n",
+                        map, wet[k], fxToInt(g.view.logic[wet[k]].speed), fxToInt(depth), lowest[k], highest[k],
+                        out ? "out" : "under");
+            check(highest[k] - lowest[k] < 4, "a box afloat comes to rest");
+        }
+        std::printf("test_boxes: %s: %zu boxes in water, %d of them afloat\n", map, wet.size(), afloat);
+        check(!wet.empty() && afloat > 0, "boxes in water come up and float");
+        if (std::string(map) != "c2a3")
+            return;
+        // c2a3's barrels are under the lid of a cage: they stay down until
+        // its lock is shot and the lid opens.
+        int caged = 0, freed = 0;
+        for (std::size_t k = 0; k < wet.size(); ++k)
+            caged += g.view.logic[wet[k]].speed > 0 && highest[k] < 700 ? 1 : 0;
+        for (std::uint32_t i = 0; i < g.view.logicCount; ++i)
+        {
+            const LogicRecord &record = g.view.logic[i];
+            if (record.kind == static_cast<std::uint8_t>(LogicKind::DoorRotating) && record.name != 0 &&
+                g.view.nameHashes[record.name] == nameHash("cagedoor"))
+                logicUse(g.logic, g.player, static_cast<int>(i), -1, kUseToggle);
+        }
+        for (int tick = 0; tick < 60 * 10; ++tick)
+        {
+            logicTick(g.logic, g.player, 17);
+            g.drain();
+        }
+        for (const int b : wet)
+            freed += g.view.logic[b].speed > 0 && fxToInt(g.movers[g.view.logic[b].brush].mins[2]) > 900 ? 1 : 0;
+        std::printf("test_boxes: c2a3: %d barrels held in their cage; the lid opened, %d come up\n", caged, freed);
+        check(caged == 4, "c2a3's barrels stay under the lid of their cage");
+        // (In the game all four come up. Here the lid, turned open, still
+        // stops three: the collision of a turned door, not the floating.)
+    }
+
     /// A crate of the Hazard Course, pulled as the game does it: USE looks for
     /// what is in view each frame, from a pace in front of it.
     void testPullOnMap(const char *dir)
@@ -558,6 +629,8 @@ int main()
         return g_failures == 0 ? 0 : 1;
     }
     testPullOnMap(dir);
+    testFloating(dir, "c2a3");
+    testFloating(dir, "c2a4a");
     pushedAbout(dir, "c1a2");
     pushedAbout(dir, "c1a1b");
     pushedAbout(dir, "c1a1c");

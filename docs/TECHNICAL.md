@@ -198,7 +198,11 @@ Milestone 11, "levels of detail".
   the push and pulls it instead: it takes on the player's speed a quarter a
   frame at 60 frames a second. USE held on the ground cuts the player's top
   speed to a third, with or without a box, as the game does. Not in a match, where a
-  guest's USE isn't sent while held. Not yet: floating.
+  guest's USE isn't sent while held. In water a box floats as the game's
+  do: gravity and a lift as deep as it is in, times its buoyancy by its area,
+  its bobbing dying away in about half a second; a swimmer pushes it at a
+  tenth. Not yet: c2a3's cage, opened, lets only one of its four barrels up
+  (the turned lid's collision).
 - The long jump module (`item_longjump`), for someone in the suit: running,
   with the crouch pressed under a second ago, a jump goes 560 units a second
   along the view, about 450 on the flat with the legs tucked.

@@ -1918,6 +1918,10 @@ namespace hldata
             int count[2];
             for (int a = 0; a < 2; ++a)
                 count[a] = over[a] <= 0 ? 1 : (over[a] + 31) / 32 + 1 > 5 ? 5 : (over[a] + 31) / 32 + 1;
+            // (How far above the standing shape's middle the crouched one's
+            // is when their tops are the box's: 0, it is as tall or taller.)
+            const int height = built.maxs[2] - built.mins[2];
+            const fx rise = height < 72 ? fxFromInt(height - 54) : 0;
             const bool was = w.movers[brush].solid;
             w.movers[brush].solid = false;
             moverReachSet(*w.world, brush);
@@ -1949,6 +1953,22 @@ namespace hldata
                         const fx far = fxLength(along);
                         for (int k = 0; k < 3; ++k)
                             t.normal[k] = far > 0 ? -static_cast<std::int32_t>((static_cast<std::int64_t>(along[k]) << kNormalShift) / far) : 0;
+                    }
+                    // Going up, a box lower than the standing shape is met
+                    // at its own top too, by the crouched shape level with
+                    // it: what is just above it (c2a3's barrels, under the
+                    // lid of their cage) is otherwise already inside that
+                    // shape, and a thing that moves lets through what is in
+                    // it.
+                    if (!crouched && rise > 0 && b[2] > a[2])
+                    {
+                        const fx at[3] = {a[0], a[1], a[2] + rise}, till[3] = {b[0], b[1], b[2] + rise};
+                        Trace top = traceAll(*w.world, true, at, till);
+                        if (!top.startSolid && !top.allSolid && top.fraction < t.fraction)
+                        {
+                            top.endPos[2] -= rise;
+                            t = top;
+                        }
                     }
                     if (any && t.fraction >= best.fraction)
                         continue;
@@ -2091,6 +2111,40 @@ namespace hldata
             }
         }
 
+        /// How far into water a box is, as the game's FL_FLOAT has it: its
+        /// level (0 dry, 1 its foot wet, 3 its middle) and the depth of its
+        /// foot below the surface, which is found by halving, six times, the
+        /// part of it the surface is in.
+        inline int boxInWater(const LogicWorld &w, int brush, fx *depth)
+        {
+            *depth = 0;
+            if (w.world == nullptr)
+                return 0;
+            const MoverHull &hull = w.movers[brush];
+            const fx middle[3] = {(hull.mins[0] + hull.maxs[0]) / 2, (hull.mins[1] + hull.maxs[1]) / 2,
+                                  (hull.mins[2] + hull.maxs[2]) / 2};
+            const fx foot[3] = {middle[0], middle[1], hull.mins[2] + kFxOne};
+            if (!isLiquid(pointContents(*w.world, foot)))
+                return 0;
+            const int level = isLiquid(pointContents(*w.world, middle)) ? 3 : 1;
+            const fx top[3] = {middle[0], middle[1], hull.maxs[2]};
+            const fx start = hull.mins[2] - middle[2];
+            if (level == 3 && pointContents(*w.world, top) == kContentsWater)
+            {
+                *depth = hull.maxs[2] - hull.mins[2];
+                return level;
+            }
+            fx out = level == 3 ? hull.maxs[2] - middle[2] : 0, in = level == 3 ? 0 : start, offset = 0;
+            for (int n = 0; n < 6; ++n)
+            {
+                offset = (out - in) / 2 + in;
+                const fx at[3] = {middle[0], middle[1], middle[2] + offset};
+                (pointContents(*w.world, at) == kContentsWater ? in : out) = offset;
+            }
+            *depth = offset - start;
+            return level;
+        }
+
         inline void pushableTick(LogicWorld &w, PlayerState &player, int index, int ms)
         {
             const LogicRecord &record = w.records[index];
@@ -2099,18 +2153,26 @@ namespace hldata
                 return;
             const int brush = record.brush;
             fx *v = state.travel;
+            // (Only one that floats is looked at for water: `speed`.)
+            fx depth = 0;
+            const int wet = record.speed > 0 ? boxInWater(w, brush, &depth) : 0;
 
             // The shove: the player's own speed along the floor, added to the
             // box's, up to the fastest it can go. Only from someone with
-            // their feet on the ground, and not from someone standing on it.
+            // their feet on the ground, or swimming at one afloat (a tenth of
+            // it then), and not from someone standing on it -- who, jumping
+            // off one afloat, sends it down a little.
             if (state.base[0] > 0)
                 state.base[0] -= ms; // (until its scrape may be heard again)
-            if (player.touchedMover == brush && player.onGround && player.groundMover != brush && !w.useHeld.value)
+            if (player.groundMover == brush && player.onGround && wet > 0)
+                v[2] += player.velocity[2] / 10;
+            if (player.touchedMover == brush && (player.onGround || wet > 0) && player.groundMover != brush &&
+                !w.useHeld.value)
             {
                 if (player.touchVelocity[0] != 0 || player.touchVelocity[1] != 0)
                     boxScrape(w, index);
-                v[0] += player.touchVelocity[0];
-                v[1] += player.touchVelocity[1];
+                v[0] += player.onGround ? player.touchVelocity[0] : player.touchVelocity[0] / 10;
+                v[1] += player.onGround ? player.touchVelocity[1] : player.touchVelocity[1] / 10;
                 boxLimit(record, v);
                 // The pusher goes at the pace of the box.
                 player.velocity[0] = v[0];
@@ -2211,9 +2273,23 @@ namespace hldata
                     v[1] = static_cast<fx>((static_cast<std::int64_t>(v[1]) * left) / speed);
                 }
             }
-            else
+            else if (wet < 2)
             {
+                // (Its foot only in water, it falls as if it weren't: the
+                // game adds gravity for that, and again for the float below.)
                 v[2] -= static_cast<fx>((static_cast<std::int64_t>(fxFromInt(800)) * ms) / 1000);
+            }
+            // Afloat: gravity, and the water's lift, as deep as it is in it
+            // times its buoyancy. Its bobbing dies away within half a second
+            // or so, as the game's does (4 a second, the water's friction on
+            // the player). On the bottom, a lift too weak to raise it does
+            // nothing.
+            if (wet > 0)
+            {
+                const fx lift = fxMul(depth, record.speed) - fxFromInt(800);
+                if (!resting || lift > 0)
+                    v[2] += static_cast<fx>((static_cast<std::int64_t>(lift) * ms) / 1000);
+                v[2] -= static_cast<fx>((static_cast<std::int64_t>(v[2]) * 4 * ms) / 1000);
             }
             if (v[0] == 0 && v[1] == 0 && v[2] == 0 && !raised)
                 return;

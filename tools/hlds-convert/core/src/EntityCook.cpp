@@ -2139,6 +2139,12 @@ namespace hlds
                     // height: those are the hulls a map has.
                     const double height = model != nullptr ? double(model->maxs[2]) - model->mins[2] : 64;
                     record.extra[3] = height < 54 ? 1 : 0;
+                    // How it floats: its buoyancy, by the area it sits on the
+                    // water with (the game's CPushable::Spawn).
+                    if (model != nullptr)
+                        record.speed = fxFromDouble(std::max(0.0, numberKey(entity, "buoyancy")) *
+                                                    (double(model->maxs[0]) - model->mins[0]) *
+                                                    (double(model->maxs[1]) - model->mins[1]) * 0.0005);
                     if (spawnflags & 128)
                         record.flags |= kLogicBreaks;
                 }

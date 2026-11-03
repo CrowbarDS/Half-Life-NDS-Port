@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 45;
+    inline constexpr std::uint16_t kLevelVersion = 46;
     /// The oldest level format this build reads.
     inline constexpr std::uint16_t kLevelMinVersion = 28;
     /// The oldest build that can read what it writes. (32: what the people
@@ -71,7 +71,8 @@ namespace hldata
     /// was not cooked with, named in its models to be loaded when needed.)
     /// 44: each node's own surfaces (NodeMarks, NodeSpans), as two sections
     /// a build before does not know of. 45: the long jump module, an item a
-    /// build before would refuse.
+    /// build before would refuse. (46, how a box floats, is in a field 45's
+    /// builds leave alone: they read it, and the box sinks.)
     inline constexpr std::uint16_t kLevelMinReader = 45;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,
@@ -484,7 +485,9 @@ namespace hldata
         /// A box the player shoves about. It is a Breakable as well if
         /// kLogicBreaks. extra[2] is the fastest it can be pushed (Q12 units
         /// a second), extra[3] which of the player's two hulls it moves
-        /// through the world as (0 standing, 1 crouched).
+        /// through the world as (0 standing, 1 crouched). `speed`: how it
+        /// floats, the lift a unit of its depth in water gives it (units a
+        /// second, a second); 0, it sinks.
         Pushable,
         /// A volume (mins/maxs) that hurts whoever is in it: extra[0] is the
         /// damage a second (signed: a negative one heals). Used, it switches
