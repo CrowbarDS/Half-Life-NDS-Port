@@ -97,6 +97,48 @@ namespace hlrt
             return static_cast<int>((flicker >> 16) & 63) - 32;
         }
 
+        /// Sets how see-through `actor` (the map's `id`) is drawn: 0 not at
+        /// all, 1 see-through (modelAlpha(31) after it), -1 not drawn (a
+        /// hologram faded to nothing). `glow`: set for a hologram. (Out of the
+        /// ITCM: draw's loop is there, and this is most often 0.)
+        [[gnu::noinline]] int seeThroughLook(const ActorWorld &actors, const ActorState &actor, int id, bool &glow)
+        {
+            // (A body the game fades: as much of it as is left. An
+            // assassin cloaked: its renderamt, of 255.)
+            const int fading = corpseFadeLeft(actor);
+            if (fading >= 0)
+            {
+                modelAlpha(1 + (fading * 30) / kCorpseFadeMs);
+                return 1;
+            }
+            if (actor.cloak.value != 0)
+            {
+                modelAlpha((255 - actor.cloak.value) * 31 / 255);
+                return 1;
+            }
+            // (A monster_generic the map has see-through, or a hologram:
+            // fading with distance and flickering, as the game's does.)
+            const std::uint32_t look = actor.kind == static_cast<std::uint8_t>(ActorKind::Generic) && id < actors.recordCount
+                                           ? (actors.records[id].item >> kActorLookShift) & kActorLookMask
+                                           : 0;
+            if (look == 0)
+                return 0;
+            if (look != kActorLookHologram)
+            {
+                glassAlpha(static_cast<int>(look) * 31 / 7, false);
+                return 1;
+            }
+            const int d[3] = {fxToInt(actor.pos[0] - camera.pos[0]), fxToInt(actor.pos[1] - camera.pos[1]),
+                              fxToInt(actor.pos[2] - camera.pos[2])};
+            const int along = (d[0] * camera.forward[0] + d[1] * camera.forward[1] + d[2] * camera.forward[2]) >> 12;
+            const int glass = hologramBlend(along, flickerNoise()) >> 3;
+            if (glass < 1)
+                return -1;
+            glow = true;
+            glassAlpha(glass, true);
+            return 1;
+        }
+
         /// How many steps to pose an actor; lower is better.
         /// 256: full frame, 128: half frame, 64: quarter frame.
         constexpr std::uint32_t kPoseStep = 64;
@@ -966,41 +1008,13 @@ namespace hlrt
             // and of yaw to make up for it).
             const fx over[9] = {cosine, sine, 0, sine, -cosine, 0, 0, 0, -kFxOne};
             const bool ceiling = isTurret(actor.kind) && (actor.flags & kActorCeiling) != 0;
-            // (A body the game fades: as much of it as is left. An
-            // assassin cloaked: its renderamt, of 255.)
-            const int fading = corpseFadeLeft(actor);
-            const int cloaked = actor.cloak.value != 0 ? (255 - actor.cloak.value) * 31 / 255 : -1;
-            // (A monster_generic the map has see-through, or a hologram:
-            // fading with distance and flickering, as the game's does.)
-            const std::uint32_t look =
-                actor.kind == static_cast<std::uint8_t>(ActorKind::Generic) && order[n] < actors.recordCount
-                    ? (actors.records[order[n]].item >> kActorLookShift) & kActorLookMask
-                    : 0;
-            int glass = -1;
-            if (look == kActorLookHologram)
-            {
-                const int d[3] = {fxToInt(actor.pos[0] - camera.pos[0]), fxToInt(actor.pos[1] - camera.pos[1]),
-                                  fxToInt(actor.pos[2] - camera.pos[2])};
-                const int along = (d[0] * camera.forward[0] + d[1] * camera.forward[1] + d[2] * camera.forward[2]) >> 12;
-                glass = hologramBlend(along, flickerNoise()) >> 3;
-                if (glass < 1)
-                    continue;
-                glow_ = true;
-            }
-            else if (look != 0)
-            {
-                glass = static_cast<int>(look) * 31 / 7;
-            }
-            if (fading >= 0)
-                modelAlpha(1 + (fading * 30) / kCorpseFadeMs);
-            else if (cloaked >= 0)
-                modelAlpha(cloaked);
-            else if (glass >= 0)
-                glassAlpha(glass, glow_);
+            const int seeThrough = seeThroughLook(actors, actor, order[n], glow_);
+            if (seeThrough < 0)
+                continue;
             drawActor(actor, model, actor.model, ceiling ? over : turn, order[n], level_[n]);
             drawGun(actor, model, ceiling ? over : turn, order[n]);
             glow_ = false;
-            if (fading >= 0 || cloaked >= 0 || glass >= 0)
+            if (seeThrough > 0)
                 modelAlpha(31);
             ++drawn;
         }
