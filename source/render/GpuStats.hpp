@@ -60,9 +60,11 @@ namespace hlrt
         }
         /// What the pass sent of the world and left out of it, and the heap
         /// still free: totals and worsts for the measurements (perf.txt).
-        void world(int polygons, int surfacesCut, int brushesDropped, int brushesOverflow, std::uint32_t heapFree)
+        void world(int polygons, int surfacesCut, int detailCut, int brushesDropped, int brushesOverflow,
+                   std::uint32_t heapFree)
         {
             map_.polygonsSum += static_cast<std::uint32_t>(polygons);
+            map_.detailCutSum += static_cast<std::uint32_t>(detailCut);
             map_.surfacesCutSum += static_cast<std::uint32_t>(surfacesCut);
             map_.brushesDroppedSum += static_cast<std::uint32_t>(brushesDropped);
             map_.brushesOverflowSum += static_cast<std::uint32_t>(brushesOverflow);
@@ -107,6 +109,7 @@ namespace hlrt
             // (world(): sums over the passes, the worst of one pass.)
             std::uint32_t polygonsSum = 0;
             std::uint32_t surfacesCutSum = 0;
+            std::uint32_t detailCutSum = 0; ///< left out as small and far (World detail)
             std::uint32_t brushesDroppedSum = 0;
             std::uint32_t brushesOverflowSum = 0;
             int surfacesCutMost = 0;

@@ -50,11 +50,15 @@ namespace hlrt
         leafFrame_ = static_cast<std::uint16_t *>(std::calloc(view.leafCount + 1, 2));
         chosen_ = static_cast<std::uint32_t *>(std::calloc(chosenWords_ + 1, 4));
         skipped_ = static_cast<std::uint32_t *>(std::calloc(chosenWords_ + 1, 4));
-        if (nodeFrame_ == nullptr || leafFrame_ == nullptr || chosen_ == nullptr || skipped_ == nullptr)
+        detailKept_ = static_cast<std::uint32_t *>(std::malloc((chosenWords_ + 1) * 4));
+        if (nodeFrame_ == nullptr || leafFrame_ == nullptr || chosen_ == nullptr || skipped_ == nullptr ||
+            detailKept_ == nullptr)
         {
             destroy();
             return false;
         }
+        std::memset(detailKept_, 0xFF, (chosenWords_ + 1) * 4); // (all kept, to begin with)
+        detailWasOn_ = false;
         camera.mapFarUnits = static_cast<int>(view.header->farUnits);
         // (Not having it is not an error: the surfaces are then written one
         // word at a time, as on a DS. On cache lines of its own: it is
@@ -76,6 +80,8 @@ namespace hlrt
         std::free(chosen_);
         std::free(skipped_);
         skipped_ = nullptr;
+        std::free(detailKept_);
+        detailKept_ = nullptr;
         std::free(list_);
         list_ = nullptr;
         brushState_ = nullptr;
@@ -328,7 +334,7 @@ namespace hlrt
         // farthest. Each with what it costs (polygons, vertices).
         constexpr int kMaxSolid = 128;
         constexpr int kMaxLater = 64;
-        BrushList<kMaxSolid, true> solid;  ///< nearest first: drawn so, until one does not fit
+        BrushList<kMaxSolid, true> solid;  ///< nearest first: drawn so, each that fits
         BrushList<kMaxLater, false> later; ///< farthest first: drawn so, among the effects
     } // namespace
 
@@ -411,13 +417,17 @@ namespace hlrt
             // room there is, and nothing else.
             if (const int detail = opaque ? 0 : detailRatio())
             {
-                std::int32_t size = 0;
+                // (As the world's surfaces: by how far, the same however the
+                // eye is turned, and never what is near.)
+                std::int32_t size = 0, most = 0, sum = 0;
                 for (int a = 0; a < 3; ++a)
+                {
                     size = size > maxs[a] - mins[a] ? size : maxs[a] - mins[a];
-                const std::int32_t depth = (centre[0] * camera.forward[0] + centre[1] * camera.forward[1] +
-                                            centre[2] * camera.forward[2]) >>
-                                           12;
-                if (depth > (size >> 1) * detail)
+                    const std::int32_t d = centre[a] < 0 ? -centre[a] : centre[a];
+                    most = d > most ? d : most;
+                    sum += d;
+                }
+                if (!detailKeeps(most + ((sum - most) >> 1), size >> 1, detail, true))
                 {
                     ++stats_.dropped;
                     continue;
@@ -449,10 +459,11 @@ namespace hlrt
         }
 
         // Set aside for them, out of what the world would have: all they
-        // cost, up to the whole pass. The world has what they leave; what is
-        // solid in view is never what goes.
-        brushPolygons_ = polygons < polygonBudget() ? polygons : polygonBudget();
-        brushVertices_ = vertices < vertexBudget() ? vertices : vertexBudget();
+        // cost, up to a third of the pass -- the world is never left with
+        // nothing (what does not fit of them is left out, nearest first kept:
+        // drawBrushes).
+        brushPolygons_ = polygons < polygonBudget() / 3 ? polygons : polygonBudget() / 3;
+        brushVertices_ = vertices < vertexBudget() / 3 ? vertices : vertexBudget() / 3;
     }
 
     void WorldDraw::drawBrushes()
@@ -468,12 +479,12 @@ namespace hlrt
             ++stats_.brushesDropped;
             return false;
         };
-        // The solid ones nearest first, until one does not fit: nothing
-        // farther is drawn after it (HlBrushPlan.hpp).
-        const int solidDrawn = brushesThatFit(solid, polygonBudget() - stats_.polygons, vertexBudget() - stats_.vertices);
+        // The solid ones nearest first, each that fits (HlBrushPlan.hpp).
+        bool take[kMaxSolid];
+        brushesThatFit(solid, polygonBudget() - stats_.polygons, vertexBudget() - stats_.vertices, take);
         for (int n = 0; n < solid.count; ++n)
         {
-            if (n >= solidDrawn)
+            if (!take[n])
             {
                 stats_.brushCut = true;
                 ++stats_.brushesDropped;
@@ -852,15 +863,25 @@ namespace hlrt
         // (If it has to go straight back up, it is let down less readily
         // the next time: a view on the edge is not to flicker.)
         ++sinceRelax_;
+        // (... and, a long while with none going back up, readily again: a
+        // view that was on the edge once does not hold the pressure up for
+        // the rest of the map.)
+        if (++sinceRise_ >= 1800)
+        {
+            sinceRise_ = 0;
+            if (relaxWait_ > kRelaxWait)
+                relaxWait_ /= 2;
+        }
         if (stats_.budgetHit || stats_.brushCut)
         {
             easyPasses_ = 0;
             if (++cutPasses_ >= 3)
             {
                 cutPasses_ = 0;
-                if (pressure_ < 3)
+                if (pressure_ < hldata::kPressureMost)
                 {
                     ++pressure_;
+                    sinceRise_ = 0;
                     if (sinceRelax_ < 600 && relaxWait_ < kRelaxWait * 16)
                         relaxWait_ *= 2;
                 }
@@ -928,46 +949,16 @@ namespace hlrt
             }
         }
 
-        // How much is taken at once, the most that is ever held back, and
-        // the lead (of 46 lines) under which a pass counts as too heavy
-        // although it was finished.
-        constexpr int kStep = 120;
-        constexpr int kMost = 900;
-        constexpr int kLowLines = 6;
-        constexpr int kEasyLines = 20;
-        if (overflow || stats_.hwPolygons > 2040 || stats_.hwVertices > 6100)
-            held_ += kStep * 2;
-        else if (underflow)
-            held_ += kStep;
-        else if (lines < kLowLines)
-            held_ += kStep / 4;
-        else if (held_ > 0 && lines >= kEasyLines && stats_.hwPolygons < 1900)
-            held_ -= 6; // (back about a third of a second for each step taken: what
-                        // was held for a heavy moment is not kept from the world for long)
-        if (held_ > kMost)
-            held_ = kMost;
-        if (held_ < 0)
-            held_ = 0;
-
-        // What was counted and not used. The lesser of the last two passes
-        // and three quarters of that: the view may be turning
-        // towards somewhere with less off the screen.
-        constexpr int kMostSparePolygons = 600;
-        constexpr int kMostSpareVertices = 1500;
-        int polygons = stats_.polygons - stats_.hwPolygons;
-        int vertices = stats_.vertices - stats_.hwVertices;
-        polygons = polygons < 0 ? 0 : polygons;
-        vertices = vertices < 0 ? 0 : vertices;
-        const int p = polygons < unusedPolygons_ ? polygons : unusedPolygons_;
-        const int v = vertices < unusedVertices_ ? vertices : unusedVertices_;
-        unusedPolygons_ = polygons;
-        unusedVertices_ = vertices;
-        sparePolygons_ = p * 3 / 4 > kMostSparePolygons ? kMostSparePolygons : p * 3 / 4;
-        spareVertices_ = v * 3 / 4 > kMostSpareVertices ? kMostSpareVertices : v * 3 / 4;
-        sparePolygons_ = sparePolygons_ * spareQuarters_ / 4;
-        spareVertices_ = spareVertices_ * spareQuarters_ / 4;
-        // None of it while the hardware is complaining.
-        if (held_ > 0)
-            sparePolygons_ = spareVertices_ = 0;
+        // The budget the hardware's word leaves the next pass (budgetStep).
+        BudgetReport report;
+        report.overflow = overflow;
+        report.underflow = underflow;
+        report.lines = lines;
+        report.hwPolygons = stats_.hwPolygons;
+        report.hwVertices = stats_.hwVertices;
+        report.polygons = stats_.polygons;
+        report.vertices = stats_.vertices;
+        report.spareQuarters = spareQuarters_;
+        budgetStep(budget_, report);
     }
 } // namespace hlrt

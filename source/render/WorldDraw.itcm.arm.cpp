@@ -48,6 +48,10 @@ namespace hlrt
         const int detail = detailRatio();
         if (detail != 0)
             std::memset(skipped_, 0, chosenWords_ * 4);
+        // (Detail off: everything is kept, and is so when it comes on again.)
+        if (detail == 0 && detailWasOn_)
+            std::memset(detailKept_, 0xFF, chosenWords_ * 4);
+        detailWasOn_ = detail != 0;
         const std::int32_t *forward = camera.forward;
         const std::int32_t eyeAt[3] = {fxToInt(eye[0]), fxToInt(eye[1]), fxToInt(eye[2])};
         stats_.cutDistance = 0;
@@ -88,13 +92,22 @@ namespace hlrt
                 return true;
             if (detail != 0)
             {
-                const std::int32_t depth = ((surface.center[0] - eyeAt[0]) * forward[0] +
-                                            (surface.center[1] - eyeAt[1]) * forward[1] +
-                                            (surface.center[2] - eyeAt[2]) * forward[2]) >>
-                                           12;
-                // (Never what is near: a wall at arm's length with a hole in
-                // it is worse than any far thing missing.)
-                if (depth > kDetailNearest && depth > static_cast<std::int32_t>(surface.radius) * detail)
+                // How far it is, the same however the eye is turned (the
+                // largest of the three, and half the other two: within a
+                // tenth of the length), so that turning on the spot does not
+                // change what is left out. (Nothing near ever is: detailKeeps.)
+                std::int32_t d[3];
+                for (int a = 0; a < 3; ++a)
+                {
+                    const std::int32_t v = surface.center[a] - eyeAt[a];
+                    d[a] = v < 0 ? -v : v;
+                }
+                const std::int32_t most = d[0] > d[1] ? (d[0] > d[2] ? d[0] : d[2]) : (d[1] > d[2] ? d[1] : d[2]);
+                const std::int32_t distance = most + ((d[0] + d[1] + d[2] - most) >> 1);
+                std::uint32_t &kept = detailKept_[s >> 5];
+                const bool keep = detailKeeps(distance, surface.radius, detail, (kept & bit) != 0);
+                kept = keep ? kept | bit : kept & ~bit;
+                if (!keep)
                 {
                     // (Counted once, though it is met in every leaf it
                     // is part of.)

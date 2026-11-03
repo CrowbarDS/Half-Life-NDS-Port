@@ -104,7 +104,7 @@ namespace hlrt
         static constexpr int kRelaxWait = 120;
         /// Nearer than this (whole units, along the view), nothing is left
         /// out for being small: under pressure, only what is farther goes.
-        static constexpr int kDetailNearest = 256;
+        static constexpr int kDetailNearest = hldata::kDetailNearest;
         static constexpr int kNoFog = hldata::kFogNone; ///< a fog distance that is no fog
         static constexpr NEA_CullingEnum kCull = NEA_CULL_NONE;
         static constexpr NEA_OtherFormatEnum kPolygonMode =
@@ -151,7 +151,9 @@ namespace hlrt
         /// and brushes a few pixels across, and the share of a pass the
         /// models may have. Only what is still too much is cut off at a
         /// distance, and that is faded into fog (below), not left as an edge.
-        int pressure() const { return pressure_; }
+        /// (0..3, for the models and effects: World detail's own steps, two
+        /// to each of these.)
+        int pressure() const { return (pressure_ + 1) / 2; }
         /// The ratio of distance to size past which something is left out,
         /// at this pressure (0: nothing is).
         int detailRatio() const
@@ -170,10 +172,10 @@ namespace hlrt
         }
         /// Set the hardware's fog for the pass about to be drawn.
         void applyFog();
-        int polygonBudget() const { return kPolygonBudget - held_ + sparePolygons_; }
-        int vertexBudget() const { return kVertexBudget - held_ * 3 + spareVertices_; }
+        int polygonBudget() const { return kPolygonBudget + budget_.extra; }
+        int vertexBudget() const { return kVertexBudget + budget_.extraVertices; }
         /// For the overlay: what is being held back (negative: added).
-        int heldBack() const { return held_ - sparePolygons_; }
+        int heldBack() const { return -budget_.extra; }
 
         /// Where the brush entities are: one hldata::BrushState per Brush
         /// record, owned and moved by the game (Game::brushStates). Null
@@ -187,7 +189,7 @@ namespace hlrt
         void emitList();
         void finishList();
         /// The brush entities this pass draws, chosen before the world is
-        /// walked and their cost set aside (up to a quarter of the pass): a
+        /// walked and their cost set aside (up to a third of the pass): a
         /// crate in front of the eye is not what the far end of a heavy view
         /// leaves no room for.
         void planBrushes();
@@ -226,6 +228,11 @@ namespace hlrt
         std::uint16_t *nodeFrame_ = nullptr; ///< vis stamp per node
         std::uint16_t *leafFrame_ = nullptr; ///< vis stamp per leaf
         std::uint32_t *chosen_ = nullptr;    ///< one bit per surface
+        /// ... whether World detail kept it the last time it was asked (kept
+        /// while it is out of view: turned away from and back to, it is as
+        /// it was). All kept again whenever detail is off.
+        std::uint32_t *detailKept_ = nullptr;
+        bool detailWasOn_ = false;
         /// On a DSi: a node gone through has its own surfaces drawn too (the
         /// game's rule: NodeMarks), not only those its seen leaves list.
         bool nodeSurfaces_ = false;
@@ -249,6 +256,7 @@ namespace hlrt
         int cutPasses_ = 0;   ///< passes on end that ran out of room
         int easyPasses_ = 0;  ///< ... that had room to spare
         int relaxWait_ = kRelaxWait; ///< how many of those let the pressure down
+        int sinceRise_ = 0;           ///< passes since the pressure last went up
         int sinceRelax_ = 0;
         /// Where the fog is whole: just short of where the view is being cut
         /// off. Brought in at once, let out slowly.
@@ -256,13 +264,9 @@ namespace hlrt
         bool fogSolid_ = false; ///< it hides an edge: whole at its end (fogTable)
         bool fogOn_ = false;
         std::uint16_t behind_ = 0; ///< the colour behind everything, as last set
-        int held_ = 0; ///< polygons kept back from the budget by govern()
+        hldata::BudgetState budget_; ///< held back from the budget, and spare added (govern)
         int spareQuarters_ = 4; ///< how much of what could be added is (0..4)
         int quickPasses_ = 0;
-        int sparePolygons_ = 0; ///< added to it
-        int spareVertices_ = 0;
-        int unusedPolygons_ = 0; ///< what the last pass did not use
-        int unusedVertices_ = 0;
         WorldStats stats_;
     };
 

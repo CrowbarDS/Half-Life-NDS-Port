@@ -92,7 +92,7 @@ namespace hlrt
         std::fprintf(file,
                      "%s %s %s passes %lu slow %lu longest %d poly %d vert %d lines %d "
                      "underflow %d overflow %d cut-world %lu cut-brush %lu pressed %lu enemies-cut %lu enemies-seen-cut %lu effects-refused %lu models-hidden %lu "
-                     "poly-mean %lu surfaces-cut-mean %lu.%02lu surfaces-cut-most %d brushes-dropped-mean %lu.%02lu "
+                     "poly-mean %lu surfaces-cut-mean %lu.%02lu surfaces-cut-most %d detail-cut-mean %lu brushes-dropped-mean %lu.%02lu "
                      "brushes-dropped-most %d brushes-overflow %lu enemies-dropped %lu heap-least %luK\n",
                      map, global.isDSi ? "DSi" : "DS", mode,
                      static_cast<unsigned long>(map_.frames), static_cast<unsigned long>(map_.slow),
@@ -104,7 +104,8 @@ namespace hlrt
                      static_cast<unsigned long>(map_.polygonsSum / map_.frames),
                      static_cast<unsigned long>(map_.surfacesCutSum / map_.frames),
                      static_cast<unsigned long>((map_.surfacesCutSum % map_.frames) * 100 / map_.frames),
-                     map_.surfacesCutMost, static_cast<unsigned long>(map_.brushesDroppedSum / map_.frames),
+                     map_.surfacesCutMost, static_cast<unsigned long>(map_.detailCutSum / map_.frames),
+                     static_cast<unsigned long>(map_.brushesDroppedSum / map_.frames),
                      static_cast<unsigned long>((map_.brushesDroppedSum % map_.frames) * 100 / map_.frames),
                      map_.brushesDroppedMost, static_cast<unsigned long>(map_.brushesOverflowSum),
                      static_cast<unsigned long>(map_.enemiesCutTotal),

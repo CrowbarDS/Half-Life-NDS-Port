@@ -1,5 +1,6 @@
 // Which brush entities a pass draws (shared/HlBrushPlan.hpp): the solid ones
-// nearest first, never a far one while a near one is left out; the
+// nearest first, one that has no room left out and those behind it still
+// drawn if they fit; the
 // see-through ones farthest first; and, more of them in view than a list
 // holds, the farthest left out.
 
@@ -22,14 +23,23 @@ namespace
         solid.add(2, 100 * 100, 300, 900);
         check(solid.count == 2 && solid.index[0] == 2 && solid.index[1] == 1, "solid brushes are listed nearest first");
         // Room for one of them: the near door.
-        const int fit = brushesThatFit(solid, 400, 2000);
-        check(fit == 1 && solid.index[0] == 2, "with room for one, the near door is drawn and the far brush is not");
-        // A small far one after a big near one that does not fit: not drawn
-        // either.
+        bool take[8] = {};
+        const int fit = brushesThatFit(solid, 400, 2000, take);
+        check(fit == 1 && take[0] && !take[1] && solid.index[0] == 2,
+              "with room for one, the near door is drawn and the far brush is not");
+        // A small far one after a big near one that does not fit: drawn --
+        // one costly thing left out does not take everything behind it.
         solid.clear();
         solid.add(3, 50 * 50, 900, 2000);
         solid.add(4, 800 * 800, 10, 30);
-        check(brushesThatFit(solid, 500, 5000) == 0, "... and nothing farther is drawn once a near one does not fit");
+        check(brushesThatFit(solid, 500, 5000, take) == 1 && !take[0] && take[1],
+              "... and a small one behind a near one that does not fit is still drawn");
+        // Many in a row that do not fit: the rest are not tried.
+        BrushList<32, true> many;
+        for (int n = 0; n < 20; ++n)
+            many.add(static_cast<std::uint16_t>(n), (n + 1) * 100, n < kBrushMisses ? 900 : 1, 3);
+        bool all[32] = {};
+        check(brushesThatFit(many, 500, 5000, all) == 0, "... until many in a row have not fitted");
     }
 
     void testOverflow()

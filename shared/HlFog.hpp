@@ -165,13 +165,121 @@ namespace hldata
         return setting == 0 ? 8 : (setting == 2 ? 32 : 16);
     }
 
-    /// World detail: under `pressure` (0..3), something smaller than its
-    /// distance over this is left out; 0: nothing is. Low leaves the
+    /// Nothing nearer than this is left out for being small (units): a wall
+    /// at arm's length with a hole in it is worse than any far thing missing.
+    inline constexpr int kDetailNearest = 256;
+
+    /// Whether a surface of `radius` at `distance` (units, the same however
+    /// the eye is turned) is kept under World detail's `ratio` (0: all are).
+    /// With a margin each way (`wasKept`: what it was the last time it was
+    /// asked), so that one at the edge does not come and go as the eye moves
+    /// a step: kept, it goes only past nine eighths of radius times ratio;
+    /// left out, it comes back only within seven eighths.
+    inline constexpr bool detailKeeps(int distance, int radius, int ratio, bool wasKept)
+    {
+        if (ratio == 0 || distance <= kDetailNearest)
+            return true;
+        const int reach = radius * ratio;
+        return wasKept ? distance * 8 <= reach * 9 : distance * 8 <= reach * 7;
+    }
+
+    /// How far World detail's pressure goes (0: none). It moves a step at a
+    /// time, and each step changes few surfaces: what is left out grows a
+    /// little, not all at once.
+    inline constexpr int kPressureMost = 6;
+
+    /// World detail: under `pressure` (0..kPressureMost), something smaller
+    /// than its distance over this is left out; 0: nothing is. Low leaves the
     /// smallest out even with no pressure; high never leaves anything out
     /// (and the view is cut shorter instead).
     inline constexpr int worldDetailRatio(int setting, int pressure)
     {
-        constexpr int kRatio[kDetailLevels][4] = {{64, 40, 26, 16}, {0, 48, 32, 20}, {0, 0, 0, 0}};
-        return kRatio[setting < 0 || setting >= kDetailLevels ? 1 : setting][pressure < 0 ? 0 : (pressure > 3 ? 3 : pressure)];
+        constexpr int kRatio[kDetailLevels][kPressureMost + 1] = {
+            {64, 52, 44, 36, 28, 22, 16}, {0, 64, 52, 44, 36, 29, 22}, {0, 0, 0, 0, 0, 0, 0}};
+        return kRatio[setting < 0 || setting >= kDetailLevels ? 1 : setting]
+                     [pressure < 0 ? 0 : (pressure > kPressureMost ? kPressureMost : pressure)];
+    }
+    /// What the hardware's word on the passes leaves the next one: how much
+    /// more (or less, held back) than the pass's own budget may be counted,
+    /// for what is counted but clipped away off the screen, and for when the
+    /// hardware strains (WorldDraw::govern).
+    struct BudgetState
+    {
+        int extra = 0, extraVertices = 0;        ///< added to the budget (less than 0: held back)
+        int ceiling = 600, ceilingVertices = 1500; ///< where it last strained: not gone past at once
+        int unusedPolygons = 0, unusedVertices = 0; ///< what the pass before did not use
+    };
+    /// What the hardware said of a pass, and what was counted for it.
+    struct BudgetReport
+    {
+        bool overflow = false, underflow = false;
+        int lines = 46;                    ///< the least lead the rasteriser had (of 46)
+        int hwPolygons = 0, hwVertices = 0; ///< what it used
+        int polygons = 0, vertices = 0;     ///< what was counted
+        int spareQuarters = 4;              ///< how much of the spare may be taken (0..4)
+    };
+
+    /// A pass's word taken in. Strained (out of polygon or vertex room,
+    /// lines left unfinished, or nearly), a step is taken off at once, and
+    /// where that was becomes a ceiling, raised a little each pass after.
+    /// At ease, the budget climbs back a few polygons a pass towards what was
+    /// counted and not used -- never past the ceiling in one go. (Thrown away
+    /// whole at the first strain and taken back whole as soon as it passed,
+    /// as it was, it went round and round: up, strained, down, up.)
+    inline void budgetStep(BudgetState &s, const BudgetReport &r)
+    {
+        constexpr int kMostSparePolygons = 600, kMostSpareVertices = 1500;
+        constexpr int kMostHeld = 900;
+        constexpr int kLowLines = 6, kEasyLines = 14;
+        constexpr int kClimb = 10; // (polygons a pass; three times as many vertices)
+        int drop = 0;
+        if (r.overflow || r.hwPolygons > 2040 || r.hwVertices > 6100)
+            drop = 240;
+        else if (r.underflow)
+            drop = 120;
+        else if (r.lines < kLowLines)
+            drop = 40;
+
+        // What was counted and not used: the lesser of the last two passes,
+        // and three quarters of that (the view may be turning towards
+        // somewhere with less off the screen).
+        int polygons = r.polygons - r.hwPolygons;
+        int vertices = r.vertices - r.hwVertices;
+        polygons = polygons < 0 ? 0 : polygons;
+        vertices = vertices < 0 ? 0 : vertices;
+        const int p = polygons < s.unusedPolygons ? polygons : s.unusedPolygons;
+        const int v = vertices < s.unusedVertices ? vertices : s.unusedVertices;
+        s.unusedPolygons = polygons;
+        s.unusedVertices = vertices;
+        int targetPolygons = p * 3 / 4 > kMostSparePolygons ? kMostSparePolygons : p * 3 / 4;
+        int targetVertices = v * 3 / 4 > kMostSpareVertices ? kMostSpareVertices : v * 3 / 4;
+        targetPolygons = targetPolygons * r.spareQuarters / 4;
+        targetVertices = targetVertices * r.spareQuarters / 4;
+
+        if (drop != 0)
+        {
+            s.extra -= drop;
+            s.extraVertices -= drop * 3;
+            s.extra = s.extra < -kMostHeld ? -kMostHeld : s.extra;
+            s.extraVertices = s.extraVertices < -kMostHeld * 3 ? -kMostHeld * 3 : s.extraVertices;
+            s.ceiling = s.extra;
+            s.ceilingVertices = s.extraVertices;
+            return;
+        }
+        s.ceiling += s.ceiling < kMostSparePolygons ? 1 : 0;
+        s.ceilingVertices += s.ceilingVertices < kMostSpareVertices ? 3 : 0;
+        const int aim = targetPolygons < s.ceiling ? targetPolygons : s.ceiling;
+        const int aimVertices = targetVertices < s.ceilingVertices ? targetVertices : s.ceilingVertices;
+        const bool easy = r.lines >= kEasyLines && r.hwPolygons < 1900;
+        // (Less off the screen now: down to it at once -- what was counted
+        // away is not there to be counted. More: climbed to, a little a pass.)
+        if (s.extra > aim)
+            s.extra = aim;
+        else if (easy)
+            s.extra += aim - s.extra < kClimb ? aim - s.extra : kClimb;
+        if (s.extraVertices > aimVertices)
+            s.extraVertices = aimVertices;
+        else if (easy)
+            s.extraVertices += aimVertices - s.extraVertices < kClimb * 3 ? aimVertices - s.extraVertices : kClimb * 3;
     }
 } // namespace hldata

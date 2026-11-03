@@ -85,19 +85,29 @@ namespace hldata
         }
     };
 
-    /// How many of a nearest-first list fit, in order, in `polygons` and
-    /// `vertices` of room: the first that does not is where it stops.
+    /// Which of a nearest-first list are drawn in `polygons` and `vertices`
+    /// of room (`take[k]`), and how many: each in turn that fits. One that
+    /// does not is left out and the rest are still tried -- a big near one
+    /// left out does not take every small one behind it with it -- until
+    /// this many in a row have not fitted.
+    inline constexpr int kBrushMisses = 16;
     template <class List>
-    inline int brushesThatFit(const List &list, int polygons, int vertices)
+    inline int brushesThatFit(const List &list, int polygons, int vertices, bool *take)
     {
-        int k = 0;
-        for (; k < list.count; ++k)
+        int drawn = 0, misses = 0;
+        for (int k = 0; k < list.count; ++k)
         {
+            take[k] = misses < kBrushMisses && list.cost[k][0] <= polygons && list.cost[k][1] <= vertices;
+            if (!take[k])
+            {
+                ++misses;
+                continue;
+            }
+            misses = 0;
             polygons -= list.cost[k][0];
             vertices -= list.cost[k][1];
-            if (polygons < 0 || vertices < 0)
-                break;
+            ++drawn;
         }
-        return k;
+        return drawn;
     }
 } // namespace hldata

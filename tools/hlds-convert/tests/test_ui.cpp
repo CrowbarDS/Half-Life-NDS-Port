@@ -614,15 +614,93 @@ namespace
               "the world is drawn far, less far, or near");
         check(modelDetailWeight(1) == 16 && modelDetailWeight(0) * 2 == 16 && modelDetailWeight(2) == 32,
               "models coarsen where they did, at half the distance, or at twice");
-        bool never = true, sooner = true;
-        for (int p = 0; p < 4; ++p)
+        bool never = true, sooner = true, gently = true;
+        for (int p = 0; p <= kPressureMost; ++p)
         {
             never = never && worldDetailRatio(2, p) == 0;
             sooner = sooner && worldDetailRatio(0, p) != 0 &&
                      (worldDetailRatio(1, p) == 0 || worldDetailRatio(0, p) < worldDetailRatio(1, p));
+            // (Each step leaves out a little more, never a jump: at most a
+            // quarter of the ratio at once.)
+            if (p > 1)
+                gently = gently && worldDetailRatio(1, p) < worldDetailRatio(1, p - 1) &&
+                         worldDetailRatio(1, p) * 4 >= worldDetailRatio(1, p - 1) * 3;
         }
-        check(never && sooner && worldDetailRatio(1, 0) == 0 && worldDetailRatio(1, 3) == 20,
+        check(never && sooner && worldDetailRatio(1, 0) == 0 && worldDetailRatio(1, kPressureMost) == 22,
               "small far things are left out under load as they were, sooner, or never");
+        check(gently, "... a little more at each step of the pressure");
+
+        // Left out or kept with a margin: a surface at the edge is what it
+        // was, whichever way the eye moves a step.
+        check(detailKeeps(1000, 1, 0, false) && detailKeeps(kDetailNearest, 1, 64, false),
+              "no detail, or near: always kept");
+        const int ratio = 32, radius = 20; // (kept to 640 units)
+        check(detailKeeps(700, radius, ratio, true) && !detailKeeps(740, radius, ratio, true),
+              "kept, it goes only past nine eighths");
+        check(!detailKeeps(600, radius, ratio, false) && detailKeeps(560, radius, ratio, false),
+              "left out, it comes back only within seven eighths");
+        bool steady = true;
+        bool kept = true;
+        for (int step = 0; step < 200; ++step)
+        {
+            // (The eye at the edge, a few units either way.)
+            const int distance = 640 + ((step & 1) ? 30 : -30);
+            const bool now = detailKeeps(distance, radius, ratio, kept);
+            steady = steady && (step == 0 || now == kept);
+            kept = now;
+        }
+        check(steady, "... at the edge, it does not come and go");
+
+        // The budget the hardware's word leaves: on a console that strains
+        // past some number of polygons used, with some part of what is
+        // counted off the screen, it settles -- no round of up, strained,
+        // down, up -- whatever the two are.
+        bool settles = true, gentle = true;
+        for (const int off : {20, 30, 40})
+        {
+            for (const int strainAt : {1400, 1500, 1600})
+            {
+                BudgetState state;
+                int lastLines = 46;
+                bool lastUnder = false;
+                int strained = 0, jump = 0, before = 0;
+                for (int pass = 0; pass < 3000; ++pass)
+                {
+                    const int budget = 1700 + state.extra;
+                    const int used = budget * (100 - off) / 100;
+                    BudgetReport report;
+                    report.polygons = budget;
+                    report.vertices = budget * 3;
+                    report.hwPolygons = used;
+                    report.hwVertices = used * 3;
+                    report.lines = lastLines;
+                    report.underflow = lastUnder;
+                    const int lines = 46 - (used > strainAt - 300 ? (used - (strainAt - 300)) / 6 : 0);
+                    lastUnder = lines < 0;
+                    lastLines = lines < 0 ? 0 : lines;
+                    budgetStep(state, report);
+                    if (pass >= 2400)
+                    {
+                        strained += report.underflow || report.lines < 6;
+                        const int d = budget > before ? budget - before : before - budget;
+                        jump = d > jump ? d : jump;
+                    }
+                    before = budget;
+                }
+                settles = settles && strained == 0;
+                gentle = gentle && jump <= 10;
+            }
+        }
+        check(settles, "the budget settles below where the hardware strains");
+        check(gentle, "... and does not jump about once it has");
+        {
+            BudgetState state;
+            state.extra = 300;
+            BudgetReport overflowed;
+            overflowed.overflow = true;
+            budgetStep(state, overflowed);
+            check(state.extra == 60 && state.ceiling == 60, "an overflow takes a step off at once, and marks a ceiling");
+        }
     }
 
     /// The touch screen's table: every control where the other hand's is
