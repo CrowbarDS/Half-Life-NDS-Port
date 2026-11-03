@@ -253,20 +253,23 @@ namespace hldata
         // Radians in Q30: 2 pi / 65536 * 2^30 = 102943.7086..., taken as
         // 6588397 / 64 to keep the last digits.
         const std::int64_t t = (static_cast<std::int64_t>(within) * 6588397) >> 6;
-        const std::int64_t t2 = (t * t) >> 30;
+        // (t2 is under 2^30 and never negative: divided as 32 bits, by a
+        // constant, it is a multiply, and the same quotient. As 64 bits each
+        // was a trip to the divider.)
+        const std::uint32_t t2 = static_cast<std::uint32_t>((t * t) >> 30);
         // sin t = t (1 - t2/6 (1 - t2/20 (1 - t2/42 (1 - t2/72))))
         // cos t = 1 - t2/2 (1 - t2/12 (1 - t2/30 (1 - t2/56 (1 - t2/90))))
         constexpr std::int64_t one = std::int64_t(1) << 30;
         std::int64_t s = one - t2 / 72;
-        s = one - ((t2 / 42) * s >> 30);
-        s = one - ((t2 / 20) * s >> 30);
-        s = one - ((t2 / 6) * s >> 30);
+        s = one - (std::int64_t(t2 / 42) * s >> 30);
+        s = one - (std::int64_t(t2 / 20) * s >> 30);
+        s = one - (std::int64_t(t2 / 6) * s >> 30);
         s = (t * s) >> 30;
         std::int64_t c = one - t2 / 90;
-        c = one - ((t2 / 56) * c >> 30);
-        c = one - ((t2 / 30) * c >> 30);
-        c = one - ((t2 / 12) * c >> 30);
-        c = one - ((t2 / 2) * c >> 30);
+        c = one - (std::int64_t(t2 / 56) * c >> 30);
+        c = one - (std::int64_t(t2 / 30) * c >> 30);
+        c = one - (std::int64_t(t2 / 12) * c >> 30);
+        c = one - (std::int64_t(t2 / 2) * c >> 30);
         if (mirrored)
         {
             const std::int64_t swap = s;

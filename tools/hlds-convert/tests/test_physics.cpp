@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <random>
+#include <utility>
 
 #include "HlLevelReader.hpp"
 #include "HlPlayerMove.hpp"
@@ -610,6 +611,48 @@ namespace
         check(fxLength(v) == fxFromInt(13), "vector length");
     }
 
+    /// fxSinCosFine as it was with 64-bit divides: the 32-bit ones must give
+    /// every angle the very same answer.
+    void sinCosFineBefore(std::uint16_t angle, std::int32_t &sine, std::int32_t &cosine)
+    {
+        const std::uint32_t quadrant = angle >> 14;
+        std::uint32_t within = angle & 16383;
+        const bool mirrored = within > 8192;
+        if (mirrored)
+            within = 16384 - within;
+        const std::int64_t t = (static_cast<std::int64_t>(within) * 6588397) >> 6;
+        const std::int64_t t2 = (t * t) >> 30;
+        constexpr std::int64_t one = std::int64_t(1) << 30;
+        std::int64_t s = one - t2 / 72;
+        s = one - ((t2 / 42) * s >> 30);
+        s = one - ((t2 / 20) * s >> 30);
+        s = one - ((t2 / 6) * s >> 30);
+        s = (t * s) >> 30;
+        std::int64_t c = one - t2 / 90;
+        c = one - ((t2 / 56) * c >> 30);
+        c = one - ((t2 / 30) * c >> 30);
+        c = one - ((t2 / 12) * c >> 30);
+        c = one - ((t2 / 2) * c >> 30);
+        if (mirrored)
+            std::swap(s, c);
+        const std::int64_t sines[4] = {s, c, -s, -c}, cosines[4] = {c, -s, -c, s};
+        sine = static_cast<std::int32_t>(sines[quadrant]);
+        cosine = static_cast<std::int32_t>(cosines[quadrant]);
+    }
+
+    void testArithmetic()
+    {
+        int wrong = 0;
+        for (std::uint32_t a = 0; a < 65536; ++a)
+        {
+            std::int32_t s, c, s0, c0;
+            fxSinCosFine(static_cast<std::uint16_t>(a), s, c);
+            sinCosFineBefore(static_cast<std::uint16_t>(a), s0, c0);
+            wrong += s != s0 || c != c0;
+        }
+        check(wrong == 0, "fine sines: every angle as with 64-bit divides");
+    }
+
     /// The same checks on a real map, where planes are not axis-aligned.
     void testRealMap()
     {
@@ -691,6 +734,7 @@ int main()
     testDuck();
     testStuck();
     testRealMap();
+    testArithmetic();
     if (g_failures == 0)
         std::printf("test_physics: ok\n");
     return g_failures == 0 ? 0 : 1;

@@ -150,14 +150,14 @@ namespace hldata
                                                                : 32768 + ((view.bobMs - 400) * 32768) / 400),
                  sine, cosine);
         const fx most = speed / 100;
-        fx bob = static_cast<fx>((static_cast<std::int64_t>(most) * 3) / 10 +
-                                 ((static_cast<std::int64_t>(most) * 7 * sine) >> 12) / 10);
+        // (Each fits 32 bits before its divide, which is then a multiply.)
+        fx bob = (most * 3) / 10 + static_cast<fx>((static_cast<std::int64_t>(most) * 7 * sine) >> 12) / 10;
         bob = bob > fxFromInt(4) ? fxFromInt(4) : (bob < -fxFromInt(7) ? -fxFromInt(7) : bob);
         view.bob = onGround ? bob : view.bob - view.bob / 4;
         // The lean: two degrees at 200 units a second sideways, and no more.
         const fx fast = fxFromInt(200);
         fx lean = side > fast ? fast : (side < -fast ? -fast : side);
-        view.roll = static_cast<fx>((static_cast<std::int64_t>(lean) * 2 * kViewDegree) / fast);
+        view.roll = lean / (fast / (2 * kViewDegree)); // (lean * 2 degrees / fast, in 32 bits)
     }
 
     /// The camera's fall when the player dies: how far the eye has sunk

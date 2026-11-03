@@ -456,7 +456,9 @@ namespace hldata
         bool batchInBody(const ModelBatch &batch, int body, int skin = 0, int level = 0) const
         {
             const ModelBodyPart &part = bodyParts[batch.bodyPart];
-            return batch.level == level && (body < 0 ? 0 : body) / part.base % part.count == batch.subModel &&
+            // (Most parts have one choice: no divide for those.)
+            const int choice = part.count <= 1 ? 0 : (body < 0 ? 0 : body) / part.base % part.count;
+            return batch.level == level && choice == batch.subModel &&
                    (batch.skin == 0 || batch.skin == skin + 1);
         }
         /// How many levels of detail the file has (at least one).

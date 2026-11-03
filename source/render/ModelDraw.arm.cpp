@@ -1113,7 +1113,7 @@ namespace hlrt
                     int rate = 256;
                     if (rolling)
                     {
-                        rate = static_cast<int>((static_cast<std::int64_t>(speed) * 256) / fxFromInt(200));
+                        rate = speed / (fxFromInt(200) / 256); // (speed * 256 / 200 units, in 32 bits)
                         rate = rate > 256 ? 256 : (rate < 128 ? 0 : rate);
                     }
                     const std::uint32_t whole = static_cast<std::uint32_t>(model.clips[clip].frameCount - 1) << 8;

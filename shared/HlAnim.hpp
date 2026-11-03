@@ -473,7 +473,11 @@ namespace hldata
         finished = false;
         const std::uint32_t end = (clip.frameCount - 1u) << 8;
         // fps is Q8 frames a second, so frames * 256 a millisecond is fps / 1000.
-        std::uint64_t next = frame + (static_cast<std::uint64_t>(clip.fps) * static_cast<std::uint32_t>(ms)) / 1000;
+        // (Up to 65535 ms the product fits 32 bits, where a divide by a
+        // constant is a multiply; beyond, it takes the divider.)
+        const std::uint32_t msU = static_cast<std::uint32_t>(ms);
+        std::uint64_t next = frame + (msU <= 0xFFFFu ? (clip.fps * msU) / 1000u
+                                                     : (static_cast<std::uint64_t>(clip.fps) * msU) / 1000);
         if (end == 0)
         {
             finished = !(clip.flags & kClipLoops);
