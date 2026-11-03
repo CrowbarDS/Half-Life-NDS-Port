@@ -18,6 +18,7 @@
 // std-only and inline: the host tests hold it against the game's own
 // floating-point maths.
 
+#include "HlDsp.hpp"
 #include "HlFixed.hpp"
 #include "HlModel.hpp"
 
@@ -38,10 +39,8 @@ namespace hldata
         /// The matrix of a unit quaternion (x y z w, Q14), in Q14.
         inline void quatToMatrix(const std::int32_t *q, std::int32_t *m)
         {
-            const auto mul = [](std::int32_t a, std::int32_t b)
-            {
-                return static_cast<std::int32_t>((static_cast<std::int64_t>(a) * b) >> 13); // 2ab, Q14
-            };
+            // (Each part is at most one, 16384: 16 bits, and the product 32.)
+            const auto mul = [](std::int32_t a, std::int32_t b) { return smulbb(a, b) >> 13; }; // 2ab, Q14
             const std::int32_t xx = mul(q[0], q[0]), yy = mul(q[1], q[1]), zz = mul(q[2], q[2]);
             const std::int32_t xy = mul(q[0], q[1]), xz = mul(q[0], q[2]), yz = mul(q[1], q[2]);
             const std::int32_t wx = mul(q[3], q[0]), wy = mul(q[3], q[1]), wz = mul(q[3], q[2]);
@@ -55,6 +54,14 @@ namespace hldata
             m[6] = xz - wy;
             m[7] = yz + wx;
             m[8] = one - xx - yy;
+        }
+
+        /// Row `row` of one Q14 rotation times column `column` of another, Q14.
+        /// (Every entry of a rotation is at most one, 16384: 16 bits, and the
+        /// three products' sum fits 32.)
+        inline std::int32_t rotationDot(const std::int32_t *row, const std::int32_t *column)
+        {
+            return smlabb(row[2], column[6], smlabb(row[1], column[3], smulbb(row[0], column[0]))) >> kBoneRotShift;
         }
 
         /// Which two of a run of keys `frame` (Q8) falls between, and how
@@ -407,11 +414,7 @@ namespace hldata
                 for (int row = 0; row < 3; ++row)
                 {
                     for (int column = 0; column < 3; ++column)
-                        turned[row * 3 + column] = static_cast<std::int32_t>(
-                            (static_cast<std::int64_t>(first[row * 3]) * second[column] +
-                             static_cast<std::int64_t>(first[row * 3 + 1]) * second[3 + column] +
-                             static_cast<std::int64_t>(first[row * 3 + 2]) * second[6 + column]) >>
-                            kBoneRotShift);
+                        turned[row * 3 + column] = detail::rotationDot(first + row * 3, second + column);
                 }
                 for (int i = 0; i < 9; ++i)
                     local[i] = turned[i];
@@ -430,13 +433,7 @@ namespace hldata
             for (int row = 0; row < 3; ++row)
             {
                 for (int column = 0; column < 3; ++column)
-                {
-                    m.r[row * 3 + column] = static_cast<std::int32_t>(
-                        (static_cast<std::int64_t>(p.r[row * 3]) * local[column] +
-                         static_cast<std::int64_t>(p.r[row * 3 + 1]) * local[3 + column] +
-                         static_cast<std::int64_t>(p.r[row * 3 + 2]) * local[6 + column]) >>
-                        kBoneRotShift);
-                }
+                    m.r[row * 3 + column] = detail::rotationDot(p.r + row * 3, local + column);
                 m.t[row] = p.t[row] + static_cast<fx>((static_cast<std::int64_t>(p.r[row * 3]) * pos[0] +
                                                       static_cast<std::int64_t>(p.r[row * 3 + 1]) * pos[1] +
                                                       static_cast<std::int64_t>(p.r[row * 3 + 2]) * pos[2]) >>

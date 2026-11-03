@@ -479,6 +479,13 @@ Milestone 11, "levels of detail".
   remainders against the library's, word for word.
   A build with `HLDS_PROFILE` checks the hardware's sums against the slow
   way at start-up and says so in `perf.txt`.
+  A 64-bit divide by a constant whose numerator fits 32 bits is done in 32
+  bits, where the compiler makes it a multiply (the fine sines had eight
+  trips to the divider each). Products of two 16-bit values -- a bone's
+  rotation, a speed times the time step -- use the ARM9's own 16-bit
+  multiplies, which the compiler never picks: `shared/HlDsp.hpp`, checked
+  against their definition by `test_dsp` and on the console by
+  `tools/hwtest/dspmath/`.
 - Where the code runs from. The DS has 32 KB of memory that is always as
   fast as the cache at its best (ITCM), and what is in it is chosen by how
   much of the frame it is: the hull trace -- for everything that traces, not

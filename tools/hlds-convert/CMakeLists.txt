@@ -180,6 +180,7 @@ if(HLDS_BUILD_TESTS)
             test_mesh
             test_movers
             test_physics
+            test_dsp
             test_save
             test_savefiles
             test_savestate

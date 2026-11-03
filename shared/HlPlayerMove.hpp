@@ -22,6 +22,7 @@
 // code the console runs. Sine and cosine are not available here (the DS's
 // tables live in libnds), so the caller hands in the view's horizontal axes.
 
+#include "HlDsp.hpp"
 #include "HlFields.hpp"
 #include "HlMovers.hpp"
 
@@ -588,6 +589,9 @@ namespace hldata
     {
         inline fx scaleTime(fx value, std::int32_t dt)
         {
+            // (A step under half a second fits 16 bits: then one SMULWB.)
+            if (dt >= -32768 && dt <= 32767)
+                return smulwb(value, dt);
             return static_cast<fx>((static_cast<std::int64_t>(value) * dt) >> kTimeShift);
         }
 

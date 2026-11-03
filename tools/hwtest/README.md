@@ -138,3 +138,24 @@ Roots of 2^62 and above are also counted apart. 2026-11-03: on a console,
 PASS, 0 of 20439 wrong from 2^62 up, so `isqrt64` gives the unit the whole
 range. melonDS gets every root below 2^62 right and 6997 of those 20439 one
 too high: there the probe says FAIL, and the emulator is wrong, not the game.
+
+## dspmath/ — the ARM9's 16-bit multiplies
+
+`shared/HlDsp.hpp`'s SMULxy, SMULWy, SMLAxy and SMLAWy, as ARM code, against
+the plain arithmetic the host's tests check (`test_dsp`): over a million
+answers on edge values and random numbers, "wrong" must be 0. Then, in CPU
+cycles an item, warm: a Q12 value times a Q16 step >> 16 by SMULL or SMULWB,
+and three Q14 products summed through 64 bits, in 32 bits, or by SMLABB.
+
+On a console, 2026-11-03: PASS, 0 wrong, and in cycles an item:
+
+| Loop | Cycles |
+|---|---|
+| scale, SMULL | 20.34 |
+| scale, SMULWB | 18.03 |
+| dot3, through 64 bits | 17.68 |
+| dot3, in 32 bits | 16.73 |
+| dot3, SMULBB and SMLABB | 16.53 |
+
+So the game uses them: about a tenth off a time step's product and a sixteenth
+off a bone's rotation.
