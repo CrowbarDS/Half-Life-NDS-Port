@@ -337,6 +337,19 @@ namespace hlrt
         {
             for (int m = 0; m < 3; ++m)
                 turned[m * 3 + j] = dotShort(turn + m, 3, axes + j, 3) >> 9;
+            if (id == -1)
+            {
+                // What is held (drawHeld): where it is from the eye, whole --
+                // not its place in the world rounded to a quarter unit and the
+                // eye's taken off again, which moved it against the view by
+                // as much as that rounding as the player walked and turned
+                // (the weapon shook).
+                const std::int64_t sum = static_cast<std::int64_t>(actor.pos[0] - camera.pos[0]) * view[0 + j] +
+                                         static_cast<std::int64_t>(actor.pos[1] - camera.pos[1]) * view[3 + j] +
+                                         static_cast<std::int64_t>(actor.pos[2] - camera.pos[2]) * view[6 + j];
+                base[j] = static_cast<int>(sum >> 22) >> shrink;
+                continue;
+            }
             const std::int64_t sum = static_cast<std::int64_t>(actor.pos[0] >> 10) * view[0 + j] +
                                      static_cast<std::int64_t>(actor.pos[1] >> 10) * view[3 + j] +
                                      static_cast<std::int64_t>(actor.pos[2] >> 10) * view[6 + j];
@@ -679,7 +692,13 @@ namespace hlrt
             }
             // (At its finest, unless that is the game's own mesh and the
             // frame is already too full: then the level under it.)
-            inHand.want = pressure > 0 && levels > 1 && held->header->polygons > kWholeModel ? 1 : 0;
+            heldPressed_ = pressure > 0 ? (heldPressed_ < 0 ? 1 : heldPressed_ + 1) : (heldPressed_ > 0 ? -1 : heldPressed_ - 1);
+            if (heldPressed_ >= static_cast<int>(kRememberLevel))
+                heldCoarse_ = true;
+            else if (heldPressed_ <= -static_cast<int>(kRememberLevel))
+                heldCoarse_ = false;
+            heldPressed_ = heldPressed_ > 1000 ? 1000 : (heldPressed_ < -1000 ? -1000 : heldPressed_);
+            inHand.want = heldCoarse_ && levels > 1 && held->header->polygons > kWholeModel ? 1 : 0;
         }
 
         // Each actor at a level of detail: the coarsest whose error is

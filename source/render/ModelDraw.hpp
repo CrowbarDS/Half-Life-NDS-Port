@@ -112,6 +112,11 @@ namespace hlrt
         /// level is remembered a little while after.
         std::uint16_t drawnAt_[kActorSlots] = {};
         int nearestSlot_ = -1; ///< the one given the game's own mesh last
+        /// What is held is at its coarser level after so many passes in a
+        /// row under pressure, and at its finest again after as many with
+        /// none: not from one pass to the next.
+        int heldPressed_ = 0;
+        bool heldCoarse_ = false;
         static constexpr std::uint16_t kRememberLevel = 30;
         int found_ = 0;
         int limit_ = 8;
