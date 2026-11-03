@@ -2257,7 +2257,7 @@ int main(int argc, char *argv[])
                 const hlrt::WorldStats &stats = hlrt::worldDraw.stats();
                 const int took = static_cast<int>(now - lastPass);
                 hlrt::gpuStats.frame(stats.hwPolygons, stats.hwVertices, took);
-                hlrt::gpuStats.view(stats.budgetHit, hlrt::worldDraw.pressure() != 0);
+                hlrt::gpuStats.view(stats.budgetHit, stats.brushCut, hlrt::worldDraw.pressure() != 0);
                 hlrt::gpuStats.losses(hlrt::modelDraw.cutOf(0), hlrt::effectDraw.refused(), hlrt::modelDraw.seenEnemiesCut(),
                                       hlrt::modelDraw.hidden());
                 hlrt::gpuStats.world(stats.polygons, stats.surfacesCut, stats.brushesDropped, stats.brushesOverflow,

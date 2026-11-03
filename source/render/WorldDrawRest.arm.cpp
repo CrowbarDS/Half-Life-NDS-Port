@@ -271,7 +271,7 @@ namespace hlrt
             if (stats_.polygons + surface->polygons > polygonBudget() ||
                 stats_.vertices + surface->vertices > vertexBudget())
             {
-                stats_.budgetHit = true;
+                stats_.brushCut = true;
                 break;
             }
             if (surface->texture != bound)
@@ -464,7 +464,7 @@ namespace hlrt
         {
             if (stats_.polygons + cost[0] <= polygonBudget() && stats_.vertices + cost[1] <= vertexBudget())
                 return true;
-            stats_.budgetHit = true;
+            stats_.brushCut = true;
             ++stats_.brushesDropped;
             return false;
         };
@@ -475,7 +475,7 @@ namespace hlrt
         {
             if (n >= solidDrawn)
             {
-                stats_.budgetHit = true;
+                stats_.brushCut = true;
                 ++stats_.brushesDropped;
                 continue;
             }
@@ -827,7 +827,7 @@ namespace hlrt
         // As solid at its far end as the player has it, coming on slowly
         // (shared/HlFog.hpp).
         std::uint8_t table[32];
-        fogTable(settings.graphics.fogStrength, table);
+        fogTable(settings.graphics.fogStrength, table, fogSolid_);
         for (int i = 0; i < 32; ++i)
             GFX_FOG_TABLE[i] = table[i];
     }
@@ -852,7 +852,7 @@ namespace hlrt
         // (If it has to go straight back up, it is let down less readily
         // the next time: a view on the edge is not to flicker.)
         ++sinceRelax_;
-        if (stats_.budgetHit)
+        if (stats_.budgetHit || stats_.brushCut)
         {
             easyPasses_ = 0;
             if (++cutPasses_ >= 3)
@@ -900,28 +900,13 @@ namespace hlrt
             const GraphicsSettings &say = settings.graphics;
             const bool heavy = level.loaded() &&
                                levelIsHeavy(level.view.header->worstPolygons, level.view.header->worstVertices);
-            const bool always = say.fog == kFogAlways || (say.fog == kFogWhenNeeded && heavy);
-            int want = kNoFog;
             const int mapFar = level.loaded() ? static_cast<int>(level.view.header->farUnits) : 0;
-            if (say.fog != kFogOff && say.fogStrength > 0)
-            {
-                if (always)
-                    want = fogAlwaysEnd(say.fogDistance, say.drawDistance, mapFar);
-                // (A map that is seen no farther than it is drawn: whole by
-                // then, so that where it ends is never seen.)
-                if (mapFar > 0 && mapFar < drawDistanceUnits(say.drawDistance) && mapFar < want)
-                    want = mapFar;
-                if (stats_.budgetHit)
-                {
-                    const int cut = fogCutEnd(stats_.cutDistance, say.fogDistance);
-                    want = cut < want ? cut : want;
-                }
-                want = want > kNoFog ? kNoFog : want;
-            }
-            else
-            {
+            const FogWant wanted =
+                fogWanted(say, say.fog == kFogWhenNeeded && heavy, mapFar, stats_.budgetHit, stats_.cutDistance);
+            const int want = wanted.end > kNoFog ? kNoFog : wanted.end;
+            fogSolid_ = wanted.hidesEdge;
+            if (say.fog == kFogOff || say.fogStrength == 0)
                 fogEnd_ = kNoFog; // (switched off: gone at once)
-            }
             if (want < fogEnd_ && stats_.budgetHit)
                 fogEnd_ = want;
             else if (want < fogEnd_)

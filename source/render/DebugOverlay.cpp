@@ -63,7 +63,7 @@ namespace hlrt
             modelDraw.levelsText(levels, sizeof(levels));
             std::snprintf(line, sizeof(line), "leaf %4d surf %3d br %2d %s%.0d %s L%s", stats.leaf,
                           stats.surfaces, stats.brushes, worldDraw.pressure() ? "p" : "",
-                          worldDraw.pressure(), stats.budgetHit ? "CUT" : "", levels);
+                          worldDraw.pressure(), stats.budgetHit ? "CUT" : (stats.brushCut ? "cutb" : ""), levels);
         }
             break;
         case 2:

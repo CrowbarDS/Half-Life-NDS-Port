@@ -58,12 +58,17 @@ namespace hldata
     /// The hardware's 32 densities (0..127) for a fog of `strength` (0..10):
     /// none at its near edge, `strength` tenths of whole at its far one,
     /// coming on slowly at first (a curve: a straight ramp reads as a wall).
-    inline constexpr void fogTable(int strength, std::uint8_t *out)
+    /// `solidEnd`: a fog there to hide an edge (a view cut off, the end of
+    /// what is drawn) is whole at its end, whatever its strength -- past it
+    /// there is nothing to be seen through it.
+    inline constexpr void fogTable(int strength, std::uint8_t *out, bool solidEnd = false)
     {
         strength = strength < 0 ? 0 : (strength > kGraphicsMost ? kGraphicsMost : strength);
         const int top = (127 * strength) / kGraphicsMost;
         for (int i = 0; i < 32; ++i)
             out[i] = static_cast<std::uint8_t>((top * i * i) / (31 * 31));
+        if (solidEnd && strength > 0)
+            out[30] = out[31] = 127;
     }
 
     /// How far the world is drawn at all (units).
@@ -89,15 +94,66 @@ namespace hldata
         return end > far ? far : end;
     }
 
+    /// A fog distance that is no fog.
+    inline constexpr int kFogNone = 8192;
+    /// Nearer than this, a cut view is not fogged: the fog could not hide a
+    /// hole that near, and pulling it in that far turns the whole screen to
+    /// its colour (a thing near and costly, cut first, used to bring it to a
+    /// few steps from the eye).
+    inline constexpr int kFogCutNearest = 512;
+
     /// Where the fog that hides a cut is at its most, for a view cut off
     /// `cut` units away: from seven eighths of the way there to all of it,
     /// by `distance` (0..10) -- the farther, the less of the view is lost
-    /// to fog and the harder the edge behind it. Never nearer than 192.
+    /// to fog and the harder the edge behind it. kFogNone for a cut nearer
+    /// than kFogCutNearest.
     inline constexpr int fogCutEnd(int cut, int distance)
     {
+        if (cut < kFogCutNearest)
+            return kFogNone;
         distance = distance < 0 ? 0 : (distance > kGraphicsMost ? kGraphicsMost : distance);
         const int end = (cut * (280 + distance * 4)) / 320;
-        return end < 192 ? 192 : end;
+        return end < kFogCutNearest * 7 / 8 ? kFogCutNearest * 7 / 8 : end;
+    }
+
+    /// The fog a pass wants: where it is whole (kFogNone: no fog), and
+    /// whether it is there to hide an edge -- and so is to be solid there.
+    struct FogWant
+    {
+        int end = kFogNone;
+        bool hidesEdge = false;
+    };
+    /// As the player has it: none; only where it hides an edge; or always,
+    /// at their distance (and nearer for an edge). An edge is a view cut off
+    /// (`cut`, at `cutDistance`: fogCutEnd), or where what is drawn ends
+    /// short of what could be seen -- a nearer draw distance than the map is
+    /// seen to (`mapFar`), or a map seen no farther than it is drawn: whole
+    /// by then, so that where it ends is never seen. A `heavy` map has it
+    /// always: most of its views are cut, and fog that came and went with
+    /// the cut would pump.
+    inline constexpr FogWant fogWanted(const GraphicsSettings &say, bool heavy, int mapFar, bool cut, int cutDistance)
+    {
+        FogWant want;
+        if (say.fog == kFogOff || say.fogStrength == 0)
+            return want;
+        if (say.fog == kFogAlways || heavy)
+            want.end = fogAlwaysEnd(say.fogDistance, say.drawDistance, mapFar);
+        const int far = drawDistanceFor(say.drawDistance, mapFar);
+        if (far < kFogNone && far <= want.end)
+        {
+            want.end = far;
+            want.hidesEdge = true;
+        }
+        if (cut)
+        {
+            const int end = fogCutEnd(cutDistance, say.fogDistance);
+            if (end < want.end)
+            {
+                want.end = end;
+                want.hidesEdge = true;
+            }
+        }
+        return want;
     }
 
     /// Model detail: a model may be drawn at a coarser level while that

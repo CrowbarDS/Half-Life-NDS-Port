@@ -389,6 +389,7 @@ namespace hlrt
         if (!level.loaded() || chosen_ == nullptr)
             return;
         stats_.budgetHit = false;
+        stats_.brushCut = false;
         stats_.surfacesCut = 0;
         stats_.brushesDropped = 0;
         stats_.brushesOverflow = 0;

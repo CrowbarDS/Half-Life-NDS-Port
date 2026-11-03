@@ -574,11 +574,41 @@ namespace
         }
         check(whole[0] == 0 && whole[31] == 127 && soft[0] == 0 && soft[31] == 88 && rising && off && whole[15] < 40,
               "the fog is none at its near edge and as solid as it is set at its far one, coming on slowly");
+        {
+            std::uint8_t edge[32], noneEdge[32];
+            fogTable(7, edge, true);
+            fogTable(0, noneEdge, true);
+            check(edge[31] == 127 && edge[30] == 127 && edge[29] == soft[29] && noneEdge[31] == 0,
+                  "a fog hiding an edge is whole at its end, the rest as it is set");
+        }
+        {
+            GraphicsSettings say;
+            say.fog = kFogWhenNeeded;
+            say.drawDistance = 0;
+            check(fogWanted(say, false, 8192, false, 0).end == kFogNone, "when needed: none on a view seen whole");
+            say.drawDistance = 1;
+            const FogWant medium = fogWanted(say, false, 8192, false, 0);
+            check(medium.end == drawDistanceUnits(1) && medium.hidesEdge,
+                  "... but where a nearer draw distance cuts what could be seen, whole there");
+            say.drawDistance = 0;
+            const FogWant small = fogWanted(say, false, 2048, false, 0);
+            check(small.end == 2048 && small.hidesEdge, "... and on a map seen no farther than it is drawn");
+            const FogWant cut = fogWanted(say, false, 8192, true, 1600);
+            check(cut.end == fogCutEnd(1600, say.fogDistance) && cut.hidesEdge, "... and where the view is cut");
+            check(fogWanted(say, false, 8192, true, 100).end == kFogNone, "... but not for a cut too near to hide");
+            say.fog = kFogAlways;
+            const FogWant always = fogWanted(say, false, 8192, false, 0);
+            check(always.end == fogAlwaysEnd(say.fogDistance, 0) && !always.hidesEdge,
+                  "always: at the player's distance, as soft as they have it");
+            say.fog = kFogOff;
+            check(fogWanted(say, true, 2048, true, 1600).end == kFogNone, "off: none, whatever is cut");
+        }
         check(fogAlwaysEnd(0, 0) == 768 && fogAlwaysEnd(10, 0) == 6144 && fogAlwaysEnd(5, 0) > 3000 &&
                   fogAlwaysEnd(10, 2) == drawDistanceUnits(2) && fogAlwaysEnd(0, 2) == 768,
               "a fog that is always there is from 768 to 6144 units off, and never past what is drawn");
         check(fogCutEnd(1600, 0) == 1400 && fogCutEnd(1600, 10) == 1600 && fogCutEnd(1600, 5) == 1500 &&
-                  fogCutEnd(100, 5) == 192,
+                  fogCutEnd(100, 5) == kFogNone && fogCutEnd(0, 5) == kFogNone &&
+                  fogCutEnd(511, 10) == kFogNone && fogCutEnd(512, 10) == 512,
               "one that hides a cut is whole from seven eighths of the way to it to all the way, never nearer than 192");
         check(drawDistanceUnits(0) == 8192 && drawDistanceUnits(1) == 3072 && drawDistanceUnits(2) == 1536,
               "the world is drawn far, less far, or near");

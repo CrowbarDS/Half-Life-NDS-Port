@@ -55,6 +55,9 @@ namespace hlrt
         int hwVertices = 0;
         int brushes = 0;        ///< brush entities sent
         bool budgetHit = false; ///< the walk stopped early
+        /// A brush entity had no room. (It does not bring the fog in: what is
+        /// behind a door left out is the room there, not nothing.)
+        bool brushCut = false;
         /// How far away the first thing left out was (whole units), when the
         /// walk stopped early.
         int cutDistance = 0;
@@ -102,7 +105,7 @@ namespace hlrt
         /// Nearer than this (whole units, along the view), nothing is left
         /// out for being small: under pressure, only what is farther goes.
         static constexpr int kDetailNearest = 256;
-        static constexpr int kNoFog = 8192; ///< a fog distance that is no fog
+        static constexpr int kNoFog = hldata::kFogNone; ///< a fog distance that is no fog
         static constexpr NEA_CullingEnum kCull = NEA_CULL_NONE;
         static constexpr NEA_OtherFormatEnum kPolygonMode =
             static_cast<NEA_OtherFormatEnum>(NEA_MODULATION | NEA_RENDER_FAR_CLIPPED);
@@ -250,6 +253,7 @@ namespace hlrt
         /// Where the fog is whole: just short of where the view is being cut
         /// off. Brought in at once, let out slowly.
         int fogEnd_ = kNoFog;
+        bool fogSolid_ = false; ///< it hides an edge: whole at its end (fogTable)
         bool fogOn_ = false;
         std::uint16_t behind_ = 0; ///< the colour behind everything, as last set
         int held_ = 0; ///< polygons kept back from the budget by govern()

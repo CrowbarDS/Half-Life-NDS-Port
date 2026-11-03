@@ -42,9 +42,10 @@ namespace hlrt
         void frame(int polygons, int vertices, int vblanks);
         /// What the view cost a pass: whether it was cut off at a distance
         /// (and fogged there), and whether small things were being left out.
-        void view(bool cut, bool pressed)
+        void view(bool cut, bool brushCut, bool pressed)
         {
             map_.cut += cut;
+            map_.brushCut += brushCut;
             map_.pressed += pressed;
         }
         /// What a pass left out that should not be: enemies in view not
@@ -96,6 +97,7 @@ namespace hlrt
             int vblanks = 0;  ///< the longest pass
             std::uint32_t slow = 0; ///< passes that took more than one blank
             std::uint32_t cut = 0;     ///< passes cut off at a distance
+            std::uint32_t brushCut = 0; ///< passes with a brush entity left out for room
             std::uint32_t pressed = 0; ///< passes with the small and far left out
             std::uint32_t enemiesCut = 0;     ///< passes with an enemy in view not drawn
             std::uint32_t enemiesSeenCut = 0; ///< ... one not behind a wall
