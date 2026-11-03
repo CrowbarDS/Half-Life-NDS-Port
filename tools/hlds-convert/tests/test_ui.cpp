@@ -12,6 +12,7 @@
 
 #include "HlFont.hpp"
 #include "HlLamp.hpp"
+#include "HlTopLayout.hpp"
 #include "HlSettings.hpp"
 #include "HlTouchLayout.hpp"
 #include "TestBspBuilder.hpp"
@@ -178,6 +179,86 @@ namespace
         check(view.open(reinterpret_cast<const std::uint8_t *>(words.data()), words.size() * 4) && view.height() == 8 &&
                   view.width('z') == 8 && view.glyph('A')[0] == 3u,
               "the console's own 8x8 letters make a font of the same form");
+    }
+
+    /// A face of `height` rows whose every letter is `width` across.
+    std::vector<std::uint32_t> evenFace(int height, int width)
+    {
+        std::vector<std::uint32_t> words((12 + 96 + 96 * height * 4) / 4, 0);
+        FontHeader header{};
+        std::memcpy(header.magic, kFontMagic, 4);
+        header.version = kFontVersion;
+        header.height = static_cast<std::uint8_t>(height);
+        header.first = 32;
+        header.count = 96;
+        auto *bytes = reinterpret_cast<std::uint8_t *>(words.data());
+        std::memcpy(bytes, &header, sizeof(header));
+        std::memset(bytes + sizeof(header), width, 96);
+        return words;
+    }
+
+    /// What the map writes over the picture: wrapped to the screen, one face
+    /// for all of it, the console's letters only for what fits no other.
+    void testTopLayout()
+    {
+        const std::vector<std::uint32_t> words[4] = {evenFace(20, 12), evenFace(16, 9), evenFace(14, 6), evenFace(8, 8)};
+        FontView views[4];
+        for (int f = 0; f < 4; ++f)
+            views[f].open(reinterpret_cast<const std::uint8_t *>(words[f].data()), words[f].size() * 4);
+        const FontView *faces[4] = {&views[0], &views[1], &views[2], &views[3]};
+
+        TopBlock title = topLayout(faces, 4, -1, "HAZARD COURSE", -1, 102);
+        check(title.face == 0 && title.lineCount == 1 && title.lines[0].x == (256 - 13 * 12) / 2 &&
+                  title.top == 102 * 192 / 256,
+              "a short title keeps the largest face, in the middle across, as far down as it says");
+
+        const char *move = "MOVE FORWARD BY PRESSING FORWARD KEY\nMOVE BACKWARD BY PRESSING BACKWARD KEY\n"
+                           "MOVE LEFT BY PRESSING MOVELEFT\nMOVE RIGHT BY PRESSING MOVERIGHT";
+        TopBlock block = topLayout(faces, 4, -1, move, -1, 166);
+        bool narrow = true, centred = true;
+        int letters = 0;
+        for (int l = 0; l < block.lineCount; ++l)
+        {
+            const int wide = textWidth(*faces[block.face], move + block.lines[l].start, block.lines[l].count);
+            narrow = narrow && wide <= 252;
+            centred = centred && block.lines[l].x == (256 - wide) / 2;
+            letters += block.lines[l].count;
+        }
+        std::printf("test_ui: the movement text: face %d, %d lines at %d rows apart, from row %d\n", block.face,
+                    block.lineCount, block.pitch, block.top);
+        check(block.face == 2 && block.lineCount == 4 && narrow && centred,
+              "four lines that fit the smallest face keep it, each on its own line, each in the middle");
+        check(letters == 36 + 38 + 30 + 32 && block.top + block.lineCount * block.pitch <= 192,
+              "... none of its letters left out, and all of it on the screen");
+
+        TopBlock button = topLayout(faces, 4, -1, "PRESS YOUR USE KEY TO PUSH A BUTTON", -1, 77);
+        check(button.face == 2 && button.lineCount == 1,
+              "a line that fits whole in a smaller face goes in it, rather than wrapped in a larger");
+
+        const char *longer = "PRESS FORWARD KEY TO RUN FORWARD AND THEN PRESS THE JUMP KEY TO JUMP OVER THE GAP, "
+                             "AND KEEP RUNNING UNTIL YOU REACH THE FAR SIDE OF IT\n"
+                             "PRESS DUCK KEY TO DUCK UNDER IT\nPRESS JUMP KEY TO JUMP";
+        block = topLayout(faces, 4, -1, longer, -1, 166);
+        bool fits = true;
+        int kept = 0, all = 0;
+        for (int l = 0; l < block.lineCount; ++l)
+        {
+            fits = fits && textWidth(*faces[3], longer + block.lines[l].start, block.lines[l].count) <= 252 &&
+                   longer[block.lines[l].start] != ' ';
+            for (int k = 0; k < block.lines[l].count; ++k)
+                kept += longer[block.lines[l].start + k] != ' ' ? 1 : 0;
+        }
+        for (const char *c = longer; *c != '\0'; ++c)
+            all += *c != '\n' && *c != ' ' ? 1 : 0;
+        check(block.face == 3 && block.pitch == 9 && block.lineCount * 9 <= 64 && fits && kept == all,
+              "what fits none of the game's faces is wrapped in the console's letters, each line starting on a word");
+
+        block = topLayout(faces, 4, 2, "SAVING", 4, 6);
+        check(block.face == 2 && block.lines[0].x == 4 && block.top == 6 * 192 / 256,
+              "a face asked for is kept, where it is asked for");
+        block = topLayout(faces, 4, 2, move, 4, 6);
+        check(block.face == 2 && block.lineCount == 4, "... and what it cannot hold is left out, not drawn over");
+        check(topLayout(faces, 4, -1, "\n\n", -1, -1).lineCount == 0, "empty lines are no lines");
     }
 
     /// The settings the menu changes: there and back, and nothing out of
@@ -629,6 +710,55 @@ namespace
                   "... and cooks: proportional, a light letter in a dark edge");
         }
         {
+            // The Hazard Course's writing, in the game's own faces: all of
+            // each on the screen.
+            std::vector<std::uint32_t> aligned[4];
+            FontView views[4];
+            const char *names[3] = {"creditsfont", "FONT1", "FONT0"};
+            bool read = true;
+            for (int f = 0; f < 3; ++f)
+            {
+                std::vector<std::uint8_t> lump;
+                QFont font;
+                read = read && readWadLump(valve + (f == 0 ? "/gfx.wad" : "/fonts.wad"), names[f], lump, error) &&
+                       parseQFont(lump, font, error);
+                if (!read)
+                    break;
+                const std::vector<std::uint8_t> cooked = cookFont(font, f != 0);
+                aligned[f].resize((cooked.size() + 3) / 4);
+                std::memcpy(aligned[f].data(), cooked.data(), cooked.size());
+                views[f].open(reinterpret_cast<const std::uint8_t *>(aligned[f].data()), cooked.size());
+            }
+            std::uint8_t bits[96 * 8] = {};
+            aligned[3].resize(kPlainFontWords);
+            plainFont(bits, true, aligned[3].data());
+            views[3].open(reinterpret_cast<const std::uint8_t *>(aligned[3].data()), aligned[3].size() * 4);
+            const FontView *faces[4] = {&views[0], &views[1], &views[2], &views[3]};
+            const char *texts[] = {"MOVE FORWARD BY PRESSING FORWARD KEY\nMOVE BACKWARD BY PRESSING BACKWARD KEY\n"
+                                   "MOVE LEFT BY PRESSING MOVELEFT\nMOVE RIGHT BY PRESSING MOVERIGHT",
+                                   "PRESS YOUR USE KEY TO PUSH A BUTTON",
+                                   "PRESS FORWARD KEY TO RUN FORWARD\nPRESS JUMP KEY TO JUMP\nPRESS DUCK KEY TO DUCK\n"
+                                   "PRESS JUMP KEY TO JUMP"};
+            for (const char *text : texts)
+            {
+                if (!read)
+                    break;
+                const TopBlock block = topLayout(faces, 4, -1, text, -1, 166);
+                int letters = 0, all = 0;
+                for (int l = 0; l < block.lineCount; ++l)
+                    letters += block.lines[l].count;
+                for (const char *c = text; *c != '\0'; ++c)
+                    all += *c != '\n' && *c != ' ' ? 1 : 0;
+                int kept = 0;
+                for (int l = 0; l < block.lineCount; ++l)
+                    for (int k = 0; k < block.lines[l].count; ++k)
+                        kept += text[block.lines[l].start + k] != ' ' ? 1 : 0;
+                std::printf("test_ui: \"%.24s...\": face %d, %d lines\n", text, block.face, block.lineCount);
+                check(kept == all && block.top + block.lineCount * block.pitch <= 192,
+                      "the Hazard Course's writing is all on the screen");
+            }
+        }
+        {
             std::vector<std::uint8_t> lump;
             QFont font;
             check(readWadLump(valve + "/gfx.wad", "creditsfont", lump, error) && parseQFont(lump, font, error) &&
@@ -873,6 +1003,7 @@ int main()
     testFont();
     testCanvas();
     testPlain();
+    testTopLayout();
     testSettings();
     testGraphics();
     testLayout();

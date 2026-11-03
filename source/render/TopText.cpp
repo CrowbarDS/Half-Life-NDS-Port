@@ -16,6 +16,9 @@ namespace hlrt
 
         constexpr int kBandHeight = 32;
         constexpr int kBands = 4;
+        // Each slot's: one under the other, 64 rows.
+        constexpr int kSlotBands = 2;
+        constexpr int kSlotRows = kSlotBands * kBandHeight;
         // A slot's colours on the sprites' palette: three of its final
         // colour (a letter's faint edge, its half, its whole), then three of
         // the colour a letter is while it is new.
@@ -83,10 +86,11 @@ namespace hlrt
     void TopText::place(const Slot &slot, int index)
     {
         std::uint16_t *sprite = oam();
-        for (int l = 0; l < kLines; ++l)
+        for (int b = 0; b < kSlotBands; ++b)
         {
-            const int band = index * kLines + l;
-            const bool shown = slot.busy && l < slot.lineCount;
+            const int band = index * kSlotBands + b;
+            // (The second only if the writing reaches into it.)
+            const bool shown = slot.busy && slot.lineCount > 0 && slot.rows > b * kBandHeight;
             for (int k = 0; k < 4; ++k)
             {
                 std::uint16_t *entry = sprite + (band * 4 + k) * 4;
@@ -96,7 +100,7 @@ namespace hlrt
                     continue;
                 }
                 // (Wide, 64 by 32; drawn added to what is behind.)
-                entry[0] = static_cast<std::uint16_t>((slot.lines[l].y & 0xFF) | 0x0400 | 0x4000);
+                entry[0] = static_cast<std::uint16_t>(((slot.top + b * kBandHeight) & 0xFF) | 0x0400 | 0x4000);
                 entry[1] = static_cast<std::uint16_t>((k * 64) | 0xC000);
                 entry[2] = static_cast<std::uint16_t>((band * 128 + k * 8) | ATTR2_PRIORITY(1));
             }
@@ -125,12 +129,12 @@ namespace hlrt
                 n -= line.count;
                 continue;
             }
-            const FontView &font = touchCanvas.font(line.font);
+            const FontView &font = slot.font < 0 ? touchCanvas.plain() : touchCanvas.font(slot.font);
             const int base = inkBase(index) + (fresh ? 3 : 0);
             const Ink ink{{0, static_cast<std::uint8_t>(base), static_cast<std::uint8_t>(base + 1),
                            static_cast<std::uint8_t>(base + 2)}};
-            const int band = index * kLines + l;
-            drawText(canvas_, font, line.x + textWidth(font, line.text, n), band * kBandHeight, line.text + n, ink, 1);
+            drawText(canvas_, font, line.x + textWidth(font, line.text, n), index * kSlotRows + line.row, line.text + n,
+                     ink, 1);
             return;
         }
     }
@@ -154,20 +158,20 @@ namespace hlrt
     HL_ARM void TopText::drawLogo(Slot &slot, int index)
     {
         loadTitle();
-        const int band = index * kLines;
-        canvas_.fill(0, band * kBandHeight, 256, kBandHeight * kLines, 0);
+        canvas_.fill(0, index * kSlotRows, 256, kSlotRows, 0);
         const int left = (256 - title.width()) / 2;
         for (int y = 0; y < title.height() && y < kBandHeight; ++y)
         {
             for (int x = 0; x < title.width(); ++x)
             {
                 if (const int level = title.level(0, x, y))
-                    canvas_.pixel(left + x, band * kBandHeight + y, inkBase(index) + level - 1);
+                    canvas_.pixel(left + x, index * kSlotRows + y, inkBase(index) + level - 1);
             }
         }
         slot.lineCount = 1;
+        slot.rows = title.height();
         const int y = slot.message.y < 0 ? (192 - title.height()) / 2 : slot.message.y * 192 / 256;
-        slot.lines[0].y = y > 192 - title.height() ? 192 - title.height() : y;
+        slot.top = y > 192 - title.height() ? 192 - title.height() : y;
     }
 
     void TopText::show(const MessageRecord &message, const char *text)
@@ -205,7 +209,7 @@ namespace hlrt
         slot.busy = true;
         slot.message = message;
         slot.order = ++orders_;
-        canvas_.fill(0, index * kLines * kBandHeight, 256, kLines * kBandHeight, 0);
+        canvas_.fill(0, index * kSlotRows, 256, kSlotRows, 0);
         if (logo)
         {
             // The game's own title: a picture, which comes and goes as the
@@ -220,49 +224,33 @@ namespace hlrt
         }
         else
         {
-            // Its lines, each in the largest of the game's faces it fits
-            // the screen in.
-            int high = 0;
-            const char *at = text;
-            while (*at != '\0' && slot.lineCount < kLines)
+            // Its lines, wrapped to the screen, all in the largest of the
+            // game's faces they fit the slot in -- or, if none, in the
+            // console's own letters (shared/HlTopLayout.hpp).
+            const FontView *faces[] = {&touchCanvas.font(kFontTitle), &touchCanvas.font(kFontMedium),
+                                       &touchCanvas.font(kFontSmall), &touchCanvas.plain()};
+            constexpr int kFaceOf[] = {kFontTitle, kFontMedium, kFontSmall, -1};
+            int forced = -1;
+            for (int f = 0; f < 3 && font_ >= 0; ++f)
+                forced = kFaceOf[f] == font_ ? f : forced;
+            const TopBlock block = topLayout(faces, 4, forced, text, message.x, message.y, 252, kSlotRows);
+            slot.font = kFaceOf[block.face];
+            slot.top = block.top;
+            slot.rows = block.pitch * block.lineCount;
+            for (int l = 0; l < block.lineCount; ++l)
             {
-                Line &line = slot.lines[slot.lineCount];
-                line.text = at;
-                while (at[line.count] != '\0' && at[line.count] != '\n')
-                    ++line.count;
-                at += line.count;
-                if (*at == '\n')
-                    ++at;
-                if (line.count == 0)
-                    continue; // (an empty line is no line here)
-                line.font = font_ >= 0 ? font_ : kFontTitle;
-                if (textWidth(touchCanvas.font(line.font), line.text, line.count) > 252)
-                    line.font = kFontMedium;
-                if (textWidth(touchCanvas.font(line.font), line.text, line.count) > 252)
-                    line.font = kFontSmall;
-                const int tall = touchCanvas.font(line.font).height();
-                high = tall > high ? tall : high;
+                Line &line = slot.lines[l];
+                line.text = text + block.lines[l].start;
+                line.count = block.lines[l].count;
+                line.x = block.lines[l].x;
+                line.row = block.lines[l].row;
                 slot.letters += line.count;
-                ++slot.lineCount;
             }
+            slot.lineCount = block.lineCount;
             if (slot.lineCount == 0)
             {
                 slot.busy = false;
                 return;
-            }
-            const int pitch = high + 2;
-            // Down the screen as the game's file says (-1: the middle), and
-            // each line across likewise; all of it kept on the screen.
-            int top = message.y < 0 ? (192 - pitch * slot.lineCount) / 2 : message.y * 192 / 256;
-            top = top > 192 - pitch * slot.lineCount ? 192 - pitch * slot.lineCount : top;
-            for (int l = 0; l < slot.lineCount; ++l)
-            {
-                Line &line = slot.lines[l];
-                const int wide = textWidth(touchCanvas.font(line.font), line.text, line.count);
-                int x = message.x < 0 ? (256 - wide) / 2 : message.x;
-                x = x > 254 - wide ? 254 - wide : x;
-                line.x = x < 0 ? 0 : x;
-                line.y = top + l * pitch;
             }
         }
         colours(index, slot, 0);
@@ -313,7 +301,7 @@ namespace hlrt
             if (going >= m.fadeOutMs)
             {
                 slot.busy = false;
-                canvas_.fill(0, s * kLines * kBandHeight, 256, kLines * kBandHeight, 0);
+                canvas_.fill(0, s * kSlotRows, 256, kSlotRows, 0);
                 place(slot, s);
                 continue;
             }
@@ -344,7 +332,7 @@ namespace hlrt
         m.fadeInMs = 200;
         m.holdMs = 60000; // (until endNotice)
         m.fadeOutMs = 500;
-        canvas_.fill(0, index * kLines * kBandHeight, 256, kLines * kBandHeight, 0);
+        canvas_.fill(0, index * kSlotRows, 256, kSlotRows, 0);
         font_ = kFontSmall;
         layout(slots_[index], index, m, text);
         font_ = -1;
@@ -410,7 +398,7 @@ namespace hlrt
             ".....######.....", "......####......", ".......##.......", ".......##.......",
             "......####......", ".....######.....", "....########....", "................",
         };
-        const int top = index * kLines * kBandHeight;
+        const int top = index * kSlotRows + slot.lines[0].row;
         const int left = slot.lines[0].x - 20;
         for (int y = 0; y < 16; ++y)
         {
@@ -433,7 +421,7 @@ namespace hlrt
             slots_[s].busy = false;
             if (ready_)
             {
-                canvas_.fill(0, s * kLines * kBandHeight, 256, kLines * kBandHeight, 0);
+                canvas_.fill(0, s * kSlotRows, 256, kSlotRows, 0);
                 place(slots_[s], s);
             }
         }

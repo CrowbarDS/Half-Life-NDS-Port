@@ -9,17 +9,20 @@
 // the top screen, in front of the 3D picture: video bank G -- which nothing
 // else uses -- is a sheet of 256 by 128 pixels in sixteen colours, the same
 // form as the touch screen's canvas (shared/HlFont.hpp), shown as four bands
-// of 256 by 32 that are each put where a line of writing goes. So it costs
+// of 256 by 32, two for each message, one above the other where its writing
+// goes (laid out by shared/HlTopLayout.hpp). So it costs
 // no texture memory and is the same in every way of drawing the world; and
 // since the sprites are added to what is behind them, as the game adds its
 // writing, a fade is nothing but their colours.
 //
-// Two messages at once at most (a title and a name, say), two lines each.
+// Two messages at once at most (a title and a name, say), each in 64 rows:
+// as many lines as fit them, wrapped.
 
 #include <cstdint>
 
 #include "HlFont.hpp"
 #include "HlLevel.hpp"
+#include "HlTopLayout.hpp"
 
 namespace hlrt
 {
@@ -53,13 +56,13 @@ namespace hlrt
 
     private:
         static constexpr int kSlots = 2;
-        static constexpr int kLines = 2;
+        static constexpr int kLines = hldata::kTopLines;
         struct Line
         {
             const char *text = nullptr;
             int count = 0;
-            int x = 0, y = 0;
-            int font = 0;
+            int x = 0;
+            int row = 0; ///< from the top of the slot's rows
         };
         struct Slot
         {
@@ -67,6 +70,9 @@ namespace hlrt
             hldata::MessageRecord message{};
             Line lines[kLines];
             int lineCount = 0;
+            int font = 0;  ///< one face for all its lines (-1: the console's letters)
+            int top = 0;   ///< on the screen
+            int rows = 0;  ///< of its 64 that it takes
             bool badge = false; ///< the trophy before its first line (announce)
             int letters = 0;  ///< in all its lines
             int elapsed = 0;  ///< ms
