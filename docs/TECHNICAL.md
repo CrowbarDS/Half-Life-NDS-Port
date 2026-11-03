@@ -201,8 +201,9 @@ Milestone 11, "levels of detail".
   guest's USE isn't sent while held. In water a box floats as the game's
   do: gravity and a lift as deep as it is in, times its buoyancy by its area,
   its bobbing dying away in about half a second; a swimmer pushes it at a
-  tenth. Not yet: c2a3's cage, opened, lets only one of its four barrels up
-  (the turned lid's collision).
+  tenth. A box meets a brush that is turned (a door on a hinge) with one
+  shape at its middle, as the game does with one hull: by its corners, a lid
+  stood open would catch c2a3's barrels well clear of it.
 - The long jump module (`item_longjump`), for someone in the suit: running,
   with the crouch pressed under a second ago, a jump goes 560 units a second
   along the view, about 450 on the flat with the legs tucked.

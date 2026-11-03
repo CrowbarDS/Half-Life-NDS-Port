@@ -478,8 +478,13 @@ namespace
         // c2a3's barrels are under the lid of a cage: they stay down until
         // its lock is shot and the lid opens.
         int caged = 0, freed = 0;
+        std::vector<int> cage;
         for (std::size_t k = 0; k < wet.size(); ++k)
-            caged += g.view.logic[wet[k]].speed > 0 && highest[k] < 700 ? 1 : 0;
+        {
+            if (g.view.logic[wet[k]].speed > 0 && highest[k] < 700)
+                cage.push_back(wet[k]);
+        }
+        caged = static_cast<int>(cage.size());
         for (std::uint32_t i = 0; i < g.view.logicCount; ++i)
         {
             const LogicRecord &record = g.view.logic[i];
@@ -492,12 +497,11 @@ namespace
             logicTick(g.logic, g.player, 17);
             g.drain();
         }
-        for (const int b : wet)
-            freed += g.view.logic[b].speed > 0 && fxToInt(g.movers[g.view.logic[b].brush].mins[2]) > 900 ? 1 : 0;
+        for (const int b : cage)
+            freed += fxToInt(g.movers[g.view.logic[b].brush].mins[2]) > 900 ? 1 : 0;
         std::printf("test_boxes: c2a3: %d barrels held in their cage; the lid opened, %d come up\n", caged, freed);
         check(caged == 4, "c2a3's barrels stay under the lid of their cage");
-        // (In the game all four come up. Here the lid, turned open, still
-        // stops three: the collision of a turned door, not the floating.)
+        check(freed == 4, "... and all four come up once it is open, as in the game");
     }
 
     /// A crate of the Hazard Course, pulled as the game does it: USE looks for

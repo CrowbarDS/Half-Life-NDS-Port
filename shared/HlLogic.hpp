@@ -1925,6 +1925,25 @@ namespace hldata
             const bool was = w.movers[brush].solid;
             w.movers[brush].solid = false;
             moverReachSet(*w.world, brush);
+            // A brush that is turned (a door on a hinge) is met by one shape
+            // at the box's middle, not by its corners, as the game meets it
+            // with one hull: the shapes' room is grown along the brush's own
+            // axes, and turned, a lid stood open would catch a corner well
+            // clear of it (c2a3's barrels). The corners pass it by.
+            int turned[8];
+            int turnedCount = 0;
+            if (count[0] > 1 || count[1] > 1)
+            {
+                for (int m = 0; m < w.world->moverCount && turnedCount < 8; ++m)
+                {
+                    if (m != brush && w.movers[m].turned && w.movers[m].solid)
+                    {
+                        turned[turnedCount++] = m;
+                        w.movers[m].solid = false;
+                        moverReachSet(*w.world, m);
+                    }
+                }
+            }
             Trace best;
             bool any = false, stuck = false;
             for (int i = 0; i < count[0]; ++i)
@@ -1976,6 +1995,25 @@ namespace hldata
                     t.endPos[1] -= off[1];
                     best = t;
                     any = true;
+                }
+            }
+            if (turnedCount > 0)
+            {
+                for (int k = 0; k < turnedCount; ++k)
+                {
+                    w.movers[turned[k]].solid = true;
+                    moverReachSet(*w.world, turned[k]);
+                }
+                // (The crouched shape, at the box's mid-height: the standing
+                // one's room above and below, turned on its side by a lid
+                // stood open, would reach out further than the box does.)
+                const fx lift = fxFromInt(height / 2) - kPlayerHalfHeight[crouched ? 1 : 0];
+                const fx a[3] = {from[0], from[1], from[2] + lift}, b[3] = {to[0], to[1], to[2] + lift};
+                Trace t = traceAll(*w.world, true, a, b);
+                if (any && !t.startSolid && !t.allSolid && t.fraction < best.fraction)
+                {
+                    t.endPos[2] -= lift;
+                    best = t;
                 }
             }
             w.movers[brush].solid = was;
@@ -2280,16 +2318,18 @@ namespace hldata
                 v[2] -= static_cast<fx>((static_cast<std::int64_t>(fxFromInt(800)) * ms) / 1000);
             }
             // Afloat: gravity, and the water's lift, as deep as it is in it
-            // times its buoyancy. Its bobbing dies away within half a second
-            // or so, as the game's does (4 a second, the water's friction on
-            // the player). On the bottom, a lift too weak to raise it does
-            // nothing.
+            // times its buoyancy. At the surface its bobbing dies away within
+            // half a second or so, as the game's does (4 a second, the
+            // water's friction on the player); under it, it comes up as fast
+            // as the lift takes it (c2a3's barrels, let out of their cage).
+            // On the bottom, a lift too weak to raise it does nothing.
             if (wet > 0)
             {
                 const fx lift = fxMul(depth, record.speed) - fxFromInt(800);
                 if (!resting || lift > 0)
                     v[2] += static_cast<fx>((static_cast<std::int64_t>(lift) * ms) / 1000);
-                v[2] -= static_cast<fx>((static_cast<std::int64_t>(v[2]) * 4 * ms) / 1000);
+                if (depth < fxFromInt(built.maxs[2] - built.mins[2]))
+                    v[2] -= static_cast<fx>((static_cast<std::int64_t>(v[2]) * 4 * ms) / 1000);
             }
             if (v[0] == 0 && v[1] == 0 && v[2] == 0 && !raised)
                 return;
