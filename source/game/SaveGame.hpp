@@ -33,6 +33,9 @@ namespace hlrt::SaveGame
     bool busy();
     /// What is left of it, at once (false if it failed).
     bool finish();
+    /// Why the last write failed, in a few words: where it stopped, and the
+    /// card's last refusal ("swap, rename 5"). Asked once: forgotten after.
+    const char *whyFailed();
 
     // The maps left, kept to come back to (HlMapStore.hpp), in the saves'
     // folder (run/).

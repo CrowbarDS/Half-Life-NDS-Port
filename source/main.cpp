@@ -484,6 +484,24 @@ namespace
         saidUntil = Global::vblanks() + 90;
     }
 
+    /// A save the card would not take: said, with why (where the write
+    /// stopped, and what the card said), and a line in perf.txt -- what a
+    /// player can report.
+    char notSaved[48] = "the card would not take it";
+    void sayNotSaved(int slot)
+    {
+        const char *why = hlrt::SaveGame::whyFailed();
+        std::snprintf(notSaved, sizeof(notSaved), "card refused: %s", why);
+        say("COULD NOT SAVE", notSaved);
+        if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
+        {
+            const struct mallinfo info = mallinfo();
+            std::fprintf(log, "save failed: %s slot %d, %s, heap %lu\n", currentMap.c_str(), slot, why,
+                         static_cast<unsigned long>(global.heapHeadroom() + info.fordblks));
+            std::fclose(log);
+        }
+    }
+
     /// Load `name`, in place of whatever is loaded. With an `arrival` the
     /// player is put where it says; without, at the map's own start.
     ///
@@ -717,7 +735,7 @@ namespace
 #ifndef HLDS_CHILD
         // (Said again: what was said while it was written has just gone.)
         if (!arrivalSaved)
-            say("COULD NOT SAVE", "the card would not take it");
+            say("COULD NOT SAVE", notSaved);
 #endif
         // Maps converted by an older converter still load, but without what
         // was fixed since in how a map is converted: said, once.
@@ -936,7 +954,7 @@ namespace
 #endif
         if (!saved)
         {
-            say("COULD NOT SAVE", "the card would not take it");
+            sayNotSaved(slot);
         }
         else if (slot == hldata::kSlotAuto)
         {
@@ -996,7 +1014,7 @@ namespace
             break;
         case hldata::SaveWriter::Result::Failed:
             hlrt::topText.endNotice(0);
-            say("COULD NOT SAVE", "the card would not take it");
+            sayNotSaved(hldata::kSlotAuto);
             break;
         }
     }

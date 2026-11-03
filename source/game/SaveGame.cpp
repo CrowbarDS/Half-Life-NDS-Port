@@ -81,6 +81,7 @@ namespace hlrt::SaveGame
     hldata::SaveWriter::Result step() { return hldata::SaveWriter::Result::Done; }
     bool busy() { return false; }
     bool finish() { return true; }
+    const char *whyFailed() { return "the host"; }
     bool leaveMap(const std::string &name, std::uint32_t level)
     {
         if (!guest::demoPlaying())
@@ -173,6 +174,7 @@ namespace hlrt::SaveGame
 #include <unistd.h>
 
 #include <cerrno>
+#include <cstdio>
 #include <cstring>
 
 #include "Global.hpp"
@@ -188,6 +190,17 @@ namespace hlrt::SaveGame
         struct FatCard : hldata::SaveCard
         {
             std::string path(const char *name) const { return global.savesDir() + name; }
+
+            /// The last call the card refused, and what it said (errno):
+            /// for a save that failed to say why.
+            const char *refused = "";
+            int refusedErrno = 0;
+            bool no(const char *call)
+            {
+                refused = call;
+                refusedErrno = errno;
+                return false;
+            }
 
             // The files being written and read a piece at a time (SaveWriter,
             // the maps left: HlMapStore.hpp), kept open from one piece to the
@@ -237,7 +250,7 @@ namespace hlrt::SaveGame
                     makeFolder(name);
                     writing_.file = std::fopen(path(name).c_str(), "wb");
                     if (writing_.file == nullptr)
-                        return false;
+                        return no("open");
                     writing_.name = name;
                 }
                 else if (writing_.file == nullptr || writing_.name != name)
@@ -247,7 +260,7 @@ namespace hlrt::SaveGame
                 if (std::fwrite(bytes, 1, size, writing_.file) != size)
                 {
                     writing_.failed = true;
-                    return false;
+                    return no("write");
                 }
                 return true;
             }
@@ -260,14 +273,14 @@ namespace hlrt::SaveGame
                     // (A file being written is read back from what is on the
                     // card: let go of first.)
                     if (writing_.name == name && !shut(writing_))
-                        return false;
+                        return no("close");
                     reading_.file = std::fopen(path(name).c_str(), "rb");
                     if (reading_.file == nullptr)
-                        return false;
+                        return no("open to read");
                     reading_.name = name;
                 }
                 if (std::fseek(reading_.file, static_cast<long>(offset), SEEK_SET) != 0)
-                    return false;
+                    return no("seek");
                 out.resize(size);
                 out.resize(std::fread(out.data(), 1, size, reading_.file));
                 return true;
@@ -279,7 +292,7 @@ namespace hlrt::SaveGame
                     ok = shut(writing_);
                 if (reading_.name == name)
                     shut(reading_);
-                return ok;
+                return ok || no("close");
             }
 
             bool read(const char *name, std::vector<std::uint8_t> &out, std::size_t most) override
@@ -307,19 +320,19 @@ namespace hlrt::SaveGame
                 makeFolder(name);
                 std::FILE *file = std::fopen(path(name).c_str(), "wb");
                 if (file == nullptr)
-                    return false;
-                const bool wrote = std::fwrite(bytes, 1, size, file) == size;
-                return std::fclose(file) == 0 && wrote;
+                    return no("open");
+                const bool wrote = std::fwrite(bytes, 1, size, file) == size || no("write");
+                return (std::fclose(file) == 0 || no("close")) && wrote;
             }
             bool remove(const char *name) override
             {
                 close();
-                return unlink(path(name).c_str()) == 0;
+                return unlink(path(name).c_str()) == 0 || no("remove");
             }
             bool rename(const char *from, const char *to) override
             {
                 close();
-                return ::rename(path(from).c_str(), path(to).c_str()) == 0;
+                return ::rename(path(from).c_str(), path(to).c_str()) == 0 || no("rename");
             }
             /// The files in the saves' folder (one look at the folder, not a
             /// hundred files asked for one by one).
@@ -335,7 +348,9 @@ namespace hlrt::SaveGame
                 {
                     // (No folder: no saves. Any other refusal is not "none":
                     // the files are asked for by name instead.)
-                    return errno == ENOENT;
+                    if (errno == ENOENT)
+                        return true;
+                    return no("list");
                 }
                 while (const dirent *entry = readdir(folder))
                 {
@@ -513,8 +528,7 @@ namespace hlrt::SaveGame
         // ARM7 on a DSi: the sound plays straight from its channels for
         // that long (Sound::holdPipeline).
         sound.holdPipeline(true);
-        const bool wrote =
-            hldata::saveSlotWrite(card, list, slot, save, heading, &run, namesFolder(slot));
+        const bool wrote = writer.begin(card, list, slot, save, heading, &run, namesFolder(slot)) && writer.finish();
         sound.holdPipeline(false);
         return wrote;
     }
@@ -548,6 +562,18 @@ namespace hlrt::SaveGame
     bool busy()
     {
         return writer.busy();
+    }
+
+    const char *whyFailed()
+    {
+        static char why[48];
+        if (card.refused[0] != 0)
+            std::snprintf(why, sizeof(why), "%s, %s %d", writer.failedAt(), card.refused, card.refusedErrno);
+        else
+            std::snprintf(why, sizeof(why), "%s", writer.failedAt());
+        card.refused = "";
+        card.refusedErrno = 0;
+        return why;
     }
 
     bool finish()
