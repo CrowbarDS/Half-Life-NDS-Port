@@ -36,6 +36,8 @@
 #include <cstdint>
 #include <type_traits>
 
+#include "HlDsp.hpp" // (the 16-bit multiplies, fxMulShort)
+
 #ifdef HL_HW_MATH
 extern "C" std::uint32_t hlHwSqrt64(std::uint64_t value); // source/HwMath.s
 #endif
@@ -222,9 +224,12 @@ namespace hldata
         // The angle within the first eighth of a turn, from the ratio of the
         // smaller to the larger: atan(z) = (pi/4) z - z (z - 1) (0.2447 +
         // 0.0663 z), with everything already in turns * 65536 and z in Q15.
-        const std::int64_t z = ax >= ay ? (ay << 15) / ax : (ax << 15) / ay;
-        const std::int64_t bend = (z * (32768 - z)) >> 15;
-        std::int64_t angle = ((8192 * z) >> 15) + ((bend * (2552 + ((692 * z) >> 15))) >> 15);
+        // (z is 0..32768, so these fit 32 bits; z and 32768 - z are 16-bit
+        // except where the other is 0, so SMULBB's product is right there
+        // too. bend is at most 8192 and the bracket 3244: 16-bit.)
+        const auto z = static_cast<std::int32_t>(ax >= ay ? (ay << 15) / ax : (ax << 15) / ay);
+        const std::int32_t bend = smulbb(z, 32768 - z) >> 15;
+        std::int64_t angle = (z >> 2) + (smulbb(bend, 2552 + ((692 * z) >> 15)) >> 15);
         if (ay > ax)
             angle = 16384 - angle;
         if (x < 0)

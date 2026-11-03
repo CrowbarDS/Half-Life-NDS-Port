@@ -687,9 +687,10 @@ namespace hldata
             right[0] = across > 0 ? static_cast<fx>((static_cast<std::int64_t>(dir[1]) << kFxShift) / across) : kFxOne;
             right[1] = across > 0 ? static_cast<fx>((static_cast<std::int64_t>(-dir[0]) << kFxShift) / across) : 0;
             right[2] = 0;
-            up[0] = fxMul(right[1], dir[2]);
-            up[1] = -fxMul(right[0], dir[2]);
-            up[2] = fxMul(right[0], dir[1]) - fxMul(right[1], dir[0]);
+            // (Unit vectors in Q12: 16-bit parts.)
+            up[0] = fxMulShort(right[1], dir[2]);
+            up[1] = -fxMulShort(right[0], dir[2]);
+            up[2] = fxMulShort(right[0], dir[1]) - fxMulShort(right[1], dir[0]);
             const int x = aiRandomLong(c.a, -2048, 2048) + aiRandomLong(c.a, -2048, 2048);
             const int y = aiRandomLong(c.a, -2048, 2048) + aiRandomLong(c.a, -2048, 2048);
             fx aim[3];

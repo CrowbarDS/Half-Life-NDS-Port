@@ -177,7 +177,7 @@ namespace hldata
             fxSinCos(static_cast<std::uint16_t>(w.effectSeed >> 8), sine, cosine);
             w.effectSeed = w.effectSeed * 1664525u + 1013904223u;
             fxSinCos(static_cast<std::uint16_t>((w.effectSeed >> 8) % 32768 - 16384), rise, flat);
-            const fx to[3] = {from[0] + fxMul(cosine, flat) * reach, from[1] + fxMul(sine, flat) * reach,
+            const fx to[3] = {from[0] + fxMulShort(cosine, flat) * reach, from[1] + fxMulShort(sine, flat) * reach,
                               from[2] + rise * reach};
             const Shot shot = traceShot(*w.world, from, to);
             if (shot.fraction >= kFractionOne || shot.fraction < kFractionOne / 10)

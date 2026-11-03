@@ -1749,7 +1749,7 @@ namespace hldata
             fx sy, cy, sp, cp;
             fxSinCos(yaw, sy, cy);
             fxSinCos(pitch, sp, cp);
-            const fx along[3] = {fxMul(cy, cp), fxMul(sy, cp), -sp};
+            const fx along[3] = {fxMulShort(cy, cp), fxMulShort(sy, cp), -sp}; // (16-bit sines)
             const bool yellow = record.extra[0] != 0;
             const int bursts = record.extra[1] > 150 ? 3 : 1;
             for (int n = 0; n < bursts; ++n)

@@ -1290,8 +1290,8 @@ namespace hldata
             fx sine, cosine, ps, pc;
             fxSinCos(c.me.yaw, sine, cosine);
             fxSinCos(static_cast<std::uint16_t>((static_cast<std::int64_t>(c.me.aimPitch) * 65536) / (360 * kFxOne)), ps, pc);
-            forward[0] = static_cast<fx>((static_cast<std::int64_t>(cosine) * pc) >> kFxShift);
-            forward[1] = static_cast<fx>((static_cast<std::int64_t>(sine) * pc) >> kFxShift);
+            forward[0] = fxMulShort(cosine, pc); // (sines and cosines: 16-bit)
+            forward[1] = fxMulShort(sine, pc);
             forward[2] = ps;
         }
 
@@ -1696,7 +1696,7 @@ namespace hldata
             fx sine, cosine, ps, pc;
             fxSinCos(yaw, sine, cosine);
             fxSinCos(static_cast<std::uint16_t>(-c.me.aimPitch), ps, pc);
-            const fx forward[3] = {fxMul(cosine, pc), fxMul(sine, pc), ps};
+            const fx forward[3] = {fxMulShort(cosine, pc), fxMulShort(sine, pc), ps};
             for (int side = 0; side < 2; ++side)
             {
                 fx start[3], end[3];
@@ -2145,8 +2145,8 @@ namespace hldata
             fx sy, cy, sp, cp;
             fxSinCos(c.me.yaw, sy, cy);
             fxSinCos(static_cast<std::uint16_t>(c.me.aimPitch), sp, cp);
-            forward[0] = fxMul(cp, cy);
-            forward[1] = fxMul(cp, sy);
+            forward[0] = fxMulShort(cp, cy);
+            forward[1] = fxMulShort(cp, sy);
             forward[2] = sp;
             right[0] = sy;
             right[1] = -cy;
@@ -4479,8 +4479,8 @@ namespace hldata
             fx sy, cy, sp, cp;
             fxSinCos(c.me.yaw, sy, cy);
             fxSinCos(static_cast<std::uint16_t>(c.me.wantPitch), sp, cp);
-            forward[0] = fxMul(cp, cy);
-            forward[1] = fxMul(cp, sy);
+            forward[0] = fxMulShort(cp, cy);
+            forward[1] = fxMulShort(cp, sy);
             forward[2] = sp;
             right[0] = sy;
             right[1] = -cy;
@@ -4495,8 +4495,9 @@ namespace hldata
             c.m.value2 = fxMul(c.m.value2, kFxOne * 8 / 10) + fxMul(c.m.value1, kFxOne * 2 / 10);
             flap = flap < 0 ? -flap : flap;
             flap = flap < kFxOne / 4 ? kFxOne / 4 : (flap > kFxOne * 19 / 10 ? kFxOne * 19 / 10 : flap);
-            const fx pitch = static_cast<fx>((static_cast<std::int64_t>(static_cast<std::int16_t>(c.me.wantPitch)) * 360 * kFxOne) >> 16);
-            const fx roll = static_cast<fx>((static_cast<std::int64_t>(static_cast<std::int16_t>(c.me.wantYaw)) * 360 * kFxOne) >> 16);
+            // (Turns to degrees, Q12: * 360 * 4096 >> 16 is * 45 >> 1, in 32 bits.)
+            const fx pitch = (static_cast<std::int16_t>(c.me.wantPitch) * 45) >> 1;
+            const fx roll = (static_cast<std::int16_t>(c.me.wantYaw) * 45) >> 1;
             // (The game's pitch is the view's: up is negative there, and
             // positive here.)
             c.m.vec1[0] = -(-pitch + flap * 5);

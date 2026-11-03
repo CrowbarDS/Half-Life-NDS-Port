@@ -1017,7 +1017,8 @@ namespace hldata
             return length;
         }
         inline std::int32_t turnsOf(fx degrees) { return static_cast<std::int32_t>((static_cast<std::int64_t>(degrees) << 16) / (360 * kFxOne)); }
-        inline fx degreesOf(std::int32_t turns) { return static_cast<fx>((static_cast<std::int64_t>(static_cast<std::int16_t>(turns)) * 360 * kFxOne) >> 16); }
+        /// (* 360 * 4096 >> 16 is * 45 >> 1, in 32 bits.)
+        inline fx degreesOf(std::int32_t turns) { return (static_cast<std::int16_t>(turns) * 45) >> 1; }
 
         /// UTIL_MakeAimVectors of its angles (pitch nose up, yaw, roll, in
         /// degrees Q12, and as much again of each in `add`).
@@ -1031,15 +1032,16 @@ namespace hldata
             fxSinCos(static_cast<std::uint16_t>(-turnsOf(pitch)), sp, cp);
             fxSinCos(static_cast<std::uint16_t>(turnsOf(yaw)), sy, cy);
             fxSinCos(static_cast<std::uint16_t>(turnsOf(roll)), sr, cr);
-            forward[0] = fxMul(cp, cy);
-            forward[1] = fxMul(cp, sy);
+            // (Sines and cosines, and products of them: all 16-bit.)
+            forward[0] = fxMulShort(cp, cy);
+            forward[1] = fxMulShort(cp, sy);
             forward[2] = -sp;
-            right[0] = -fxMul(fxMul(sr, sp), cy) + fxMul(cr, sy);
-            right[1] = -fxMul(fxMul(sr, sp), sy) - fxMul(cr, cy);
-            right[2] = -fxMul(sr, cp);
-            up[0] = fxMul(fxMul(cr, sp), cy) + fxMul(sr, sy);
-            up[1] = fxMul(fxMul(cr, sp), sy) - fxMul(sr, cy);
-            up[2] = fxMul(cr, cp);
+            right[0] = -fxMulShort(fxMulShort(sr, sp), cy) + fxMulShort(cr, sy);
+            right[1] = -fxMulShort(fxMulShort(sr, sp), sy) - fxMulShort(cr, cy);
+            right[2] = -fxMulShort(sr, cp);
+            up[0] = fxMulShort(fxMulShort(cr, sp), cy) + fxMulShort(sr, sy);
+            up[1] = fxMulShort(fxMulShort(cr, sp), sy) - fxMulShort(sr, cy);
+            up[2] = fxMulShort(cr, cp);
         }
 
         inline int firstCorner(const AiCtx &c)
@@ -1187,7 +1189,8 @@ namespace hldata
             fxSinCos(static_cast<std::uint16_t>(-c.me.aimPitch), sp, cp);
             fx barrel[3];
             for (int k = 0; k < 3; ++k)
-                barrel[k] = fxMul(fxMul(forward[k], cy) - fxMul(right[k], sy), cp) + fxMul(up[k], sp);
+                // (aimVectors' parts are at most 8192, its sums 12288: 16-bit.)
+                barrel[k] = fxMulShort(fxMulShort(forward[k], cy) - fxMulShort(right[k], sy), cp) + fxMulShort(up[k], sp);
             unit(barrel);
             if (dot(barrel, to) <= fxDot(0.98))
                 return false;

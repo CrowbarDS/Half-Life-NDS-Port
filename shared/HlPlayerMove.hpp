@@ -1386,8 +1386,9 @@ namespace hldata
                 // standing height to crouched (measured from the same origin,
                 // so 18 below the crouched view height).
                 const fx t = (s.duckMs << kFxShift) / kDuckTimeMs;
-                const fx t2 = fxMul(t, t);
-                const fx smooth = 3 * t2 - 2 * fxMul(t2, t);
+                // (t is under one here, 4096: 16-bit, and t2 too.)
+                const fx t2 = fxMulShort(t, t);
+                const fx smooth = 3 * t2 - 2 * fxMulShort(t2, t);
                 s.viewHeight =
                     kViewHeight + fxMul(kDuckViewHeight - kDuckDrop - kViewHeight, smooth);
             }

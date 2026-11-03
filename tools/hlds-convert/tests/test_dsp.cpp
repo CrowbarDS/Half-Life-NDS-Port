@@ -290,6 +290,50 @@ namespace
         }
         check(wrong == 0, "a model's turn through the view, as through 64 bits");
     }
+    /// fxAtan2Turns as it was, through 64 bits.
+    std::uint16_t atan2Before(fx y, fx x)
+    {
+        const std::int64_t ax = x < 0 ? -static_cast<std::int64_t>(x) : x;
+        const std::int64_t ay = y < 0 ? -static_cast<std::int64_t>(y) : y;
+        if (ax == 0 && ay == 0)
+            return 0;
+        const std::int64_t z = ax >= ay ? (ay << 15) / ax : (ax << 15) / ay;
+        const std::int64_t bend = (z * (32768 - z)) >> 15;
+        std::int64_t angle = ((8192 * z) >> 15) + ((bend * (2552 + ((692 * z) >> 15))) >> 15);
+        if (ay > ax)
+            angle = 16384 - angle;
+        if (x < 0)
+            angle = 32768 - angle;
+        if (y < 0)
+            angle = 65536 - angle;
+        return static_cast<std::uint16_t>(angle);
+    }
+
+    void testDirections()
+    {
+        int wrong = 0;
+        // Every ratio the near-square region gives, and far apart ones.
+        for (fx x = -2048; x <= 2048; x += 3)
+            for (fx y = -2048; y <= 2048; y += 5)
+                wrong += fxAtan2Turns(y, x) != atan2Before(y, x);
+        std::mt19937 random(41);
+        for (int n = 0; n < 500000; ++n)
+        {
+            const fx x = static_cast<fx>(random()) >> (random() % 31);
+            const fx y = static_cast<fx>(random()) >> (random() % 31);
+            wrong += fxAtan2Turns(y, x) != atan2Before(y, x);
+        }
+        for (const fx a : {0, 1, -1, 4096, -4096, 0x7FFFFFFF, static_cast<fx>(0x80000000u)})
+            for (const fx b : {0, 1, -1, 4096, -4096, 0x7FFFFFFF, static_cast<fx>(0x80000000u)})
+                wrong += fxAtan2Turns(a, b) != atan2Before(a, b);
+        check(wrong == 0, "fxAtan2Turns as through 64 bits");
+
+        // Turns to degrees (Q12), every 16-bit turn.
+        wrong = 0;
+        for (std::int32_t t = -32768; t < 32768; ++t)
+            wrong += ((t * 45) >> 1) != static_cast<fx>((static_cast<std::int64_t>(t) * 360 * kFxOne) >> 16);
+        check(wrong == 0, "turns to degrees in 32 bits");
+    }
 } // namespace
 
 int main()
@@ -298,6 +342,7 @@ int main()
     testUses();
     testBones();
     testDrawing();
+    testDirections();
     if (failures == 0)
         std::printf("test_dsp: ok\n");
     return failures == 0 ? 0 : 1;

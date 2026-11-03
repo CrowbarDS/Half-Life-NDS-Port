@@ -1778,9 +1778,9 @@ namespace hldata
         fx forward[3];
         aiForward(c.me.yaw, forward);
         // (The blow's way, back towards where it came from.)
-        const fx dot = static_cast<fx>((static_cast<std::int64_t>(forward[0]) * -c.m.attackDir[0] +
-                                        static_cast<std::int64_t>(forward[1]) * -c.m.attackDir[1] +
-                                        static_cast<std::int64_t>(forward[2]) * -c.m.attackDir[2]) >> kFxShift);
+        // (Two unit vectors in Q12: 16-bit parts.)
+        const fx back[3] = {-c.m.attackDir[0], -c.m.attackDir[1], -c.m.attackDir[2]};
+        const fx dot = dotShort(forward, 1, back, 1) >> kFxShift;
         std::uint8_t death = kActDieSimple;
         bool triedDirection = false;
         switch (c.m.lastHitGroup)

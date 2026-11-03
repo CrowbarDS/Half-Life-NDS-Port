@@ -2336,8 +2336,8 @@ namespace hldata
             fx sinYaw, cosYaw, sinPitch, cosPitch;
             fxSinCos(static_cast<std::uint16_t>(actor.aimYaw), sinYaw, cosYaw);
             fxSinCos(static_cast<std::uint16_t>(actor.aimPitch), sinPitch, cosPitch);
-            forward[0] = fxMul(cosPitch, cosYaw);
-            forward[1] = fxMul(cosPitch, sinYaw);
+            forward[0] = fxMulShort(cosPitch, cosYaw); // (sines and cosines: 16-bit)
+            forward[1] = fxMulShort(cosPitch, sinYaw);
             forward[2] = sinPitch;
         }
 
@@ -3911,14 +3911,14 @@ namespace hldata
             fx sy, cy, sp, cp;
             fxSinCos(tankYaw(state), sy, cy);
             fxSinCos(tankPitch(state), sp, cp);
-            forward[0] = fxMul(cp, cy);
-            forward[1] = fxMul(cp, sy);
+            forward[0] = fxMulShort(cp, cy); // (sines and cosines: 16-bit)
+            forward[1] = fxMulShort(cp, sy);
             forward[2] = -sp; // (tipped down is positive)
             right[0] = sy;
             right[1] = -cy;
             right[2] = 0;
-            up[0] = fxMul(sp, cy);
-            up[1] = fxMul(sp, sy);
+            up[0] = fxMulShort(sp, cy);
+            up[1] = fxMulShort(sp, sy);
             up[2] = cp;
         }
 
@@ -4847,8 +4847,8 @@ namespace hldata
         fx ys, yc, ps, pc;
         fxSinCos(static_cast<std::uint16_t>(viewYaw + yaw), ys, yc);
         fxSinCos(static_cast<std::uint16_t>(viewPitch + pitch), ps, pc);
-        aimed[0] = fxMul(pc, yc);
-        aimed[1] = fxMul(pc, ys);
+        aimed[0] = fxMulShort(pc, yc); // (sines and cosines: 16-bit)
+        aimed[1] = fxMulShort(pc, ys);
         aimed[2] = ps;
     }
 
