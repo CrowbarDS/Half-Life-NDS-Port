@@ -30,8 +30,9 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          mkdir -p "rom/half-life-nds-port-$VERSION" release
-          cp artifacts/rom/half-life-nds-port.nds THIRD_PARTY_LICENSES LICENSE-HALF-LIFE-SDK "rom/half-life-nds-port-$VERSION/"
+          # (The ROM's files at the top of its zip, in no folder of their own.)
+          mkdir -p rom release
+          cp artifacts/rom/half-life-nds-port.nds THIRD_PARTY_LICENSES LICENSE-HALF-LIFE-SDK rom/
           (cd rom && zip -qr "../release/half-life-nds-port-$VERSION.zip" .)
           for f in artifacts/converter-*/*; do
             name="$(basename "$f")"
