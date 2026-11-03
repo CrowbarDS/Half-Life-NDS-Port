@@ -512,6 +512,7 @@ namespace hlrt
         int seen[kLooked];
         std::uint8_t seenClass[kLooked];
         std::int32_t reach[kLooked];
+        std::int32_t rank[kLooked]; ///< what they are sorted by: drawn last pass, as if an eighth nearer
         int looked = 0;
         for (int c = 0; c < kDrawClasses; ++c)
             cutClass_[c] = 0;
@@ -582,6 +583,10 @@ namespace hlrt
             if (far > static_cast<std::int32_t>(model->header->radius) * kDrawClose &&
                 !(actor.script >= 0 && actor.scriptPhase != kActorFree))
             {
+                // (Its middle, top and bottom, and its two sides as seen
+                // from the eye -- one peeking round a corner is seen; and
+                // glass and grates are not in the way of the eye.)
+                auto seeThrough = [](int brush) { return worldDraw.brushSeeThrough(brush); };
                 auto clear = [&]()
                 {
                     const int ends[3] = {0, ownPoints > 1 ? 1 : 0, ownPoints - 1};
@@ -591,7 +596,20 @@ namespace hlrt
                             continue;
                         const std::int16_t *p = points.at[ends[k]];
                         const fx to[3] = {fxFromInt(p[0]), fxFromInt(p[1]), fxFromInt(p[2])};
-                        if (lineClear(game.world, camera.pos, to))
+                        if (sightClear(game.world, camera.pos, to, seeThrough))
+                            return true;
+                    }
+                    const std::int16_t *middle = points.at[0];
+                    // (Three quarters of its radius either way, across the
+                    // view: camera.right is a Q12 unit, so times whole units
+                    // it is Q12 units.)
+                    const std::int32_t side = static_cast<std::int32_t>(model->header->radius) * 3 / 4;
+                    for (const std::int32_t way : {side, -side})
+                    {
+                        const fx to[3] = {fxFromInt(middle[0]) + camera.right[0] * way,
+                                          fxFromInt(middle[1]) + camera.right[1] * way,
+                                          fxFromInt(middle[2]) + camera.right[2] * way};
+                        if (sightClear(game.world, camera.pos, to, seeThrough))
                             return true;
                     }
                     return false;
@@ -607,24 +625,30 @@ namespace hlrt
                 hiddenRun_[slotOf(i)] = 0;
             }
             const int kind = drawClass(actor);
+            // (One drawn the pass before is sorted as if an eighth nearer:
+            // two about as far off do not trade places across the limit.)
+            const std::int32_t ranked =
+                drawnAt_[slotOf(i)] == static_cast<std::uint16_t>(planFrame_ - 1) ? far - far / 8 : far;
             int at = looked < kLooked ? looked : kLooked - 1;
-            if (looked >= kLooked && !drawBefore(kind, far, seenClass[at], reach[at]))
+            if (looked >= kLooked && !drawBefore(kind, ranked, seenClass[at], rank[at]))
             {
                 ++cutClass_[kind];
                 continue;
             }
             if (looked >= kLooked)
                 ++cutClass_[seenClass[at]]; // the last so far gives up its place
-            while (at > 0 && drawBefore(kind, far, seenClass[at - 1], reach[at - 1]))
+            while (at > 0 && drawBefore(kind, ranked, seenClass[at - 1], rank[at - 1]))
             {
                 seen[at] = seen[at - 1];
                 seenClass[at] = seenClass[at - 1];
                 reach[at] = reach[at - 1];
+                rank[at] = rank[at - 1];
                 --at;
             }
             seen[at] = i;
             seenClass[at] = static_cast<std::uint8_t>(kind);
             reach[at] = far;
+            rank[at] = ranked;
             if (looked < kLooked)
                 ++looked;
         }
@@ -696,6 +720,8 @@ namespace hlrt
             // (Once not seen, not yet twice: the first to give way if room
             // is short.)
             one.hidden = !one.close && hiddenRun_[slotOf(seen[n])] != 0;
+            one.shown = drawnAt_[slotOf(seen[n])] == static_cast<std::uint16_t>(planFrame_ - 1);
+            one.wasNearest = slotOf(seen[n]) == nearestSlot_;
             for (int l = 0; l < levels; ++l)
             {
                 int p = 0, v = 0;
@@ -751,6 +777,7 @@ namespace hlrt
                                            growVertices > 0 ? growVertices : 0);
         heldLevel_ = chosen.heldLevel;
         heldDrawn_ = held != nullptr;
+        nearestSlot_ = chosen.nearest >= 0 && chosen.nearest < looked ? slotOf(seen[chosen.nearest]) : -1;
         polygons = chosen.polygons;
         vertices = chosen.vertices;
         grown_ = chosen.grown;
@@ -762,9 +789,13 @@ namespace hlrt
         {
             if (!chosen.drawn[n] || kept >= kMaxDrawn)
             {
-                lastLevel_[slotOf(seen[n])] = 0;
+                // (Its level remembered a little while: back in a moment, it
+                // comes back as it was, not from the finest.)
+                if (static_cast<std::uint16_t>(planFrame_ - drawnAt_[slotOf(seen[n])]) > kRememberLevel)
+                    lastLevel_[slotOf(seen[n])] = 0;
                 continue;
             }
+            drawnAt_[slotOf(seen[n])] = planFrame_;
             // A step at a time: one drawn a frame ago goes no more than a
             // level finer or coarser in a frame -- what the frame's pressure
             // asks of it is seen as a softening, not as a jump from the

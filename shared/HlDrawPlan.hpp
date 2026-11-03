@@ -159,17 +159,26 @@ namespace hldata
         /// left out, before one that is seen (ModelDraw looks, when a pass
         /// has lately been short of room).
         bool hidden = false;
+        /// Drawn the pass before: kept rather than swapped for another as
+        /// far off (what there is to pick up and the rest, while the frame
+        /// has no room for more of them).
+        bool shown = false;
+        /// The one given the game's own mesh the pass before: kept so while
+        /// no other is a good deal nearer.
+        bool wasNearest = false;
         std::int32_t far = 0; ///< how far off it is (whole units): the farthest give way first
         std::uint16_t polygons[kDrawLevels] = {};
         std::uint16_t vertices[kDrawLevels] = {};
     };
 
+    /// Looks in a row that find a model behind a wall before it is hidden.
+    inline constexpr std::uint8_t kHiddenLooks = 3;
     /// Whether a model in view is behind a wall (ModelDraw), kept per
-    /// actor: `run`, how many looks in a row found it so (2: hidden);
-    /// `lookedAt`, the frame of the last. Looked at again this frame if it
-    /// was not seen last time (so it shows the frame it comes into sight)
-    /// or not for eight frames -- while `linesLeft` lasts; `clear()` is one
-    /// look (a line from the eye to it). True: hidden, not to be drawn.
+    /// actor: `run`, how many looks in a row found it so (kHiddenLooks:
+    /// hidden); `lookedAt`, the frame of the last. Looked at again this frame
+    /// if it was not seen last time (so it shows the frame it comes into
+    /// sight) or not for eight frames -- while `linesLeft` lasts; `clear()`
+    /// is one look (lines from the eye to it). True: hidden, not to be drawn.
     template <class Clear>
     inline bool drawHidden(std::uint8_t &run, std::uint16_t &lookedAt, std::uint16_t frame, int &linesLeft,
                            Clear &&clear)
@@ -179,9 +188,9 @@ namespace hldata
         {
             --linesLeft;
             lookedAt = frame;
-            run = clear() ? 0 : static_cast<std::uint8_t>(run < 2 ? run + 1 : 2);
+            run = clear() ? 0 : static_cast<std::uint8_t>(run < kHiddenLooks ? run + 1 : kHiddenLooks);
         }
-        return run >= 2;
+        return run >= kHiddenLooks;
     }
 
     struct DrawHeld
@@ -202,6 +211,7 @@ namespace hldata
         int cut[kDrawClasses] = {};     ///< left out, by what they are
         int cutSeen = 0;                ///< ... of the enemies, those not hidden
         int grown = 0;                  ///< polygons over the share
+        int nearest = -1;               ///< the one given the game's own mesh, if any might be
         /// An enemy or a person had to be made room for: the frame's
         /// effects give way next (stains, pieces).
         bool strained = false;
@@ -248,8 +258,17 @@ namespace hldata
                  (all[nearest].hidden == all[i].hidden && all[i].far < all[nearest].far)))
                 nearest = i;
         }
+        // (The one that had it keeps it, while the nearest now is not a good
+        // deal nearer -- two about as near do not trade it frame by frame.)
+        for (int i = 0; nearest >= 0 && i < count; ++i)
+        {
+            if (all[i].wasNearest && i != nearest && all[i].kind <= kDrawPerson &&
+                all[i].hidden == all[nearest].hidden && all[nearest].far * 100 > all[i].far * 85)
+                nearest = i;
+        }
         if (nearest < 0)
             nearest = 0;
+        plan.nearest = nearest;
         // How coarse an enemy or a person may be made for want of room:
         // close to the eye, level 1 at the coarsest.
         auto floorOf = [&](int i) -> int
@@ -423,9 +442,10 @@ namespace hldata
             const DrawCandidate &one = all[i];
             bool fits = false;
             int level = plan.level[i];
-            // (Nothing of theirs when the enemies have had to take more
-            // than the share.)
-            for (; level < one.levels && !tight; ++level)
+            // (Nothing new of theirs when the enemies have had to take more
+            // than the share -- but what was shown stays while it fits: they
+            // go as the room goes, not all at once.)
+            for (; level < one.levels && (!tight || one.shown); ++level)
             {
                 const int p = polygons + one.polygons[level], v = vertices + one.vertices[level];
                 fits = p <= sharePolygons && v <= shareVertices &&

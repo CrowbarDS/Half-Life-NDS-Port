@@ -232,7 +232,7 @@ namespace
         }
     }
 
-    /// Behind a wall: hidden after two looks in a row, seen again at the
+    /// Behind a wall: hidden after three looks in a row, seen again at the
     /// first clear one; at most so many looks a frame.
     void testHiddenCache()
     {
@@ -242,17 +242,56 @@ namespace
         bool wall = true;
         auto clear = [&]() { return !wall; };
         check(!drawHidden(run, lookedAt, 8, lines, clear) && run == 1, "one look behind a wall: not yet hidden");
-        check(drawHidden(run, lookedAt, 9, lines, clear) && run == 2, "... two in a row: hidden");
+        check(!drawHidden(run, lookedAt, 9, lines, clear) && run == 2, "... nor two");
+        check(drawHidden(run, lookedAt, 10, lines, clear) && run == kHiddenLooks, "... three in a row: hidden");
         wall = false;
-        check(!drawHidden(run, lookedAt, 10, lines, clear) && run == 0, "... seen at the first clear look");
+        check(!drawHidden(run, lookedAt, 11, lines, clear) && run == 0, "... seen at the first clear look");
         // Seen: not looked at again for eight frames.
         lines = 10;
         wall = true;
         check(!drawHidden(run, lookedAt, 12, lines, clear) && lines == 10, "seen: no look for a while");
-        check(!drawHidden(run, lookedAt, 18, lines, clear) && lines == 9 && run == 1, "... then looked at again");
+        check(!drawHidden(run, lookedAt, 19, lines, clear) && lines == 9 && run == 1, "... then looked at again");
         // No looks left this frame: it keeps what it was.
         lines = 0;
-        check(!drawHidden(run, lookedAt, 19, lines, clear) && run == 1, "no looks left: as it was");
+        check(!drawHidden(run, lookedAt, 20, lines, clear) && run == 1, "no looks left: as it was");
+    }
+
+    /// Steady choices: the one given the game's own mesh keeps it while the
+    /// nearest now is not a good deal nearer; and under strain, what there
+    /// is to pick up that was shown stays while it fits, where one not shown
+    /// is not brought in.
+    void testSteady()
+    {
+        {
+            DrawCandidate all[2] = {model(kDrawEnemy, 500, 4), model(kDrawEnemy, 500, 4)};
+            all[0].far = 300;
+            all[1].far = 320;
+            all[1].wasNearest = true;
+            check(planModels(all, 2, 8, DrawHeld(), 0, kShare, kShareVertices, kWhole).nearest == 1,
+                  "the one that had the finest mesh keeps it, the other only a little nearer");
+            all[0].far = 200;
+            check(planModels(all, 2, 8, DrawHeld(), 0, kShare, kShareVertices, kWhole).nearest == 0,
+                  "... and gives it up to one a good deal nearer");
+        }
+        {
+            // The weapon in hand made coarser for two enemies (a strained
+            // frame), and two pickups with room left: the one shown stays,
+            // the new one does not come in yet.
+            DrawCandidate all[4] = {model(kDrawEnemy, 200, 1), model(kDrawEnemy, 200, 1), model(kDrawPickup, 20, 1),
+                                    model(kDrawPickup, 20, 1)};
+            all[2].shown = true;
+            DrawHeld held;
+            held.active = true;
+            held.levels = 2;
+            held.polygons[0] = 300;
+            held.polygons[1] = 100;
+            held.vertices[0] = 450;
+            held.vertices[1] = 150;
+            const DrawPlan plan = planModels(all, 4, 8, held, 0, 650, 7000, kWhole, 12, 0, 0);
+            check(plan.strained && plan.heldLevel == 1 && plan.drawn[0] && plan.drawn[1],
+                  "a strained frame: the weapon coarser, the enemies drawn");
+            check(plan.drawn[2] && !plan.drawn[3], "... a pickup shown stays while it fits, a new one waits");
+        }
     }
 
     void testWho()
@@ -411,6 +450,7 @@ int main()
     testClose();
     testHidden();
     testHiddenCache();
+    testSteady();
     if (g_failures == 0)
         std::printf("test_drawplan: ok\n");
     return g_failures == 0 ? 0 : 1;

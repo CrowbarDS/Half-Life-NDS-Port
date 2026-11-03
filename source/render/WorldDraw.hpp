@@ -181,6 +181,9 @@ namespace hlrt
         /// record, owned and moved by the game (Game::brushStates). Null
         /// draws them where the map built them.
         void setBrushStates(const hldata::BrushState *states) { brushState_ = states; }
+        /// Whether brush entity `i` can be seen through (glass, a grate, one
+        /// an env_render has made so): what is behind it is not hidden by it.
+        bool brushSeeThrough(int i) const;
 
     private:
         void markVisible(int leaf);

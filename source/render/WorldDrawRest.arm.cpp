@@ -466,6 +466,14 @@ namespace hlrt
         brushVertices_ = vertices < vertexBudget() / 3 ? vertices : vertexBudget() / 3;
     }
 
+    bool WorldDraw::brushSeeThrough(int i) const
+    {
+        if (!level.loaded() || i < 0 || static_cast<std::uint32_t>(i) >= level.view.brushCount)
+            return false;
+        const std::uint8_t look = brushState_ != nullptr ? brushState_[i].look : 0;
+        return level.view.brushes[i].renderClass != static_cast<std::uint8_t>(RenderClass::Opaque) || look != 0;
+    }
+
     void WorldDraw::drawBrushes()
     {
         int drawn = 0;

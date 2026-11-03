@@ -393,7 +393,19 @@ namespace hldata
         return rang;
     }
 
+    /// lineClear, with the brushes `seeThrough(brush)` says can be seen
+    /// through (glass, a grate) not in the way: whether something behind
+    /// them can be seen from `start`.
+    template <class SeeThrough>
+    inline bool sightClear(const MoveWorld &world, const fx *start, const fx *end, SeeThrough &&seeThrough);
+
     inline bool lineClear(const MoveWorld &world, const fx *start, const fx *end)
+    {
+        return sightClear(world, start, end, [](int) { return false; });
+    }
+
+    template <class SeeThrough>
+    inline bool sightClear(const MoveWorld &world, const fx *start, const fx *end, SeeThrough &&seeThrough)
     {
         // (traceShot's answer, without its search for the nearest: the
         // first thing in the way will do -- the world first, which is the
@@ -416,7 +428,7 @@ namespace hldata
             if (!detail::moverMayTouch(world, m, reach))
                 continue;
             const MoverHull &mover = world.movers[m];
-            if (!mover.solid || !detail::nearMover(mover, true, start, end))
+            if (!mover.solid || seeThrough(m) || !detail::nearMover(mover, true, start, end))
                 continue;
             fx a[3], b[3];
             detail::toMoverSpace(mover, start, a);

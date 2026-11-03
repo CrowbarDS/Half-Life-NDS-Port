@@ -107,6 +107,12 @@ namespace hlrt
         /// not lately), by its number: a model near the distance where two
         /// levels meet keeps the one it has.
         std::uint8_t lastLevel_[kActorSlots] = {};
+        /// ... the plan (planFrame_) it was last drawn in: drawn the one
+        /// before, it keeps its place against another as far off; and its
+        /// level is remembered a little while after.
+        std::uint16_t drawnAt_[kActorSlots] = {};
+        int nearestSlot_ = -1; ///< the one given the game's own mesh last
+        static constexpr std::uint16_t kRememberLevel = 30;
         int found_ = 0;
         int limit_ = 8;
         /// The pieces of what has come apart that plan() chose (into
@@ -132,7 +138,8 @@ namespace hlrt
         int grown_ = 0;
         int seenCut_ = 0;
         /// Per actor (by its index, as lastLevel_): how many looks in a row
-        /// found it behind a wall (2: hidden), and the frame of the last.
+        /// found it behind a wall (kHiddenLooks: hidden), and the frame of
+        /// the last.
         std::uint8_t hiddenRun_[kActorSlots] = {};
         std::uint16_t hiddenLook_[kActorSlots] = {};
         std::uint16_t planFrame_ = 0;
