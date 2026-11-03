@@ -121,7 +121,13 @@ target_compile_features(hlds_install PUBLIC cxx_std_20)
 option(HLDS_BUILD_TESTS "Build the converter tests" ON)
 if(HLDS_BUILD_TESTS)
     enable_testing()
+    # The suites are built unoptimised: the game is header-only (shared/), so
+    # each suite compiles all of it again, and optimising that took five times
+    # as long (test_monsters: 220 s against 40 s) for runs that are short
+    # either way. The converter itself stays optimised.
+    set(HLDS_TEST_OPTIMISE $<IF:$<CXX_COMPILER_ID:MSVC>,/Od,-O0>)
     add_executable(test_install tests/test_install.cpp)
+    target_compile_options(test_install PRIVATE ${HLDS_TEST_OPTIMISE})
     target_link_libraries(test_install PRIVATE hlds_install)
     add_test(NAME test_install COMMAND test_install)
     foreach(test_name
@@ -192,6 +198,7 @@ if(HLDS_BUILD_TESTS)
             test_skill
             test_achievements)
         add_executable(${test_name} tests/${test_name}.cpp)
+        target_compile_options(${test_name} PRIVATE ${HLDS_TEST_OPTIMISE})
         target_link_libraries(${test_name} PRIVATE hlds_convert_core)
         add_test(NAME ${test_name} COMMAND ${test_name})
         # (A suite with nothing to check without the game says so with this.)
