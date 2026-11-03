@@ -395,32 +395,66 @@ namespace
     {
         ControlSettings modern;
         modern.scheme = kControlsModern;
+        modern.tapUse = true;
         ControlSettings classic;
+        classic.tapUse = true;
         const TouchLayout at = touchLayout(false);
         const int x = at.pad.x + 80, y = at.pad.y + 60;
 
+        // A tap: down three frames, up; and the frames after, until the time a
+        // second tap could come in has gone by. How many USEs it made.
+        auto tapUses = [&](const ControlSettings &set, ControlsState &state, std::uint32_t &blank, bool &tapped)
+        {
+            int uses = 0;
+            ControlsOut out = touch(set, state, x, y, blank);
+            tapped = out.tapped;
+            uses += out.usePressed;
+            uses += touch(set, state, x + 1, y, blank).usePressed;
+            uses += touch(set, state, x + 1, y + 1, blank).usePressed;
+            out = press(set, state, 0, blank);
+            const bool atOnce = out.usePressed;
+            uses += out.usePressed;
+            for (std::uint32_t n = 0; n <= kDoubleTapBlanks; ++n)
+                uses += press(set, state, 0, blank).usePressed;
+            return atOnce ? -uses : uses; // (negative: it was USE as it lifted)
+        };
         for (int which = 0; which < 2; ++which)
         {
             const ControlSettings &set = which ? modern : classic;
             ControlsState state;
             std::uint32_t blank = 1000;
-            // A tap: down three frames, up.
+            bool tapped = false;
+            const int uses = tapUses(set, state, blank, tapped);
+            check(tapped, "a touch of the aim pad is a tap");
+            check(uses == (which == 1 ? 1 : 0), which ? "modern, tap to use on: a short tap is USE, once"
+                                                       : "classic: a tap is nothing");
+            // Two quick taps: a jump, and no USE at all -- not even the first.
+            blank += 100;
+            int jumpUses = 0;
             ControlsOut out = touch(set, state, x, y, blank);
-            check(!out.usePressed && out.tapped, "a touch of the aim pad is not USE while it is down");
-            touch(set, state, x + 1, y, blank);
-            touch(set, state, x + 1, y + 1, blank);
-            out = press(set, state, 0, blank);
-            check(out.usePressed == (which == 1), which ? "modern: a short tap is USE, as it lifts"
-                                                         : "classic: a tap is nothing");
-            out = press(set, state, 0, blank);
-            check(!out.usePressed, "... the once");
-            // Straight after, a second: a jump, and not a second USE.
+            jumpUses += out.usePressed;
+            jumpUses += press(set, state, 0, blank).usePressed;
             out = touch(set, state, x + 3, y - 2, blank);
+            jumpUses += out.usePressed;
             check(out.jump, "two quick taps jump");
             out = touch(set, state, x + 3, y - 2, blank);
             check(out.jump, "... for as long as the second is held");
-            out = press(set, state, 0, blank);
-            check(!out.jump && !out.usePressed, "... and its lifting is not a USE");
+            for (std::uint32_t n = 0; n <= kDoubleTapBlanks + 2; ++n)
+                jumpUses += press(set, state, 0, blank).usePressed;
+            check(jumpUses == 0, "... and neither tap is a USE");
+        }
+        {
+            // Off, as it is unless asked for: a tap is nothing.
+            ControlSettings plain;
+            plain.scheme = kControlsModern;
+            ControlsState state;
+            std::uint32_t blank = 2000;
+            bool tapped = false;
+            check(tapUses(plain, state, blank, tapped) == 0, "tap to use off: a tap is not USE");
+            // On, with two taps not jumping: USE as it lifts, not waiting.
+            ControlSettings quick = modern;
+            quick.tapJump = false;
+            check(tapUses(quick, state, blank, tapped) == -1, "... on, with the double tap off: USE as it lifts");
         }
 
         ControlsState state;
@@ -826,6 +860,33 @@ namespace
             noTap.tapJump = 2;
             written = writeSettings(noTap);
             check(!readSettings(written.data(), written.size(), read19), "... and nonsense is not believed");
+
+            // The last before a tap was a choice: read with taps not USE.
+            SettingsData nineteen;
+            nineteen.tapJump = 0;
+            nineteen.tapUse = 1; // (not in the file)
+            yas::mem_ostream os19;
+            yas::binary_oarchive<yas::mem_ostream, flags> oa19(os19);
+            nineteen.serializeNineteen(oa19);
+            const auto buf19 = os19.get_intrusive_buffer();
+            SettingsHeader h19{};
+            std::memcpy(h19.magic, kSettingsMagic, sizeof(h19.magic));
+            h19.version = kSettingsVersionNineteen;
+            h19.payloadBytes = static_cast<std::uint16_t>(buf19.size);
+            h19.crc32 = crc32(reinterpret_cast<const std::uint8_t *>(buf19.data), static_cast<std::uint32_t>(buf19.size));
+            std::vector<std::uint8_t> file19(sizeof(h19) + buf19.size);
+            std::memcpy(file19.data(), &h19, sizeof(h19));
+            std::memcpy(file19.data() + sizeof(h19), buf19.data, buf19.size);
+            SettingsData from19;
+            check(readSettings(file19.data(), file19.size(), from19) && from19.tapJump == 0 && from19.tapUse == 0,
+                  "settings of version 19 are read, with a tap not USE");
+            SettingsData taps;
+            taps.tapUse = 1;
+            written = writeSettings(taps);
+            SettingsData read20;
+            check(readSettings(written.data(), written.size(), read20) && read20.tapUse == 1 &&
+                      written.size() <= kSettingsMostBytes,
+                  "tap to use asked for is kept");
         }
     }
 
@@ -1147,6 +1208,8 @@ namespace
         check(!out.useHeld, "... and not once it is lifted");
         ControlSettings modern;
         modern.scheme = kControlsModern;
+        modern.tapUse = true;   // (asked for)
+        modern.tapJump = false; // (so that it is USE as it lifts, not after the double tap's time)
         ControlsState tapped;
         out = touch(modern, tapped, at.pad.x + 80, at.pad.y + 60, blank);
         check(!out.useHeld, "a touch of the aim pad is not USE held");

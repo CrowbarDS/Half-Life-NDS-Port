@@ -38,6 +38,8 @@ public:
     bool jumpWalks = false;
     /// Two taps on the aim pad jump (always, where nothing else would).
     bool tapJump = true;
+    /// A quick tap on the aim pad is USE (the modern layout).
+    bool tapUse = false;
     /// How strict the stylus is about light touches, and what a firm press
     /// does (HlControls.hpp).
     std::uint8_t firmness = 4;
@@ -62,6 +64,7 @@ public:
         set.walkToggle = walkToggle;
         set.jumpWalks = jumpWalks;
         set.tapJump = tapJump;
+        set.tapUse = tapUse;
         set.firmness = firmness;
         set.firmPress = firmPress;
         for (int a = 0; a < hldata::kActionCount; ++a)

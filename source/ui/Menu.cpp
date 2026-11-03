@@ -95,6 +95,7 @@ namespace hlrt
             kWalk,
             kJumpButton,
             kTapJump,
+            kTapUse,
             kButtons,
             kTouchAim,
             kAimSpeed,
@@ -876,7 +877,8 @@ namespace hlrt
         const Row kControlRows[] = {{Kind::Value, kScheme, "Layout"},          {Kind::Value, kHand, "Stylus hand"},
                                     {Kind::Value, kDuck, "Crouch"},            {Kind::Value, kWalk, "Walk"},
                                     {Kind::Value, kJumpButton, "Jump button"}, {Kind::Value, kTapJump, "Double tap jump"},
-                                    {Kind::Value, kPadSide, "Pad left/right"}, {Kind::Value, kPadUp, "Pad up/down"},
+                                    {Kind::Value, kTapUse, "Tap to use"},      {Kind::Value, kPadSide, "Pad left/right"},
+                                    {Kind::Value, kPadUp, "Pad up/down"},
                                     {Kind::Value, kAutoaim, "Autoaim"}};
         const Row kTouchRows[] = {{Kind::Slider, kAimSpeed, "Aim speed"},
                                   {Kind::Slider, kPitchSpeed, "Up/down speed"},
@@ -1307,6 +1309,7 @@ namespace hlrt
             case kDuck: std::snprintf(out, size, "%s", settings.duckToggle ? "toggle" : "hold"); break;
             case kWalk: std::snprintf(out, size, "%s", settings.walkToggle ? "toggle" : "hold"); break;
             case kJumpButton: std::snprintf(out, size, "%s", settings.jumpWalks ? "walk" : "jump"); break;
+            case kTapUse: std::snprintf(out, size, "%s", settings.tapUse ? "on" : "off"); break;
             case kTapJump:
                 // (Where nothing else jumps, it stays on: HlControls.hpp's tapJumps.)
                 std::snprintf(out, size, "%s",
@@ -1370,6 +1373,7 @@ namespace hlrt
             case kWalk: return "Walk held down, or pressed once to walk and again to run.";
             case kJumpButton: return "What the jump button does: jump, or walk.";
             case kTapJump: return "Two taps on the aim pad jump. Off, only the jump button does.";
+            case kTapUse: return "A quick tap on the aim pad is USE, in the modern layout. Off, USE's button does it.";
             case kPadSide: return "What the pad's left and right do: step aside, or turn.";
             case kPadUp: return "What the pad's up and down do: walk, or look up and down.";
             case kAutoaim: return "The aim bends towards a monster near it, on EASY and MEDIUM, as the game's does.";
@@ -1508,6 +1512,7 @@ namespace hlrt
             case kDuck: settings.duckToggle = !settings.duckToggle; return true;
             case kWalk: settings.walkToggle = !settings.walkToggle; return true;
             case kJumpButton: settings.jumpWalks = !settings.jumpWalks; return true;
+            case kTapUse: settings.tapUse = !settings.tapUse; return true;
             case kTapJump:
                 if (!hldata::jumpsOtherwise(settings.controls()))
                     return false; // (the only way to jump: not turned off)

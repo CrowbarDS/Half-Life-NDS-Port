@@ -42,6 +42,7 @@ void Settings::load()
         walkToggle = data.walkToggle != 0;
         jumpWalks = data.jumpWalks != 0;
         tapJump = data.tapJump != 0;
+        tapUse = data.tapUse != 0;
         firmness = data.firmness;
         firmPress = data.firmPress;
         for (int a = 0; a < hldata::kActionCount; ++a)
@@ -110,6 +111,7 @@ void Settings::reset(int category)
         walkToggle = first.walkToggle;
         jumpWalks = first.jumpWalks;
         tapJump = first.tapJump;
+        tapUse = first.tapUse;
         padTurns = first.padTurns;
         padLooks = first.padLooks;
         autoaim = first.autoaim;
@@ -171,6 +173,7 @@ bool Settings::save() const
     data.walkToggle = walkToggle ? 1 : 0;
     data.jumpWalks = jumpWalks ? 1 : 0;
     data.tapJump = tapJump ? 1 : 0;
+    data.tapUse = tapUse ? 1 : 0;
     data.firmness = firmness;
     data.firmPress = firmPress;
     for (int a = 0; a < hldata::kActionCount; ++a)

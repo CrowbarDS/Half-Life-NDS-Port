@@ -143,6 +143,7 @@ namespace hldata
         bool walkToggle = false; ///< the walk button walks, and again runs (else: held)
         bool jumpWalks = false;  ///< the jump button walks
         bool tapJump = true;     ///< two taps on the aim pad jump (tapJumps)
+        bool tapUse = false;     ///< a quick tap on the aim pad is USE (the modern layout)
         /// The player has the long jump module: the screen has LONG JUMP. Not
         /// a setting: the game's state.
         bool longJump = false;
@@ -335,6 +336,9 @@ namespace hldata
         std::uint32_t downBlank = 0;
         int downX = 0, downY = 0;
         std::uint32_t lastTapBlank = 0; ///< when the aim pad was last touched
+        /// A tap that is to be USE, waiting to see whether it is the first
+        /// of a double tap (a jump: then it is not USE).
+        bool usePending = false;
         int lastTapX = -1000, lastTapY = -1000;
         int lastX = 0, lastY = 0;
         bool crouched = false; ///< crouching until told to stand
@@ -480,6 +484,11 @@ namespace hldata
                     state.jumping = tapJumps(set) && in.blank - state.lastTapBlank <= kDoubleTapBlanks &&
                                     dx > -kDoubleTapReach && dx < kDoubleTapReach && dy > -kDoubleTapReach &&
                                     dy < kDoubleTapReach;
+                    // (The tap before, waiting: a jump with this one, or
+                    // USE after all.)
+                    if (state.usePending && !state.jumping)
+                        out.usePressed = true;
+                    state.usePending = false;
                     // (A third tap is not a second double tap with the
                     // second.)
                     state.lastTapBlank = state.jumping ? in.blank - 1000 : in.blank;
@@ -523,16 +532,30 @@ namespace hldata
         else
         {
             // Lifted: a touch of the aim pad that was short and went nowhere
-            // was a tap, and in the MODERN layout a tap is USE. (Not the
-            // second of two: that one was a jump.)
-            if (!classic && state.touching && state.touch == kTouchAim && !state.jumping && !state.strayed &&
-                in.blank - state.downBlank <= kTapBlanks)
-                out.usePressed = true;
+            // was a tap, and in the MODERN layout, if the player has asked
+            // for it, a tap is USE. (Not the second of two: that one was a
+            // jump. And not the first of two either: where two taps jump, it
+            // waits for the time a second could come in -- below.)
+            if (!classic && set.tapUse && state.touching && state.touch == kTouchAim && !state.jumping &&
+                !state.strayed && in.blank - state.downBlank <= kTapBlanks)
+            {
+                if (tapJumps(set))
+                    state.usePending = true;
+                else
+                    out.usePressed = true;
+            }
             state.touching = false;
             state.touch = kTouchAim;
             state.jumping = false;
             state.duckSlide = false;
             state.walkSlide = false;
+        }
+
+        // A tap waiting to be USE: no second came in time, so it is.
+        if (state.usePending && !state.touching && in.blank - state.lastTapBlank > kDoubleTapBlanks)
+        {
+            out.usePressed = true;
+            state.usePending = false;
         }
 
         // The two sticks, an axis at a time.
@@ -728,7 +751,9 @@ namespace hldata
             return pair(set.jumpWalks ? kActionWalk : kActionJump, set.jumpWalks ? "walk" : "jump", kActionDuck,
                         set.duckToggle ? "crouch/stand" : "crouch");
         case 2: return pair(kActionReload, "reload", kActionNextWeapon, "weapon");
-        case 3: return tapJumps(set) ? "tap: use   double tap: jump" : "tap: use";
+        case 3:
+            return set.tapUse ? (tapJumps(set) ? "tap: use   double tap: jump" : "tap: use")
+                              : (tapJumps(set) ? "double tap: jump" : nullptr);
         default: return nullptr;
         }
     }

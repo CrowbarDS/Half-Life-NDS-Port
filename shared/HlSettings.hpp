@@ -88,6 +88,9 @@ namespace hldata
         /// Two taps on the aim pad jump (HlControls.hpp's tapJumps: always,
         /// where nothing else would).
         std::uint8_t tapJump = 1;
+        /// A quick tap on the aim pad is USE (the modern layout). Off unless
+        /// asked for: a touch to aim was too often a USE.
+        std::uint8_t tapUse = 0;
         /// How strict the stylus is about light touches (0..10), and what a
         /// firm press on the aim pad does (kFirm*): HlControls.hpp. Only
         /// where the console can say how hard it is pressed.
@@ -202,6 +205,13 @@ namespace hldata
         template <class Ar>
         void serialize(Ar &ar)
         {
+            serializeNineteen(ar);
+            ar &tapUse;
+        }
+        /// ... and of version 19: taps were always USE (read as off).
+        template <class Ar>
+        void serializeNineteen(Ar &ar)
+        {
             serializeEighteen(ar);
             ar &tapJump;
         }
@@ -256,15 +266,17 @@ namespace hldata
     inline constexpr std::uint8_t kQualityStandard = 0, kQualityHigh = 1, kQualityChoices = 2;
 
     inline constexpr char kSettingsMagic[4] = {'H', 'L', 'S', 'T'};
-    inline constexpr std::uint16_t kSettingsVersion = 19;
-    /// The versions before, which are still read: 18 had no choice about the
-    /// double tap (it jumped); 17 had no walk; 16 had no autosave to turn
+    inline constexpr std::uint16_t kSettingsVersion = 20;
+    /// The versions before, which are still read: 19 had taps always USE in
+    /// the modern layout (read as off, the default now); 18 had no choice
+    /// about the double tap (it jumped); 17 had no walk; 16 had no autosave to turn
     /// off, and its autoaim was on by default, so is read as off; 13 had no profile and no
     /// match hosted; 12 had no room effects,
     /// output or quality (its DSP switch is the room effects' Enhanced);
     /// 11 had no achievements' pop-ups to turn off; 10 had no autoaim; 9 had
     /// the layouts but no aim speed, custom buttons or stylus pressure; 8 no
     /// controls to choose.
+    inline constexpr std::uint16_t kSettingsVersionNineteen = 19;
     inline constexpr std::uint16_t kSettingsVersionEighteen = 18;
     inline constexpr std::uint16_t kSettingsVersionSeventeen = 17;
     inline constexpr std::uint16_t kSettingsVersionSixteen = 16;
@@ -323,7 +335,8 @@ namespace hldata
             return false;
         std::memcpy(&header, bytes, sizeof(header));
         if (std::memcmp(header.magic, kSettingsMagic, sizeof(header.magic)) != 0 ||
-            (header.version != kSettingsVersion && header.version != kSettingsVersionEighteen &&
+            (header.version != kSettingsVersion && header.version != kSettingsVersionNineteen &&
+             header.version != kSettingsVersionEighteen &&
              header.version != kSettingsVersionSeventeen &&
              header.version != kSettingsVersionSixteen &&
              header.version != kSettingsVersionFifteen &&
@@ -365,6 +378,8 @@ namespace hldata
             read.serializeSeventeen(ia);
         else if (header.version == kSettingsVersionEighteen)
             read.serializeEighteen(ia);
+        else if (header.version == kSettingsVersionNineteen)
+            read.serializeNineteen(ia);
         else
             ia &read;
         // (Autoaim was on until asked off: off now until asked for, once.)
@@ -381,7 +396,7 @@ namespace hldata
             return false;
         if (read.aimSpeed < 1 || read.aimSpeed > kAimSpeedMost || read.pitchSpeed < 1 ||
             read.pitchSpeed > kAimSpeedMost || read.invertPitch > 1 || read.duckToggle > 1 ||
-            read.walkToggle > 1 || read.jumpWalks > 1 || read.tapJump > 1 || read.firmness > kFirmnessMost || read.firmPress >= kFirmActions)
+            read.walkToggle > 1 || read.jumpWalks > 1 || read.tapJump > 1 || read.tapUse > 1 || read.firmness > kFirmnessMost || read.firmPress >= kFirmActions)
             return false;
         for (std::uint16_t key : read.keys)
         {
