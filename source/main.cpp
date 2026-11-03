@@ -303,6 +303,8 @@ namespace
     /// of it (GpuStats).
     void logPerformance()
     {
+        if (!perfLogging())
+            return;
         hlrt::gpuStats.writeLog(currentMap.c_str(), "1P");
         // With the DSi's DSP in use, how it got on over that map.
         if (hlrt::sound.extended())

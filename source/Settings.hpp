@@ -125,3 +125,15 @@ public:
 
 extern Settings settings;
 
+/// Whether lines go into perf.txt: in a build that measures, or with the
+/// debug readout on. Not otherwise -- each line rewrites the directory of
+/// the folder the game's maps are in, and on a card that is failing that is
+/// the write that can take them with it.
+inline bool perfLogging()
+{
+#ifdef HLDS_PROFILE
+    return true;
+#else
+    return settings.debugReadout;
+#endif
+}

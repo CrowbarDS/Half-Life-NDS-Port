@@ -463,7 +463,10 @@ Milestone 11, "levels of detail".
   rasteriser came to not finishing its lines, and moves its budget by that --
   up, where the hardware throws away what is off the screen (often a fifth of
   what was counted), and down when a frame was too much. The same numbers are
-  on the debug overlay and, for each map played, in `perf.txt` on the card.
+  on the debug overlay and, for each map played, in `perf.txt` on the card --
+  with the debug readout on, or in a build with `HLDS_PROFILE`: otherwise
+  nothing is written there (a line after every map rewrote the directory of
+  the folder the maps are in, the write a failing card can take them with).
 - Player movement with Half-Life's own numbers: walking, jumping, crouching,
   steps, climbing, sliding along walls, in fixed point throughout (the DS has
   no FPU).

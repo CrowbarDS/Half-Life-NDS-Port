@@ -1531,7 +1531,7 @@ namespace hlrt
         if (extended_ && dspAudio.failed())
         {
             // (Said in the log, so that it is known to have happened.)
-            if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
+            if (std::FILE *log = perfLogging() ? std::fopen(global.dataPath("perf.txt").c_str(), "a") : nullptr)
             {
                 std::fprintf(log, "dsp given up: ran short %lu times, %s\n", static_cast<unsigned long>(dspAudio.dry()),
                              dspAudio.up() ? "answering" : "not answering");
