@@ -811,7 +811,7 @@ namespace hlrt
                                    player.state.origin[2] + player.state.viewHeight};
                 // (At a train's controls or a gun's, USE takes them, or lets
                 // go: a train's first, as the game's PlayerUse has it.)
-                const int target = trainUse(logic, player.state) || tankUse(logic, player.state)
+                const int target = trainUse(logic, player.state) || tankUse(logic, player.state, camera.forward)
                                        ? -2
                                        : logicFindUsable(logic, eye, camera.forward);
                 // (The game's PlayerUse says so: something used, its

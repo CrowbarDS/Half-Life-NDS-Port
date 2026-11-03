@@ -4324,6 +4324,9 @@ namespace hldata
         }
     } // namespace detail
 
+    /// How squarely a tank's controls must be faced to be taken (VIEW_FIELD_NARROW).
+    inline constexpr fx kTankMinFacing = 2867;
+
     /// The tank a player has at its controls, or -1.
     inline int tankManned(const LogicWorld &w)
     {
@@ -4355,8 +4358,10 @@ namespace hldata
 
     /// USE: at a tank's controls, take them (StartControl) -- or, having
     /// them, let go (StopControl). False if neither: USE is something
-    /// else's.
-    inline bool tankUse(LogicWorld &w, const PlayerState &player)
+    /// else's. The controls are thin and nothing stops the player at them:
+    /// as PlayerUse has it, they are within 64 units and in front of the view
+    /// (`forward`, unit length), no nearer than that is asked.
+    inline bool tankUse(LogicWorld &w, const PlayerState &player, const fx *forward)
     {
         if (tankManned(w) >= 0)
         {
@@ -4370,7 +4375,21 @@ namespace hldata
                 continue;
             const fx mins[3] = {fxFromInt(record.mins[0]), fxFromInt(record.mins[1]), fxFromInt(record.mins[2])};
             const fx maxs[3] = {fxFromInt(record.maxs[0]), fxFromInt(record.maxs[1]), fxFromInt(record.maxs[2])};
-            if (!detail::playerTouchesBox(player, mins, maxs, 0))
+            const fx eye[3] = {player.origin[0], player.origin[1], player.origin[2] + player.viewHeight};
+            fx reach[3], to[3];
+            for (int a = 0; a < 3; ++a)
+            {
+                const fx &from = player.origin[a];
+                reach[a] = (from < mins[a] ? mins[a] : (from > maxs[a] ? maxs[a] : from)) - from;
+                to[a] = (eye[a] < mins[a] ? mins[a] : (eye[a] > maxs[a] ? maxs[a] : eye[a])) - eye[a];
+            }
+            if (fxLength(reach) > kUseRange)
+                continue;
+            const fx distance = fxLength(to);
+            if (distance > 0 && (static_cast<std::int64_t>(to[0]) * forward[0] + static_cast<std::int64_t>(to[1]) * forward[1] +
+                                 static_cast<std::int64_t>(to[2]) * forward[2]) /
+                                        distance <
+                                    kTankMinFacing)
                 continue;
             for (int t = 0; t < w.recordCount && record.target != 0; ++t)
             {

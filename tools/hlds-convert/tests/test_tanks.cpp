@@ -2,7 +2,8 @@
 // tankTick and the rest): c2a2e's guard gun turns to the player and fires;
 // c2a2e's big gun is taken at its controls, follows the view and fires at
 // the fire button, and is let go of; c1a3b's mortars come down on who calls
-// them; c2a5g's wheels turn, move their bars, and aim its mortar table.
+// them; c2a5g's wheels turn, move their bars, and aim its mortar table. Every
+// map's controls are taken from a pace away, facing them, and only so.
 //
 // Needs the game: HLDS_VALVE_DIR. Without it, nothing is run.
 
@@ -10,6 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <string>
 
 #include "TestGame.hpp"
 
@@ -126,6 +128,72 @@ namespace
         }
     }
 
+    /// Each map's controls: from a pace off, looked at, they are taken; looked
+    /// away from, or from further than the game reaches, they aren't.
+    void testEveryControl(const char *dir, const char *map)
+    {
+        auto game = load(dir, map);
+        check(game != nullptr, (std::string(map) + " loads").c_str());
+        if (!game)
+            return;
+        Game &g = *game;
+        int count = 0;
+        for (std::uint32_t i = 0; i < g.view.logicCount; ++i)
+        {
+            const LogicRecord &volume = g.view.logic[i];
+            if (volume.kind != static_cast<std::uint8_t>(LogicKind::TankControls))
+                continue;
+            ++count;
+            fx middle[3];
+            for (int a = 0; a < 3; ++a)
+                middle[a] = fxFromInt(volume.mins[a] + volume.maxs[a]) / 2;
+            bool taken = false, refused = true, far = true;
+            for (int way = 0; way < 4 && !taken; ++way)
+            {
+                const std::uint16_t yaw = static_cast<std::uint16_t>(way * 16384);
+                // (On the floor there; or, a tower's narrow walk having none
+                // the probe finds, a little above the foot of the controls.)
+                if (!standOff(g, middle, yaw, 44))
+                {
+                    fx sine, cosine;
+                    fxSinCos(yaw, sine, cosine);
+                    g.player.origin[0] = middle[0] + cosine * 44;
+                    g.player.origin[1] = middle[1] + sine * 44;
+                    g.player.origin[2] = fxFromInt(volume.mins[2]) + kStandingFeet;
+                    for (int up = 0; up < 40 && !hullPositionFree(g.move.standing, g.player.origin); up += 4)
+                        g.player.origin[2] += fxFromInt(4);
+                }
+                if (!hullPositionFree(g.move.standing, g.player.origin))
+                    continue;
+                g.player.viewHeight = kFxOne * 28;
+                fx to[3] = {middle[0] - g.player.origin[0], middle[1] - g.player.origin[1],
+                            middle[2] - g.player.origin[2] - g.player.viewHeight};
+                const fx length = fxLength(to);
+                fx forward[3], away[3];
+                for (int a = 0; a < 3; ++a)
+                {
+                    forward[a] = static_cast<fx>((static_cast<std::int64_t>(to[a]) << kFxShift) / length);
+                    away[a] = -forward[a];
+                }
+                refused = !tankUse(g.logic, g.player, away) && refused;
+                taken = tankUse(g.logic, g.player, forward);
+                if (taken)
+                {
+                    check(tankManned(g.logic) >= 0, (std::string(map) + ": its gun is had").c_str());
+                    tankRelease(g.logic);
+                    if (standOff(g, middle, yaw, 160))
+                        far = !tankUse(g.logic, g.player, forward);
+                    tankRelease(g.logic);
+                }
+            }
+            std::printf("test_tanks: %s controls %d: %s\n", map, static_cast<int>(i), taken ? "taken" : "NOT TAKEN");
+            check(taken, (std::string(map) + ": USE from a pace off, facing its controls, takes them").c_str());
+            check(refused, (std::string(map) + ": ... not with its back to them").c_str());
+            check(far, (std::string(map) + ": ... nor from out of reach").c_str());
+        }
+        check(count > 0, (std::string(map) + " has controls").c_str());
+    }
+
     void testBigGun(const char *dir)
     {
         auto game = load(dir, "c2a2e");
@@ -153,7 +221,9 @@ namespace
         for (int a = 0; a < 3; ++a)
             g.player.origin[a] = probe.pos[a];
         g.player.origin[2] += kStandingFeet;
-        check(tankUse(g.logic, g.player), "USE at its controls takes them");
+        // (Stood in them, it is down at them they are looked at.)
+        const fx ahead[3] = {0, 0, -kFxOne};
+        check(tankUse(g.logic, g.player, ahead), "USE at its controls takes them");
         check(tankManned(g.logic) == gun, "... it is the big gun that is had");
         LogicState &state = g.states[gun];
         const std::uint16_t rest = static_cast<std::uint16_t>(state.bits);
@@ -264,6 +334,9 @@ int main()
     }
     testGuardGun(valve);
     testBigGun(valve);
+    for (const char *map : {"c2a2b1", "c2a2e", "c2a2h", "c2a5e", "c2a5f", "c3a1b", "crossfire", "doublecross",
+                            "rocket_frenzy", "stalkyard"})
+        testEveryControl(valve, map);
     testMortars(valve);
     testWheels(valve);
     if (g_failures == 0)
