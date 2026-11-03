@@ -11,6 +11,7 @@
 // targets ride, c2a3e's camera looks.
 
 #include <cmath>
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
@@ -247,6 +248,41 @@ namespace
         logicStrike(g.logic, g.player, gun, 6);
         check(!g.logic.states[gun].running && g.logic.states[done].dead, "... and for 12, it stops and fires its message");
 
+        // On a path of path_tracks, out and back (t0a0b's): it rides there
+        // too, and comes back.
+        {
+            BoxRoom track;
+            track.mins[0] = -512, track.maxs[0] = 512;
+            track.brushes.push_back(volume("func_guntarget", -16, -16, 32, 16, 16, 64,
+                                           "\"targetname\" \"gun\"\n\"target\" \"t1\"\n\"health\" \"5\"\n"
+                                           "\"speed\" \"100\"\n"));
+            track.extraEntities =
+                entity("\"classname\" \"path_track\"\n\"targetname\" \"t1\"\n\"origin\" \"0 0 48\"\n\"target\" \"t2\"\n") +
+                entity("\"classname\" \"path_track\"\n\"targetname\" \"t2\"\n\"origin\" \"200 0 48\"\n\"target\" \"t1\"\n");
+            auto ridden = cook(track);
+            const int target = ridden->ok ? named(*ridden, "gun", LogicKind::GunTarget) : -1;
+            check(target >= 0 && ridden->view.logic[target].firstAux != kNoCorner,
+                  "a func_guntarget on a path_track has somewhere to start");
+            if (target >= 0)
+            {
+                Game &r = *ridden;
+                standAt(r, -400, 100);
+                use(r, target);
+                fx furthest = 0;
+                for (int t = 0; t < 30 * 4; ++t)
+                {
+                    ticks(r, 1);
+                    const fx at = r.brushStates[r.view.logic[target].brush].pos[0];
+                    furthest = at > furthest ? at : furthest;
+                }
+                const fx back = r.brushStates[r.view.logic[target].brush].pos[0];
+                std::printf("test_round39: a target on two tracks 200 apart went %d out, and is %d out after 4 s\n",
+                            fxToInt(furthest), fxToInt(back));
+                check(furthest > fxFromInt(150) && back < furthest - fxFromInt(50),
+                      "... rides to the far one and back again");
+            }
+        }
+
         const BrushState &face = g.brushStates[g.view.logic[button].brush];
         logicStrike(g.logic, g.player, button, 1);
         ticks(g, 1);
@@ -363,7 +399,40 @@ namespace
     }
 
     void testWithTheGame(const char *valve)
-    {
+    {        // t0a0b's range: its seven targets ride their tracks once used.
+        {
+            auto game = map(valve, "t0a0b");
+            int targets = 0, riding = 0;
+            if (game->ok)
+            {
+                Game &g = *game;
+                std::vector<int> found;
+                for (std::uint32_t i = 0; i < g.view.logicCount; ++i)
+                {
+                    if (g.view.logic[i].kind == static_cast<std::uint8_t>(LogicKind::GunTarget))
+                    {
+                        found.push_back(static_cast<int>(i));
+                        targets += g.view.logic[i].firstAux != kNoCorner ? 1 : 0;
+                    }
+                }
+                std::vector<std::array<fx, 3>> start;
+                for (const int t : found)
+                {
+                    const fx *at = g.brushStates[g.view.logic[t].brush].pos;
+                    start.push_back({at[0], at[1], at[2]});
+                    use(g, t);
+                }
+                ticks(g, 30);
+                for (std::size_t k = 0; k < found.size(); ++k)
+                {
+                    const BrushState &b = g.brushStates[g.view.logic[found[k]].brush];
+                    riding += b.pos[0] != start[k][0] || b.pos[1] != start[k][1] || b.pos[2] != start[k][2] ? 1 : 0;
+                }
+                std::printf("test_round39: t0a0b: %zu targets, %d with a track, %d riding\n", found.size(), targets, riding);
+            }
+            check(targets == 7 && riding == 7, "t0a0b's seven targets have their tracks, and ride them once used");
+        }
+
         // Speakers: the game's announcements, now and then, until switched off.
         {
             BoxRoom room;

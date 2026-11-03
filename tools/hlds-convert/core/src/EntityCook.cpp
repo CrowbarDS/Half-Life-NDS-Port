@@ -1912,7 +1912,7 @@ namespace hlds
             }
             else if (cls == "func_guntarget" && model != nullptr)
             {
-                // A target on a path (its "target" the corner it starts at):
+                // A target on a path (its "target" the node it starts at):
                 // hit while it rides, it takes "health" and then stops and
                 // fires its "message". Flag 1: it rides from the start.
                 make = true;
@@ -1923,8 +1923,23 @@ namespace hlds
                 for (int a = 0; a < 3; ++a)
                     record.move[a] =
                         fxFromDouble((double(model->mins[a]) + model->maxs[a]) / 2 + origin[a]);
-                const auto first = cornerOfName.find(std::string(entity.value("target")));
-                trainCorner = first != cornerOfName.end() ? first->second : kNoCorner;
+                // (A path_corner or a path_track -- t0a0b's ride tracks --
+                // whichever of that name comes first in the map, as the
+                // game finds it by name alone.)
+                const std::string first(entity.value("target"));
+                trainCorner = kNoCorner;
+                for (const Entity &node : entities)
+                {
+                    if (node.value("targetname") != first)
+                        continue;
+                    if (node.className() == "path_corner" && cornerOfName.count(first) != 0)
+                        trainCorner = cornerOfName[first];
+                    else if (node.className() == "path_track" && trackOfName.count(first) != 0)
+                        trainCorner = trackOfName[first];
+                    else
+                        continue;
+                    break;
+                }
                 record.extra[0] = static_cast<std::uint32_t>(std::max(1.0, numberKey(entity, "health", 1)));
                 record.netName = nameId(entity.value("message"));
                 if (spawnflags & 1)
