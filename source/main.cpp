@@ -2059,6 +2059,8 @@ int main(int argc, char *argv[])
                         deathLoop = hldata::DeathLoop();
                         lastVblank = Global::vblanks();
                     }
+#ifndef HLDS_CHILD
+                    // (Not on a console sent the game: no room for it there.)
                     else if (item == Menu::Action::Command)
                     {
                         // The console: lines typed and run, and what they
@@ -2073,6 +2075,7 @@ int main(int argc, char *argv[])
                         hlrt::bottomScreen.showPad();
                         lastVblank = Global::vblanks();
                     }
+#endif
                     else if (item == Menu::Action::Resume || item == Menu::Action::EndMatch || hlrt::input.startPressed)
                     {
                         paused = false;

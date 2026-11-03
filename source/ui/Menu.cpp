@@ -3374,6 +3374,8 @@ namespace hlrt
         case kContinue:
             return saves_ == nullptr || saveMostRecent(*saves_) < 0 ? "No saved game to go on with" : nullptr;
         case kCommand:
+            if (childConsole)
+                return "Not on a console sent the game";
             return title_ ? "The console is for a game being played" : nullptr;
         case kMultiplayer:
             return netGame.maps().empty() ? "No multiplayer map on the card" : nullptr;
