@@ -94,6 +94,7 @@ namespace hlrt
             kDuck,
             kWalk,
             kJumpButton,
+            kTapJump,
             kButtons,
             kTouchAim,
             kAimSpeed,
@@ -874,8 +875,9 @@ namespace hlrt
                                      {Kind::Value, kDrawDistance, "Draw distance"}};
         const Row kControlRows[] = {{Kind::Value, kScheme, "Layout"},          {Kind::Value, kHand, "Stylus hand"},
                                     {Kind::Value, kDuck, "Crouch"},            {Kind::Value, kWalk, "Walk"},
-                                    {Kind::Value, kJumpButton, "Jump button"}, {Kind::Value, kPadSide, "Pad left/right"},
-                                    {Kind::Value, kPadUp, "Pad up/down"},      {Kind::Value, kAutoaim, "Autoaim"}};
+                                    {Kind::Value, kJumpButton, "Jump button"}, {Kind::Value, kTapJump, "Double tap jump"},
+                                    {Kind::Value, kPadSide, "Pad left/right"}, {Kind::Value, kPadUp, "Pad up/down"},
+                                    {Kind::Value, kAutoaim, "Autoaim"}};
         const Row kTouchRows[] = {{Kind::Slider, kAimSpeed, "Aim speed"},
                                   {Kind::Slider, kPitchSpeed, "Up/down speed"},
                                   {Kind::Value, kInvert, "Invert up/down"},
@@ -1305,6 +1307,12 @@ namespace hlrt
             case kDuck: std::snprintf(out, size, "%s", settings.duckToggle ? "toggle" : "hold"); break;
             case kWalk: std::snprintf(out, size, "%s", settings.walkToggle ? "toggle" : "hold"); break;
             case kJumpButton: std::snprintf(out, size, "%s", settings.jumpWalks ? "walk" : "jump"); break;
+            case kTapJump:
+                // (Where nothing else jumps, it stays on: HlControls.hpp's tapJumps.)
+                std::snprintf(out, size, "%s",
+                              !hldata::jumpsOtherwise(settings.controls()) ? "on (no other jump)"
+                                                                           : (settings.tapJump ? "on" : "off"));
+                break;
             case kInvert: std::snprintf(out, size, "%s", settings.invertPitch ? "on" : "off"); break;
             case kFirmPress:
                 std::snprintf(out, size, "%s", Input::pressureSeen() ? kFirmName[settings.firmPress % kFirmActions] : "n/a here");
@@ -1360,7 +1368,8 @@ namespace hlrt
             case kHand: return "Which hand holds the stylus: the touch screen's buttons go to the other side.";
             case kDuck: return "Crouch held down, or pressed once to crouch and again to stand.";
             case kWalk: return "Walk held down, or pressed once to walk and again to run.";
-            case kJumpButton: return "Make the jump button walk. A double tap on the aim pad still jumps.";
+            case kJumpButton: return "What the jump button does: jump, or walk.";
+            case kTapJump: return "Two taps on the aim pad jump. Off, only the jump button does.";
             case kPadSide: return "What the pad's left and right do: step aside, or turn.";
             case kPadUp: return "What the pad's up and down do: walk, or look up and down.";
             case kAutoaim: return "The aim bends towards a monster near it, on EASY and MEDIUM, as the game's does.";
@@ -1499,6 +1508,11 @@ namespace hlrt
             case kDuck: settings.duckToggle = !settings.duckToggle; return true;
             case kWalk: settings.walkToggle = !settings.walkToggle; return true;
             case kJumpButton: settings.jumpWalks = !settings.jumpWalks; return true;
+            case kTapJump:
+                if (!hldata::jumpsOtherwise(settings.controls()))
+                    return false; // (the only way to jump: not turned off)
+                settings.tapJump = !settings.tapJump;
+                return true;
             case kInvert: settings.invertPitch = !settings.invertPitch; return true;
             case kFirmPress:
                 if (!Input::pressureSeen())

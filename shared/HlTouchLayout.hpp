@@ -17,7 +17,7 @@
 //  192 +--------------------------------+
 //
 // The bar has WALK too, beside a narrower USE; or, if the player has asked for
-// the jump button to walk (a double tap still jumps), WALK is where JUMP was
+// the jump button to walk (two taps on the aim pad then jump), WALK is where JUMP was
 // and the bar is as drawn. In a match between consoles the bar has SPRAY too,
 // and everything on it is narrower. Once the player has the long jump module,
 // the top of the column has LONG JUMP under JUMP (or WALK).

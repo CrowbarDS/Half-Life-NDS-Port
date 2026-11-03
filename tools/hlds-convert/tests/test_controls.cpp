@@ -796,6 +796,36 @@ namespace
             walks.walkToggle = 2;
             written = writeSettings(walks);
             check(!readSettings(written.data(), written.size(), read18), "... and nonsense is not believed");
+
+            // The last before the double tap was a choice: it jumps, as it did.
+            SettingsData eighteen;
+            eighteen.jumpWalks = 1;
+            eighteen.tapJump = 0; // (not in the file: read back as on)
+            yas::mem_ostream os18;
+            yas::binary_oarchive<yas::mem_ostream, flags> oa18(os18);
+            eighteen.serializeEighteen(oa18);
+            const auto buf18 = os18.get_intrusive_buffer();
+            SettingsHeader h18{};
+            std::memcpy(h18.magic, kSettingsMagic, sizeof(h18.magic));
+            h18.version = kSettingsVersionEighteen;
+            h18.payloadBytes = static_cast<std::uint16_t>(buf18.size);
+            h18.crc32 = crc32(reinterpret_cast<const std::uint8_t *>(buf18.data), static_cast<std::uint32_t>(buf18.size));
+            std::vector<std::uint8_t> file18(sizeof(h18) + buf18.size);
+            std::memcpy(file18.data(), &h18, sizeof(h18));
+            std::memcpy(file18.data() + sizeof(h18), buf18.data, buf18.size);
+            SettingsData from18;
+            check(readSettings(file18.data(), file18.size(), from18) && from18.jumpWalks == 1 && from18.tapJump == 1,
+                  "settings of version 18 are read, the double tap jumping");
+            SettingsData noTap;
+            noTap.tapJump = 0;
+            written = writeSettings(noTap);
+            SettingsData read19;
+            check(readSettings(written.data(), written.size(), read19) && read19.tapJump == 0 &&
+                      written.size() <= kSettingsMostBytes,
+                  "the double tap turned off is kept, and the file still fits");
+            noTap.tapJump = 2;
+            written = writeSettings(noTap);
+            check(!readSettings(written.data(), written.size(), read19), "... and nonsense is not believed");
         }
     }
 
@@ -883,6 +913,39 @@ namespace
         state = ControlsState();
         out = press(classicWalks, state, kButtonA, blank);
         check(out.moveSide == 1 && !out.walk, "classic's A is still the pad's: it has no jump button to give");
+
+        // The double tap turned off: two taps on the aim pad do not jump --
+        // unless nothing else would (the jump button walking, and no button
+        // that jumps), when they still do.
+        {
+            auto twoTaps = [&](const ControlSettings &set)
+            {
+                ControlsState s;
+                const TouchLayout where = touchLayout(set.leftHanded, false, set.jumpWalks);
+                const int mid = where.pad.x + where.pad.w / 2;
+                blank += 100;
+                touch(set, s, mid, 90, blank);
+                press(set, s, 0, blank);
+                const bool jumped = touch(set, s, mid, 90, blank).jump;
+                press(set, s, 0, blank);
+                return jumped;
+            };
+            ControlSettings modern;
+            modern.scheme = kControlsModern;
+            modern.tapJump = false;
+            check(!twoTaps(modern) && jumpsOtherwise(modern), "the double tap off: two taps do not jump");
+            modern.tapJump = true;
+            check(twoTaps(modern), "... on: they do");
+            ControlSettings only = classicWalks;
+            only.tapJump = false;
+            check(!jumpsOtherwise(only) && twoTaps(only), "with no other way to jump, two taps still do");
+            ControlSettings custom;
+            custom.scheme = kControlsCustom;
+            custom.jumpWalks = true;
+            custom.tapJump = false;
+            defaultKeys(kControlsModern, false, custom.keys);
+            check(jumpsOtherwise(custom) && !twoTaps(custom), "... but a button of one's own that jumps is one");
+        }
     }
 
     /// LONG JUMP: there with the module, a crouch and a jump at once, and the

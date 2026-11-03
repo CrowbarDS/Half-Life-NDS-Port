@@ -36,6 +36,8 @@ public:
     /// The walk toggles (else it is held), and the jump button walks.
     bool walkToggle = false;
     bool jumpWalks = false;
+    /// Two taps on the aim pad jump (always, where nothing else would).
+    bool tapJump = true;
     /// How strict the stylus is about light touches, and what a firm press
     /// does (HlControls.hpp).
     std::uint8_t firmness = 4;
@@ -59,6 +61,7 @@ public:
         set.duckToggle = duckToggle;
         set.walkToggle = walkToggle;
         set.jumpWalks = jumpWalks;
+        set.tapJump = tapJump;
         set.firmness = firmness;
         set.firmPress = firmPress;
         for (int a = 0; a < hldata::kActionCount; ++a)
@@ -121,3 +124,4 @@ public:
 };
 
 extern Settings settings;
+

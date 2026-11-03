@@ -141,7 +141,8 @@ namespace hldata
         bool padLooks = false; ///< the pad's up and down look; the stylus moves
         bool duckToggle = false; ///< the crouch button crouches, and again stands (else: held)
         bool walkToggle = false; ///< the walk button walks, and again runs (else: held)
-        bool jumpWalks = false;  ///< the jump button walks (two taps still jump)
+        bool jumpWalks = false;  ///< the jump button walks
+        bool tapJump = true;     ///< two taps on the aim pad jump (tapJumps)
         /// The player has the long jump module: the screen has LONG JUMP. Not
         /// a setting: the game's state.
         bool longJump = false;
@@ -206,6 +207,21 @@ namespace hldata
             defaultKeys(set.scheme, set.leftHanded, keys, set.jumpWalks);
         }
     }
+
+    /// Whether there is a way to jump but two taps on the aim pad: the
+    /// touch screen's JUMP (unless the jump button walks, when WALK is in
+    /// its place), or a button that jumps.
+    inline bool jumpsOtherwise(const ControlSettings &set)
+    {
+        if (!set.jumpWalks)
+            return true;
+        std::uint16_t keys[kActionCount];
+        keysOf(set, keys);
+        return keys[kActionJump] != 0;
+    }
+    /// Whether two taps on the aim pad jump: as the player has it -- and
+    /// always where nothing else would.
+    inline bool tapJumps(const ControlSettings &set) { return set.tapJump || !jumpsOtherwise(set); }
 
     /// `button` (one kButton* bit) given to `action` in a custom table, and
     /// taken from whatever had it -- which is given the action's old
@@ -461,8 +477,9 @@ namespace hldata
                     // The second of two taps close together, in time and in
                     // place, is a jump.
                     const int dx = in.touchX - state.lastTapX, dy = in.touchY - state.lastTapY;
-                    state.jumping = in.blank - state.lastTapBlank <= kDoubleTapBlanks && dx > -kDoubleTapReach &&
-                                    dx < kDoubleTapReach && dy > -kDoubleTapReach && dy < kDoubleTapReach;
+                    state.jumping = tapJumps(set) && in.blank - state.lastTapBlank <= kDoubleTapBlanks &&
+                                    dx > -kDoubleTapReach && dx < kDoubleTapReach && dy > -kDoubleTapReach &&
+                                    dy < kDoubleTapReach;
                     // (A third tap is not a second double tap with the
                     // second.)
                     state.lastTapBlank = state.jumping ? in.blank - 1000 : in.blank;
@@ -700,7 +717,7 @@ namespace hldata
             {
             case 0: return pair(kActionFire, "fire", kActionAltFire, "second fire");
             case 1: return "A B X Y as the D-pad";
-            case 2: return "double tap: jump";
+            case 2: return tapJumps(set) ? "double tap: jump" : nullptr;
             default: return nullptr;
             }
         }
@@ -711,7 +728,7 @@ namespace hldata
             return pair(set.jumpWalks ? kActionWalk : kActionJump, set.jumpWalks ? "walk" : "jump", kActionDuck,
                         set.duckToggle ? "crouch/stand" : "crouch");
         case 2: return pair(kActionReload, "reload", kActionNextWeapon, "weapon");
-        case 3: return "tap: use   double tap: jump";
+        case 3: return tapJumps(set) ? "tap: use   double tap: jump" : "tap: use";
         default: return nullptr;
         }
     }
