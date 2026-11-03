@@ -150,15 +150,18 @@ namespace
         check(scoreVolume(system, needed) < 0, "the system disk is never picked");
         check(scoreVolume(windows, needed) < 0, "... even in the right format");
         check(scoreVolume(data, needed) < 0, "nor a fixed data disk");
-        check(scoreVolume(ntfs, needed) < 0, "nor what the console cannot read");
+        check(scoreVolume(ntfs, needed) >= 0, "any format may be picked");
         check(scoreVolume(ro, needed) < 0, "nor what cannot be written");
         const auto ranked = rankVolumes({system, data, full, exfat, card, usedCard, ntfs}, needed);
-        check(ranked.size() == 4, "those fit to offer");
+        check(ranked.size() == 5, "those fit to offer");
         check(!ranked.empty() && ranked[0].root == usedCard.root, "a card already used in a console first");
-        check(ranked.size() == 4 && ranked[1].root == card.root, "then a plain card");
-        check(ranked.size() == 4 && ranked[3].root == full.root, "one too full last");
+        check(ranked.size() == 5 && ranked[1].root == card.root, "then a plain card");
+        check(ranked.size() == 5 && ranked[2].root == exfat.root, "then exFAT");
+        check(ranked.size() == 5 && ranked[3].root == ntfs.root, "then another format");
+        check(ranked.size() == 5 && ranked[4].root == full.root, "one too full last");
         check(formatOf("VFAT") == Format::Good && formatOf("FAT32") == Format::Good && formatOf("exFAT") == Format::Warn &&
-                  formatOf("NTFS") == Format::Refused && formatOf("ext4") == Format::Refused,
+                  formatOf("NTFS") == Format::Other && formatOf("ext4") == Format::Other && formatOf("") == Format::Other &&
+                  formatOf("fuseblk") == Format::Other,
               "the formats");
     }
 

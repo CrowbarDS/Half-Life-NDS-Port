@@ -241,18 +241,19 @@ namespace hlds::install
             return Format::Good;
         if (format == "exfat")
             return Format::Warn;
-        return Format::Refused;
+        return Format::Other;
     }
 
     int scoreVolume(const Volume &volume, std::uint64_t needed)
     {
-        if (volume.system || volume.readOnly || formatOf(volume.format) == Format::Refused)
+        if (volume.system || volume.readOnly)
             return -1;
         int score = 0;
         score += volume.removable ? 100 : 0;
         score += volume.hasNds ? 50 : 0;
         score += volume.hasTwilight ? 25 : 0;
-        score += formatOf(volume.format) == Format::Good ? 10 : 0;
+        const Format format = formatOf(volume.format);
+        score += format == Format::Good ? 10 : format == Format::Warn ? 5 : 0;
         score += volume.free >= needed ? 5 : -20;
         // (Not removable, and nothing of a console's on it: a data disk.)
         return !volume.removable && !volume.hasNds ? -1 : score;

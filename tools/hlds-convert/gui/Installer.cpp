@@ -261,12 +261,10 @@ public:
     }
     bool isComplete() const override
     {
-        return !owner_->card_.isEmpty() && formatOf(formatName()) != Format::Refused && !chosen_.readOnly;
+        return !owner_->card_.isEmpty() && !chosen_.readOnly;
     }
 
 private:
-    std::string formatName() const { return chosen_.format; }
-
     void refresh()
     {
         const std::vector<Volume> ranked = rankVolumes(detect::volumes(), needed_);
@@ -326,15 +324,15 @@ private:
     {
         say(status_, chosen_.hasNds ? QStringLiteral("Found your console's card.") : QStringLiteral("Found a card."), kGood);
         const Format format = formatOf(chosen_.format);
-        if (format == Format::Refused)
-            say(warning_, QStringLiteral("This one is formatted as %1, which the console cannot read. It has to be FAT32.")
-                              .arg(QString::fromStdString(chosen_.format)), kBad);
-        else if (chosen_.readOnly)
+        if (chosen_.readOnly)
             say(warning_, QStringLiteral("This card cannot be written to. Is its lock switch on?"), kBad);
         else if (chosen_.free < needed_ && !chosen_.hasNds)
             say(warning_, QStringLiteral("It has %1 free, and about %2 is needed.").arg(sizeText(chosen_.free), sizeText(needed_)), kOrange);
         else if (format == Format::Warn)
             say(warning_, QStringLiteral("This one is formatted as exFAT. Some consoles' loaders cannot read that: FAT32 is safer."), kOrange);
+        else if (format == Format::Other)
+            say(warning_, QStringLiteral("This one is formatted as %1. Most consoles' loaders read only FAT32: check that yours reads this one.")
+                              .arg(chosen_.format.empty() ? QStringLiteral("something unknown") : QString::fromStdString(chosen_.format)), kOrange);
         else
             say(warning_, {});
         emit completeChanged();

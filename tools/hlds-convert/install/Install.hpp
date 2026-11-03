@@ -81,9 +81,9 @@ namespace hlds::install
 
     enum class Format
     {
-        Good,    ///< FAT32
-        Warn,    ///< exFAT: homebrew loaders vary
-        Refused, ///< the console cannot read it
+        Good,  ///< FAT32
+        Warn,  ///< exFAT: homebrew loaders vary
+        Other, ///< not FAT: fine if the player knows their loader reads it
     };
     Format formatOf(const std::string &name);
 
