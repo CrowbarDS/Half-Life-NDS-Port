@@ -22,10 +22,14 @@ filter_unconventional = false
 split_commits = false
 filter_commits = true
 commit_parsers = [
-    { message = "^(net|demo|child|dlp):", group = "Multiplayer and Download Play" },
+    { message = "^(net|demo|child|dlp|guest):", group = "Multiplayer and Download Play" },
     { message = "^(gui|install|convert):", group = "Converter" },
-    { message = "^(ui|menu|controls):", group = "Interface" },
-    { message = "^(render|anim|world|sound|audio|dsp|shared|game):", group = "Game" },
-    { message = "^(ci|build|test|tools|repo|docs|agents|version):", group = "Project" },
+    { message = "^(ui|menu|controls|settings|hud|text):", group = "Interface" },
+    { message = "^(save|saves):", group = "Saves" },
+    { message = "^(math|maths|hwmath|perf):", group = "Speed" },
+    { message = "^(render|anim|world|sound|audio|dsp|shared|game|logic|items|weapons|tanks|monsters|models|bones|decals|holograms|targets):", group = "Game" },
+    { message = "^(ci|build|test|tests|tools|hwtest|repo|docs|agents|version|release):", group = "Project" },
+    # (Any other "area: what" title: listed rather than lost.)
+    { message = "^[a-z0-9-]+:", group = "Other" },
 ]
 tag_pattern = "v[0-9]*"
