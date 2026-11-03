@@ -90,4 +90,21 @@ namespace hldata
 #undef HL_DSP_MUL
 #undef HL_DSP_MLA
 #undef HL_DSP_KNOWN
+
+    // What the game builds on them. Each is the 64-bit sum it stands for, the
+    // same bits, as long as what it is given stays where its comment says:
+    // test_dsp holds it there.
+
+    /// Q12 times Q12, as fxMul makes it, for two values each at most 32767
+    /// in size (a sine or cosine, a unit vector's part).
+    constexpr inline std::int32_t fxMulShort(std::int32_t a, std::int32_t b) { return smulbb(a, b) >> 12; }
+
+    /// a[0] b[0] + a[1] b[1] + a[2] b[2], not shifted, with `strideA` and
+    /// `strideB` between the parts (3 for a matrix's column): each part at
+    /// most 32767 in size, and the sum within 32 bits (three products of a
+    /// rotation's entry, at most 16384, and a 16-bit value always are).
+    constexpr inline std::int32_t dotShort(const std::int32_t *a, int strideA, const std::int32_t *b, int strideB)
+    {
+        return smlabb(a[2 * strideA], b[2 * strideB], smlabb(a[strideA], b[strideB], smulbb(a[0], b[0])));
+    }
 } // namespace hldata

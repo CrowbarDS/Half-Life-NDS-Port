@@ -61,7 +61,7 @@ namespace hldata
         /// three products' sum fits 32.)
         inline std::int32_t rotationDot(const std::int32_t *row, const std::int32_t *column)
         {
-            return smlabb(row[2], column[6], smlabb(row[1], column[3], smulbb(row[0], column[0]))) >> kBoneRotShift;
+            return dotShort(row, 1, column, 3) >> kBoneRotShift;
         }
 
         /// Which two of a run of keys `frame` (Q8) falls between, and how
@@ -121,6 +121,13 @@ namespace hldata
             }
         };
 
+        /// The sum of a quaternion's four squares, each part at most 16384
+        /// in size (Q14, near unit length): within 32 bits.
+        inline std::int32_t squaresShort(const std::int32_t *q)
+        {
+            return smlabb(q[3], q[3], smlabb(q[2], q[2], smlabb(q[1], q[1], smulbb(q[0], q[0]))));
+        }
+
         /// A stored rotation, whole: the w that was left out put back.
         inline void fullQuat(const ModelKey &key, std::int32_t *q)
         {
@@ -153,12 +160,11 @@ namespace hldata
                 for (int i = 0; i < 4; ++i)
                     dot += a[i] * b[i];
                 const std::int32_t sign = dot < 0 ? -1 : 1;
-                std::int64_t length2 = 0;
                 for (int i = 0; i < 4; ++i)
-                {
                     quat[i] = a[i] + (((sign * b[i] - a[i]) * s) >> 12);
-                    length2 += static_cast<std::int64_t>(quat[i]) * quat[i];
-                }
+                // (Each part between two unit ones, at most 16384: the four
+                // squares fit 32 bits.)
+                const std::int32_t length2 = squaresShort(quat);
                 // Back to unit length (Q14).
                 const auto length = static_cast<std::int32_t>(isqrt64(static_cast<std::uint64_t>(length2)));
                 if (length > 0)
@@ -202,12 +208,9 @@ namespace hldata
             for (int i = 0; i < 4; ++i)
                 dot += quat[i] * q[i];
             const std::int32_t sign = dot < 0 ? -1 : 1;
-            std::int64_t length2 = 0;
             for (int i = 0; i < 4; ++i)
-            {
                 quat[i] += ((sign * q[i] - quat[i]) * mix) >> 12;
-                length2 += static_cast<std::int64_t>(quat[i]) * quat[i];
-            }
+            const std::int32_t length2 = squaresShort(quat); // (as sampleTrack's)
             const auto length = static_cast<std::int32_t>(isqrt64(static_cast<std::uint64_t>(length2)));
             if (length > 0)
             {
@@ -232,8 +235,9 @@ namespace hldata
             return 0;
         // In degrees, Q8; the game's "ugly hack": a range written backwards
         // turns the value round.
-        std::int32_t value = static_cast<std::int32_t>(
-            (static_cast<std::int64_t>(static_cast<std::int16_t>(pitch)) * 360 * 256 + 32768) >> 16);
+        // (pitch * 360 * 256 / 65536, rounded: the same as (pitch * 45 + 16) >> 5,
+        // which needs only 32 bits.)
+        std::int32_t value = (static_cast<std::int16_t>(pitch) * 45 + 16) >> 5;
         const std::int32_t low = clip.blendLow * 256, high = clip.blendHigh * 256;
         if (high < low)
             value = -value;
@@ -277,18 +281,21 @@ namespace hldata
             fxSinCosFine(static_cast<std::uint16_t>(angle), sine, cosine);
             const std::int32_t s = sine >> 16, c = cosine >> 16; // Q14
             const std::int32_t k = (1 << 14) - c;
-            const auto mul = [](std::int32_t a, std::int32_t b)
-            { return static_cast<std::int32_t>((static_cast<std::int64_t>(a) * b) >> 14); };
+            // (The axis's parts and s are 16-bit: SMULBB. k reaches 32768, a
+            // half turn, which is not; but a unit axis's products times it
+            // stay within 2^29, so those are 32-bit multiplies.)
+            const auto mul = [](std::int32_t a, std::int32_t b) { return smulbb(a, b) >> 14; };
+            const auto byK = [k](std::int32_t a) { return (a * k) >> 14; };
             const std::int32_t x = axis[0], y = axis[1], z = axis[2];
-            m[0] = c + mul(mul(x, x), k);
-            m[1] = mul(mul(x, y), k) - mul(z, s);
-            m[2] = mul(mul(x, z), k) + mul(y, s);
-            m[3] = mul(mul(y, x), k) + mul(z, s);
-            m[4] = c + mul(mul(y, y), k);
-            m[5] = mul(mul(y, z), k) - mul(x, s);
-            m[6] = mul(mul(z, x), k) - mul(y, s);
-            m[7] = mul(mul(z, y), k) + mul(x, s);
-            m[8] = c + mul(mul(z, z), k);
+            m[0] = c + byK(mul(x, x));
+            m[1] = byK(mul(x, y)) - mul(z, s);
+            m[2] = byK(mul(x, z)) + mul(y, s);
+            m[3] = byK(mul(y, x)) + mul(z, s);
+            m[4] = c + byK(mul(y, y));
+            m[5] = byK(mul(y, z)) - mul(x, s);
+            m[6] = byK(mul(z, x)) - mul(y, s);
+            m[7] = byK(mul(z, y)) + mul(x, s);
+            m[8] = c + byK(mul(z, z));
         }
     } // namespace detail
 
@@ -324,11 +331,7 @@ namespace hldata
         for (int r = 0; r < 3; ++r)
         {
             for (int c = 0; c < 3; ++c)
-                turn[r * 3 + c] = static_cast<std::int32_t>(
-                    (static_cast<std::int64_t>(to.r[r * 3]) * from.r[c * 3] +
-                     static_cast<std::int64_t>(to.r[r * 3 + 1]) * from.r[c * 3 + 1] +
-                     static_cast<std::int64_t>(to.r[r * 3 + 2]) * from.r[c * 3 + 2]) >>
-                    kBoneRotShift);
+                turn[r * 3 + c] = dotShort(to.r + r * 3, 1, from.r + c * 3, 1) >> kBoneRotShift;
         }
         // (Copied back after: `to` stays what it was, being under the spine.)
         std::uint8_t up[kModelMaxBones];
@@ -347,11 +350,7 @@ namespace hldata
             for (int r = 0; r < 3; ++r)
             {
                 for (int c = 0; c < 3; ++c)
-                    o.r[r * 3 + c] = static_cast<std::int32_t>(
-                        (static_cast<std::int64_t>(turn[r * 3]) * m.r[c] +
-                         static_cast<std::int64_t>(turn[r * 3 + 1]) * m.r[3 + c] +
-                         static_cast<std::int64_t>(turn[r * 3 + 2]) * m.r[6 + c]) >>
-                        kBoneRotShift);
+                    o.r[r * 3 + c] = detail::rotationDot(turn + r * 3, m.r + c);
                 o.t[r] = toAt[r] + static_cast<fx>((static_cast<std::int64_t>(turn[r * 3]) * away[0] +
                                                     static_cast<std::int64_t>(turn[r * 3 + 1]) * away[1] +
                                                     static_cast<std::int64_t>(turn[r * 3 + 2]) * away[2]) >>
@@ -430,14 +429,21 @@ namespace hldata
                 continue;
             }
             const BoneMatrix &p = out[parent];
+            // Most bones' place is still a key's, a 16-bit number << 6: then
+            // (r * (key << 6)) >> 14 is (r * key) >> 8, three 16-bit products.
+            // (Blended or slid, it may not be: then through 64 bits.)
+            const std::int32_t key[3] = {pos[0] >> 6, pos[1] >> 6, pos[2] >> 6};
+            const bool keyed = ((pos[0] | pos[1] | pos[2]) & 63) == 0 && key[0] == static_cast<std::int16_t>(key[0]) &&
+                               key[1] == static_cast<std::int16_t>(key[1]) && key[2] == static_cast<std::int16_t>(key[2]);
             for (int row = 0; row < 3; ++row)
             {
                 for (int column = 0; column < 3; ++column)
                     m.r[row * 3 + column] = detail::rotationDot(p.r + row * 3, local + column);
-                m.t[row] = p.t[row] + static_cast<fx>((static_cast<std::int64_t>(p.r[row * 3]) * pos[0] +
-                                                      static_cast<std::int64_t>(p.r[row * 3 + 1]) * pos[1] +
-                                                      static_cast<std::int64_t>(p.r[row * 3 + 2]) * pos[2]) >>
-                                                     kBoneRotShift);
+                m.t[row] = p.t[row] + (keyed ? dotShort(p.r + row * 3, 1, key, 1) >> 8
+                                             : static_cast<fx>((static_cast<std::int64_t>(p.r[row * 3]) * pos[0] +
+                                                                static_cast<std::int64_t>(p.r[row * 3 + 1]) * pos[1] +
+                                                                static_cast<std::int64_t>(p.r[row * 3 + 2]) * pos[2]) >>
+                                                               kBoneRotShift));
             }
         }
     }
@@ -451,14 +457,12 @@ namespace hldata
             return false;
         const ModelAttachment &a = model.attachments[which];
         const BoneMatrix &bone = bones[a.bone];
-        const fx local[3] = {static_cast<fx>(a.at[0]) << (kFxShift - kHitboxShift),
-                             static_cast<fx>(a.at[1]) << (kFxShift - kHitboxShift),
-                             static_cast<fx>(a.at[2]) << (kFxShift - kHitboxShift)};
+        // (The point is 16-bit, << (kFxShift - kHitboxShift): the bone's
+        // turn of it is three 16-bit products, shifted the rest of the way.)
+        static_assert(kBoneRotShift > kFxShift - kHitboxShift);
+        const std::int32_t local[3] = {a.at[0], a.at[1], a.at[2]};
         for (int row = 0; row < 3; ++row)
-            at[row] = bone.t[row] + static_cast<fx>((static_cast<std::int64_t>(bone.r[row * 3]) * local[0] +
-                                                    static_cast<std::int64_t>(bone.r[row * 3 + 1]) * local[1] +
-                                                    static_cast<std::int64_t>(bone.r[row * 3 + 2]) * local[2]) >>
-                                                   kBoneRotShift);
+            at[row] = bone.t[row] + (dotShort(bone.r + row * 3, 1, local, 1) >> (kBoneRotShift - (kFxShift - kHitboxShift)));
         return true;
     }
 

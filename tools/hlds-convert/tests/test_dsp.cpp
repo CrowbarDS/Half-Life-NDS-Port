@@ -5,6 +5,8 @@
 // The console's own answers are held against these same formulas by
 // tools/hwtest/dspmath.
 
+#include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <random>
@@ -140,12 +142,135 @@ namespace
         }
         check(wrong == 0, "bone rotations as through 64 bits");
     }
+    std::int32_t wideDot(const std::int32_t *a, int sa, const std::int32_t *b, int sb, int shift)
+    {
+        return static_cast<std::int32_t>((static_cast<std::int64_t>(a[0]) * b[0] +
+                                          static_cast<std::int64_t>(a[sa]) * b[sb] +
+                                          static_cast<std::int64_t>(a[2 * sa]) * b[2 * sb]) >>
+                                         shift);
+    }
+
+    /// axisTurn as it was, through 64 bits.
+    void axisTurnBefore(const std::int16_t *axis, std::int32_t angle, std::int32_t *m)
+    {
+        std::int32_t sine, cosine;
+        fxSinCosFine(static_cast<std::uint16_t>(angle), sine, cosine);
+        const std::int32_t s = sine >> 16, c = cosine >> 16;
+        const std::int32_t k = (1 << 14) - c;
+        const auto mul = [](std::int32_t a, std::int32_t b)
+        { return static_cast<std::int32_t>((static_cast<std::int64_t>(a) * b) >> 14); };
+        const std::int32_t x = axis[0], y = axis[1], z = axis[2];
+        const std::int32_t want[9] = {c + mul(mul(x, x), k),          mul(mul(x, y), k) - mul(z, s),
+                                      mul(mul(x, z), k) + mul(y, s),  mul(mul(y, x), k) + mul(z, s),
+                                      c + mul(mul(y, y), k),          mul(mul(y, z), k) - mul(x, s),
+                                      mul(mul(z, x), k) - mul(y, s),  mul(mul(z, y), k) + mul(x, s),
+                                      c + mul(mul(z, z), k)};
+        for (int i = 0; i < 9; ++i)
+            m[i] = want[i];
+    }
+
+    std::int32_t rotationEntry(std::mt19937 &random) { return static_cast<std::int32_t>(random() % 32801) - 16400; }
+
+    void testBones()
+    {
+        std::mt19937 random(23);
+        int wrong = 0;
+        // Q12 by Q12, both within 16 bits: fxMul's answer.
+        for (int n = 0; n < 200000; ++n)
+        {
+            const std::int32_t a = static_cast<std::int32_t>(random() % 65536) - 32768;
+            const std::int32_t b = static_cast<std::int32_t>(random() % 65536) - 32768;
+            wrong += fxMulShort(a, b) != fxMul(a, b);
+        }
+        for (const std::int32_t a : {-32768, -4096, -1, 0, 1, 4096, 32767})
+            for (const std::int32_t b : {-32768, -4096, -1, 0, 1, 4096, 32767})
+                wrong += fxMulShort(a, b) != fxMul(a, b);
+        check(wrong == 0, "fxMulShort as fxMul");
+
+        // A bone's place: a rotation's row times a 16-bit key << 6, >> 14.
+        wrong = 0;
+        for (int n = 0; n < 300000; ++n)
+        {
+            std::int32_t row[3], key[3], pos[3];
+            for (int i = 0; i < 3; ++i)
+            {
+                row[i] = rotationEntry(random);
+                key[i] = static_cast<std::int32_t>(random() % 65536) - 32768;
+                pos[i] = key[i] * 64;
+            }
+            wrong += (dotShort(row, 1, key, 1) >> 8) != wideDot(row, 1, pos, 1, kBoneRotShift);
+            // ... and an attachment's 16-bit point << 8.
+            const std::int32_t local[3] = {key[0] * 256, key[1] * 256, key[2] * 256};
+            wrong += (dotShort(row, 1, key, 1) >> 6) != wideDot(row, 1, local, 1, kBoneRotShift);
+        }
+        check(wrong == 0, "a bone's place and an attachment's, as through 64 bits");
+
+        // A quaternion's four squares, parts at most 16400.
+        wrong = 0;
+        for (int n = 0; n < 200000; ++n)
+        {
+            std::int32_t q[4];
+            std::int64_t want = 0;
+            for (std::int32_t &v : q)
+            {
+                v = rotationEntry(random);
+                want += static_cast<std::int64_t>(v) * v;
+            }
+            wrong += detail::squaresShort(q) != want;
+        }
+        check(wrong == 0, "a quaternion's length squared");
+
+        // The turn about a unit axis, every 64th angle.
+        wrong = 0;
+        for (int n = 0; n < 2000; ++n)
+        {
+            // A unit axis in Q14, as the converter writes one.
+            const double x = static_cast<double>(random()) / random.max() * 2 - 1;
+            const double y = static_cast<double>(random()) / random.max() * 2 - 1;
+            const double z = static_cast<double>(random()) / random.max() * 2 - 1;
+            const double length = std::sqrt(x * x + y * y + z * z);
+            if (length < 1e-3)
+                continue;
+            const std::int16_t axis[3] = {static_cast<std::int16_t>(std::lround(x / length * 16384)),
+                                          static_cast<std::int16_t>(std::lround(y / length * 16384)),
+                                          static_cast<std::int16_t>(std::lround(z / length * 16384))};
+            for (std::int32_t angle = 0; angle < 65536; angle += 64)
+            {
+                std::int32_t got[9], want[9];
+                detail::axisTurn(axis, angle, got);
+                axisTurnBefore(axis, angle, want);
+                for (int i = 0; i < 9; ++i)
+                    wrong += got[i] != want[i];
+            }
+        }
+        // ... and along the axes, at every angle.
+        for (const std::array<std::int16_t, 3> axis : {std::array<std::int16_t, 3>{16384, 0, 0},
+                                                       std::array<std::int16_t, 3>{0, -16384, 0},
+                                                       std::array<std::int16_t, 3>{0, 0, 16384}})
+            for (std::int32_t angle = 0; angle < 65536; ++angle)
+            {
+                std::int32_t got[9], want[9];
+                detail::axisTurn(axis.data(), angle, got);
+                axisTurnBefore(axis.data(), angle, want);
+                for (int i = 0; i < 9; ++i)
+                    wrong += got[i] != want[i];
+            }
+        check(wrong == 0, "a turn about an axis as through 64 bits");
+
+        // The blend of an aim: every pitch.
+        wrong = 0;
+        for (std::int32_t pitch = -32768; pitch < 32768; ++pitch)
+            wrong += ((pitch * 45 + 16) >> 5) !=
+                     static_cast<std::int32_t>((static_cast<std::int64_t>(pitch) * 360 * 256 + 32768) >> 16);
+        check(wrong == 0, "an aim's blend in 32 bits");
+    }
 } // namespace
 
 int main()
 {
     testDefinition();
     testUses();
+    testBones();
     if (failures == 0)
         std::printf("test_dsp: ok\n");
     return failures == 0 ? 0 : 1;
