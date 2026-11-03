@@ -77,7 +77,10 @@ namespace
         check(bytes.size() <= kAchievementsMostBytes, "the file fits what the console reads");
         AchievementData back;
         check(readAchievements(bytes.data(), bytes.size(), back), "read back");
-        check(std::memcmp(&back, &t.data, sizeof(back)) == 0, "as written");
+        // (Field by field: the struct's padding is not part of what is written.)
+        check(std::memcmp(back.unlocked, t.data.unlocked, sizeof(back.unlocked)) == 0 &&
+                  std::memcmp(back.counts, t.data.counts, sizeof(back.counts)) == 0,
+              "as written");
 
         std::vector<std::uint8_t> bad = bytes;
         bad.back() ^= 1;
