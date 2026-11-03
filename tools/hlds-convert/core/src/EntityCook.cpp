@@ -586,6 +586,11 @@ namespace hlds
                 if (!isPersonKind(info.kind))
                     info.dsActivities.assign(std::begin(kDsActivities), std::end(kDsActivities));
             }
+            // A monster_generic keeps what it stands about in (the game's
+            // ACT_IDLE): its first sequence may be anything -- the
+            // hologram's is a walk.
+            if (info.is && info.kind == ActorKind::Generic)
+                info.dsActivities.assign(1, kActIdle);
             // Only models, not sprites or brush models given by name.
             if (info.is && (info.file.size() < 5 || info.file.substr(info.file.size() - 4) != ".mdl"))
                 info.is = false;

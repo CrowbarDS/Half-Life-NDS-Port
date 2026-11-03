@@ -499,6 +499,42 @@ namespace
         std::printf("test_monsters: t0a0: the holograms' middles at %.1f (on the projector) and %.1f\n", introZ, genZ);
         check(std::fabs(introZ + 5) < 1.5, "the hologram on the projector is where the map has it");
         check(std::fabs(genZ + 9) < 1.5, "... the other stands on the floor, its middle 36 above it");
+        // Standing about, as the game's do: in its talking idle, not a walk.
+        const ModelView *model = actorModel(g.actors, g.actors.states[intro]);
+        const auto clipNamed = [&](int clip)
+        {
+            if (model == nullptr || clip < 0 || clip >= model->header->clipCount)
+                return std::string("?");
+            const std::uint32_t name = model->clips[clip].name;
+            return name == nameHash("troom_talkidle") ? std::string("troom_talkidle")
+                                                      : (name == nameHash("walk") ? std::string("walk") : std::string("other"));
+        };
+        const std::string introClip = clipNamed(g.actors.states[intro].clip),
+                          genClip = clipNamed(g.actors.states[gen].clip);
+        std::printf("test_monsters: t0a0: the holograms stand in %s and %s\n", introClip.c_str(), genClip.c_str());
+        check(introClip == "troom_talkidle" && genClip == "troom_talkidle", "the holograms stand about, not walking");
+        // The one that shows a jump walks to its mark, jumps, and stands
+        // about again after.
+        const int quad = named("quadtalker");
+        const std::uint16_t script = nameIdOfHash(g.view.nameHashes, g.view.nameCount, nameHash("quadjump"));
+        int scriptRecord = -1;
+        for (std::uint32_t i = 0; script != 0 && i < g.view.logicCount && scriptRecord < 0; ++i)
+            scriptRecord = g.view.logic[i].name == script ? static_cast<int>(i) : -1;
+        check(quad >= 0 && scriptRecord >= 0, "t0a0's jumping hologram and its script");
+        if (quad >= 0 && scriptRecord >= 0)
+        {
+            logicUse(g.logic, g.player, scriptRecord, -1, kUseToggle);
+            bool walked = false;
+            for (int n = 0; n < 30 * 15; ++n)
+            {
+                tick(g, 2);
+                walked = walked || clipNamed(g.actors.states[quad].clip) == "walk";
+            }
+            const std::string after = clipNamed(g.actors.states[quad].clip);
+            std::printf("test_monsters: t0a0: the jumping hologram walked %d, stands after in %s\n", walked ? 1 : 0,
+                        after.c_str());
+            check(walked && after == "troom_talkidle", "... and after its show it stands about again");
+        }
     }
 
 

@@ -981,6 +981,14 @@ namespace hldata
         if (model != nullptr && model->header->clipCount != 0)
         {
             int clip = record.clip != 0 ? model->findClip(record.clip) : 0;
+            // (A monster_generic stands about as the game's does, in its
+            // ACT_IDLE, if its model has one: not in its first sequence --
+            // the hologram's is a walk.)
+            if (record.clip == 0 && actor.kind == static_cast<std::uint8_t>(ActorKind::Generic))
+            {
+                const int idle = clipOfActivity(*model, kXenIdleActivity);
+                clip = idle >= 0 ? idle : clip;
+            }
             // (Each of those sitting starts in a way of his own.)
             if (actor.kind == static_cast<std::uint8_t>(ActorKind::Sitter))
             {
