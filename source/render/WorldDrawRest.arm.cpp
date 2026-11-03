@@ -1,5 +1,6 @@
 #include "render/WorldDraw.hpp"
 #include "HlBrushPlan.hpp"
+#include "HlDsp.hpp"
 #include "HlPolygonIds.hpp"
 
 #include <cstdlib>
@@ -554,9 +555,9 @@ namespace hlrt
             const fx side = planeDistance(plane, view.planeTypes[planeIndex], from);
             if (back ? side >= 0 : side <= 0)
                 return true; // it faces away
-            std::int64_t facing = 0;
-            for (int a = 0; a < 3; ++a)
-                facing += static_cast<std::int64_t>(plane.normal[a] >> 18) * axis[a];
+            // (Two unit vectors in Q12: 16-bit parts.)
+            const std::int32_t normal[3] = {plane.normal[0] >> 18, plane.normal[1] >> 18, plane.normal[2] >> 18};
+            std::int64_t facing = dotShort(normal, 1, axis, 1);
             facing = (back ? facing : -facing) >> 12; // Q12: 4096 met head-on
             if (facing <= 0)
                 return true;

@@ -6,6 +6,7 @@
 #include <NEAMain.h>
 
 #include "Global.hpp"
+#include "HlDsp.hpp"
 #include "HlSprite.hpp"
 #include "HlUi.hpp"
 #include "HlPolygonIds.hpp"
@@ -467,7 +468,7 @@ namespace hlrt
         // (Sixteenths of a unit. A casing is smaller than a unit.)
         const bool casing = piece.kind == kPieceShell || piece.kind == kPieceShotShell || piece.kind == kPieceCan;
         const int wide = casing ? 6 : piece.half * 16;
-        int high = piece.bounces >= 2 ? wide : static_cast<int>((static_cast<std::int64_t>(wide) * (tip < 0 ? -tip : tip)) >> 12);
+        int high = piece.bounces >= 2 ? wide : fxMulShort(wide, tip < 0 ? -tip : tip); // (both 16-bit)
         if (casing)
             high = wide * 3;
         high = high < 4 ? 4 : high;

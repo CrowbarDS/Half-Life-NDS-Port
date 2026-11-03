@@ -264,6 +264,32 @@ namespace
                      static_cast<std::int32_t>((static_cast<std::int64_t>(pitch) * 360 * 256 + 32768) >> 16);
         check(wrong == 0, "an aim's blend in 32 bits");
     }
+    void testDrawing()
+    {
+        // ModelDraw::drawActor: a Q12 turn (entries up to ~5800, rolled)
+        // through the view, whose rows are Q12 << 3.
+        std::mt19937 random(31);
+        int wrong = 0;
+        for (int n = 0; n < 300000; ++n)
+        {
+            std::int32_t turn[9], axes[9], view[9];
+            for (int k = 0; k < 9; ++k)
+            {
+                turn[k] = static_cast<std::int32_t>(random() % 11601) - 5800;
+                axes[k] = static_cast<std::int32_t>(random() % 11601) - 5800;
+                view[k] = axes[k] << 3;
+            }
+            for (int j = 0; j < 3; ++j)
+                for (int m = 0; m < 3; ++m)
+                    wrong += (dotShort(turn + m, 3, axes + j, 3) >> 9) != wideDot(turn + m, 3, view + j, 3, 12);
+            // ... a held gun: the Q12 turn times the hand's Q14 rotation.
+            std::int32_t hand[9];
+            for (std::int32_t &v : hand)
+                v = rotationEntry(random);
+            wrong += (dotShort(turn, 1, hand, 3) >> kBoneRotShift) != wideDot(turn, 1, hand, 3, kBoneRotShift);
+        }
+        check(wrong == 0, "a model's turn through the view, as through 64 bits");
+    }
 } // namespace
 
 int main()
@@ -271,6 +297,7 @@ int main()
     testDefinition();
     testUses();
     testBones();
+    testDrawing();
     if (failures == 0)
         std::printf("test_dsp: ok\n");
     return failures == 0 ? 0 : 1;

@@ -1,5 +1,6 @@
 #include "Hot.hpp"
 #include "HlDrawPlan.hpp"
+#include "HlDsp.hpp"
 #include "render/ModelDraw.hpp"
 
 #include <nds.h>
@@ -295,10 +296,7 @@ namespace hlrt
         for (int r = 0; r < 3; ++r)
         {
             for (int c = 0; c < 3; ++c)
-                gunTurn[r * 3 + c] = static_cast<fx>(
-                    (static_cast<std::int64_t>(turn[r * 3]) * hand.r[c] + static_cast<std::int64_t>(turn[r * 3 + 1]) * hand.r[3 + c] +
-                     static_cast<std::int64_t>(turn[r * 3 + 2]) * hand.r[6 + c]) >>
-                    kBoneRotShift);
+                gunTurn[r * 3 + c] = dotShort(turn + r * 3, 1, hand.r + c, 3) >> kBoneRotShift; // (Q12 and Q14 turns)
             gun.pos[r] = actor.pos[r] + fxMul(turn[r * 3], hand.t[0]) + fxMul(turn[r * 3 + 1], hand.t[1]) +
                          fxMul(turn[r * 3 + 2], hand.t[2]);
         }
@@ -326,16 +324,19 @@ namespace hlrt
         //
         // As camera.apply does for the level: a Q12 unit is 1024 of the
         // level's vertex units.
+        //
+        // (Every turn drawn is a Q12 rotation, and the view's rows are Q12
+        // times 8: without the 8, both are 16-bit, and (sum of turn * view)
+        // >> 12 is (sum of turn * axis) >> 9, three 16-bit products.)
+        std::int32_t axes[9];
+        for (int k = 0; k < 9; ++k)
+            axes[k] = view[k] >> 3;
         int turned[9];
         int base[3];
         for (int j = 0; j < 3; ++j)
         {
             for (int m = 0; m < 3; ++m)
-                turned[m * 3 + j] = static_cast<int>(
-                    (static_cast<std::int64_t>(turn[m]) * view[j] +
-                     static_cast<std::int64_t>(turn[3 + m]) * view[3 + j] +
-                     static_cast<std::int64_t>(turn[6 + m]) * view[6 + j]) >>
-                    12);
+                turned[m * 3 + j] = dotShort(turn + m, 3, axes + j, 3) >> 9;
             const std::int64_t sum = static_cast<std::int64_t>(actor.pos[0] >> 10) * view[0 + j] +
                                      static_cast<std::int64_t>(actor.pos[1] >> 10) * view[3 + j] +
                                      static_cast<std::int64_t>(actor.pos[2] >> 10) * view[6 + j];
@@ -993,14 +994,15 @@ namespace hlrt
                 fx sp, cp, sr, cr;
                 fxSinCos(static_cast<std::uint16_t>(tiltPitch), sp, cp);
                 fxSinCos(static_cast<std::uint16_t>(tiltRoll), sr, cr);
-                const fx forward[3] = {fxMul(cp, cosine), fxMul(cp, sine), sp};
+                // (Sines and cosines, and products of them: all 16-bit.)
+                const fx forward[3] = {fxMulShort(cp, cosine), fxMulShort(cp, sine), sp};
                 const fx left0[3] = {-sine, cosine, 0};
-                const fx up0[3] = {-fxMul(sp, cosine), -fxMul(sp, sine), cp};
+                const fx up0[3] = {-fxMulShort(sp, cosine), -fxMulShort(sp, sine), cp};
                 for (int r = 0; r < 3; ++r)
                 {
                     turn[r * 3 + 0] = forward[r];
-                    turn[r * 3 + 1] = fxMul(left0[r], cr) + fxMul(up0[r], sr);
-                    turn[r * 3 + 2] = fxMul(up0[r], cr) - fxMul(left0[r], sr);
+                    turn[r * 3 + 1] = fxMulShort(left0[r], cr) + fxMulShort(up0[r], sr);
+                    turn[r * 3 + 2] = fxMulShort(up0[r], cr) - fxMulShort(left0[r], sr);
                 }
             }
             // A turret under a ceiling is the same model upside down: turned
@@ -1038,7 +1040,7 @@ namespace hlrt
             fx sy, cy, sp, cp;
             fxSinCos(gib.yaw, sy, cy);
             fxSinCos(gib.pitch, sp, cp);
-            const fx turn[9] = {fxMul(cy, cp), -sy, fxMul(cy, sp), fxMul(sy, cp), cy, fxMul(sy, sp), -sp, 0, cp};
+            const fx turn[9] = {fxMulShort(cy, cp), -sy, fxMulShort(cy, sp), fxMulShort(sy, cp), cy, fxMulShort(sy, sp), -sp, 0, cp};
             // (Its last two seconds it fades: SUB_StartFadeOut.)
             const bool fading = gib.leftMs < 2000;
             if (fading)
@@ -1067,7 +1069,7 @@ namespace hlrt
             fx sy, cy, sp, cp;
             fxSinCos(piece.spin, sy, cy);
             fxSinCos(piece.bounces >= 2 ? 0 : static_cast<std::uint16_t>(piece.spin * 3), sp, cp);
-            const fx turn[9] = {fxMul(cy, cp), -sy, fxMul(cy, sp), fxMul(sy, cp), cy, fxMul(sy, sp), -sp, 0, cp};
+            const fx turn[9] = {fxMulShort(cy, cp), -sy, fxMulShort(cy, sp), fxMulShort(sy, cp), cy, fxMulShort(sy, sp), -sp, 0, cp};
             drawActor(casing, actors.models[m], static_cast<unsigned>(m), turn, -3 - m, actors.models[m].levelCount() - 1);
         }
         // The later weapons' things, each turned the way it faces: a bolt
@@ -1166,7 +1168,8 @@ namespace hlrt
                     static_cast<std::uint16_t>((static_cast<std::uint32_t>(Global::drawClock()) + own) * 910u));
                 fxSinCos(pitch, sp, cpp);
             }
-            const fx turn[9] = {fxMul(cy, cpp), -sy, fxMul(cy, sp), fxMul(sy, cpp), cy, fxMul(sy, sp), -sp, 0, cpp};
+            // (A unit direction's parts, sines and cosines: 16-bit.)
+            const fx turn[9] = {fxMulShort(cy, cpp), -sy, fxMulShort(cy, sp), fxMulShort(sy, cpp), cy, fxMulShort(sy, sp), -sp, 0, cpp};
             drawActor(thing, model, static_cast<unsigned>(m), turn, -3 - m, model.levelCount() - 1);
         }
         lightOff();
