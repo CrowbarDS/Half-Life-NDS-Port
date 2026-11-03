@@ -1243,8 +1243,11 @@ namespace hlrt
         case kEffectSprite:
             if (const SpriteRef *ref = sprite(effect.sprite, 31, effect.colour))
             {
-                const int half = effect.size / 2;
-                picture(*ref, (ref->frames * gone) / 32, effect.a, camera.right, camera.up, half,
+                const int half = effect.size >= 0 ? effect.size / 2 : (ref->worldWidth * -effect.size) / 32;
+                const fx at[3] = {effect.a[0] + (effect.b[0] - effect.a[0]) / 32 * gone,
+                                  effect.a[1] + (effect.b[1] - effect.a[1]) / 32 * gone,
+                                  effect.a[2] + (effect.b[2] - effect.a[2]) / 32 * gone};
+                picture(*ref, (ref->frames * gone) / 32, at, camera.right, camera.up, half,
                         half * ref->worldHeight / (ref->worldWidth ? ref->worldWidth : 1));
             }
             break;

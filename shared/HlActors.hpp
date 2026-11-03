@@ -395,7 +395,9 @@ namespace hldata
     inline constexpr std::uint8_t kEffectTracer = 5; ///< a round's line, from `a` to `b`
     inline constexpr std::uint8_t kEffectMuzzle = 6; ///< the flash at a gun's end
     inline constexpr std::uint8_t kEffectBlood = 7;  ///< where a shot lands on what bleeds (`size`: 1 if it bleeds yellow)
-    inline constexpr std::uint8_t kEffectSprite = 8; ///< a sprite of the map's, `size` units across
+    /// A sprite of the map's, `size` units across (negative: sixteenths of
+    /// the sprite's own size), going from `a` to `b` over its moment.
+    inline constexpr std::uint8_t kEffectSprite = 8;
     /// A beam from `a` to `b`, `size` units wide, in `colour` (the gauss's,
     /// the egon's).
     inline constexpr std::uint8_t kEffectBeam = 9;

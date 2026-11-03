@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 46;
+    inline constexpr std::uint16_t kLevelVersion = 47;
     /// The oldest level format this build reads.
     inline constexpr std::uint16_t kLevelMinVersion = 28;
     /// The oldest build that can read what it writes. (32: what the people
@@ -71,8 +71,8 @@ namespace hldata
     /// was not cooked with, named in its models to be loaded when needed.)
     /// 44: each node's own surfaces (NodeMarks, NodeSpans), as two sections
     /// a build before does not know of. 45: the long jump module, an item a
-    /// build before would refuse. (46, how a box floats, is in a field 45's
-    /// builds leave alone: they read it, and the box sinks.)
+    /// build before would refuse. (46, how a box floats, and 47, a tank's
+    /// sprites, are in fields 45's builds leave alone: they read them.)
     inline constexpr std::uint16_t kLevelMinReader = 45;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,
@@ -654,7 +654,10 @@ namespace hldata
         /// furthest it aims at (0: as far as it likes), mins[2] a mortar's
         /// blast; maxs[0] the map's spawnflags (kTank*). `damage` a round's
         /// (0: its bullet's own); netName a laser's env_laser; `target` is
-        /// fired at each shot (the map's sound of it).
+        /// fired at each shot (the map's sound of it). maxs[1] and maxs[2]
+        /// (from version 47): its flash's sprite and its smoke's, each the
+        /// sprite in the low 12 bits (kTankSpriteNone: none) and its scale in
+        /// quarters in the top 4.
         Tank,
         /// Where a player takes a tank's controls (func_tankcontrols): a
         /// volume, mins..maxs; `target` names the tank. USE inside it takes
@@ -1322,6 +1325,8 @@ namespace hldata
     };
     static_assert(sizeof(SpriteRef) == 40);
     inline constexpr std::uint16_t kNoSprite = 0xFFFF;
+    /// A tank's sprite field with no sprite in it (LogicKind::Tank).
+    inline constexpr std::uint16_t kTankSpriteNone = 0x0FFF;
 
     /// What a logic record sounds like: indices into Sounds, 0xFFFF for
     /// none. A door's or a button's moving and stopping (a moving sound

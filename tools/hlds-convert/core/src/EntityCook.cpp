@@ -1734,6 +1734,19 @@ namespace hlds
                 record.netName = nameId(entity.value("laserentity"));
                 if (spawnflags & kTankActive)
                     record.flags |= kLogicStartOpen;
+                // What it shows as it fires: its flash (light) and its smoke,
+                // at its scale (none given: the sprite's own size).
+                double scale = numberKey(entity, "spritescale");
+                if (scale <= 0)
+                    scale = 1;
+                const std::uint16_t quarters = static_cast<std::uint16_t>(std::clamp(std::lround(scale * 4), 1L, 15L));
+                auto packed = [&](std::uint16_t sprite)
+                {
+                    return static_cast<std::int16_t>(
+                        static_cast<std::uint16_t>((sprite < kTankSpriteNone ? sprite : kTankSpriteNone) | (quarters << 12)));
+                };
+                record.maxs[1] = packed(spriteIndex(std::string(entity.value("spriteflash")), true));
+                record.maxs[2] = packed(spriteIndex(std::string(entity.value("spritesmoke")), false));
             }
             else if (cls == "info_target" && named && nihilanthMap)
             {

@@ -4058,6 +4058,33 @@ namespace hldata
         /// Fire: the rounds its rate has gathered since it began, each the
         /// map's target (its sound) with it. The first frame of firing is
         /// only a start (the game's m_fireLast 0).
+        /// What a tank shows as it fires (CFuncTank::Fire): its flash, and a
+        /// puff of smoke that rises, each the map's sprite at its scale. A
+        /// tank with neither shows nothing.
+        inline void tankFlash(LogicWorld &w, int index, const fx *barrel)
+        {
+            const LogicRecord &record = w.records[index];
+            const std::uint16_t flash = static_cast<std::uint16_t>(record.maxs[1]);
+            const std::uint16_t smoke = static_cast<std::uint16_t>(record.maxs[2]);
+            if ((flash & kTankSpriteNone) != kTankSpriteNone)
+            {
+                // (A frame or two, and the game keeps it a tenth longer.)
+                Effect &e = effectAdd(*w.actors, kEffectSprite, barrel, nullptr, -4 * (flash >> 12), 133);
+                e.sprite = flash & kTankSpriteNone;
+            }
+            if ((smoke & kTankSpriteNone) != kTankSpriteNone)
+            {
+                // Up at 40 to 80 units a second, for as long as its frames
+                // take at 15 to 20 a second: about 0.9 of one.
+                w.effectSeed = w.effectSeed * 1664525u + 1013904223u;
+                const int up = 40 + static_cast<int>((w.effectSeed >> 8) % 41);
+                const int lasts = 800 + static_cast<int>((w.effectSeed >> 16) % 270);
+                const fx top[3] = {barrel[0], barrel[1], barrel[2] + fxFromInt(up * lasts / 1000)};
+                Effect &e = effectAdd(*w.actors, kEffectSprite, barrel, top, -4 * (smoke >> 12), lasts);
+                e.sprite = smoke & kTankSpriteNone;
+            }
+        }
+
         inline void tankFire(LogicWorld &w, PlayerState &player, int index, int ms)
         {
             const LogicRecord &record = w.records[index];
@@ -4076,7 +4103,7 @@ namespace hldata
             tankBarrel(w, index, barrel);
             for (; state.timer >= each; state.timer -= each)
                 tankShoot(w, player, index, barrel, false);
-            effectAdd(*w.actors, kEffectMuzzle, barrel, nullptr, 0, 50);
+            tankFlash(w, index, barrel);
             logicUseTargets(w, player, index, kUseToggle, 0);
         }
 
@@ -4448,7 +4475,7 @@ namespace hldata
         fx barrel[3];
         detail::tankBarrel(w, tank, barrel);
         detail::tankShoot(w, player, tank, barrel, true);
-        effectAdd(*w.actors, kEffectMuzzle, barrel, nullptr, 0, 50);
+        detail::tankFlash(w, tank, barrel);
         aiWeaponVolume(w, kLoudGunVolume);
         logicUseTargets(w, player, tank, kUseToggle, 0);
     }

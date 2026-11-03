@@ -106,8 +106,24 @@ namespace
         if (!placed)
             return;
         lost = 0;
+        int flashes = 0, wrong = 0;
         for (int t = 0; t < 30 * 5; ++t)
+        {
             tickStill(g);
+            for (const Effect &effect : g.actors.effects)
+            {
+                if (effect.kind == 0 || effect.leftMs <= 0)
+                    continue;
+                // (One of the map's own, past the common ones; 0.75 of its size.)
+                if (effect.kind == kEffectSprite && effect.sprite >= static_cast<int>(CommonSprite::Count) &&
+                    effect.sprite < g.view.spriteCount && effect.size == -12)
+                    ++flashes;
+                else if (effect.kind == kEffectMuzzle)
+                    ++wrong;
+            }
+        }
+        std::printf("test_tanks: c2a2e guard gun: %d frames of its own flash, %d of another\n", flashes, wrong);
+        check(flashes > 0 && wrong == 0, "... its flash is the map's sprite, at the map's scale");
         const int turned = static_cast<std::int16_t>(static_cast<std::uint16_t>(state.bits) - rest);
         std::printf("test_tanks: c2a2e gun turned %d degrees, the player lost %d\n", turned * 360 / 65536, lost);
         check(turned > 1000, "it turns to the player");

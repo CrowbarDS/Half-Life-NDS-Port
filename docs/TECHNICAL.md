@@ -392,7 +392,9 @@ Milestone 11, "levels of detail".
   target for as long as they have lately seen them. At a func_tankcontrols,
   USE takes a gun: it follows the view, fires at the fire button (the
   player's own weapon put away, the crosshair kept), and is let go of by USE
-  or by walking off. Mortar fields drop their shells on whoever calls them,
+  or by walking off. Firing, a gun shows the map's own flash and smoke
+  sprites at the map's scale (the smoke rising), and none if it has none.
+  Mortar fields drop their shells on whoever calls them,
   at random, or where two wheels (momentary_rot_button, which turn from one
   USE to the next, and the momentary_door bars they move) say.
 - A hit to the head counts three times, as in the game. Where a shot lands
