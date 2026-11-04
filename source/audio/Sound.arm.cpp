@@ -1199,12 +1199,17 @@ namespace hlrt
                 played_[want[n] >> 5] |= 1u << (want[n] & 31);
         }
         // What something made for as long as it moved, and is no longer
-        // there to say it has stopped.
+        // there to say it has stopped -- or has stopped, and its stop was
+        // never heard (lost to a full queue, or to the pause).
         for (int v = 0; v < Mixer::kVoices; ++v)
         {
             const MixVoice &mix = mixer_.voices[v];
-            if (mix.active && mix.layer == SoundLayer::World && mix.leftMs < 0 && mix.tag >= 0 &&
-                mix.tag < static_cast<int>(view.logicCount) && game.logic.states[mix.tag].dead)
+            if (!mix.active || mix.layer != SoundLayer::World || mix.leftMs >= 0 || mix.tag < 0 ||
+                mix.tag >= static_cast<int>(view.logicCount))
+                continue;
+            const LogicRecord &record = view.logic[mix.tag];
+            const LogicState &state = game.logic.states[mix.tag];
+            if (state.dead || (moverLoops(static_cast<LogicKind>(record.kind)) && !moverSounding(record, state)))
                 stop(v);
         }
     }

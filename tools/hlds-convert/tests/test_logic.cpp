@@ -442,6 +442,110 @@ namespace
         check(heard.count == kMaxSoundEvents, "the queue holds no more than it does");
     }
 
+    /// What the sound looks at in case a mover's stop was never heard: is
+    /// it still moving? Never "no" while it is -- that would cut its sound
+    /// off, and nothing would start it again.
+    void testMoverSounding()
+    {
+        BoxRoom room;
+        room.brushes = {
+            brush("func_door", "\"targetname\" \"door1\"\n\"angle\" \"-1\"\n\"speed\" \"100\"\n\"wait\" \"1\"\n",
+                  40, -32, 0, 48, 32, 64),
+            // 2: a train that waits to be told, on a straight route: through
+            //    p2 without waiting, half a second at p3, held at p4.
+            brush("func_train", "\"targetname\" \"t1\"\n\"target\" \"p1\"\n\"speed\" \"100\"\n", -80, -80, 0,
+                  -40, -40, 8),
+        };
+        room.extraEntities =
+            "{\n\"classname\" \"path_corner\"\n\"targetname\" \"p1\"\n\"target\" \"p2\"\n\"origin\" \"-60 -60 4\"\n}\n"
+            "{\n\"classname\" \"path_corner\"\n\"targetname\" \"p2\"\n\"target\" \"p3\"\n\"origin\" \"-20 -60 4\"\n}\n"
+            "{\n\"classname\" \"path_corner\"\n\"targetname\" \"p3\"\n\"target\" \"p4\"\n\"origin\" \"20 -60 4\"\n"
+            "\"wait\" \"0.5\"\n}\n"
+            "{\n\"classname\" \"path_corner\"\n\"targetname\" \"p4\"\n\"target\" \"p1\"\n\"origin\" \"60 -60 4\"\n"
+            "\"spawnflags\" \"1\"\n}\n";
+        Game g;
+        build(g, room);
+        check(g.ok, "mover-sound room");
+        if (!g.ok)
+            return;
+        // (Out of the way of both.)
+        g.player.origin[0] = fxFromInt(-100);
+        g.player.origin[1] = fxFromInt(100);
+        const int door = g.recordOfModel(1);
+        const int train = g.recordOfModel(2);
+        const LogicRecord &doorRecord = g.view.logic[door];
+        const LogicRecord &trainRecord = g.view.logic[train];
+        check(moverLoops(static_cast<LogicKind>(doorRecord.kind)) &&
+                  moverLoops(static_cast<LogicKind>(trainRecord.kind)) && !moverLoops(LogicKind::Button) &&
+                  !moverLoops(LogicKind::TrackTrain),
+              "doors and trains are heard as they move; a button and a track train are not that way");
+        auto doorOn = [&] { return moverSounding(doorRecord, g.states[door]); };
+        auto trainOn = [&] { return moverSounding(trainRecord, g.states[train]); };
+
+        // The door: heard opening and shutting, not at either end.
+        check(!doorOn(), "a shut door is not heard");
+        g.use(door);
+        g.tick(33);
+        check(g.states[door].move == MoveState::GoingUp && doorOn(), "opening, it is");
+        g.tick(33, 30);
+        check(g.states[door].move == MoveState::AtTop && !doorOn(), "open, it is not");
+        g.tick(33, 32);
+        check(g.states[door].move == MoveState::GoingDown && doorOn(), "shutting after its wait, it is");
+        g.tick(33, 30);
+        check(g.states[door].move == MoveState::AtBottom && !doorOn(), "shut again, it is not");
+
+        // The train: from setting off to the corner it waits at, every frame
+        // -- the one it is at p2 too.
+        const std::uint16_t p1 = trainRecord.firstAux;
+        const std::uint16_t p2 = g.view.corners[p1].next;
+        const std::uint16_t p3 = g.view.corners[p2].next;
+        g.tick(33, 10);
+        check(!trainOn(), "a train that has not set off is not heard");
+        logicFire(g.logic, g.player, trainRecord.name, -1, kUseToggle, 0);
+        bool off = false, always = true, throughP2 = false, waited = false;
+        for (int n = 0; n < 60 && !waited; ++n)
+        {
+            g.tick(33);
+            const LogicState &s = g.states[train];
+            off = off || s.move == MoveState::GoingUp;
+            waited = s.move == MoveState::AtBottom && s.bits == p3;
+            throughP2 = throughP2 || (s.bits == p2 && s.move == MoveState::AtBottom);
+            if (off && !waited)
+                always = always && trainOn();
+        }
+        check(off && waited && throughP2, "the train sets off, goes through p2 and comes to p3");
+        check(always, "heard all the way, through the corner it does not stop at");
+        check(!trainOn(), "waiting at a corner, it is not");
+        bool left = false;
+        for (int n = 0; n < 30 && !left; ++n)
+        {
+            g.tick(33);
+            left = g.states[train].move == MoveState::GoingUp;
+        }
+        check(left && trainOn(), "its wait over, it is again");
+        for (int n = 0; n < 30 && g.states[train].running; ++n)
+            g.tick(33);
+        check(!g.states[train].running && !trainOn(), "held at a corner until used, it is not");
+        g.use(train);
+        g.tick(33);
+        check(trainOn(), "used, it is");
+        g.use(train);
+        check(!trainOn(), "used again on the way, it stops, and is not");
+
+        // The other two kinds go as a door does.
+        LogicRecord plat{};
+        plat.kind = static_cast<std::uint8_t>(LogicKind::PlatRot);
+        LogicState platState;
+        platState.move = MoveState::GoingDown;
+        check(moverLoops(LogicKind::PlatRot) && moverLoops(LogicKind::DoorRotating) && moverSounding(plat, platState),
+              "a turning platform going down is heard");
+        platState.move = MoveState::AtTop;
+        check(!moverSounding(plat, platState), "... and at the top is not");
+        platState.move = MoveState::GoingUp;
+        platState.dead = true;
+        check(!moverSounding(plat, platState), "and nothing that is gone is");
+    }
+
     /// Doors and the player: touch, names, being in the way, being carried.
     void testDoorsAndThePlayer()
     {
@@ -2279,6 +2383,7 @@ int main()
     testCookedRecords();
     testButtonManagerDoor();
     testMoverLoopFullQueue();
+    testMoverSounding();
     testDoorsAndThePlayer();
     testTriggersAndWiring();
     testTrains();

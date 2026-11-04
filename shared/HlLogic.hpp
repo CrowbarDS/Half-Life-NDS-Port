@@ -868,6 +868,28 @@ namespace hldata
 
     // ------------------------------------------------------------------ movers
 
+    /// What takes its time over moving, and is heard for as long as it does:
+    /// its move sound goes round (if it is one that does) until it stops.
+    inline bool moverLoops(LogicKind kind)
+    {
+        return kind == LogicKind::Door || kind == LogicKind::DoorRotating || kind == LogicKind::Train ||
+               kind == LogicKind::PlatRot;
+    }
+
+    /// Whether such a mover is moving, and so is still to be heard: what the
+    /// sound looks at, in case its stop was never heard. A train going
+    /// straight through a corner is at it for a tick (a wait of 0): it goes
+    /// on, and nothing will start its sound again.
+    inline bool moverSounding(const LogicRecord &record, const LogicState &state)
+    {
+        if (state.dead)
+            return false;
+        const bool moving = state.move == MoveState::GoingUp || state.move == MoveState::GoingDown;
+        if (record.kind == static_cast<std::uint8_t>(LogicKind::Train))
+            return state.running && (moving || state.timer == 0);
+        return moving;
+    }
+
     namespace detail
     {
         /// The sound of record `index` -- its moving or its stopping -- is
@@ -880,9 +902,7 @@ namespace hldata
             const LogicRecord &record = w.records[index];
             // What takes its time over moving is heard for as long as it
             // does (if its sound is one that goes round), and no longer.
-            const auto kind = static_cast<LogicKind>(record.kind);
-            const bool travels = kind == LogicKind::Door || kind == LogicKind::DoorRotating ||
-                                 kind == LogicKind::Train || kind == LogicKind::PlatRot;
+            const bool travels = moverLoops(static_cast<LogicKind>(record.kind));
             if (stopping && travels)
                 w.heard->add(kNoSound, nullptr, 0, 0, kSoundLoopOff, 100, static_cast<std::uint16_t>(index));
             const std::uint16_t sound = stopping ? w.sounds[index].stop : w.sounds[index].move;
