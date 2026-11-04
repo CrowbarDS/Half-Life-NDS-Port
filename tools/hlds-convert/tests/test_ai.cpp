@@ -50,6 +50,10 @@ namespace
               "the people are the aliens' too; a scientist is the player's");
         check(rel(ActorKind::Turret, ActorKind::Player) == kRelDislike && rel(ActorKind::Gman, ActorKind::Player) == kRelNone,
               "a turret goes for the player; the man in the suit for nobody");
+        check(kindClass(static_cast<std::uint8_t>(ActorKind::Apache)) == kClassHumanMilitary &&
+                  kindClass(static_cast<std::uint8_t>(ActorKind::Osprey)) == kClassMachine &&
+                  rel(ActorKind::Apache, ActorKind::Player) == kRelHate && rel(ActorKind::Apache, ActorKind::Grunt) == kRelNone,
+              "the Apache is one of the soldiers (the Osprey a machine): it hates the player, and is their side's");
     }
 
     void testSounds()

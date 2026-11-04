@@ -109,12 +109,12 @@ namespace hldata
             return kClassAlienPredator;
         case ActorKind::Grunt:
         case ActorKind::Assassin:
+        case ActorKind::Apache: // (one of the soldiers, as the game has it; the Osprey is a machine)
             return kClassHumanMilitary;
         case ActorKind::Miniturret:
         case ActorKind::Sentry:
         case ActorKind::Turret:
         case ActorKind::Osprey:
-        case ActorKind::Apache:
             return kClassMachine;
         case ActorKind::Player:
             return kClassPlayer;
