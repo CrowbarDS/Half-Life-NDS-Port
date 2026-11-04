@@ -460,6 +460,7 @@ namespace
         check(q.count == kMaxSoundEvents && (q.events[kMaxSoundEvents - 1].flags & kSoundLoopOn) &&
                   (q.events[kMaxSoundEvents - 2].flags & kSoundLoopOff) && q.events[0].sound == 0,
               "... and so does a loop's start, the rest kept in their order");
+        check(q.dropped == 3, "each sound lost is counted, the one too many and those given up");
 
         // A start, then the queue filled, then its stop: the stop must still
         // come after the start, or the loop would be started again after it.
@@ -481,6 +482,7 @@ namespace
         // Only spoken lines and loops: a start has nothing to give up, a
         // stop gives up the latest start.
         q.count = 0;
+        q.dropped = 0;
         for (int i = 0; i < kMaxSoundEvents - 1; ++i)
             q.add(static_cast<std::uint16_t>(i), at, 127, kRadiusLarge, kSoundSentence);
         q.add(60, at, 127, kRadiusLarge, kSoundLoopOn, 100, 4);
@@ -491,6 +493,7 @@ namespace
         check(q.count == kMaxSoundEvents && q.events[kMaxSoundEvents - 1].tag == 9 &&
                   (q.events[kMaxSoundEvents - 2].flags & kSoundSentence),
               "a loop's stop gives up a start before a spoken line");
+        check(q.dropped == 2, "... the start that found no room and the one given up, both counted");
     }
 } // namespace
 

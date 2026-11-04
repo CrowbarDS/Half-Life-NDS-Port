@@ -219,6 +219,7 @@ namespace hlrt
         logic.modelSounds = view.modelSoundCount != 0 ? view.modelSounds : nullptr;
         logic.modelSoundCount = static_cast<int>(view.modelSoundCount);
         heard.count = 0;
+        heard.dropped = 0;
         heard.commons = commonsOf(view.header->version);
         logic.cornerState = cornerState_;
         logic.cornerCount = static_cast<int>(view.cornerCount);

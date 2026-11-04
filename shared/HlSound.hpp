@@ -634,14 +634,21 @@ namespace hldata
         /// How many of the CommonSounds the map has (an older map has fewer:
         /// kCommonSoundsBefore30); one it has not is not heard.
         std::uint16_t commons = static_cast<std::uint16_t>(CommonSound::Count);
+        /// How many have been lost to a full queue since the map began: the
+        /// one too many, or the one given up for a loop's (the readout).
+        std::uint32_t dropped = 0;
 
         void add(std::uint16_t sound, const fx *pos, int volume, int radius, std::uint8_t flags = 0,
                  int pitch = 100, std::uint16_t tag = 0)
         {
             if (sound == kNoSound && !(flags & kSoundLoopOff))
                 return;
-            if (count >= kMaxSoundEvents && !makeRoom(flags))
-                return;
+            if (count >= kMaxSoundEvents)
+            {
+                ++dropped;
+                if (!makeRoom(flags))
+                    return;
+            }
             SoundEvent &event = events[count++];
             event.sound = sound;
             event.volume = static_cast<std::uint8_t>(volume < 0 ? 0 : (volume > 127 ? 127 : volume));

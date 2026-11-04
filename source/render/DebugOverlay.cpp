@@ -112,6 +112,18 @@ namespace hlrt
             // it ran short of what to echo, and the loudest it was lately
             // sent -- then the ARM7's figures, as below).
             // (A game between consoles: the radio's account instead.)
+            // While sounds have been lost to a full queue this map: how many
+            // ("lost q"), before the voices and the ARM7's figures.
+            if (game.heard.dropped != 0)
+            {
+                std::snprintf(line, sizeof(line), "lost q%-5lu v%d%d%d%d%d a7 %lu%% %lu",
+                              static_cast<unsigned long>(game.heard.dropped),
+                              sound.voicesOf(hldata::SoundLayer::Player), sound.voicesOf(hldata::SoundLayer::World),
+                              sound.voicesOf(hldata::SoundLayer::Voice), sound.voicesOf(hldata::SoundLayer::Ambience),
+                              sound.voicesOf(hldata::SoundLayer::Ui), static_cast<unsigned long>(arm7Audio.loadPercent()),
+                              static_cast<unsigned long>(arm7Audio.late()));
+                break;
+            }
 #ifdef HLDS_CHILD
             // (Sent the game: what of the memory the map's data takes -- the
             // level, the models and the sounds its stream gave, the group's
