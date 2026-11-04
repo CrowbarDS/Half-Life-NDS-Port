@@ -1388,6 +1388,86 @@ namespace hldata
             radiusDamage(w, player, shot.pos, skillOf(w).bigmommaDmgBlast, skillOf(w).bigmommaRadiusBlast, -1, kDmgAcid, kAiNone);
         }
 
+        /// How a thrown thing (the game's MOVETYPE_BOUNCE) takes meeting
+        /// something: `overbounce` (Q12, the game's 2 - friction) of what it
+        /// had going into it is taken off -- a little more than all of it,
+        /// so it comes back off with that little -- and on a floor it rolls,
+        /// keeping `keepPerMs` (Q30) of its speed a millisecond. (The game
+        /// takes a fixed part each of its frames, at a hundred a second;
+        /// here it is by the time gone, whatever the frame rate.)
+        struct Toss
+        {
+            fx overbounce;
+            std::uint32_t keepPerMs;
+        };
+        inline constexpr Toss kTossGrenade = {4915, 1050047315}; // friction 0.8; 0.8 a frame
+        inline constexpr Toss kTossSatchel = {4915, 1068248349}; // friction 0.8; 0.95 a frame
+        inline constexpr Toss kTossGib = {5939, 1062488213};     // friction 0.55; 0.9 a frame
+
+        inline constexpr int kTossBounced = 0, kTossRolling = 1, kTossResting = 2;
+
+        /// `velocity` after meeting `t` in a frame of `ms` under `gravity`:
+        /// bounced off it, rolling on it, or at rest -- under 30 a second on
+        /// a floor, which stops it dead.
+        inline int tossBounce(fx *velocity, const Trace &t, const Toss &toss, int ms, fx gravity)
+        {
+            std::int64_t into = 0;
+            for (int i = 0; i < 3; ++i)
+                into += static_cast<std::int64_t>(velocity[i]) * t.normal[i];
+            const std::int64_t backoff = ((into >> kNormalShift) * toss.overbounce) >> 12;
+            for (int i = 0; i < 3; ++i)
+                velocity[i] -= static_cast<fx>((backoff * t.normal[i]) >> kNormalShift);
+            if (t.normal[2] <= kNormalOne / 10 * 7)
+                return kTossBounced;
+            // (Coming off it slower than this frame's gravity would bring it
+            // back: it has not left the floor. 67109 / 2^26: a thousandth.)
+            if (velocity[2] >= static_cast<fx>((static_cast<std::int64_t>(gravity) * ms * 67109) >> 26))
+                return kTossBounced;
+            velocity[2] = 0;
+            std::uint64_t keep = 1u << 30, step = toss.keepPerMs;
+            for (int n = ms > 0 ? ms : 0; n != 0; n >>= 1)
+            {
+                if (n & 1)
+                    keep = (keep * step) >> 30;
+                step = (step * step) >> 30;
+            }
+            std::int64_t speed2 = 0;
+            for (int i = 0; i < 2; ++i)
+            {
+                velocity[i] = static_cast<fx>((static_cast<std::int64_t>(velocity[i]) * static_cast<std::int64_t>(keep)) >> 30);
+                speed2 += static_cast<std::int64_t>(velocity[i]) * velocity[i];
+            }
+            if (speed2 < static_cast<std::int64_t>(900) << (2 * kFxShift))
+            {
+                velocity[0] = velocity[1] = 0;
+                return kTossResting;
+            }
+            return kTossRolling;
+        }
+
+        /// ... and the rest of its frame, after meeting `t` part of the way:
+        /// on along where it now goes, nine tenths of what time is left (as
+        /// the game's toss does), so it does not stick where it touched --
+        /// which would make how far it rolls depend on the frame rate.
+        inline void tossOn(const MoveWorld &world, const Trace &t, const fx *velocity, int ms, fx *at)
+        {
+            const std::int64_t left = (static_cast<std::int64_t>(kFractionOne - t.fraction) * 58982) >> 16; // (0.9)
+            fx to[3];
+            for (int i = 0; i < 3; ++i)
+            {
+                at[i] = t.endPos[i];
+                const std::int64_t move = (static_cast<std::int64_t>(velocity[i]) * ms * 67109) >> 26; // (/ 1000)
+                to[i] = at[i] + static_cast<fx>((move * left) >> kFractionShift);
+            }
+            if (to[0] == at[0] && to[1] == at[1] && to[2] == at[2])
+                return;
+            const Trace on = traceAll(world, true, at, to);
+            if (on.startSolid)
+                return;
+            for (int i = 0; i < 3; ++i)
+                at[i] = on.endPos[i];
+        }
+
         inline void projectilesTick(LogicWorld &w, PlayerState &player, int ms)
         {
             ActorWorld &a = *w.actors;
@@ -1432,19 +1512,11 @@ namespace hldata
                 }
                 if (t.fraction < kFractionOne)
                 {
-                    std::int64_t into = 0;
-                    for (int i = 0; i < 3; ++i)
-                        into += static_cast<std::int64_t>(gib.velocity[i]) * t.normal[i];
-                    into >>= kNormalShift;
-                    for (int i = 0; i < 3; ++i)
-                    {
-                        const fx off = static_cast<fx>((into * t.normal[i] * 2) >> kNormalShift);
-                        gib.velocity[i] = ((gib.velocity[i] - off) * 11) / 20;
-                        to[i] = t.endPos[i];
-                    }
+                    const int met = tossBounce(gib.velocity, t, kTossGib, ms, gravityOf(player));
+                    tossOn(*w.world, t, gib.velocity, ms, to);
                     gib.spin = static_cast<std::int16_t>(gib.spin / 2);
                     // On something flat enough to lie on, and slow: it lies.
-                    if (t.normal[2] > kNormalOne / 10 * 7 && fxLength(gib.velocity) < fxFromInt(60))
+                    if (met == kTossResting)
                     {
                         gib.resting = true;
                         gib.pitch = 0;
@@ -2084,30 +2156,27 @@ namespace hldata
                 }
                 const bool satchel = shot.kind == kShotSatchel;
                 const bool grenade = shot.kind == kShotGrenade || gib || satchel;
+                // (Half gravity for what is thrown -- aerodynamic, the game
+                // says; a gib falls as anything does.)
                 if (grenade)
-                    shot.velocity[2] -= static_cast<fx>((static_cast<std::int64_t>(gravityOf(player) / 2) * ms) / 1000);
+                    shot.velocity[2] -= static_cast<fx>(
+                        (static_cast<std::int64_t>(gib ? gravityOf(player) : gravityOf(player) / 2) * ms) / 1000);
                 fx to[3];
                 for (int i = 0; i < 3; ++i)
                     to[i] = shot.pos[i] + static_cast<fx>((static_cast<std::int64_t>(shot.velocity[i]) * ms) / 1000);
                 if (grenade)
                 {
                     // It bounces: off what a crouched person could not pass
-                    // (near enough for something the size of a fist), losing
-                    // a third of its speed each time, until its fuse is out.
+                    // (near enough for something the size of a fist), hardly
+                    // at all, and rolls to a stop on a floor.
                     const Trace t = traceAll(*w.world, true, shot.pos, to);
                     if (!t.startSolid && t.fraction < kFractionOne)
                     {
-                        std::int64_t into = 0;
-                        for (int i = 0; i < 3; ++i)
-                            into += static_cast<std::int64_t>(shot.velocity[i]) * t.normal[i];
-                        into >>= kNormalShift;
-                        for (int i = 0; i < 3; ++i)
-                        {
-                            const fx off = static_cast<fx>((into * t.normal[i] * 2) >> kNormalShift);
-                            shot.velocity[i] = ((shot.velocity[i] - off) * 2) / 3;
-                            to[i] = t.endPos[i];
-                        }
-                        if (!gib && w.heard != nullptr && fxLength(shot.velocity) > fxFromInt(60))
+                        const int met =
+                            tossBounce(shot.velocity, t, gib ? kTossGib : (satchel ? kTossSatchel : kTossGrenade), ms,
+                                       gravityOf(player));
+                        tossOn(*w.world, t, shot.velocity, ms, to);
+                        if (!gib && met == kTossBounced && w.heard != nullptr && fxLength(shot.velocity) > fxFromInt(60))
                         {
                             // (One of its three knocks, and quiet: the
                             // game's are a quarter of full.)

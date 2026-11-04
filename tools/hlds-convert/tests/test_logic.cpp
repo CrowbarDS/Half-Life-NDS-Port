@@ -1580,6 +1580,100 @@ namespace
               "and it ends standing on the ledge");
     }
 
+    /// A thing thrown into a box room from (-100, 0, `z`) at 200 a second
+    /// along x, run at `ms` a frame for `total` ms: how high it came up
+    /// again after it first met the floor, where it got to, and whether it
+    /// has stopped dead.
+    struct Thrown
+    {
+        double rebound = 0, x = 0;
+        bool still = false;
+    };
+    Thrown throwInRoom(Game &g, std::uint8_t kind, bool modelGib, fx z, int ms, int total)
+    {
+        ActorWorld a;
+        g.logic.actors = &a;
+        const fx from[3] = {fxFromInt(-100), 0, z};
+        const fx velocity[3] = {fxFromInt(200), 0, 0};
+        Gib *gib = nullptr;
+        Projectile *shot = nullptr;
+        if (modelGib)
+            gib = &gibAdd(a, 0, 0, from, velocity, total + 1000);
+        else
+            shot = projectileAdd(a, kind, from, velocity, total + 1000);
+        Thrown out;
+        bool landed = false;
+        double lowest = 1e9, last[3] = {0, 0, 0};
+        for (int t = 0; t < total; t += ms)
+        {
+            hldata::detail::projectilesTick(g.logic, g.player, ms);
+            const fx *pos = modelGib ? gib->pos : shot->pos;
+            const fx *vel = modelGib ? gib->velocity : shot->velocity;
+            const double at = toUnits(pos[2]);
+            if (!landed && vel[2] > 0)
+                landed = true, lowest = at;
+            if (landed && at - lowest > out.rebound)
+                out.rebound = at - lowest;
+            out.x = toUnits(pos[0]);
+            out.still = (modelGib ? gib->resting : vel[0] == 0 && vel[1] == 0 && vel[2] == 0) && last[0] == out.x &&
+                        last[2] == at;
+            last[0] = out.x, last[2] = at;
+        }
+        g.logic.actors = nullptr;
+        return out;
+    }
+
+    void testThrownComeToRest()
+    {
+        BoxRoom room;
+        room.mins[0] = -512, room.maxs[0] = 512;
+        room.maxs[2] = 256;
+        Game g;
+        build(g, room);
+        check(g.ok, "a long room");
+        if (!g.ok)
+            return;
+        g.move.nodes = g.view.nodes;
+        g.move.leaves = g.view.leaves;
+        g.move.headNode = g.view.models[0].headNode;
+        g.logic.world = &g.move;
+
+        // Dropped from 100 units: it meets the floor at about 280 a second
+        // (half gravity) and comes back with a fifth of that -- a few units
+        // up, not most of the drop -- and in the end lies still.
+        const fx high = fxFromInt(100);
+        const Thrown dropped = throwInRoom(g, kShotGrenade, false, high, 33, 4000);
+        std::printf("test_logic: grenade dropped: rebound %.1f, rests at x %.1f\n", dropped.rebound, dropped.x);
+        check(dropped.rebound < 6, "a grenade hardly bounces off the floor");
+        check(dropped.still, "and comes to rest");
+
+        // Set rolling along the floor at 200 a second: it stops within a
+        // few units, and the same few whatever the frame rate.
+        const fx floor = fxFromInt(18) + kFxOne / 16; // (its centre, a crouched person's half-height up)
+        const Thrown at30 = throwInRoom(g, kShotGrenade, false, floor, 33, 2000);
+        const Thrown at60 = throwInRoom(g, kShotGrenade, false, floor, 16, 2000);
+        const Thrown at20 = throwInRoom(g, kShotGrenade, false, floor, 50, 2000);
+        std::printf("test_logic: grenade rolled: stops at x %.1f / %.1f / %.1f (30, 60, 20 a second)\n", at30.x,
+                    at60.x, at20.x);
+        check(at30.still && at60.still && at20.still, "a rolling grenade stops");
+        check(at30.x > -100 && at30.x < -80, "within a few units");
+        check(std::fabs(at60.x - at30.x) < 2.5 && std::fabs(at20.x - at30.x) < 2.5, "as far at any frame rate");
+
+        // Gibs, of a model or a sprite: full gravity, a little more of a
+        // bounce, and at rest in the end.
+        const Thrown scrap = throwInRoom(g, kShotGib, false, high, 33, 4000);
+        const Thrown piece = throwInRoom(g, 0, true, high, 33, 4000);
+        std::printf("test_logic: gibs dropped: rebound %.1f / %.1f, rest at x %.1f / %.1f\n", scrap.rebound,
+                    piece.rebound, scrap.x, piece.x);
+        check(scrap.rebound > 5 && scrap.rebound < 30 && piece.rebound > 5 && piece.rebound < 30,
+              "a gib bounces a little");
+        check(scrap.still && piece.still, "and comes to rest");
+        const Thrown scrap20 = throwInRoom(g, kShotGib, false, floor, 50, 2000);
+        const Thrown scrap60 = throwInRoom(g, kShotGib, false, floor, 16, 2000);
+        std::printf("test_logic: gib rolled: stops at x %.1f / %.1f (20, 60 a second)\n", scrap20.x, scrap60.x);
+        check(scrap20.still && scrap60.still && std::fabs(scrap20.x - scrap60.x) < 4, "a rolling gib stops alike");
+    }
+
     void testWaterStep()
     {
         // A pool over the whole east half, and on its floor a step 16 high.
@@ -2042,6 +2136,7 @@ int main()
     testDrowning();
     testWaterJump();
     testWaterStep();
+    testThrownComeToRest();
     testLevelChange();
     testTransitionVolume();
     testCrushKillAndSwing();
