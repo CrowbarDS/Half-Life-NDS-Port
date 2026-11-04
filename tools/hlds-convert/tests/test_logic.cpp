@@ -18,6 +18,7 @@
 #include <random>
 
 #include "HlLevelReader.hpp"
+#include "HlFrameClock.hpp"
 #include "HlLogic.hpp"
 #include "HlMonsters.hpp"
 #include "HlTransition.hpp"
@@ -1417,6 +1418,33 @@ namespace
               "a teleport puts the player on its destination, facing the way it faces");
     }
 
+    void testFrameClock()
+    {
+        // A minute at 60, 30 and 20 frames a second, and one that changes
+        // its pace: what the frames add up to is the exact time, at every
+        // frame less than a millisecond behind it. Rounded each frame on its
+        // own, as it was, a minute came out a second fast, or too slow.
+        const int paces[][4] = {{1, 1, 1, 1}, {2, 2, 2, 2}, {3, 3, 3, 3}, {1, 2, 3, 2}};
+        for (const auto &pace : paces)
+        {
+            FrameClock clock;
+            std::int64_t vblanks = 0, sum = 0, rounded = 0;
+            bool close = true;
+            for (int f = 0; vblanks < 3600; ++f)
+            {
+                const int v = pace[f % 4];
+                vblanks += v;
+                sum += clock.ms(v);
+                rounded += (v * 1000 + 30) / 60;
+                const std::int64_t exact = vblanks * 1000 / 60;
+                close = close && sum <= exact && exact - sum < 1;
+            }
+            check(close && sum == vblanks * 1000 / 60, "the frames' milliseconds add up to the exact time");
+            if (pace[0] == 1 && pace[1] == 1)
+                check(rounded - sum > 900, "(where each frame rounded on its own ran a second a minute fast)");
+        }
+    }
+
     void testWater()
     {
         // A pool: a func_water filling the bottom 80 units of the room's east
@@ -2132,6 +2160,7 @@ int main()
     testRotation();
     testUse();
     testBreakingAndPushing();
+    testFrameClock();
     testWater();
     testDrowning();
     testWaterJump();

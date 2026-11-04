@@ -16,6 +16,7 @@
 // interpolating between ticks; the split gravity step keeps a jump the same
 // height at 30.
 
+#include "HlFrameClock.hpp"
 #include "HlPlayerMove.hpp"
 #include "HlView.hpp"
 
@@ -52,6 +53,9 @@ namespace hlrt
 
     private:
         void fly(int vblanks);
+        /// The frame's milliseconds, as the game's own clock has them: fed
+        /// the same sixtieths each frame, it gives the same.
+        hldata::FrameClock clock_;
     };
 
     HL_ENGINE_OBJECT(Player, player);

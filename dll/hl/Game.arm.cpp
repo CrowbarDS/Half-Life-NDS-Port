@@ -765,7 +765,11 @@ namespace hlrt
             vblanks = 1;
         if (vblanks > kMaxVblanks)
             vblanks = kMaxVblanks;
-        playMs_ += static_cast<std::uint64_t>(vblanks) * 1000 / 60;
+        // The frame in milliseconds, for everything that counts them: what
+        // is left of a millisecond carried to the next frame, so the game
+        // keeps the same time as the player's movement (HlFrameClock.hpp).
+        const int ms = clock_.ms(vblanks);
+        playMs_ += static_cast<std::uint64_t>(ms);
         // A view from a camera that takes the controls (trigger_camera's
         // flag 4): the player can do nothing meanwhile.
         if (logic.camera >= 0 && (logic.records[logic.camera].extra[0] & 4))
@@ -780,7 +784,7 @@ namespace hlrt
         // (A development aid: debug_start.txt's sixth number, the seconds
         // after which the player dies, once -- for seeing what dying goes
         // back to.)
-        if (player.debugDieMs > 0 && (player.debugDieMs -= vblanks * 1000 / 60) <= 0)
+        if (player.debugDieMs > 0 && (player.debugDieMs -= ms) <= 0)
         {
             player.debugDieMs = -1;
             logicHurt(player.state, 1000);
@@ -792,8 +796,7 @@ namespace hlrt
             // (A box isn't pushed by someone holding USE, who is pulling it.
             // Not in a match: a guest's USE isn't sent as it is held.)
             logic.useHeld.value = input.useHeld && !netGame.playing();
-            // Sixtieths of a second to milliseconds.
-            logicTick(logic, player.state, (vblanks * 1000 + 30) / 60);
+            logicTick(logic, player.state, ms);
             // What the player rides has turned: so has their view.
             camera.yaw = static_cast<std::uint16_t>(camera.yaw + logic.viewTurn);
             logic.viewTurn = 0;
@@ -846,11 +849,10 @@ namespace hlrt
                 if (target >= 0 && logicContinuousUse(logic.records[target]))
                     logicUse(logic, player.state, target, -1, kUseSet);
                 else if (target >= 0 && logic.useHeld.value && logic.records[target].kind == static_cast<std::uint8_t>(LogicKind::Pushable))
-                    logicPull(logic, player.state, target, (vblanks * 1000 + 30) / 60);
+                    logicPull(logic, player.state, target, ms);
             }
         }
         // What fights, what lies about, and what is in hand.
-        const int ms = (vblanks * 1000 + 30) / 60;
 
         // The lights that change: when any is not as strong as it was (a
         // switch, or a tenth of a second of a flicker), the colours of the
@@ -1111,7 +1113,7 @@ namespace hlrt
         // is first taken out.
         if (netGame.playing())
         {
-            netGame.tick(camera.yaw, camera.pitch, netDid, lamp.on, (vblanks * 1000 + 30) / 60);
+            netGame.tick(camera.yaw, camera.pitch, netDid, lamp.on, ms);
             NetMatch &match = netGame.match();
             if (match.respawned)
             {
@@ -1181,7 +1183,7 @@ namespace hlrt
         {
             // (... with the sounds its clip has in it: a magazine out and
             // in, where the hand does it.)
-            weaponHandTick(logic, held, (vblanks * 1000 + 30) / 60);
+            weaponHandTick(logic, held, ms);
             // (The crowbar has no way of being held still but as its last
             // swing left it, or its being taken out: the game never plays
             // it another.)

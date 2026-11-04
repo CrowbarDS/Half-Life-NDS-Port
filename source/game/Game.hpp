@@ -23,6 +23,7 @@
 #include <string>
 #include <vector>
 
+#include "HlFrameClock.hpp"
 #include "HlLamp.hpp"
 #include "HlLightStyle.hpp"
 #include "HlMonsters.hpp"
@@ -241,6 +242,7 @@ namespace hlrt
         std::vector<hldata::SaveMapState> visited_;
         std::uint64_t playMs_ = 0;
         int slowCarry_ = 0; ///< host_timescale: the part of a sixtieth not yet run (Q8)
+        hldata::FrameClock clock_; ///< what each frame is in milliseconds (every part of the game the same)
         char chapter_[44] = {};
         /// How the player came into this map (who came with them is in
         /// it): kept for a save of the map.

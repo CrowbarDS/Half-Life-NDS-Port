@@ -212,7 +212,7 @@ namespace hlrt
         // What the move did to the view: a landing jolts it and, hard
         // enough, hurts; a blow reddens the screen, shows where it came
         // from and knocks the head back.
-        const int ms = (vblanks * 1000 + 30) / 60;
+        const int ms = clock_.ms(vblanks);
         if (!noclip)
         {
             if (state.landed > 0 && !dead)
