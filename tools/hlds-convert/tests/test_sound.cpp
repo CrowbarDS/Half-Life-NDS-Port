@@ -13,6 +13,7 @@
 #include <fstream>
 
 #include "HlDspRoom.hpp"
+#include "HlSound.hpp"
 #include "HlStereoMusic.hpp"
 #include "TestBspBuilder.hpp"
 #include "hlds/SoundCook.hpp"
@@ -436,6 +437,61 @@ namespace
         check(lines > 1000, "the game's sentences are read");
         check(missing * 20 < words, "... and nearly all of their words are sounds that exist");
     }
+
+    // ------------------------------------------------------- a full queue
+
+    /// A frame with more heard in it than the queue holds: what is given up
+    /// is a sound heard once, never a loop's stop -- which, lost, would leave
+    /// a door's move sound going round for ever.
+    void testFullQueue()
+    {
+        const fx at[3] = {0, 0, 0};
+        SoundQueue q;
+        for (int i = 0; i < kMaxSoundEvents; ++i)
+            q.add(static_cast<std::uint16_t>(i), at, 127, kRadiusLarge);
+        q.add(100, at, 127, kRadiusLarge);
+        check(q.count == kMaxSoundEvents && q.events[kMaxSoundEvents - 1].sound == kMaxSoundEvents - 1,
+              "a full queue drops one more sound heard once");
+        q.add(kNoSound, nullptr, 0, 0, kSoundLoopOff, 100, 7);
+        check(q.count == kMaxSoundEvents && (q.events[kMaxSoundEvents - 1].flags & kSoundLoopOff) &&
+                  q.events[kMaxSoundEvents - 1].tag == 7 && q.events[kMaxSoundEvents - 2].sound == kMaxSoundEvents - 2,
+              "... but a loop's stop takes the place of the latest of them");
+        q.add(50, at, 127, kRadiusLarge, kSoundLoopOn, 100, 8);
+        check(q.count == kMaxSoundEvents && (q.events[kMaxSoundEvents - 1].flags & kSoundLoopOn) &&
+                  (q.events[kMaxSoundEvents - 2].flags & kSoundLoopOff) && q.events[0].sound == 0,
+              "... and so does a loop's start, the rest kept in their order");
+
+        // A start, then the queue filled, then its stop: the stop must still
+        // come after the start, or the loop would be started again after it.
+        q.count = 0;
+        q.add(50, at, 127, kRadiusLarge, kSoundLoopOn, 100, 3);
+        for (int i = 1; i < kMaxSoundEvents; ++i)
+            q.add(static_cast<std::uint16_t>(i), at, 127, kRadiusLarge);
+        q.add(kNoSound, nullptr, 0, 0, kSoundLoopOff, 100, 3);
+        int on = -1, off = -1;
+        for (int i = 0; i < q.count; ++i)
+        {
+            if (q.events[i].tag == 3 && (q.events[i].flags & kSoundLoopOn))
+                on = i;
+            if (q.events[i].tag == 3 && (q.events[i].flags & kSoundLoopOff))
+                off = i;
+        }
+        check(on == 0 && off == kMaxSoundEvents - 1, "a loop's stop comes after its own start");
+
+        // Only spoken lines and loops: a start has nothing to give up, a
+        // stop gives up the latest start.
+        q.count = 0;
+        for (int i = 0; i < kMaxSoundEvents - 1; ++i)
+            q.add(static_cast<std::uint16_t>(i), at, 127, kRadiusLarge, kSoundSentence);
+        q.add(60, at, 127, kRadiusLarge, kSoundLoopOn, 100, 4);
+        q.add(61, at, 127, kRadiusLarge, kSoundLoopOn, 100, 5);
+        check(q.count == kMaxSoundEvents && q.events[kMaxSoundEvents - 1].tag == 4,
+              "a loop's start gives up no spoken line");
+        q.add(kNoSound, nullptr, 0, 0, kSoundLoopOff, 100, 9);
+        check(q.count == kMaxSoundEvents && q.events[kMaxSoundEvents - 1].tag == 9 &&
+                  (q.events[kMaxSoundEvents - 2].flags & kSoundSentence),
+              "a loop's stop gives up a start before a spoken line");
+    }
 } // namespace
 
 /// A sound's better copy for a DSi is the same name at another rate.
@@ -467,6 +523,7 @@ int main()
     testStereo();
     testEcho();
     testMusicBlocks();
+    testFullQueue();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir != nullptr && dir[0] != '\0')
         testRealSounds(dir);

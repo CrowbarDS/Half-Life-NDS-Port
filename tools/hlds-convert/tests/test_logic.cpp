@@ -380,6 +380,68 @@ namespace
         check(g.logic.eventsDropped == 0, "no event was lost");
     }
 
+    /// A door that opens and shuts in frames where the queue of what is
+    /// heard is already full: its move sound is still started, and still
+    /// stopped -- lost, the stop would leave it going round until the map
+    /// changes.
+    void testMoverLoopFullQueue()
+    {
+        BoxRoom room;
+        room.brushes = {
+            brush("func_door", "\"targetname\" \"door1\"\n\"angle\" \"-1\"\n\"speed\" \"100\"\n\"wait\" \"-1\"\n",
+                  40, -32, 0, 48, 32, 64),
+        };
+        Game g;
+        build(g, room);
+        check(g.ok, "full-queue door room");
+        if (!g.ok)
+            return;
+        const int door = g.recordOfModel(1);
+        // (Its sounds, as a map with noises gives them: 1 moving, 2 stopping.)
+        std::vector<LogicSound> sounds(g.view.logicCount);
+        for (LogicSound &s : sounds)
+            s = LogicSound{kNoSound, kNoSound, kNoSound, kNoSound, kNoSound, kNoSound};
+        sounds[door].move = 1;
+        sounds[door].stop = 2;
+        SoundQueue heard;
+        g.logic.heard = &heard;
+        g.logic.sounds = sounds.data();
+
+        const fx at[3] = {0, 0, 0};
+        // A frame: the fighting fills the queue, then the logic has its turn.
+        auto busy = [&](bool use)
+        {
+            heard.count = 0;
+            for (int i = 0; i < kMaxSoundEvents; ++i)
+                heard.add(static_cast<std::uint16_t>(10 + i), at, 127, kRadiusLarge);
+            if (use)
+                g.use(door);
+            g.tick(33);
+        };
+        auto loop = [&](std::uint8_t flag)
+        {
+            for (int i = 0; i < heard.count; ++i)
+            {
+                if ((heard.events[i].flags & flag) && heard.events[i].tag == door)
+                    return true;
+            }
+            return false;
+        };
+
+        busy(true);
+        check(g.states[door].move == MoveState::GoingUp && loop(kSoundLoopOn),
+              "a door set off in a busy frame starts its move sound");
+        bool stopped = false;
+        for (int n = 0; n < 60 && g.states[door].move == MoveState::GoingUp; ++n)
+        {
+            busy(false);
+            stopped = stopped || loop(kSoundLoopOff);
+        }
+        check(g.states[door].move == MoveState::AtTop && stopped,
+              "... and, arrived in a busy frame, stops it");
+        check(heard.count == kMaxSoundEvents, "the queue holds no more than it does");
+    }
+
     /// Doors and the player: touch, names, being in the way, being carried.
     void testDoorsAndThePlayer()
     {
@@ -2216,6 +2278,7 @@ int main()
     testCookRules();
     testCookedRecords();
     testButtonManagerDoor();
+    testMoverLoopFullQueue();
     testDoorsAndThePlayer();
     testTriggersAndWiring();
     testTrains();

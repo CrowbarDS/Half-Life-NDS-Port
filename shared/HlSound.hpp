@@ -625,6 +625,8 @@ namespace hldata
 
     /// What has been heard since the queue was last emptied. More than it
     /// holds in one tick are dropped: nobody hears the twenty-fifth thing.
+    /// But a loop's start or stop is never what is dropped while there is
+    /// a sound heard once to give up for it: a lost stop goes round for ever.
     struct SoundQueue
     {
         SoundEvent events[kMaxSoundEvents];
@@ -636,7 +638,9 @@ namespace hldata
         void add(std::uint16_t sound, const fx *pos, int volume, int radius, std::uint8_t flags = 0,
                  int pitch = 100, std::uint16_t tag = 0)
         {
-            if ((sound == kNoSound && !(flags & kSoundLoopOff)) || count >= kMaxSoundEvents)
+            if (sound == kNoSound && !(flags & kSoundLoopOff))
+                return;
+            if (count >= kMaxSoundEvents && !makeRoom(flags))
                 return;
             SoundEvent &event = events[count++];
             event.sound = sound;
@@ -658,6 +662,31 @@ namespace hldata
             if (static_cast<std::uint16_t>(sound) >= commons)
                 return;
             add(static_cast<std::uint16_t>(sound), pos, volume, radius, 0, pitch);
+        }
+        /// Full, and something with `flags` to be put in: the latest sound
+        /// heard once is given up for a loop's start or stop -- or, for a
+        /// stop, the latest start if there is nothing else. What comes after
+        /// it moves up one, so a stop still comes after its own start.
+        bool makeRoom(std::uint8_t flags)
+        {
+            if (!(flags & (kSoundLoopOn | kSoundLoopOff)))
+                return false;
+            constexpr std::uint8_t kKept = kSoundLoopOn | kSoundLoopOff | kSoundSentence;
+            int gone = count - 1;
+            while (gone >= 0 && (events[gone].flags & kKept))
+                --gone;
+            if (gone < 0 && (flags & kSoundLoopOff))
+            {
+                gone = count - 1;
+                while (gone >= 0 && !(events[gone].flags & kSoundLoopOn))
+                    --gone;
+            }
+            if (gone < 0)
+                return false;
+            for (int i = gone; i + 1 < count; ++i)
+                events[i] = events[i + 1];
+            --count;
+            return true;
         }
         bool heard(std::uint16_t sound) const
         {
