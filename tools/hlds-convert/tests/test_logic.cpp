@@ -1534,6 +1534,43 @@ namespace
               "and it ends standing on the ledge");
     }
 
+    void testWaterStep()
+    {
+        // A pool over the whole east half, and on its floor a step 16 high.
+        BoxRoom room;
+        room.maxs[2] = 200;
+        BrushBox pool;
+        pool.className = "func_water";
+        pool.mins[0] = 0, pool.mins[1] = -128, pool.mins[2] = 0;
+        pool.maxs[0] = 128, pool.maxs[1] = 128, pool.maxs[2] = 120;
+        pool.keys = "\"skin\" \"-3\"\n\"wait\" \"-1\"\n";
+        room.brushes.push_back(pool);
+        BrushBox step;
+        step.mins[0] = 64, step.mins[1] = -128, step.mins[2] = 0;
+        step.maxs[0] = 128, step.maxs[1] = 128, step.maxs[2] = 16;
+        room.brushes.push_back(step);
+        Game g;
+        build(g, room);
+        check(g.ok, "pool with a step room");
+        if (!g.ok)
+            return;
+        g.move.nodes = g.view.nodes;
+        g.move.leaves = g.view.leaves;
+        g.move.headNode = g.view.models[0].headNode;
+
+        // Under water on the pool's floor, swimming level at the step: up
+        // onto it, as the game does, and on.
+        g.player.origin[0] = fxFromInt(30), g.player.origin[1] = 0, g.player.origin[2] = fxFromInt(37);
+        g.player.velocity[0] = g.player.velocity[1] = g.player.velocity[2] = 0;
+        MoveCommand east;
+        east.forward = 1;
+        // (At its face by the fourth frame; held there, it is not climbed.)
+        g.frame(east, 8);
+        check(g.player.waterLevel == 3, "under water");
+        check(toUnits(g.player.origin[0]) > 52 && toUnits(g.player.origin[2]) > 51,
+              "swimming into a step under water goes up onto it, without being held at it");
+    }
+
     void testLevelChange()
     {
         // Map A: a volume by the east wall that leads to "mapb", a landmark,
@@ -1957,6 +1994,7 @@ int main()
     testBreakingAndPushing();
     testWater();
     testWaterJump();
+    testWaterStep();
     testLevelChange();
     testTransitionVolume();
     testCrushKillAndSwing();

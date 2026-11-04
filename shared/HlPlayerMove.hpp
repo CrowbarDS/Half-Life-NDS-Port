@@ -833,6 +833,22 @@ namespace hldata
                             s.velocity[i] += fxMul(accelSpeed, wishDir[i]);
                     }
                 }
+
+                // As the game does in water: where the move ends, pressed
+                // down onto from a step's height and a unit above it, so a
+                // step or a slope under the water is gone up as it is swum
+                // into. Only if that is in something solid, the move as any.
+                fx dest[3], start[3];
+                for (int i = 0; i < 3; ++i)
+                    start[i] = dest[i] = s.origin[i] + scaleTime(s.velocity[i], dt);
+                start[2] += kStepSize + fxFromInt(1);
+                const Trace tr = trace(start, dest);
+                if (!tr.startSolid && !tr.allSolid)
+                {
+                    for (int i = 0; i < 3; ++i)
+                        s.origin[i] = tr.endPos[i];
+                    return;
+                }
                 flyMove();
             }
 
