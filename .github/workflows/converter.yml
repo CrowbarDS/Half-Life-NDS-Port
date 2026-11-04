@@ -199,10 +199,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      # (MSYS2 no longer has a make for 32-bit: the 64-bit one runs the build
+      # just as well, the compiler being the 32-bit one.)
       - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+        id: msys2
         with:
           msystem: MINGW32
           update: true
+          suppress-deprecation-warnings: msystem-mingw32
           install: >-
             git
             zip
@@ -210,7 +214,7 @@ jobs:
             mingw-w64-i686-cc
             mingw-w64-i686-cmake
             mingw-w64-i686-ninja
-            mingw-w64-i686-make
+            mingw-w64-x86_64-make
 
       - name: Let git read the checkout
         run: git config --global --add safe.directory "$(pwd)"
@@ -230,22 +234,36 @@ jobs:
           # (r1: raised whenever the configure line below changes.)
           key: qt5-${{ steps.qt5.outputs.version }}-mingw32-gcc${{ steps.qt5.outputs.gcc }}-r1
 
-      - name: Build Qt 5
+      - name: Fetch Qt 5's source
         if: steps.qt5-cache.outputs.cache-hit != 'true'
         run: |
           . docker/versions.env
-          name="qtbase-everywhere-opensource-src-$QT5_VERSION"
-          curl -fsSL -o qtbase.tar.xz "https://download.qt.io/archive/qt/5.15/$QT5_VERSION/submodules/$name.tar.xz"
+          curl -fsSL -o qtbase.tar.xz \
+            "https://download.qt.io/archive/qt/5.15/$QT5_VERSION/submodules/qtbase-everywhere-opensource-src-$QT5_VERSION.tar.xz"
           echo "$QT5_SHA256  qtbase.tar.xz" | sha256sum -c -
           tar -xf qtbase.tar.xz
-          mkdir qt5-build && cd qt5-build
-          "../$name/configure" -prefix "$QT5_DIR" -platform win32-g++ -release -shared \
-            -opensource -confirm-license -nomake examples -nomake tests \
-            -no-opengl -no-dbus -no-icu -no-sql-sqlite -no-sql-odbc \
-            -qt-zlib -qt-libpng -qt-libjpeg -qt-pcre -qt-freetype -qt-harfbuzz
-          mingw32-make -j"$(nproc)"
-          mingw32-make install
-          cp "../$name/LICENSE.LGPL3" "$QT5_DIR/"
+          mv "qtbase-everywhere-src-$QT5_VERSION" qtbase-src 2>/dev/null || mv "qtbase-everywhere-opensource-src-$QT5_VERSION" qtbase-src
+          mkdir -p "$QT5_DIR"
+          cp qtbase-src/LICENSE.LGPL3 "$QT5_DIR/"
+
+      # Qt's own configure.bat, from cmd, with no MSYS sh on the PATH: make
+      # takes any sh it finds as its shell, and Qt's Windows makefiles are
+      # written for cmd.
+      - name: Build Qt 5
+        if: steps.qt5-cache.outputs.cache-hit != 'true'
+        shell: cmd
+        env:
+          MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+        run: |
+          set PATH=%MSYS2_ROOT%\mingw32\bin;%MSYS2_ROOT%\mingw64\bin;C:\Windows\system32;C:\Windows
+          mkdir qt5-build
+          cd qt5-build
+          call ..\qtbase-src\configure.bat -prefix %QT5_DIR% -platform win32-g++ -release -shared ^
+            -opensource -confirm-license -nomake examples -nomake tests ^
+            -no-opengl -no-dbus -no-icu -no-sql-sqlite -no-sql-odbc ^
+            -qt-zlib -qt-libpng -qt-libjpeg -qt-pcre -qt-freetype -qt-harfbuzz || exit /b 1
+          mingw32-make -j%NUMBER_OF_PROCESSORS% || exit /b 1
+          mingw32-make install || exit /b 1
 
       - name: Build ptexconv
         run: |
