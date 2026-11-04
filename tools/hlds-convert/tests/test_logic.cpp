@@ -1642,7 +1642,7 @@ namespace
         pool.className = "func_water";
         pool.mins[0] = -128, pool.mins[1] = -128, pool.mins[2] = 0;
         pool.maxs[0] = 64, pool.maxs[1] = 128, pool.maxs[2] = 80;
-        pool.keys = "\"skin\" \"-3\"\n\"wait\" \"-1\"\n";
+        pool.keys = "\"skin\" \"-3\"\n\"targetname\" \"pool\"\n\"wait\" \"-1\"\n";
         room.brushes.push_back(pool);
         BrushBox ledge;
         ledge.mins[0] = 64, ledge.mins[1] = -128, ledge.mins[2] = 0;
@@ -1777,7 +1777,7 @@ namespace
         pool.className = "func_water";
         pool.mins[0] = 0, pool.mins[1] = -128, pool.mins[2] = 0;
         pool.maxs[0] = 128, pool.maxs[1] = 128, pool.maxs[2] = 120;
-        pool.keys = "\"skin\" \"-3\"\n\"wait\" \"-1\"\n";
+        pool.keys = "\"skin\" \"-3\"\n\"targetname\" \"pool\"\n\"wait\" \"-1\"\n";
         room.brushes.push_back(pool);
         BrushBox step;
         step.mins[0] = 64, step.mins[1] = -128, step.mins[2] = 0;
