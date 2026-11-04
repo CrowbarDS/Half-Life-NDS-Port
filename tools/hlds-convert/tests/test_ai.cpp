@@ -15,6 +15,7 @@
 #include <cstring>
 #include <memory>
 
+#include "HlSaveState.hpp"
 #include "TestGame.hpp"
 
 using namespace hlds;
@@ -80,6 +81,53 @@ namespace
         for (int n = 0; n < 90; ++n)
             playerSoundTick(s, at, 0, false, false, 33);
         check(playerSound(s).volume == 0, "... to nothing");
+    }
+
+    // A controller's own schedules have a place in the save's list of them
+    // (aiSchedules): one that has not is saved as none, and the controller
+    // comes back out of what it was doing. And no schedule is in the list
+    // twice (it would come back as the other).
+    void testSchedulesSaved()
+    {
+        int count = 0;
+        const AiSchedule *const *all = aiSchedules(count);
+        bool twice = false;
+        for (int i = 0; i < count; ++i)
+            for (int j = i + 1; j < count; ++j)
+                twice = twice || all[i] == all[j];
+        check(!twice, "no schedule is in the save's list twice");
+
+        const AiKind *kind = aiKindOf(static_cast<std::uint8_t>(ActorKind::Controller));
+        check(kind != nullptr && kind->scheduleOfType != nullptr, "a controller has schedules of its own");
+        if (kind == nullptr || kind->scheduleOfType == nullptr)
+            return;
+        ActorState state;
+        state.active = true;
+        state.kind = static_cast<std::uint8_t>(ActorKind::Controller);
+        ActorWorld a;
+        a.states = &state;
+        a.count = 1;
+        AiWorld ai;
+        AiMonster mind;
+        std::int16_t slotOf[1];
+        std::uint8_t held[1];
+        aiAttach(a, ai, &mind, 1, slotOf, held, 1);
+        LogicWorld w;
+        w.actors = &a;
+        PlayerState player;
+        AiCtx c{w, player, a, ai, 0, state, *aiFind(a, 0), *kind};
+        bool kept = true;
+        for (const int type : {kSchedChaseEnemy, kSchedRangeAttack1, kSchedTakeCoverFromEnemy, kSchedFail})
+        {
+            const AiSchedule *s = kind->scheduleOfType(c, type);
+            const int id = aiScheduleId(s);
+            if (s == nullptr || id < 0 || aiScheduleById(id) != s)
+            {
+                std::printf("  %s is not in the save's list\n", s != nullptr ? s->name : "(none)");
+                kept = false;
+            }
+        }
+        check(kept, "what a controller is doing is kept in a save");
     }
 
     /// A squad of three grunts: one taken away by a killtarget, one whose
@@ -912,6 +960,7 @@ int main()
     testTable();
     testSounds();
     testSquadLeave();
+    testSchedulesSaved();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir != nullptr && dir[0] != '\0')
     {

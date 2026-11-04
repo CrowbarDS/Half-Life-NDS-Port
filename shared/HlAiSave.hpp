@@ -53,7 +53,7 @@ namespace hldata
             &scientist::slIdleSciStand, &scientist::slScientistCover, &scientist::slScientistHide,
             &scientist::slScientistStartle, &scientist::slFear, &barney::slBaFollow, &barney::slBarneyEnemyDraw,
             &barney::slBaFaceTarget, &barney::slIdleBaStand,
-            // round 3's (HlAliens.hpp: agrunt.cpp, controller.cpp)
+            // round 3's (HlAliens.hpp: agrunt.cpp)
             &agrunt::slAGruntFail, &agrunt::slAGruntCombatFail, &agrunt::slAGruntStandoff,
             &agrunt::slAGruntRangeAttack1, &agrunt::slAGruntTakeCoverFromEnemy, &agrunt::slAGruntVictoryDance,
             &agrunt::slAGruntThreatDisplay,
@@ -63,6 +63,10 @@ namespace hldata
             &assassin::slHide, &assassin::slHunt, &assassin::slJump, &assassin::slJumpAttack, &assassin::slJumpLand,
             // round 5's (bigmomma.cpp)
             &momma::slBigNode, &momma::slNodeFail,
+            // the controller's (controller.cpp), left out until now: added
+            // last, so that what is in a save already keeps its place
+            &controller::slControllerChaseEnemy, &controller::slControllerStrafe,
+            &controller::slControllerTakeCover, &controller::slControllerFail,
         };
         count = static_cast<int>(sizeof(kAll) / sizeof(kAll[0]));
         return kAll;
