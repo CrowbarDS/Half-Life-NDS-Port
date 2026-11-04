@@ -1492,6 +1492,48 @@ namespace
         check(toUnits(g.player.origin[0]) > 70, "forward swims the way the view points");
     }
 
+    void testWaterJump()
+    {
+        // A pool in the west of the room, up to 80, and east of it a ledge
+        // whose top is just above the water.
+        BoxRoom room;
+        room.maxs[2] = 200;
+        BrushBox pool;
+        pool.className = "func_water";
+        pool.mins[0] = -128, pool.mins[1] = -128, pool.mins[2] = 0;
+        pool.maxs[0] = 64, pool.maxs[1] = 128, pool.maxs[2] = 80;
+        pool.keys = "\"skin\" \"-3\"\n\"wait\" \"-1\"\n";
+        room.brushes.push_back(pool);
+        BrushBox ledge;
+        ledge.mins[0] = 64, ledge.mins[1] = -128, ledge.mins[2] = 0;
+        ledge.maxs[0] = 128, ledge.maxs[1] = 128, ledge.maxs[2] = 82;
+        room.brushes.push_back(ledge);
+        Game g;
+        build(g, room);
+        check(g.ok, "pool and ledge room");
+        if (!g.ok)
+            return;
+        g.move.nodes = g.view.nodes;
+        g.move.leaves = g.view.leaves;
+        g.move.headNode = g.view.models[0].headNode;
+
+        // Waist deep against the ledge, swimming at it: up and out.
+        g.player.origin[0] = fxFromInt(44), g.player.origin[1] = 0, g.player.origin[2] = fxFromInt(66);
+        g.player.velocity[0] = g.player.velocity[1] = g.player.velocity[2] = 0;
+        MoveCommand east;
+        east.forward = 1;
+        bool jumped = false;
+        for (int i = 0; i < 60; ++i)
+        {
+            g.frame(east);
+            jumped = jumped || g.player.waterJumpMs > 0;
+        }
+        check(jumped, "swimming at a ledge at the surface starts a jump out of the water");
+        const double z = toUnits(g.player.origin[2]);
+        check(g.player.onGround && toUnits(g.player.origin[0]) > 64 && z > 116 && z < 120,
+              "and it ends standing on the ledge");
+    }
+
     void testLevelChange()
     {
         // Map A: a volume by the east wall that leads to "mapb", a landmark,
@@ -1914,6 +1956,7 @@ int main()
     testUse();
     testBreakingAndPushing();
     testWater();
+    testWaterJump();
     testLevelChange();
     testTransitionVolume();
     testCrushKillAndSwing();

@@ -846,22 +846,23 @@ namespace hldata
                 if (fxLength(flat) > 0 &&
                     fxMul(s.velocity[0], cmd.forwardXY[0]) + fxMul(s.velocity[1], cmd.forwardXY[1]) < 0)
                     return;
+                // Both looks are lines, not the player's box: a box as tall
+                // as the player, lifted to the top of them, would meet the
+                // very ledge it is looking over.
                 fx from[3] = {s.origin[0], s.origin[1], s.origin[2] + fxFromInt(8)};
                 fx to[3] = {from[0] + cmd.forwardXY[0] * 24, from[1] + cmd.forwardXY[1] * 24, from[2]};
-                const Trace wall = trace(from, to);
-                if (wall.fraction >= kFractionOne || wall.normal[2] > (1 << 27) ||
-                    wall.normal[2] < -(1 << 27))
-                    return; // nothing ahead, or not a wall
+                fx at[3], normal[3]; // (normal: Q12)
+                if (!traceShotWall(world, from, to, at, normal))
+                    return; // nothing ahead
+                if ((normal[2] < 0 ? -normal[2] : normal[2]) * 10 >= kFxOne)
+                    return; // not a wall: |z| is 0.1 or more
                 from[2] = to[2] = s.origin[2] + (s.ducked ? kCrouchedFeet : kStandingFeet);
-                const Trace above = trace(from, to);
-                if (above.fraction < kFractionOne)
+                if (!lineClear(world, from, to))
                     return; // no room over it
                 s.waterJumpMs = 2000;
                 s.velocity[2] = fxFromInt(225);
-                s.waterJumpDir[0] = static_cast<fx>(
-                    -(static_cast<std::int64_t>(wall.normal[0]) * 50) >> (kNormalShift - kFxShift));
-                s.waterJumpDir[1] = static_cast<fx>(
-                    -(static_cast<std::int64_t>(wall.normal[1]) * 50) >> (kNormalShift - kFxShift));
+                s.waterJumpDir[0] = -normal[0] * 50;
+                s.waterJumpDir[1] = -normal[1] * 50;
             }
 
             void friction()
@@ -1549,6 +1550,8 @@ namespace hldata
 
         // On the way out of the water onto a ledge: carried up and forwards,
         // deaf to the keys, until landed, clear of the water or out of time.
+        // No gravity until then, as in the game: the rise lasts until the
+        // feet are out of the water, however high the ledge.
         if (state.waterJumpMs > 0)
         {
             state.waterJumpMs -= ms;
@@ -1560,10 +1563,8 @@ namespace hldata
             {
                 state.velocity[0] = state.waterJumpDir[0];
                 state.velocity[1] = state.waterJumpDir[1];
-                m.halfGravity();
                 m.flyMove();
                 m.categorizePosition();
-                m.halfGravity();
                 return;
             }
         }

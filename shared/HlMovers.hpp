@@ -531,4 +531,254 @@ namespace hldata
         }
         return true;
     }
+
+    // ------------------------------------------------------------- lines
+    //
+    // A line through the world as it is drawn (not the clip hulls, which are
+    // the world grown by the player's size), and through the brushes. What
+    // is seen, what is shot, and what the player's ledge checks look at.
+
+    namespace detail
+    {
+#if !defined(__arm__)
+        inline std::uint32_t hostLineCount = 0; ///< (the host's count, as hostTraceCount)
+#endif
+
+        /// A line through the world's own tree: false, with `hit` how far
+        /// along it got (Q30), if it runs into something solid.
+        /// `wall`, if it is asked for, is then what it ran into: the plane
+        /// the line last crossed, twice its number, plus one if it was
+        /// crossed from behind (-1: none, it began in the solid).
+        inline bool lineThrough(const MoveWorld &world, std::int32_t num, std::int32_t f1,
+                                std::int32_t f2, const fx *from, const fx *to, std::int32_t &hit,
+                                int depth, int crossed = -1, int *wall = nullptr)
+        {
+#if !defined(__arm__)
+            hostLineCount += depth == 0 ? 1u : 0u;
+#endif
+            fx p1[3] = {from[0], from[1], from[2]};
+            while (true)
+            {
+                if (num < 0)
+                {
+                    const std::int8_t contents = world.leaves[-1 - num].contents;
+                    if (contents == kContentsSolid || contents == kContentsSky)
+                    {
+                        hit = f1;
+                        if (wall != nullptr)
+                            *wall = crossed;
+                        return false;
+                    }
+                    return true;
+                }
+                if (depth > 96)
+                {
+                    hit = f1;
+                    if (wall != nullptr)
+                        *wall = crossed;
+                    return false;
+                }
+                const Node &node = world.nodes[num];
+                const Plane &plane = world.standing.planes[node.plane];
+                const std::uint8_t type = world.standing.planeTypes[node.plane];
+                const fx t1 = planeDistance(plane, type, p1);
+                const fx t2 = planeDistance(plane, type, to);
+                if (t1 >= 0 && t2 >= 0)
+                {
+                    num = node.children[0];
+                    continue;
+                }
+                if (t1 < 0 && t2 < 0)
+                {
+                    num = node.children[1];
+                    continue;
+                }
+                std::int64_t part = (static_cast<std::int64_t>(t1) << kFractionShift) / (t1 - t2);
+                part = part < 0 ? 0 : (part > kFractionOne ? kFractionOne : part);
+                fx mid[3];
+                for (int i = 0; i < 3; ++i)
+                    mid[i] = p1[i] + static_cast<fx>((static_cast<std::int64_t>(to[i] - p1[i]) * part) >>
+                                                     kFractionShift);
+                const std::int32_t fm =
+                    f1 + static_cast<std::int32_t>((static_cast<std::int64_t>(f2 - f1) * part) >>
+                                                   kFractionShift);
+                const int side = t1 < 0 ? 1 : 0;
+                if (!lineThrough(world, node.children[side], f1, fm, p1, mid, hit, depth + 1, crossed, wall))
+                    return false;
+                crossed = static_cast<int>(node.plane) * 2 + side;
+                num = node.children[side ^ 1];
+                f1 = fm;
+                for (int i = 0; i < 3; ++i)
+                    p1[i] = mid[i];
+                ++depth;
+            }
+        }
+    } // namespace detail
+
+    /// How far a line gets from `start` towards `end`: against the world as
+    /// it is drawn, and against the doors and boxes (as their clip hulls: a
+    /// hand's breadth fatter than they look).
+    struct Shot
+    {
+        std::int32_t fraction = kFractionOne; ///< Q30
+        std::int16_t mover = -1;              ///< the brush entity that stopped it, if one did
+    };
+
+    namespace detail
+    {
+        /// Where a line from `start` to `end` stops `fraction` of the way:
+        /// the end of what is left of it for the movers to be looked for on.
+        inline void shotStop(const fx *start, const fx *end, std::int32_t fraction, fx *stop)
+        {
+            for (int i = 0; i < 3; ++i)
+                stop[i] = fraction >= kFractionOne
+                              ? end[i]
+                              : start[i] + static_cast<fx>((static_cast<std::int64_t>(end[i] - start[i]) * fraction) >>
+                                                           kFractionShift);
+        }
+    } // namespace detail
+
+    inline Shot traceShot(const MoveWorld &world, const fx *start, const fx *end)
+    {
+        Shot shot;
+        if (world.nodes != nullptr)
+        {
+            std::int32_t hit = kFractionOne;
+            if (!detail::lineThrough(world, world.headNode, 0, kFractionOne, start, end, hit, 0))
+                shot.fraction = hit;
+        }
+        else
+        {
+            // A world given no tree (some tests): its clip hull must do.
+            const Trace t = traceHull(world.crouched, start, end);
+            shot.fraction = t.startSolid ? 0 : t.fraction;
+        }
+        // (Only a brush the line reaches before the world stops it can stop
+        // it sooner: the others are passed over by their boxes.)
+        fx stop[3];
+        detail::shotStop(start, end, shot.fraction, stop);
+        const detail::SegmentReach reach = detail::segmentReach(true, start, stop);
+        for (int m = 0; m < world.moverCount; ++m)
+        {
+            if (!detail::moverMayTouch(world, m, reach))
+                continue;
+            const MoverHull &mover = world.movers[m];
+            if (!mover.solid || !detail::nearMover(mover, true, start, stop))
+                continue;
+            fx a[3], b[3];
+            detail::toMoverSpace(mover, start, a);
+            detail::toMoverSpace(mover, end, b);
+            const Trace t = traceHull(mover.crouched, a, b);
+            if (t.startSolid || t.allSolid || t.fraction >= shot.fraction)
+                continue;
+            shot.fraction = t.fraction;
+            shot.mover = static_cast<std::int16_t>(m);
+        }
+        return shot;
+    }
+
+    /// The same, and which way what stopped it faces: `normal` (Q12, towards
+    /// where the line came from) and `at`, the point on it. False if nothing
+    /// stopped it, or nothing that says which way it faces.
+    /// (A brush is met as its clip hull, a hand's breadth out from what is
+    /// drawn: `at` is brought back onto the face, for one that is square to
+    /// the axes -- as doors are.)
+    inline bool traceShotWall(const MoveWorld &world, const fx *start, const fx *end, fx *at, fx *normal)
+    {
+        std::int32_t fraction = kFractionOne;
+        int wall = -1;
+        bool found = false;
+        if (world.nodes != nullptr &&
+            !detail::lineThrough(world, world.headNode, 0, kFractionOne, start, end, fraction, 0, -1, &wall) &&
+            wall >= 0)
+        {
+            const Plane &plane = world.standing.planes[wall >> 1];
+            for (int i = 0; i < 3; ++i)
+                normal[i] = (wall & 1) ? -(plane.normal[i] >> 18) : (plane.normal[i] >> 18);
+            found = true;
+        }
+        fx back = 0;
+        fx stop[3];
+        detail::shotStop(start, end, fraction, stop); // (as traceShot)
+        const detail::SegmentReach reach = detail::segmentReach(true, start, stop);
+        for (int m = 0; m < world.moverCount; ++m)
+        {
+            if (!detail::moverMayTouch(world, m, reach))
+                continue;
+            const MoverHull &mover = world.movers[m];
+            if (!mover.solid || !detail::nearMover(mover, true, start, stop))
+                continue;
+            fx a[3], b[3];
+            detail::toMoverSpace(mover, start, a);
+            detail::toMoverSpace(mover, end, b);
+            const Trace t = traceHull(mover.crouched, a, b);
+            if (t.startSolid || t.allSolid || !t.hit || t.fraction >= fraction)
+                continue;
+            fraction = t.fraction;
+            back = 0;
+            for (int i = 0; i < 3; ++i)
+            {
+                normal[i] = t.normal[i] >> 18;
+                const fx n = normal[i] < 0 ? -normal[i] : normal[i];
+                back += (i == 2 ? 18 : 16) * n;
+            }
+            found = true;
+        }
+        if (!found || fraction >= kFractionOne)
+            return false;
+        for (int i = 0; i < 3; ++i)
+        {
+            at[i] = start[i] + static_cast<fx>((static_cast<std::int64_t>(end[i] - start[i]) * fraction) >>
+                                                kFractionShift);
+            at[i] -= static_cast<fx>((static_cast<std::int64_t>(normal[i]) * back) >> 12);
+        }
+        return true;
+    }
+
+    /// lineClear, with the brushes `seeThrough(brush)` says can be seen
+    /// through (glass, a grate) not in the way: whether something behind
+    /// them can be seen from `start`.
+    template <class SeeThrough>
+    inline bool sightClear(const MoveWorld &world, const fx *start, const fx *end, SeeThrough &&seeThrough);
+
+    inline bool lineClear(const MoveWorld &world, const fx *start, const fx *end)
+    {
+        return sightClear(world, start, end, [](int) { return false; });
+    }
+
+    template <class SeeThrough>
+    inline bool sightClear(const MoveWorld &world, const fx *start, const fx *end, SeeThrough &&seeThrough)
+    {
+        // (traceShot's answer, without its search for the nearest: the
+        // first thing in the way will do -- the world first, which is the
+        // cheapest and most often it.)
+        if (world.nodes != nullptr)
+        {
+            std::int32_t hit = kFractionOne;
+            if (!detail::lineThrough(world, world.headNode, 0, kFractionOne, start, end, hit, 0) && hit < kFractionOne)
+                return false;
+        }
+        else
+        {
+            const Trace t = traceHull(world.crouched, start, end);
+            if (t.startSolid || t.fraction < kFractionOne)
+                return false;
+        }
+        const detail::SegmentReach reach = detail::segmentReach(true, start, end);
+        for (int m = 0; m < world.moverCount; ++m)
+        {
+            if (!detail::moverMayTouch(world, m, reach))
+                continue;
+            const MoverHull &mover = world.movers[m];
+            if (!mover.solid || seeThrough(m) || !detail::nearMover(mover, true, start, end))
+                continue;
+            fx a[3], b[3];
+            detail::toMoverSpace(mover, start, a);
+            detail::toMoverSpace(mover, end, b);
+            const Trace t = traceHull(mover.crouched, a, b);
+            if (!t.startSolid && !t.allSolid && t.fraction < kFractionOne)
+                return false;
+        }
+        return true;
+    }
 } // namespace hldata
