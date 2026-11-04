@@ -231,8 +231,8 @@ jobs:
         id: qt5-cache
         with:
           path: ${{ runner.temp }}/qt5
-          # (r1: raised whenever the configure line below changes.)
-          key: qt5-${{ steps.qt5.outputs.version }}-mingw32-gcc${{ steps.qt5.outputs.gcc }}-r1
+          # (r2: raised whenever the configure line below changes.)
+          key: qt5-${{ steps.qt5.outputs.version }}-mingw32-gcc${{ steps.qt5.outputs.gcc }}-r2
 
       - name: Fetch Qt 5's source
         if: steps.qt5-cache.outputs.cache-hit != 'true'
@@ -260,7 +260,7 @@ jobs:
           cd qt5-build
           call ..\qtbase-src\configure.bat -prefix %QT5_DIR% -platform win32-g++ -release -shared ^
             -opensource -confirm-license -nomake examples -nomake tests ^
-            -no-opengl -no-dbus -no-icu -no-sql-sqlite -no-sql-odbc ^
+            -no-opengl -no-dbus -no-icu -no-zstd -no-sql-sqlite -no-sql-odbc ^
             -qt-zlib -qt-libpng -qt-libjpeg -qt-pcre -qt-freetype -qt-harfbuzz || exit /b 1
           mingw32-make -j%NUMBER_OF_PROCESSORS% || exit /b 1
           mingw32-make install || exit /b 1
