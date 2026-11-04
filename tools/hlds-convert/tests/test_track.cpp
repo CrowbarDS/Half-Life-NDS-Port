@@ -137,6 +137,50 @@ namespace
               "having kept to the track all the way");
     }
 
+    /// A car faster than a push of 8 units a tick -- 600 a second -- and a
+    /// player standing in its way in the open: it shoves them along as far
+    /// as it goes each tick (SV_PushMove), and is not held up by them.
+    void testFastCarPushes()
+    {
+        BoxRoom room;
+        room.mins[0] = -600, room.maxs[0] = 600;
+        room.maxs[2] = 200;
+        BrushBox car;
+        car.className = "func_tracktrain";
+        car.mins[0] = -20, car.mins[1] = -32, car.mins[2] = -4;
+        car.maxs[0] = 20, car.maxs[1] = 32, car.maxs[2] = 60;
+        car.keys = "\"targetname\" \"car\"\n\"origin\" \"0 0 0\"\n\"target\" \"a\"\n"
+                   "\"speed\" \"600\"\n\"height\" \"8\"\n\"wheels\" \"30\"\n\"spawnflags\" \"2\"\n";
+        room.brushes.push_back(car);
+        room.extraEntities =
+            "{\n\"classname\" \"path_track\"\n\"targetname\" \"a\"\n\"target\" \"b\"\n"
+            "\"origin\" \"-400 0 16\"\n}\n"
+            "{\n\"classname\" \"path_track\"\n\"targetname\" \"b\"\n"
+            "\"origin\" \"300 0 16\"\n}\n";
+        Game g;
+        std::string error;
+        g.ok = g.bsp.parse(buildBoxRoom(room), error);
+        if (g.ok)
+            finish(g, nullptr);
+        check(g.ok, "fast car room cooks");
+        if (!g.ok)
+            return;
+        const int train = g.recordOfKind(LogicKind::TrackTrain);
+        if (train < 0)
+            return;
+        const LogicRecord &rec = g.view.logic[train];
+        const BrushState &body = g.brushStates[rec.brush];
+        g.player.origin[0] = 0, g.player.origin[1] = 0, g.player.origin[2] = fxFromInt(37);
+        g.frame();
+        logicFire(g.logic, g.player, rec.name, -1, kUseToggle, 0);
+        for (int i = 0; i < 60; ++i)
+            g.frame();
+        std::printf("test_track: fast car: at x %.1f, the player at x %.1f, health %d\n", toUnits(body.pos[0]),
+                    toUnits(g.player.origin[0]), g.player.health);
+        check(std::fabs(toUnits(body.pos[0]) - 300) < 0.5, "a car at 600 a second is not held up by the player");
+        check(toUnits(g.player.origin[0]) > 300 + 20 + 16 - 1, "it pushes them along in front of it");
+    }
+
     /// CFuncTrackTrain::Blocked: a car that pins the player against a wall
     /// shoves them off at its "dmg" and hurts them by as much -- and does
     /// not go through them. (One it can push along, it pushes.)
@@ -1019,6 +1063,7 @@ namespace
 int main()
 {
     testSyntheticTrack();
+    testFastCarPushes();
     testTrainShoves();
     testDriving();
     testTheRide();

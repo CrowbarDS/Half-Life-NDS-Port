@@ -2652,6 +2652,7 @@ namespace hldata
                 rider = playerAboard(w, player, index);
             const auto turn = static_cast<std::int16_t>(yaw - state.angles[kYaw]);
             const fx stood[3] = {player.origin[0], player.origin[1], player.origin[2]};
+            const fx moved[3] = {pos[0] - state.pos[0], pos[1] - state.pos[1], pos[2] - state.pos[2]};
             // (Only what the move itself puts them into: one already a hair
             // into a wall where they stand is not held up by it.)
             // (Not a car one rides inside, turned with it round its own
@@ -2697,7 +2698,17 @@ namespace hldata
             }
             if (w.movers[index].solid && playerInsideBrush(w, player, index))
             {
-                pushOutOfBrush(w, player, index);
+                // In its way: shoved as far as it went (SV_PushMove), however
+                // fast that is -- and failing that (what it turned into
+                // them), nudged out.
+                const fx there[3] = {player.origin[0], player.origin[1], player.origin[2]};
+                pushPlayer(w, player, index, moved);
+                if (playerInsideBrush(w, player, index))
+                {
+                    for (int a = 0; a < 3; ++a)
+                        player.origin[a] = there[a];
+                    pushOutOfBrush(w, player, index);
+                }
                 // Nowhere to put them: it is blocked by them.
                 return playerInsideBrush(w, player, index);
             }
