@@ -508,8 +508,8 @@ namespace
             g.tick(33);
             const LogicState &s = g.states[train];
             off = off || s.move == MoveState::GoingUp;
-            waited = s.move == MoveState::AtBottom && s.bits == p3;
-            throughP2 = throughP2 || (s.bits == p2 && s.move == MoveState::AtBottom);
+            waited = s.move == MoveState::AtBottom && static_cast<std::uint16_t>(s.bits) == p3;
+            throughP2 = throughP2 || (static_cast<std::uint16_t>(s.bits) == p2 && s.move == MoveState::AtBottom);
             if (off && !waited)
                 always = always && trainOn();
         }
@@ -544,6 +544,109 @@ namespace
         platState.move = MoveState::GoingUp;
         platState.dead = true;
         check(!moverSounding(plat, platState), "and nothing that is gone is");
+    }
+
+    /// A train is heard setting off whenever it sets off from rest -- as
+    /// the map begins, from a corner it waited at, used again after being
+    /// stopped on its way, told to go, come from the map before -- and not
+    /// again at a corner it goes straight through: its sound goes on there.
+    void testTrainSetsOffHeard()
+    {
+        BoxRoom room;
+        room.brushes = {
+            // 1: no name: it sets off by itself. Through p2, half a second
+            //    at p3, held at p4.
+            brush("func_train", "\"target\" \"p1\"\n\"speed\" \"100\"\n", -80, -80, 0, -40, -40, 8),
+            // 2: named: it waits to be told.
+            brush("func_train", "\"targetname\" \"t2\"\n\"target\" \"q1\"\n\"speed\" \"100\"\n", -80, 40, 0, -40, 80,
+                  8),
+        };
+        room.extraEntities =
+            "{\n\"classname\" \"path_corner\"\n\"targetname\" \"p1\"\n\"target\" \"p2\"\n\"origin\" \"-60 -60 4\"\n}\n"
+            "{\n\"classname\" \"path_corner\"\n\"targetname\" \"p2\"\n\"target\" \"p3\"\n\"origin\" \"-20 -60 4\"\n}\n"
+            "{\n\"classname\" \"path_corner\"\n\"targetname\" \"p3\"\n\"target\" \"p4\"\n\"origin\" \"20 -60 4\"\n"
+            "\"wait\" \"0.5\"\n}\n"
+            "{\n\"classname\" \"path_corner\"\n\"targetname\" \"p4\"\n\"target\" \"p1\"\n\"origin\" \"60 -60 4\"\n"
+            "\"spawnflags\" \"1\"\n}\n"
+            "{\n\"classname\" \"path_corner\"\n\"targetname\" \"q1\"\n\"target\" \"q2\"\n\"origin\" \"-60 60 4\"\n}\n"
+            "{\n\"classname\" \"path_corner\"\n\"targetname\" \"q2\"\n\"origin\" \"60 60 4\"\n}\n";
+        Game g;
+        build(g, room);
+        check(g.ok, "set-off room");
+        if (!g.ok)
+            return;
+        g.player.origin[0] = fxFromInt(-100);
+        g.player.origin[1] = fxFromInt(0);
+        const int train = g.recordOfModel(1);
+        const int named = g.recordOfModel(2);
+        std::vector<LogicSound> sounds(g.view.logicCount);
+        for (LogicSound &s : sounds)
+            s = LogicSound{kNoSound, kNoSound, kNoSound, kNoSound, kNoSound, kNoSound};
+        sounds[train].move = sounds[named].move = 1;
+        sounds[train].stop = sounds[named].stop = 2;
+        SoundQueue heard;
+        g.logic.heard = &heard;
+        g.logic.sounds = sounds.data();
+        // How many times `who`'s move sound was started since the queue was
+        // last emptied.
+        auto starts = [&](int who)
+        {
+            int n = 0;
+            for (int i = 0; i < heard.count; ++i)
+                n += (heard.events[i].flags & kSoundLoopOn) && heard.events[i].tag == who;
+            return n;
+        };
+        // Ticks until `done`, counting `who`'s starts on the way.
+        auto run = [&](int who, int limit, const std::function<bool()> &done)
+        {
+            int n = 0;
+            for (int i = 0; i < limit && !done(); ++i)
+            {
+                heard.count = 0;
+                g.tick(33);
+                n += starts(who);
+            }
+            return n;
+        };
+        const LogicState &s = g.states[train];
+        const std::uint16_t p1 = g.view.logic[train].firstAux;
+        const std::uint16_t p2 = g.view.corners[p1].next;
+        const std::uint16_t p3 = g.view.corners[p2].next;
+        auto corner = [&] { return static_cast<std::uint16_t>(s.bits); };
+
+        check(run(train, 10, [&] { return s.move == MoveState::GoingUp; }) == 1,
+              "a train with no name is heard setting off as the map begins");
+        check(run(train, 30, [&] { return corner() == p2 && s.move == MoveState::GoingUp; }) == 0,
+              "... and not again at the corner it goes straight through");
+        // On its way from p2, which has no wait: stopped, then used again.
+        g.tick(33, 2);
+        g.use(train);
+        check(!s.running, "used on its way, it stops");
+        heard.count = 0;
+        g.use(train);
+        check(s.running && starts(train) == 1, "used again, it is heard setting off");
+        check(run(train, 30, [&] { return s.move == MoveState::AtBottom && corner() == p3; }) == 0,
+              "and goes on to the next corner without being heard setting off twice");
+        check(run(train, 30, [&] { return s.move == MoveState::GoingUp; }) == 1,
+              "it is heard leaving the corner it waited at");
+        run(train, 30, [&] { return !s.running; });
+        heard.count = 0;
+        g.use(train);
+        check(s.running && starts(train) == 1, "held at a corner until used, used, it is heard");
+
+        // Told to go.
+        heard.count = 0;
+        logicFire(g.logic, g.player, g.view.logic[named].name, -1, kUseToggle, 0);
+        check(g.states[named].running && starts(named) == 1, "a train with a name is heard when told to go");
+        // Come from the map before, on its way to a corner: set off again
+        // there, it is heard too.
+        g.use(named);
+        LogicState &n = g.states[named];
+        n.bits = static_cast<std::uint32_t>(g.view.corners[g.view.logic[named].firstAux].next) | hldata::detail::kTrainHeading;
+        heard.count = 0;
+        g.use(named);
+        check(n.running && n.move == MoveState::GoingUp && starts(named) == 1,
+              "one come from another map, heading for a corner, is heard setting off");
     }
 
     /// Doors and the player: touch, names, being in the way, being carried.
@@ -2384,6 +2487,7 @@ int main()
     testButtonManagerDoor();
     testMoverLoopFullQueue();
     testMoverSounding();
+    testTrainSetsOffHeard();
     testDoorsAndThePlayer();
     testTriggersAndWiring();
     testTrains();

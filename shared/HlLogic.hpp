@@ -1332,6 +1332,10 @@ namespace hldata
         /// this bit, the corner it is HEADING to (a train that came from the
         /// map before, on its way to a corner no corner of this map leads to).
         inline constexpr std::uint32_t kTrainHeading = 0x10000;
+        /// ... and with this one, it is going straight through the corner it
+        /// is at (a wait of 0): its sound goes on, and is not started again.
+        /// Anything else it sets off from is a stop, and it is heard setting off.
+        inline constexpr std::uint32_t kTrainPassing = 0x20000;
 
         /// Where a train's brush has to be for its middle to be on a corner.
         inline void trainPosAt(const LogicWorld &w, int index, std::uint16_t corner, fx *out)
@@ -1353,6 +1357,8 @@ namespace hldata
         {
             const LogicRecord &record = w.records[index];
             LogicState &state = w.states[index];
+            const bool passing = (state.bits & kTrainPassing) != 0;
+            state.bits &= ~kTrainPassing;
             const auto at = static_cast<std::uint16_t>(state.bits);
             if (record.brush == kNoBrush || at == kNoCorner)
                 return;
@@ -1371,6 +1377,8 @@ namespace hldata
                 state.move = MoveState::GoingUp;
                 state.timer = -1;
                 state.running = true;
+                if (!passing)
+                    recordSound(w, index, false);
                 return;
             }
             const PathCorner &here = w.corners[at];
@@ -1389,6 +1397,9 @@ namespace hldata
             {
                 moveBrush(w, player, record.brush, target);
                 trainArrived(w, player, index, here.next);
+                // (Put there from a stop: what comes after is setting off.)
+                if (!passing)
+                    state.bits &= ~kTrainPassing;
                 return;
             }
             for (int a = 0; a < 3; ++a)
@@ -1399,9 +1410,10 @@ namespace hldata
             state.phase = 0;
             state.move = MoveState::GoingUp;
             state.timer = -1;
-            // (Heard setting off from where it had stopped: not at every
-            // corner of a route it goes straight through.)
-            if (here.waitMs > 0 || (here.flags & kCornerWaitForUse) || !state.running)
+            // (Heard setting off from where it had stopped -- at a corner, or
+            // on its way, or as the map begins: not at every corner of a
+            // route it goes straight through.)
+            if (!passing)
                 recordSound(w, index, false);
             state.running = true;
         }
@@ -1425,6 +1437,8 @@ namespace hldata
             // Its wait, then on. A wait of 0 is "next tick", which keeps a
             // route of corners with no waits from being walked in one go.
             state.timer = here.waitMs > 0 ? here.waitMs : 0;
+            if (here.waitMs <= 0 && here.next != kNoCorner)
+                state.bits |= kTrainPassing;
         }
 
         inline void trainTick(LogicWorld &w, PlayerState &player, int index, int ms)
@@ -1722,6 +1736,7 @@ namespace hldata
                 state.running = false;
                 state.move = MoveState::AtBottom;
                 state.timer = -1;
+                state.bits &= ~kTrainPassing;
             }
         }
 
@@ -1739,6 +1754,7 @@ namespace hldata
             state.running = false;
             state.move = MoveState::AtBottom;
             state.timer = -1;
+            state.bits &= ~detail::kTrainPassing;
             logicFire(w, player, record.netName, index, kUseToggle, 0);
         }
 
@@ -4148,6 +4164,7 @@ namespace hldata
                 state.running = false;
                 state.move = MoveState::AtBottom;
                 state.timer = -1;
+                state.bits &= ~detail::kTrainPassing;
             }
             break;
 
