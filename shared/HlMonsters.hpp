@@ -3950,7 +3950,8 @@ namespace hldata
         }
 
         /// TankTrace's spread: the game's cones (none, then 0.025, 0.05,
-        /// 0.1 and 0.25), two throws added either way.
+        /// 0.1 and 0.25), two throws added either way. A throw is -1024 to
+        /// 1024 for -0.5 to 0.5, so the two together reach the cone itself.
         inline void tankAim(ActorWorld &a, const LogicRecord &record, const LogicState &state, fx *dir)
         {
             static constexpr fx kCones[5] = {0, 102, 205, 410, 1024};
@@ -3961,7 +3962,7 @@ namespace hldata
             const int y = static_cast<int>(chance(a) % 2049) - 1024 + static_cast<int>(chance(a) % 2049) - 1024;
             for (int k = 0; k < 3; ++k)
                 dir[k] = forward[k] + static_cast<fx>((static_cast<std::int64_t>(right[k]) * x * cone +
-                                                       static_cast<std::int64_t>(up[k]) * y * cone) >> 22);
+                                                       static_cast<std::int64_t>(up[k]) * y * cone) >> 23);
             const fx length = fxLength(dir);
             for (int k = 0; length > 0 && k < 3; ++k)
                 dir[k] = static_cast<fx>((static_cast<std::int64_t>(dir[k]) << kFxShift) / length);

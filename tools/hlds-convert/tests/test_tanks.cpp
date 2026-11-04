@@ -338,15 +338,39 @@ namespace
         const fx off = g.states[field].base[0] - want;
         check(off < fxFromInt(2) && off > -fxFromInt(2), "... and the mortars fall where it has them");
     }
+
+    /// TankTrace's spread, which needs no map: two throws of -0.5 to 0.5
+    /// added, so a shot leaves the barrel at most its cone off to a side.
+    void testSpread()
+    {
+        ActorWorld a;
+        LogicRecord record{};
+        record.extra[2] = 4u << 26; // the widest cone, 0.25
+        LogicState state{};         // facing east, level
+        double widest = 0;
+        for (int n = 0; n < 4000; ++n)
+        {
+            fx dir[3];
+            hldata::detail::tankAim(a, record, state, dir);
+            for (int k = 1; k < 3; ++k)
+            {
+                const double off = std::fabs(static_cast<double>(dir[k]) / dir[0]);
+                widest = off > widest ? off : widest;
+            }
+        }
+        check(widest <= 0.2505, "a tank's shots stay inside its cone");
+        check(widest > 0.2, "and reach out near its edge");
+    }
 } // namespace
 
 int main()
 {
+    testSpread();
     const char *valve = std::getenv("HLDS_VALVE_DIR");
     if (valve == nullptr || *valve == '\0')
     {
         std::printf("test_tanks: HLDS_VALVE_DIR not set, the game's maps were not read\n");
-        return 77;
+        return g_failures == 0 ? 77 : 1;
     }
     testGuardGun(valve);
     testBigGun(valve);
