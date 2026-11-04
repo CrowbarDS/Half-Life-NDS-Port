@@ -1521,6 +1521,72 @@ namespace
         check(toUnits(g.player.origin[0]) > 70, "forward swims the way the view points");
     }
 
+    // Crouched, the player climbs and swims a third as fast, as they walk
+    // (the game cuts the keys before the ladder or the water is looked at).
+    void testCrouchedClimbAndSwim()
+    {
+        BoxRoom room;
+        room.maxs[2] = 200;
+        room.brushes = {brush("func_ladder", "", 104, -16, 0, 112, 16, 200)};
+        BrushBox pool;
+        pool.className = "func_water";
+        pool.mins[0] = -128, pool.mins[1] = -128, pool.mins[2] = 0;
+        pool.maxs[0] = 0, pool.maxs[1] = 128, pool.maxs[2] = 80;
+        pool.keys = "\"skin\" \"-3\"\n\"targetname\" \"pool\"\n\"wait\" \"-1\"\n";
+        room.brushes.push_back(pool);
+        Game g;
+        build(g, room);
+        check(g.ok, "ladder and pool room");
+        if (!g.ok)
+            return;
+        g.move.nodes = g.view.nodes;
+        g.move.leaves = g.view.leaves;
+        g.move.headNode = g.view.models[0].headNode;
+
+        // Up the ladder for a fifth of a second, standing and then crouched.
+        auto climb = [&](bool ducked)
+        {
+            g.player.ducked = ducked;
+            g.player.ducking = false;
+            g.player.origin[0] = fxFromInt(95), g.player.origin[1] = 0;
+            g.player.origin[2] = fxFromInt(100);
+            g.player.velocity[0] = g.player.velocity[1] = g.player.velocity[2] = 0;
+            MoveCommand cmd;
+            cmd.duck = ducked;
+            cmd.forward = 1;
+            g.frame(cmd, 1);
+            const double from = toUnits(g.player.origin[2]);
+            g.frame(cmd, 6);
+            return g.player.onLadder ? toUnits(g.player.origin[2]) - from : -1.0;
+        };
+        const double standing = climb(false);
+        const double crouched = climb(true);
+        std::printf("  climbed in 0.2 s: %.1f standing, %.1f crouched\n", standing, crouched);
+        check(standing > 35 && standing < 41, "standing, a ladder is climbed at 200 units a second");
+        check(crouched > 11.5 && crouched < 15, "crouched, at a third of that");
+
+        // Swimming forwards a second, standing and then crouched: the speed
+        // it settles at (0.8 of what the keys ask, 320 at most).
+        auto swim = [&](bool ducked)
+        {
+            g.player.ducked = ducked;
+            g.player.ducking = false;
+            g.player.origin[0] = fxFromInt(-110), g.player.origin[1] = 0;
+            g.player.origin[2] = fxFromInt(30);
+            g.player.velocity[0] = g.player.velocity[1] = g.player.velocity[2] = 0;
+            MoveCommand cmd;
+            cmd.duck = ducked;
+            cmd.forward = 1;
+            g.frame(cmd, 12);
+            return toUnits(g.player.velocity[0]);
+        };
+        const double swum = swim(false);
+        const double swumCrouched = swim(true);
+        std::printf("  swimming: %.1f standing, %.1f crouched\n", swum, swumCrouched);
+        check(swum > 200, "standing, the player swims at up to 256 units a second");
+        check(swumCrouched > 80 && swumCrouched < 110, "crouched, at no more than 107");
+    }
+
     void testDrowning()
     {
         BoxRoom room;
@@ -2162,6 +2228,7 @@ int main()
     testBreakingAndPushing();
     testFrameClock();
     testWater();
+    testCrouchedClimbAndSwim();
     testDrowning();
     testWaterJump();
     testWaterStep();

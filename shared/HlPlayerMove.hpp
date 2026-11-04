@@ -16,7 +16,9 @@
 // Being carried and pushed by moving brushes is the entity logic's doing
 // (HlLogic.hpp).
 //
-// WHAT IS NOT HERE YET: water, fall damage.
+// Water is here too: swimming, drowning, climbing out onto a ledge. A
+// landing leaves how fast it was (PlayerState::landed) for the caller to
+// hurt the player by (source/game/Player.arm.cpp).
 //
 // std-only and inline, like HlHullTrace.hpp, so the host tests drive the very
 // code the console runs. Sine and cosine are not available here (the DS's
@@ -804,7 +806,10 @@ namespace hldata
             /// no gravity, and left alone they sink slowly.
             void waterMove(const MoveCommand &cmd)
             {
-                const fx asked = cmd.walk ? kWalkWishSpeed : kWishSpeed;
+                // (Crouched, a third of it, as on land.)
+                fx asked = cmd.walk ? kWalkWishSpeed : kWishSpeed;
+                if (s.ducked)
+                    asked = fxMul(asked, kDuckSpeedScale);
                 fx wishVel[3];
                 for (int i = 0; i < 3; ++i)
                     wishVel[i] = fxMul(cmd.viewForward[i], asked * cmd.forward) +
@@ -1319,11 +1324,14 @@ namespace hldata
                     s.velocity[0] = s.velocity[1] = s.velocity[2] = 0;
                     return true;
                 }
+                // (Crouched, a third as fast; stepping off at the foot, below,
+                // is not.)
+                const fx climb = s.ducked ? fxMul(kClimbSpeed, kDuckSpeedScale) : kClimbSpeed;
                 fx wish[3];
                 for (int a = 0; a < 3; ++a)
                 {
-                    wish[a] = fxMul(cmd.viewForward[a], kClimbSpeed * cmd.forward) +
-                              fxMul(cmd.viewRight[a], kClimbSpeed * cmd.side);
+                    wish[a] = fxMul(cmd.viewForward[a], climb * cmd.forward) +
+                              fxMul(cmd.viewRight[a], climb * cmd.side);
                 }
                 // Split into the part along the ladder's normal and the rest.
                 // The normal is horizontal, so "up the ladder" is straight up.
