@@ -29,6 +29,7 @@
 #include <cstdint>
 #include <cstdio>
 
+#include "HlFrameClock.hpp"
 #include "HlMixer.hpp"
 #include "HlUi.hpp"
 
@@ -247,6 +248,9 @@ namespace hlrt
         hldata::Mixer mixer_;
         Voice voices_[hldata::Mixer::kVoices];
         std::uint32_t lastVblank_ = 0;
+        /// The time between frames, exact over any run of them (a vblank is
+        /// 16 2/3 ms: rounded each frame on its own, sound ran 2% fast).
+        hldata::FrameClock clock_;
         int loopsDue_ = 0;
 
         /// Voices on their way out: their tokens, and how loud they still

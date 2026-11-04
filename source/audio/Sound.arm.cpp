@@ -1520,7 +1520,7 @@ namespace hlrt
     void Sound::frame()
     {
         const std::uint32_t now = Global::vblanks();
-        const int ms = static_cast<int>(((now - lastVblank_) * 1000 + 30) / 60);
+        const int ms = clock_.ms(static_cast<std::int32_t>(now - lastVblank_));
         lastVblank_ = now;
         arm7Audio.frame();
         warningTick(ms);
