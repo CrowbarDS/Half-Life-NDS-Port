@@ -1088,6 +1088,7 @@ namespace hldata
                                actor.kind == static_cast<std::uint8_t>(ActorKind::Furniture);
             if (actor.active && !stays)
             {
+                aiSquadLeave(a, i);
                 actor.active = false;
                 actorPlaceBox(a, i);
             }

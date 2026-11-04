@@ -1007,36 +1007,6 @@ namespace hldata
         }
     }
 
-    /// SquadRemove (asked of the leader)
-    inline void aiSquadRemove(ActorWorld &a, int leaderIndex, int removeIndex)
-    {
-        AiMonster *leader = aiFind(a, leaderIndex);
-        AiMonster *gone = aiFind(a, removeIndex);
-        if (leader == nullptr || gone == nullptr)
-            return;
-        if (removeIndex == leaderIndex)
-        {
-            for (std::int16_t &member : leader->squadMember)
-            {
-                if (AiMonster *m = aiFind(a, member))
-                    m->squadLeader = kAiNone;
-                member = kAiNone;
-            }
-        }
-        else
-        {
-            for (std::int16_t &member : leader->squadMember)
-            {
-                if (member == removeIndex)
-                {
-                    member = kAiNone;
-                    break;
-                }
-            }
-        }
-        gone->squadLeader = kAiNone;
-    }
-
     /// SquadAdd
     inline bool aiSquadAdd(ActorWorld &a, int leaderIndex, int addIndex)
     {
@@ -2642,11 +2612,7 @@ namespace hldata
             return;
         // A squad has lost one.
         if (c.kind.squadMonster)
-        {
-            aiVacateSlot(c);
-            if (aiInSquad(c))
-                aiSquadRemove(c.a, c.m.squadLeader, c.index);
-        }
+            aiSquadLeave(c.a, c.index);
         // A script that had it has lost it.
         if (c.me.script >= 0 && c.me.script < c.w.recordCount)
         {

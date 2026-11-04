@@ -732,6 +732,8 @@ namespace hldata
             w.achievements->push(AchEventType::Fired, w.nameHashes[name]);
     }
 
+    inline void aiSquadLeave(ActorWorld &a, int index); // (HlAi.hpp)
+
     /// Remove every entity called `name`: it stops working, and if it is a
     /// brush it is gone from the map.
     inline void logicKill(LogicWorld &w, std::uint16_t name)
@@ -747,6 +749,7 @@ namespace hldata
                 continue;
             if (actor.script >= 0 && actor.script < w.recordCount)
                 w.states[actor.script].dead = true;
+            aiSquadLeave(*w.actors, i);
             actor.active = false;
             actorPlaceBox(*w.actors, i);
         }

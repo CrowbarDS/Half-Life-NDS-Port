@@ -82,6 +82,54 @@ namespace
         check(playerSound(s).volume == 0, "... to nothing");
     }
 
+    /// A squad of three grunts: one taken away by a killtarget, one whose
+    /// place is given to another. Each leaves the squad and frees its slot.
+    void testSquadLeave()
+    {
+        ActorState states[4];
+        for (int i = 0; i < 4; ++i)
+        {
+            states[i].active = true;
+            states[i].kind = static_cast<std::uint8_t>(ActorKind::Grunt);
+            states[i].name = static_cast<std::uint16_t>(10 + i);
+        }
+        ActorWorld a;
+        a.states = states;
+        a.count = 4;
+        AiWorld ai;
+        AiMonster minds[4];
+        std::int16_t slotOf[4];
+        std::uint8_t held[4];
+        aiAttach(a, ai, minds, 4, slotOf, held, 4);
+        for (int i = 0; i < 4; ++i)
+            check(aiOf(a, i) != nullptr, "a grunt has a mind");
+        AiMonster &leader = *aiFind(a, 0);
+        leader.squadLeader = 0;
+        check(aiSquadAdd(a, 0, 1) && aiSquadAdd(a, 0, 2) && aiSquadAdd(a, 0, 3), "a squad of four");
+        const std::uint16_t slotA = 1u << 0, slotB = 1u << 1;
+        aiFind(a, 1)->mySlot = slotA;
+        aiFind(a, 2)->mySlot = slotB;
+        leader.squadSlots = slotA | slotB;
+        auto member = [&](int who)
+        {
+            for (std::int16_t m : leader.squadMember)
+                if (m == who)
+                    return true;
+            return false;
+        };
+
+        LogicWorld w;
+        w.actors = &a;
+        logicKill(w, 11);
+        check(!states[1].active, "killtarget takes the grunt away");
+        check(!(leader.squadSlots & slotA), "... and the slot it held is free again");
+        check(!member(1) && aiFind(a, 1)->squadLeader == kAiNone, "... and it is out of the squad");
+
+        aiForget(a, 2);
+        check(!(leader.squadSlots & slotB) && !member(2), "a monster forgotten has left its squad and slot too");
+        check(member(3) && aiFind(a, 3)->squadLeader == 0, "the one left is still in the squad");
+    }
+
     std::unique_ptr<Game> load(const char *dir, const char *map)
     {
         auto game = std::make_unique<Game>();
@@ -863,6 +911,7 @@ int main()
 {
     testTable();
     testSounds();
+    testSquadLeave();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir != nullptr && dir[0] != '\0')
     {

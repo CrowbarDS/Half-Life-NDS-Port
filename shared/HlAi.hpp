@@ -717,11 +717,60 @@ namespace hldata
         return &a.ai->monsters[a.ai->slotOf[index]];
     }
 
+    /// SquadRemove (asked of the leader)
+    inline void aiSquadRemove(ActorWorld &a, int leaderIndex, int removeIndex)
+    {
+        AiMonster *leader = aiFind(a, leaderIndex);
+        AiMonster *gone = aiFind(a, removeIndex);
+        if (leader == nullptr || gone == nullptr)
+            return;
+        if (removeIndex == leaderIndex)
+        {
+            for (std::int16_t &member : leader->squadMember)
+            {
+                if (AiMonster *m = aiFind(a, member))
+                    m->squadLeader = kAiNone;
+                member = kAiNone;
+            }
+        }
+        else
+        {
+            for (std::int16_t &member : leader->squadMember)
+            {
+                if (member == removeIndex)
+                {
+                    member = kAiNone;
+                    break;
+                }
+            }
+        }
+        gone->squadLeader = kAiNone;
+    }
+
+    /// Out of its slot and out of its squad (VacateSlot and SquadRemove),
+    /// if it is in one: whatever takes a monster away -- a death, a
+    /// killtarget, a level change, its place given to another -- does this,
+    /// or the squad keeps a slot taken and a member who is not there.
+    inline void aiSquadLeave(ActorWorld &a, int index)
+    {
+        AiMonster *m = aiFind(a, index);
+        if (m == nullptr || m->squadLeader == kAiNone)
+            return;
+        if (m->mySlot != kSlotNone)
+        {
+            AiMonster *leader = aiFind(a, m->squadLeader);
+            (leader != nullptr ? leader : m)->squadSlots &= static_cast<std::uint16_t>(~m->mySlot);
+            m->mySlot = kSlotNone;
+        }
+        aiSquadRemove(a, m->squadLeader, index);
+    }
+
     /// Its monster forgotten (a monstermaker makes a new one in its place).
     inline void aiForget(ActorWorld &a, int index)
     {
         if (a.ai == nullptr || index < 0 || index >= a.ai->actorCount || a.ai->slotOf[index] < 0)
             return;
+        aiSquadLeave(a, index);
         a.ai->monsters[a.ai->slotOf[index]] = AiMonster();
         a.ai->slotOf[index] = -1;
         --a.ai->used;
