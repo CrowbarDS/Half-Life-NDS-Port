@@ -227,7 +227,9 @@ jobs:
           echo "gcc=$(gcc -dumpfullversion)" >> "$GITHUB_OUTPUT"
           echo "QT5_DIR=$(cygpath -m "$RUNNER_TEMP")/qt5" >> "$GITHUB_ENV"
 
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # (Restored here, saved as soon as it is built: a cache saved only at
+      # the end of the job would be lost to any later step that fails.)
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: qt5-cache
         with:
           path: ${{ runner.temp }}/qt5
@@ -264,6 +266,12 @@ jobs:
             -qt-zlib -qt-libpng -qt-libjpeg -qt-pcre -qt-freetype -qt-harfbuzz || exit /b 1
           mingw32-make -j%NUMBER_OF_PROCESSORS% || exit /b 1
           mingw32-make install || exit /b 1
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: steps.qt5-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ runner.temp }}/qt5
+          key: ${{ steps.qt5-cache.outputs.cache-primary-key }}
 
       - name: Build ptexconv
         run: |
@@ -304,12 +312,23 @@ jobs:
           cp "$qt"/bin/Qt5Core.dll "$qt"/bin/Qt5Gui.dll "$qt"/bin/Qt5Widgets.dll "$out/"
           cp "$qt/plugins/platforms/qwindows.dll" "$out/platforms/"
           cp "$qt/plugins/styles/qwindowsvistastyle.dll" "$out/styles/"
-          # What the compiler's runtime is, from the MSYS2 system it came from.
-          ldd "$out/hlds-convert-gui.exe" "$out"/Qt5*.dll | awk '{print $3}' | grep -iE "^/mingw32/" | sort -u | xargs -I{} cp -n {} "$out/"
-          if ldd "$out/hlds-convert-gui.exe" | grep -qi "not found"; then ldd "$out/hlds-convert-gui.exe"; exit 1; fi
+          # What they stand on from the MSYS2 system they were built in (the
+          # compiler's runtime), read from what each one imports, until
+          # nothing new is found. (ldd says nothing of a 32-bit program.)
+          while :; do
+            added=0
+            for dll in $(objdump -p "$out"/*.exe "$out"/*.dll "$out"/*/*.dll | sed -n 's/^\s*DLL Name: //p' | tr -d '\r' | sort -u); do
+              if [ ! -e "$out/$dll" ] && [ -e "/mingw32/bin/$dll" ]; then
+                cp "/mingw32/bin/$dll" "$out/"
+                added=1
+              fi
+            done
+            [ "$added" = 1 ] || break
+          done
+          ls "$out"
           # The licences of the system's libraries it took along.
           for dll in "$out"/*.dll; do
-            pacman -Qqo "/mingw32/bin/$(basename "$dll")" 2>/dev/null
+            pacman -Qqo "/mingw32/bin/$(basename "$dll")" 2>/dev/null || true
           done | sort -u | while read -r pkg; do
             printf '\n--- %s, bundled in this package: %s\n' "$pkg" "$(pacman -Qi "$pkg" | sed -n 's/^Licenses *: //p')" >> "$out/THIRD_PARTY_LICENSES"
             find "/mingw32/share/licenses/$pkg" -type f -exec cat {} + >> "$out/THIRD_PARTY_LICENSES" 2>/dev/null || true
