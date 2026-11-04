@@ -658,6 +658,42 @@ namespace
         check(g.player.health <= 0, "the player, taken up, dies at its mouth");
     }
 
+    /// A move to within range of its target that ended short of it -- held
+    /// up by what it was going for, as good as there, a little outside the
+    /// range -- is over: a scientist about to heal goes on to heal, and is
+    /// not left standing for good (its heal hears nothing that would stop it).
+    void testMoveEndsShort(const char *dir)
+    {
+        auto game = load(dir, "c1a2a");
+        if (!game)
+            return;
+        Game &g = *game;
+        const int sci = findKind(g, ActorKind::Scientist);
+        check(sci >= 0, "c1a2a has a scientist");
+        if (sci < 0)
+            return;
+        alone(g, {sci});
+        for (int i = 0; i < 10; ++i)
+            tickStill(g);
+        check(standAt(g, sci, 53), "room for the player 53 units from the scientist");
+        AiMonster &m = mind(g, sci);
+        m.schedule = &scientist::slHeal;
+        m.scheduleIndex = 0;
+        m.taskStatus = kTaskStatusRunningTask;
+        m.targetEnt = kAiPlayer;
+        m.movementGoal = kMoveGoalNone; // (as the held-up move left it)
+        for (int k = 0; k < 3; ++k)
+            m.moveGoal[k] = g.player.origin[k];
+        m.moveGoal[2] -= kStandingFeet;
+        for (int t = 0; t < 90; ++t)
+        {
+            tickStill(g);
+            trace(g, sci, t * 33);
+        }
+        check(m.schedule != &scientist::slHeal || m.scheduleIndex > 0,
+              "a move that ended within reach of its target, if not its range, is over");
+    }
+
     int actorNamed(const Game &g, const char *name)
     {
         const std::uint16_t id = nameIdOfHash(g.view.nameHashes, g.view.nameCount, nameHash(name));
@@ -838,6 +874,7 @@ int main()
         testSquidAndCrab(dir);
         testHoundeyes(dir);
         testBarnacle(dir);
+        testMoveEndsShort(dir);
         testC1a1fScripts(dir);
         testC1a1cMakers(dir);
     }

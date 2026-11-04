@@ -533,6 +533,13 @@ namespace hldata
         c.m.movementGoal = kMoveGoalNone;
     }
 
+    /// Close enough to `t` to count as there: what is held up by it this
+    /// near has arrived.
+    inline bool aiTargetInReach(const AiCtx &c, const AiTarget &t)
+    {
+        return aiDist2D(t.origin, c.me.pos) < monsterKind(c.me.kind).half + t.half + fxFromInt(24);
+    }
+
     /// Stop: no more walking; the clip of standing.
     inline void aiStop(AiCtx &c)
     {
@@ -2305,6 +2312,20 @@ namespace hldata
                 if (distance >= range && c.m.movementGoal != kMoveGoalNone)
                     aiBuildRoute(c, kMoveGoalTarget, feet);
             }
+            // Its move over, short of the range: held up by the target
+            // itself, as good as there, which will do; otherwise after it
+            // again, or failed if there is no way. (Never left waiting on a
+            // move that is not coming.)
+            if (distance >= range && c.m.movementGoal == kMoveGoalNone)
+            {
+                if (aiTargetInReach(c, t))
+                    distance = 0;
+                else if (!aiBuildRoute(c, kMoveGoalTarget, feet))
+                {
+                    aiTaskFail(c);
+                    break;
+                }
+            }
             if (distance < range)
             {
                 aiTaskComplete(c);
@@ -3104,7 +3125,7 @@ namespace hldata
         {
             AiTarget t;
             if (aiTargetOf(c.w, c.player, c.m.movementGoal == kMoveGoalEnemy ? c.m.enemy : c.m.targetEnt, t) &&
-                aiDist2D(t.origin, c.me.pos) < kind.half + t.half + fxFromInt(24))
+                aiTargetInReach(c, t))
             {
                 aiMovementComplete(c);
                 return;
