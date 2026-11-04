@@ -1901,9 +1901,12 @@ namespace hlds
             if (!packCommon(stageDir(), dataDir(options_.cardRoot), options_.compress, report, why))
                 common_.warnings.push_back("the common archive was not made: " + why);
         }
-        // Process several maps at once
+        // Process several maps at once. (Fewer in a 32-bit program: a big
+        // map takes about 230 MB as it is cooked, and such a program has 2 GB
+        // in all on a 32-bit Windows.)
+        constexpr unsigned kMostJobs = sizeof(void *) < 8 ? 3u : 6u;
         unsigned jobs = options_.jobs > 0 ? static_cast<unsigned>(options_.jobs)
-                                          : std::min(std::max(1u, std::thread::hardware_concurrency()), 6u);
+                                          : std::min(std::max(1u, std::thread::hardware_concurrency()), kMostJobs);
         jobs = std::max(1u, std::min<unsigned>(jobs, static_cast<unsigned>(names.size())));
         std::atomic<std::size_t> next{0};
         std::atomic<int> failedCount{0};

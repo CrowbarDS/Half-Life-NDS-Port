@@ -10,6 +10,12 @@ endif()
 
 set(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 
+# A 32-bit Windows program may use 4 GB on a 64-bit Windows, not 2, if it says
+# it can: maps are cooked several at once.
+if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 4 AND NOT MSVC)
+    add_link_options(-Wl,--large-address-aware)
+endif()
+
 # ---------------------------------------------------------------------------
 # meshoptimizer (thirdparty/meshoptimizer, MIT): the model meshes' thinning and
 # strips. Only the parts of it the converter uses, as a library of its own --
