@@ -199,7 +199,8 @@ namespace hlrt
         void readAhead(Speech &speech, int index);
         void chainNext(Speech &speech);
         void stop(int voice);
-        void playOnce(const hldata::SoundEvent &event);
+        /// `tag`: whose move sound it is (stopLoop cuts it), or -1.
+        void playOnce(const hldata::SoundEvent &event, int tag = -1);
         void say(const hldata::SoundEvent &event);
         void speechTick(int ms);
         void loopsTick();

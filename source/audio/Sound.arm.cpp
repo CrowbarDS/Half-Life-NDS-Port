@@ -663,7 +663,7 @@ namespace hlrt
         lazyPlayed_[place] = now;
     }
 
-    void Sound::playOnce(const SoundEvent &event)
+    void Sound::playOnce(const SoundEvent &event, int tag)
     {
         lazyTouch(event.sound);
         if (event.sound >= count_ || clips_[event.sound].data == nullptr)
@@ -673,7 +673,7 @@ namespace hlrt
         const bool placed = !(event.flags & kSoundHere);
         if (placed)
             place(event.pos, event.volume, event.radius, volume, pan);
-        const int v = start(event.layer, clip, volume, pan, false, -1, event.pitch);
+        const int v = start(event.layer, clip, volume, pan, false, tag, event.pitch);
         if (v < 0 || !placed)
             return;
         Voice &voice = voices_[v];
@@ -686,7 +686,10 @@ namespace hlrt
 
     /// What something makes for as long as it moves (a lift, a train, a
     /// door that takes its time): round and round from where it is, until
-    /// stopLoop. A sound that does not go round is simply played.
+    /// stopLoop. A sound that does not go round is played once -- in the
+    /// place of the last its maker played, and only until stopLoop, as the
+    /// game has it (doors/doormove1.wav is five seconds long, and a door
+    /// may be open in half of one).
     void Sound::playLoop(const SoundEvent &event)
     {
         lazyTouch(event.sound);
@@ -695,7 +698,8 @@ namespace hlrt
         const Clip &clip = clips_[event.sound];
         if (!clip.loops())
         {
-            playOnce(event);
+            stopLoop(event.tag);
+            playOnce(event, event.tag);
             return;
         }
         // Already going round: it is where it is now (what moves as it makes
@@ -727,11 +731,10 @@ namespace hlrt
 
     void Sound::stopLoop(int tag)
     {
+        const std::uint32_t moving = mixer_.movingOf(tag);
         for (int v = 0; v < Mixer::kVoices; ++v)
         {
-            const MixVoice &mix = mixer_.voices[v];
-            if (mix.active && mix.layer != SoundLayer::Ambience && mix.layer != SoundLayer::Voice &&
-                mix.leftMs < 0 && mix.tag == tag)
+            if ((moving >> v) & 1)
                 retire(v);
         }
     }
@@ -1198,13 +1201,14 @@ namespace hlrt
             if (v >= 0 && !round && played_ != nullptr)
                 played_[want[n] >> 5] |= 1u << (want[n] & 31);
         }
-        // What something made for as long as it moved, and is no longer
-        // there to say it has stopped -- or has stopped, and its stop was
-        // never heard (lost to a full queue, or to the pause).
+        // What something made for as long as it moved (going round, or
+        // played once and longer than the move), and is no longer there to
+        // say it has stopped -- or has stopped, and its stop was never heard
+        // (lost to a full queue, or to the pause).
         for (int v = 0; v < Mixer::kVoices; ++v)
         {
             const MixVoice &mix = mixer_.voices[v];
-            if (!mix.active || mix.layer != SoundLayer::World || mix.leftMs >= 0 || mix.tag < 0 ||
+            if (!mix.active || mix.layer != SoundLayer::World || mix.tag < 0 ||
                 mix.tag >= static_cast<int>(view.logicCount))
                 continue;
             const LogicRecord &record = view.logic[mix.tag];

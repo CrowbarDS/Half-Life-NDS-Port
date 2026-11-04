@@ -137,6 +137,22 @@ int main()
                   queue.events[2].layer == SoundLayer::Voice,
               "what is heard knows its layer: the listener's own, the world's, a voice");
     }
+    {
+        // A door's move sound that does not loop is still the door's: its
+        // stop cuts it as it cuts one that does (doors/doormove1.wav is five
+        // seconds long; the game cuts it when the door stops).
+        Mixer mixer;
+        mixer.start(0, SoundLayer::World, 80, 5000, 7);  // played once, the door's
+        mixer.start(1, SoundLayer::World, 80, -1, 7);    // going round, the door's
+        mixer.start(2, SoundLayer::World, 80, 5000);     // played once, nobody's
+        mixer.start(3, SoundLayer::World, 80, 5000, 8);  // another door's
+        mixer.start(4, SoundLayer::Ambience, 80, -1, 7); // the loop of a place: record 7 too
+        mixer.start(5, SoundLayer::Voice, 80, 3000, 7);  // a line said by speaker 7
+        mixer.start(6, SoundLayer::Player, 80, 5000, 7); // heard at the listener, the door's
+        check(mixer.movingOf(7) == ((1u << 0) | (1u << 1) | (1u << 6)),
+              "a mover's sounds are its own, played once or going round, and nothing else");
+        check(mixer.movingOf(-1) == 0, "what has no maker is nobody's to stop");
+    }
     if (g_failures == 0)
         std::printf("test_mixer: ok\n");
     return g_failures == 0 ? 0 : 1;

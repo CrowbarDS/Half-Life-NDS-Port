@@ -131,6 +131,24 @@ namespace hldata
         }
         void stop(int v) { voices[v] = MixVoice(); }
 
+        /// The voices with what `tag` makes as it moves -- going round, or
+        /// played once (a door's move sound that does not loop, which the
+        /// game cuts when the door stops, and puts in the place of the last
+        /// when it moves again): a mask, one bit a voice. Not the loops of a
+        /// place nor what is spoken, which have tags of their own kind.
+        std::uint32_t movingOf(std::int32_t tag) const
+        {
+            std::uint32_t mask = 0;
+            for (int v = 0; v < kVoices; ++v)
+            {
+                const MixVoice &voice = voices[v];
+                if (voice.active && voice.tag == tag && tag >= 0 && voice.layer != SoundLayer::Ambience &&
+                    voice.layer != SoundLayer::Voice)
+                    mask |= 1u << v;
+            }
+            return mask;
+        }
+
         /// The voice that matters least of all that are playing: of the
         /// layer that gives way first, the quietest, the oldest among
         /// equals; the menu's never. For when the hardware itself has no
