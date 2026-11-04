@@ -1097,9 +1097,12 @@ namespace hlrt
         }
         else if (shot.kind == kShotGib && shot.sprite != 0xFFFF)
         {
-            // Something thrown out that is a sprite (sparks, embers).
+            // Something thrown out that is a sprite (sparks, embers): about
+            // where it lies, not 18 units over it in the middle of the box
+            // it moves as.
+            const fx at[3] = {shot.pos[0], shot.pos[1], shot.pos[2] - kCrouchedFeet};
             if (const SpriteRef *ref = sprite(shot.sprite, 31, 0x7FFF))
-                picture(*ref, static_cast<int>(Global::drawClock() / 4 % ref->frames), shot.pos, camera.right,
+                picture(*ref, static_cast<int>(Global::drawClock() / 4 % ref->frames), at, camera.right,
                         camera.up, ref->worldWidth / 4 + 1, ref->worldHeight / 4 + 1);
         }
         else if (shot.kind == kShotBolt)
@@ -1163,8 +1166,11 @@ namespace hlrt
                                          : shot.kind == kShotSnark || shot.kind == kShotSnarkFoe ? RGB15(16, 6, 4)
                                                                      : RGB15(6, 9, 5);
             look(31, 0, colour);
-            square(shot.pos, camera.right, camera.up,
-                   shot.kind == kShotSatchel || shot.kind == kShotSnark || shot.kind == kShotSnarkFoe ? 4 : 3);
+            const int r = shot.kind == kShotSatchel || shot.kind == kShotSnark || shot.kind == kShotSnarkFoe ? 4 : 3;
+            // (On the floor, for what moves as a crouched box's middle.)
+            const fx at[3] = {shot.pos[0], shot.pos[1],
+                              shotMovesAsBox(shot.kind) ? shot.pos[2] - kCrouchedFeet + fxFromInt(r) : shot.pos[2]};
+            square(at, camera.right, camera.up, r);
         }
     
     }

@@ -252,6 +252,13 @@ namespace hldata
     inline constexpr std::uint8_t kShotNihilZap = 18;
     inline constexpr std::uint8_t kShotNihilPortal = 19;
     inline constexpr std::uint8_t kShotNihilGreen = 20;
+    /// Whether a thrown thing of kind `kind` moves as a crouched person's box
+    /// (HlMonsters.hpp): its `pos` is then that box's middle, kCrouchedFeet
+    /// above the floor it lies on, and it is drawn that much lower.
+    inline constexpr bool shotMovesAsBox(int kind)
+    {
+        return kind == kShotGrenade || kind == kShotGib || kind == kShotSatchel || kind == kShotSnark;
+    }
     inline constexpr std::int32_t kStompLengthMask = 0xFFF;
     inline constexpr int kStompSpeedShift = 12;
     inline constexpr std::uint16_t kStompHitPlayer = 0x8000;

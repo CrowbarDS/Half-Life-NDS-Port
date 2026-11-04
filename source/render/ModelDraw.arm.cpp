@@ -862,7 +862,7 @@ namespace hlrt
                 const ModelView &model = actors.models[gib.model];
                 const std::int16_t centre[3] = {static_cast<std::int16_t>(fxToInt(gib.pos[0])),
                                                 static_cast<std::int16_t>(fxToInt(gib.pos[1])),
-                                                static_cast<std::int16_t>(fxToInt(gib.pos[2]))};
+                                                static_cast<std::int16_t>(fxToInt(gib.pos[2] - kCrouchedFeet))};
                 if (!worldDraw.ballVisible(centre, 12))
                     continue;
                 int p = 0, v = 0;
@@ -978,7 +978,8 @@ namespace hlrt
             const ModelView &model = actors.models[m];
             const std::int16_t centre[3] = {static_cast<std::int16_t>(fxToInt(shot.pos[0])),
                                             static_cast<std::int16_t>(fxToInt(shot.pos[1])),
-                                            static_cast<std::int16_t>(fxToInt(shot.pos[2]))};
+                                            static_cast<std::int16_t>(fxToInt(
+                                                shot.pos[2] - (shotMovesAsBox(shot.kind) ? kCrouchedFeet : 0)))};
             if (!worldDraw.ballVisible(centre, 24))
                 continue;
             const int body = shot.kind == kShotMine ? 3 : 0;
@@ -1087,6 +1088,8 @@ namespace hlrt
             piece.clip = actors.models[gib.model].header->clipCount != 0 ? 0 : -1;
             for (int k = 0; k < 3; ++k)
                 piece.pos[k] = gib.pos[k];
+            // (It moves as a crouched person's box: lying at the bottom of it.)
+            piece.pos[2] -= kCrouchedFeet;
             fx sy, cy, sp, cp;
             fxSinCos(gib.yaw, sy, cy);
             fxSinCos(gib.pitch, sp, cp);
@@ -1124,8 +1127,8 @@ namespace hlrt
         }
         // The later weapons' things, each turned the way it faces: a bolt
         // along its flight, a tripmine out of its wall, a satchel and a
-        // snark the way they go (on the floor: they move as a crouched
-        // hull's middle, 18 units up).
+        // snark the way they go (on the floor: what moves as a crouched
+        // hull's middle is drawn 18 units under it).
         for (int n = 0; n < shotFound_; ++n)
         {
             const Projectile &shot = actors.shots[shotOrder_[n]];
@@ -1179,12 +1182,14 @@ namespace hlrt
             }
             for (int k = 0; k < 3; ++k)
                 thing.pos[k] = shot.pos[k];
+            // (Where it lies, not the middle of the box it moves as; a
+            // monstermaker's snark is where its feet are: HlMonsters.hpp.)
+            if (shotMovesAsBox(shot.kind))
+                thing.pos[2] -= kCrouchedFeet;
+            else if (shot.kind == kShotSnarkFoe)
+                thing.pos[2] -= fxFromInt(4);
             if (shot.kind == kShotSatchel || snark)
-            {
                 dir[2] = 0;
-                // (A monstermaker's snark is where its feet are: HlMonsters.hpp.)
-                thing.pos[2] -= shot.kind == kShotSnarkFoe ? fxFromInt(4) : kCrouchedFeet;
-            }
             else if (shot.kind == kShotMine)
             {
                 for (int k = 0; k < 3; ++k)
