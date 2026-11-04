@@ -219,18 +219,31 @@ if(HLDS_BUILD_TESTS)
 endif()
 
 # ---------------------------------------------------------------------------
-# GUI -- Qt 6 Widgets, optional.
+# GUI -- Qt Widgets, optional.
 #
 # A thin driver over the core, for players who would rather pick two folders
 # than type a command. Left out, with a note, when Qt is not installed: the
-# CLI converts exactly the same files.
+# CLI converts exactly the same files. Qt 6 where there is one; Qt 5.15 for
+# the systems Qt 6 has left behind (32-bit Windows).
 # ---------------------------------------------------------------------------
-option(HLDS_BUILD_GUI "Build the Qt 6 converter GUI" ON)
+option(HLDS_BUILD_GUI "Build the Qt converter GUI" ON)
+option(HLDS_QT5 "Build the GUI with Qt 5.15, not Qt 6" OFF)
 if(HLDS_BUILD_GUI)
-    find_package(Qt6 6.8 QUIET COMPONENTS Widgets)
+    if(NOT HLDS_QT5)
+        find_package(Qt6 6.8 QUIET COMPONENTS Widgets)
+    endif()
     if(Qt6_FOUND)
+        set(HLDS_QT 6)
+    else()
+        find_package(Qt5 5.15 QUIET COMPONENTS Widgets)
+        if(Qt5_FOUND)
+            set(HLDS_QT 5)
+        endif()
+    endif()
+    if(HLDS_QT)
+        message(STATUS "hlds-convert-gui: Qt ${HLDS_QT}")
         add_subdirectory(gui)
     else()
-        message(STATUS "Qt 6.8+ Widgets not found: hlds-convert-gui will not be built")
+        message(STATUS "Qt 6.8+ or 5.15 Widgets not found: hlds-convert-gui will not be built")
     endif()
 endif()

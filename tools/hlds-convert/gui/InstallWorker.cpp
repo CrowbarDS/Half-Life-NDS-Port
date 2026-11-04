@@ -1,6 +1,7 @@
 #include "InstallWorker.hpp"
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
