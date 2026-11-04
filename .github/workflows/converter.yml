@@ -185,6 +185,131 @@ jobs:
           if-no-files-found: error
           path: dist/*
 
+  # 32-bit Windows: Qt 6 is not made for it, and MSYS2 has no 32-bit Qt 5
+  # any more, so the window is built against a Qt 5 made here from its source
+  # (kept between runs: it takes most of an hour to build).
+  windows-x86:
+    runs-on: windows-2025
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+        with:
+          msystem: MINGW32
+          update: true
+          install: >-
+            git
+            zip
+            file
+            mingw-w64-i686-cc
+            mingw-w64-i686-cmake
+            mingw-w64-i686-ninja
+            mingw-w64-i686-make
+
+      - name: Let git read the checkout
+        run: git config --global --add safe.directory "$(pwd)"
+
+      - name: Say which Qt 5 is wanted
+        id: qt5
+        run: |
+          . docker/versions.env
+          echo "version=$QT5_VERSION" >> "$GITHUB_OUTPUT"
+          echo "gcc=$(gcc -dumpfullversion)" >> "$GITHUB_OUTPUT"
+          echo "QT5_DIR=$(cygpath -m "$RUNNER_TEMP")/qt5" >> "$GITHUB_ENV"
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: qt5-cache
+        with:
+          path: ${{ runner.temp }}/qt5
+          # (r1: raised whenever the configure line below changes.)
+          key: qt5-${{ steps.qt5.outputs.version }}-mingw32-gcc${{ steps.qt5.outputs.gcc }}-r1
+
+      - name: Build Qt 5
+        if: steps.qt5-cache.outputs.cache-hit != 'true'
+        run: |
+          . docker/versions.env
+          name="qtbase-everywhere-opensource-src-$QT5_VERSION"
+          curl -fsSL -o qtbase.tar.xz "https://download.qt.io/archive/qt/5.15/$QT5_VERSION/submodules/$name.tar.xz"
+          echo "$QT5_SHA256  qtbase.tar.xz" | sha256sum -c -
+          tar -xf qtbase.tar.xz
+          mkdir qt5-build && cd qt5-build
+          "../$name/configure" -prefix "$QT5_DIR" -platform win32-g++ -release -shared \
+            -opensource -confirm-license -nomake examples -nomake tests \
+            -no-opengl -no-dbus -no-icu -no-sql-sqlite -no-sql-odbc \
+            -qt-zlib -qt-libpng -qt-libjpeg -qt-pcre -qt-freetype -qt-harfbuzz
+          mingw32-make -j"$(nproc)"
+          mingw32-make install
+          cp "../$name/LICENSE.LGPL3" "$QT5_DIR/"
+
+      - name: Build ptexconv
+        run: |
+          . docker/versions.env
+          sh docker/fetch.sh "$PTEXCONV_REPO" "$PTEXCONV_COMMIT" ptexconv-src
+          cc -O2 -static ptexconv-src/src/*.c -lm -o ptexconv.exe
+          mkdir -p tools-bin && mv ptexconv.exe tools-bin/
+          echo "PATH=$(pwd)/tools-bin:$PATH" >> "$GITHUB_ENV"
+
+      - name: Build the static command line
+        run: |
+          cmake -S tools/hlds-convert -B build/cli -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DHLDS_BUILD_GUI=OFF -DHLDS_BUILD_TESTS=OFF -DCMAKE_EXE_LINKER_FLAGS=-static
+          cmake --build build/cli --target hlds-convert
+
+      - name: Build the window and the tests
+        run: |
+          cmake -S tools/hlds-convert -B build/convert -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DHLDS_QT5=ON -DCMAKE_PREFIX_PATH="$QT5_DIR"
+          cmake --build build/convert
+
+      - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          export PATH="$(cygpath -u "$QT5_DIR")/bin:$PATH"
+          export QT_PLUGIN_PATH="$QT5_DIR/plugins"
+          ctest --test-dir build/convert --output-on-failure
+          mkdir -p check/shots check/card check/cache
+          build/convert/gui/hlds-install-check.exe check/shots check/card check/cache
+
+      - name: Package
+        run: |
+          qt="$(cygpath -u "$QT5_DIR")"
+          out="dist/hlds-convert-windows-x86"
+          mkdir -p "$out/platforms" "$out/styles"
+          cp build/convert/gui/hlds-convert-gui.exe build/cli/hlds-convert.exe tools-bin/ptexconv.exe THIRD_PARTY_LICENSES "$out/"
+          cp "$qt"/bin/Qt5Core.dll "$qt"/bin/Qt5Gui.dll "$qt"/bin/Qt5Widgets.dll "$out/"
+          cp "$qt/plugins/platforms/qwindows.dll" "$out/platforms/"
+          cp "$qt/plugins/styles/qwindowsvistastyle.dll" "$out/styles/"
+          # What the compiler's runtime is, from the MSYS2 system it came from.
+          ldd "$out/hlds-convert-gui.exe" "$out"/Qt5*.dll | awk '{print $3}' | grep -iE "^/mingw32/" | sort -u | xargs -I{} cp -n {} "$out/"
+          if ldd "$out/hlds-convert-gui.exe" | grep -qi "not found"; then ldd "$out/hlds-convert-gui.exe"; exit 1; fi
+          # The licences of the system's libraries it took along.
+          for dll in "$out"/*.dll; do
+            pacman -Qqo "/mingw32/bin/$(basename "$dll")" 2>/dev/null
+          done | sort -u | while read -r pkg; do
+            printf '\n--- %s, bundled in this package: %s\n' "$pkg" "$(pacman -Qi "$pkg" | sed -n 's/^Licenses *: //p')" >> "$out/THIRD_PARTY_LICENSES"
+            find "/mingw32/share/licenses/$pkg" -type f -exec cat {} + >> "$out/THIRD_PARTY_LICENSES" 2>/dev/null || true
+          done
+          # Qt's own, built here.
+          . docker/versions.env
+          printf '\n--- Qt %s (qtbase), bundled in this package: LGPL-3.0-only\n' "$QT5_VERSION" >> "$out/THIRD_PARTY_LICENSES"
+          cat "$qt/LICENSE.LGPL3" >> "$out/THIRD_PARTY_LICENSES"
+          file "$out"/*.exe
+          (cd dist && zip -qr hlds-convert-windows-x86.zip hlds-convert-windows-x86)
+          rm -rf "$out"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: converter-windows-x86
+          if-no-files-found: error
+          path: dist/*
+
   macos:
     runs-on: macos-15
     timeout-minutes: 60
