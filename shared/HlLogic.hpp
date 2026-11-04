@@ -4165,6 +4165,10 @@ namespace hldata
                 state.move = MoveState::AtBottom;
                 state.timer = -1;
                 state.bits &= ~detail::kTrainPassing;
+                // Heard stopping, as the game has it; and its move sound
+                // stops with it, which in the game it does not (it went on
+                // round until the train moved again).
+                detail::recordSound(w, index, true);
             }
             break;
 

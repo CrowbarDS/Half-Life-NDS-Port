@@ -620,8 +620,17 @@ namespace
               "... and not again at the corner it goes straight through");
         // On its way from p2, which has no wait: stopped, then used again.
         g.tick(33, 2);
+        heard.count = 0;
         g.use(train);
+        bool loopOff = false, stopSound = false;
+        for (int i = 0; i < heard.count; ++i)
+        {
+            const SoundEvent &e = heard.events[i];
+            loopOff = loopOff || ((e.flags & kSoundLoopOff) && e.tag == train);
+            stopSound = stopSound || (!(e.flags & (kSoundLoopOn | kSoundLoopOff)) && e.sound == 2);
+        }
         check(!s.running, "used on its way, it stops");
+        check(loopOff && stopSound, "... its move sound stopped, and its stop sound heard");
         heard.count = 0;
         g.use(train);
         check(s.running && starts(train) == 1, "used again, it is heard setting off");
