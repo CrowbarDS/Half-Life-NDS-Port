@@ -379,7 +379,11 @@ namespace hldata
         fx waterJumpDir[2] = {0, 0};
         int underMs = 0;       ///< how long the eyes have been under
         int hurtMs = 0;        ///< until the liquid (or the lack of air) next hurts
-        int drownStep = 2;     ///< what the next breath not taken costs
+        int drownStep = 2;     ///< what the last breath not taken cost (the next costs 1 more, up to 5)
+        /// Health drowning took, still to be given back, and how long until
+        /// the next of it is. (Not saved: a game loaded is owed none.)
+        Unsaved<int> drownOwed;
+        Unsaved<int> drownBackMs{2000};
     };
 
     /// Whether nothing may hurt the player (the god cheat).
@@ -746,8 +750,10 @@ namespace hldata
                     s.waterLevel = 3;
             }
 
-            /// What being in it costs: breath, after twelve seconds under;
-            /// and slime and lava, by the second and by how deep.
+            /// What being in it costs: breath, after twelve seconds under
+            /// -- 3, then 4, then 5 a second -- given back 10 every two
+            /// seconds once breathing again; and slime and lava, by the
+            /// second and by how deep.
             void waterHurts(int ms)
             {
                 if (s.hurtMs > 0)
@@ -755,11 +761,13 @@ namespace hldata
                 if (s.waterLevel == 3)
                 {
                     s.underMs += ms;
+                    s.drownBackMs.value = 2000; // (none given back while under)
                     if (s.underMs > 12000 && s.hurtMs <= 0)
                     {
-                        playerTakeDamage(s, s.drownStep, kDmgDrown, nullptr, kHurtDrown);
                         if (s.drownStep < 5)
                             ++s.drownStep;
+                        playerTakeDamage(s, s.drownStep, kDmgDrown, nullptr, kHurtDrown);
+                        s.drownOwed.value += s.drownStep;
                         s.hurtMs = 1000;
                     }
                 }
@@ -767,6 +775,13 @@ namespace hldata
                 {
                     s.underMs = 0;
                     s.drownStep = 2;
+                    if (s.drownOwed.value > 0 && s.health > 0 && (s.drownBackMs.value -= ms) <= 0)
+                    {
+                        const int back = s.drownOwed.value < 10 ? s.drownOwed.value : 10;
+                        s.health = s.health + back > 100 ? 100 : s.health + back;
+                        s.drownOwed.value -= back;
+                        s.drownBackMs.value += 2000;
+                    }
                 }
                 if (s.waterLevel > 0 && s.hurtMs <= 0 &&
                     (s.waterType == kContentsLava || s.waterType == kContentsSlime))

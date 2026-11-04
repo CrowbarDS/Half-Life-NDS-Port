@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <vector>
 #include <cstring>
 #include <functional>
 #include <random>
@@ -1492,6 +1493,51 @@ namespace
         check(toUnits(g.player.origin[0]) > 70, "forward swims the way the view points");
     }
 
+    void testDrowning()
+    {
+        BoxRoom room;
+        room.maxs[2] = 200;
+        BrushBox pool;
+        pool.className = "func_water";
+        pool.mins[0] = 0, pool.mins[1] = -128, pool.mins[2] = 0;
+        pool.maxs[0] = 128, pool.maxs[1] = 128, pool.maxs[2] = 120;
+        pool.keys = "\"skin\" \"-3\"\n\"targetname\" \"pool\"\n\"wait\" \"-1\"\n";
+        room.brushes.push_back(pool);
+        Game g;
+        build(g, room);
+        check(g.ok, "drowning pool room");
+        if (!g.ok)
+            return;
+        g.move.nodes = g.view.nodes;
+        g.move.leaves = g.view.leaves;
+        g.move.headNode = g.view.models[0].headNode;
+
+        // Held under: the air lasts twelve seconds, then a breath not taken
+        // costs 3, then 4, then 5 a second, and no more than 5.
+        MoveCommand idle;
+        std::vector<int> hits;
+        for (int i = 0; i < 30 * 17; ++i)
+        {
+            g.player.origin[0] = fxFromInt(60), g.player.origin[1] = 0, g.player.origin[2] = fxFromInt(37);
+            g.player.velocity[0] = g.player.velocity[1] = g.player.velocity[2] = 0;
+            const int before = g.player.health;
+            g.frame(idle);
+            if (g.player.health < before)
+                hits.push_back(before - g.player.health);
+        }
+        check(hits.size() >= 4 && hits[0] == 3 && hits[1] == 4 && hits[2] == 5 && hits[3] == 5,
+              "drowning costs 3, 4, then 5 a second");
+        const int drowned = g.player.health;
+        check(drowned < 85, "and adds up");
+
+        // Out on dry land: what drowning took is given back, 10 at a time.
+        g.player.origin[0] = fxFromInt(-60), g.player.origin[2] = fxFromInt(37);
+        g.frame(idle, 30 * 3);
+        check(g.player.health > drowned && g.player.health < 100, "breathing again gives it back, a little at a time");
+        g.frame(idle, 30 * 10);
+        check(g.player.health == 100, "all of it, in the end");
+    }
+
     void testWaterJump()
     {
         // A pool in the west of the room, up to 80, and east of it a ledge
@@ -1993,6 +2039,7 @@ int main()
     testUse();
     testBreakingAndPushing();
     testWater();
+    testDrowning();
     testWaterJump();
     testWaterStep();
     testLevelChange();
