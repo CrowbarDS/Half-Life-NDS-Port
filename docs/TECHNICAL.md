@@ -1370,10 +1370,14 @@ sounds, the weapons some map has not and their sounds). Loose beside them: the m
 goes, the manifest, and what the game itself writes.
 
 Inside an archive, what shrinks well is LZ77-compressed (the DS's own BIOS
-format, inflated by the engine as a member is opened): levels and models
+format, undone by the engine as the member is read): levels and models
 come to about half. A member is compressed only if it is a kilobyte or more
-and comes down to three quarters of itself; textures of a few hundred bytes
-and sounds, which are compressed as sound already, are stored as they are.
+and comes down to three quarters of itself; sounds, which are compressed as
+sound already, are stored as they are, and so are a map's textures, which
+are read during play as they come into view: the engine reads one straight
+from the archive into where it goes, found in the archive's index with no
+file opened (`NEA_NpacMemberRead`). Maps from before level format 49
+compressed them, and are refused.
 A level is in pieces of 256 KB at most, each compressed on its own, because
 a member is inflated whole beside where it is going and a DS has not the
 memory to do that to a level. `--no-compress` stores everything.

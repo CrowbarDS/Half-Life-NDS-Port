@@ -77,7 +77,7 @@ namespace
         // Folders in the order of a load, each one's files together.
         static const char *const kOrder[] = {"tex/", "spr/", "mdl/", "snd/"};
         int folder = 0;
-        bool ordered = true, same = true, soundsStored = true;
+        bool ordered = true, same = true, soundsStored = true, texturesStored = true;
         int compressed = 0;
         for (std::size_t i = next; i < members.size(); ++i)
         {
@@ -88,6 +88,8 @@ namespace
             compressed += m.method != hlds::kNpacStored ? 1 : 0;
             if (folder == 3)
                 soundsStored = soundsStored && m.method == hlds::kNpacStored;
+            if (folder == 0)
+                texturesStored = texturesStored && m.method == hlds::kNpacStored;
             // (A model's file is in the stage under its map.)
             fs::path source = stage / m.path;
             if (folder == 2 && m.path.size() > 4 && m.path.substr(m.path.size() - 4) == ".hmd")
@@ -98,6 +100,7 @@ namespace
         check(ordered, "then textures, sprites, models and sounds, in that order");
         check(same, "every member is the staged file");
         check(soundsStored, "sounds are never compressed");
+        check(texturesStored, "nor are textures: they are read during play");
         for (std::size_t i = 0; i < next; ++i)
             compressed += members[i].method != hlds::kNpacStored ? 1 : 0;
         check(wantCompressed ? compressed != 0 || level.size() < 4096 : compressed == 0,
@@ -362,10 +365,10 @@ namespace
         bool texture = false, unused = false;
         for (const hlds::NpacMember &m : members)
         {
-            texture = texture || (m.path == std::string("tex/") + name && m.method == hlds::kNpacLz77);
+            texture = texture || (m.path == std::string("tex/") + name && m.method == hlds::kNpacStored);
             unused = unused || m.path == "tex/unused_16x16.htx";
         }
-        check(texture && !unused, "with the texture the level names, compressed, and not the one it does not");
+        check(texture && !unused, "with the texture the level names, not compressed though it would shrink, and not the one it does not");
 
         options.compress = false;
         hlds::Converter plain(options);

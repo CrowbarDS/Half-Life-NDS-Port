@@ -279,7 +279,9 @@ namespace hlds
                 char name[40];
                 hldata::textureFileName(ref.name, ref.width, ref.height,
                                         (ref.flags & hldata::kTextureA3I5) != 0, name);
-                packing.add(stage / "tex" / name, std::string("tex/") + name, true);
+                // (Never compressed: a texture that streams is read in
+                // during play, straight into where it goes.)
+                packing.add(stage / "tex" / name, std::string("tex/") + name, false);
             }
 
             for (std::uint32_t i = 0; i < view.spriteCount; ++i)

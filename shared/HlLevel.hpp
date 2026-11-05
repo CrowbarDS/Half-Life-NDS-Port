@@ -52,9 +52,12 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 48;
-    /// The oldest level format this build reads.
-    inline constexpr std::uint16_t kLevelMinVersion = 28;
+    inline constexpr std::uint16_t kLevelVersion = 49;
+    /// The oldest level format this build reads. (49: a map's textures are
+    /// stored in its archive as they are, never compressed, so that one that
+    /// streams is read straight in during play; the maps of a converter
+    /// before are refused, to be converted again. A build before reads 49's.)
+    inline constexpr std::uint16_t kLevelMinVersion = 49;
     /// The oldest build that can read what it writes. (32: what the people
     /// say, after the soldiers' table in Section::Speech, which a build
     /// before would refuse; 33: the round 3 monsters, kinds a build before
