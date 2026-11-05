@@ -9,6 +9,10 @@
 #include "net/AirDevice.hpp"
 #include "net/GuestLoad.hpp"
 #include "data/VramWriter.hpp"
+#include <cstddef>
+extern "C" {
+#include <NEAAlloc.h> // (no C++ guard of its own)
+}
 #include "render/HudDraw.hpp"
 #include "render/Camera.hpp"
 #include "game/Think.hpp"
@@ -189,6 +193,14 @@ void Global::Init(const char *launchedFrom)
 
 }
 
+namespace
+{
+    // (548 at most, measured on the maps with the most textures and
+    // palettes -- rocket_frenzy on a DSi; c2a5e, the heaviest of the
+    // campaign, 358. Past this they come from the heap, counted in perf.txt.)
+    [[maybe_unused]] constexpr int kNeaChunks = 1024;
+}
+
 void Global::InitVideo()
 {
     videoReady_ = true;
@@ -215,6 +227,16 @@ void Global::InitVideo()
     // "all of them" would hand Bank D to the texture allocator, and Bank D
     // is held back. Every map fits without it. (Compressed textures live in
     // Banks A and C with their indexes in Bank B.)
+    // (Every split of NEA's VRAM lists takes a node and every merge gives one
+    // back: from a reserve set aside once, so loading and freeing textures in
+    // play never goes to the heap. Sized from what the heaviest maps use.)
+    // (Not when sent the game: what a guest's memory holds decides which maps
+    // it can be sent, and that was measured without it.)
+#ifndef HLDS_CHILD
+    static bool chunksReserved = false;
+    if (!chunksReserved)
+        chunksReserved = NEA_AllocReserveChunks(kNeaChunks) == 0;
+#endif
     NEA_TextureSystemReset(512, 1024, NEA_VRAM_ABC);
     vramSetBankD(VRAM_D_LCD);
 

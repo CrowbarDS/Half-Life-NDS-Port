@@ -20,6 +20,10 @@
 #include "data/TextureCache.hpp"
 #include "data/VramWriter.hpp"
 #include "render/WorldDraw.hpp"
+#include <cstddef>
+extern "C" {
+#include <NEAAlloc.h> // (no C++ guard of its own)
+}
 
 namespace hlrt
 {
@@ -1008,13 +1012,15 @@ namespace hlrt
             if (log == nullptr)
                 log = std::fopen(global.dataPath("perf.txt").c_str(), "a");
             const FlatSpells &f = flatSpells;
+            NEAAllocPoolStats nodes;
+            NEA_AllocGetPoolStats(&nodes);
             if (log != nullptr)
             {
                 std::fprintf(log, "tex flat spells by frame %lu: %lu, %lu frames in all, the longest %lu (%lu blanks), "
-                                  "at most %d in view; %d loads, %d let go\n",
+                                  "at most %d in view; %d loads, %d let go; nea nodes: peak %d of %d, %d from the heap\n",
                              static_cast<unsigned long>(frameNo), static_cast<unsigned long>(f.count),
                              static_cast<unsigned long>(f.frames), static_cast<unsigned long>(f.longest),
-                             static_cast<unsigned long>(f.longestBlanks), f.most, planner.loads(), planner.evictions());
+                             static_cast<unsigned long>(f.longestBlanks), f.most, planner.loads(), planner.evictions(), nodes.peak, nodes.capacity, nodes.fallbacks);
                 flatSpellsWritten = f;
                 loadsWritten = planner.loads();
             }

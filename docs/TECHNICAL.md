@@ -1113,7 +1113,12 @@ neighbour whose links had been zeroed) -- the culprit long gone.
   game stops on the crash screen with the block, its size and who asked for
   it. Every block is checked at each map load (old map gone, new one in)
   and save. Cost: 24 + 4 bytes a block and the held blocks (the readout's
-  heap is about 40 KB lower).
+  heap is about 40 KB lower). NEA's video memory lists take no blocks during play: each
+  split of them needs a node, and the nodes come from a reserve of 1,024 set
+  aside at start-up (`Global.cpp`; 548 at most were measured, on
+  rocket_frenzy on a DSi; not in the Download Play child, whose memory was
+  measured without it). One from the heap took 48 bytes and a piece of
+  it each time; c2a5e did not start on a DS before.
 - **The stack.** Sixteen words at the bottom of the stack's room in DTCM hold
   a pattern, looked at every frame.
 - **The library's code** (and constants) is summed once loaded and at each
