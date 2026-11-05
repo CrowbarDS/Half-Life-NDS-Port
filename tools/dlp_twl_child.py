@@ -13,8 +13,9 @@ What this tool does:
   * Carries arm7i as a blob inside the ARM9 binary.
   * Adds an ARM9 entry stub that, only if SCFG is unlocked (SCFG_EXT9 bit 31):
       - forces libnds' DSi detection (SCFG_A9ROM & 3 == 1) by patching the
-        crt0 read and every IS_DSI site (needed when the launcher gave the
-        child the NTR BIOS, e.g. nds-bootstrap + dlplay forced DSi mode);
+        crt0 read and every IS_DSI site, or, from BlocksDS 1.25 on, the test
+        in __libnds_mpu_setup (needed when the launcher gave the child the
+        NTR BIOS, e.g. nds-bootstrap + dlplay forced DSi mode);
       - builds a minimal TWL header at 0x02FFE000 (NTR header copy,
         arm9i LMA == VMA so crt0 skips the copy, arm7i LMA -> blob,
         MBK values from the original header, appflags = 0: the loader leaves
@@ -94,6 +95,21 @@ def find_isdsi_sites(code, base):
         andi = 0xE2000003 | (rx << 16) | (rx << 12)
         if u32(code, off + 4) == ldrb and u32(code, off + 8) == andi:
             sites.append((base + off + 4, 0xE3A00001 | (rx << 12)))  # mov rX,#1
+            continue
+        # BlocksDS 1.25 (__libnds_mpu_setup): ldr rA,=0x04004000 ;
+        # ldr rB,[rA,#8] ; ldr rA,[rA] ; lsr rB,rB,#31 ; orr rA,rA,rB ;
+        # cmp rA,#1 -- SCFG_A9ROM or SCFG_EXT's top bit, then 1 for DSi mode.
+        # The orr becomes 'mov rA,#1'.
+        if off + 24 > len(code):
+            continue
+        ra = rx
+        rb = (u32(code, off + 4) >> 12) & 0xF
+        if (u32(code, off + 4) == (0xE5900008 | (ra << 16) | (rb << 12)) and
+                u32(code, off + 8) == (0xE5900000 | (ra << 16) | (ra << 12)) and
+                u32(code, off + 12) == (0xE1A00FA0 | (rb << 12) | rb) and
+                u32(code, off + 16) == (0xE1800000 | (ra << 16) | (ra << 12) | rb) and
+                u32(code, off + 20) == (0xE3500001 | (ra << 16))):
+            sites.append((base + off + 16, 0xE3A00001 | (ra << 12)))  # mov rA,#1
     return sites
 
 def find_after_literal(code, base, magic):
