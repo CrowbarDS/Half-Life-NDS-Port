@@ -33,15 +33,11 @@ namespace hlrt
         header.minReader = hldata::kLevelMinReader;
         return guest::offered(name);
 #endif
-        // (A drive of its own, for the length of one read: the map being
-        // played stays mounted, and may be this very one.)
-        if (!global.hasData || NEA_NpacMount("peek", global.mapArchive(name).c_str()) != 0)
-            return false;
-        std::FILE *file = std::fopen("peek:/level.0", "rb");
-        const bool got = file != nullptr && std::fread(&header, sizeof(header), 1, file) == 1;
-        if (file != nullptr)
-            std::fclose(file);
-        NEA_NpacUnmount("peek");
+        // (Read from its archive without mounting it: the name looked up a
+        // little at a time, nothing of the index kept. The map being played
+        // stays mounted, and may be this very one.)
+        const bool got = global.hasData && NEA_NpacPeek(global.mapArchive(name).c_str(), "level.0", 0, &header,
+                                                        sizeof(header)) == 0;
         return got &&
                std::memcmp(header.magic, hldata::kLevelMagic, sizeof(hldata::kLevelMagic)) == 0 &&
                hldata::levelVersionOk(header.version, header.minReader);

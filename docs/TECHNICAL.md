@@ -1387,7 +1387,9 @@ The map being played is mounted with its archive's index -- its files,
 their names and how each is packed, 6 to 31 KB -- in a fixed buffer of 32 KB
 (`shared/HlArchive.hpp`), not on the heap: one map after another goes into
 the same memory. The converter warns about an archive whose index would not
-fit, which is then mounted on the heap.
+fit, which is then mounted on the heap. Another map's header (for a save,
+the menu's games, a change of level) is read from its archive without
+mounting it (`NEA_NpacPeek`).
 A level is in pieces of 256 KB at most, each compressed on its own, because
 a member is inflated whole beside where it is going and a DS has not the
 memory to do that to a level. `--no-compress` stores everything.
