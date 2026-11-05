@@ -1,9 +1,11 @@
 #include "Global.hpp"
 #include "render/BottomScreen.hpp"
+#include <cerrno>
 #include <cstdio>
 #include <cstring>
 #include <nds/arm9/dldi.h>
 
+#include "HlArchive.hpp"
 #include "HlManifest.hpp"
 #include "HlGuest.hpp"
 #include "net/AirDevice.hpp"
@@ -199,6 +201,20 @@ namespace
     // palettes -- rocket_frenzy on a DSi; c2a5e, the heaviest of the
     // campaign, 358. Past this they come from the heap, counted in perf.txt.)
     [[maybe_unused]] constexpr int kNeaChunks = 1024;
+
+#ifndef HLDS_CHILD
+    // The map's archive index, kept here rather than on the heap: one map is
+    // mounted after another into the same memory (HlArchive.hpp). One whose
+    // index is bigger -- the converter says so -- is mounted on the heap.
+    alignas(4) std::uint8_t mapIndex[hldata::kMapIndexMost];
+
+    int mountMapArchive(const std::string &path)
+    {
+        if (NEA_NpacMountInto("map", path.c_str(), mapIndex, sizeof(mapIndex)) == 0)
+            return 0;
+        return errno == ENOSPC ? NEA_NpacMount("map", path.c_str()) : -1;
+    }
+#endif
 }
 
 void Global::InitVideo()
@@ -255,7 +271,7 @@ void Global::InitVideo()
     mountCommon();
 #ifndef HLDS_CHILD
     if (!mapMounted_.empty() && !NEA_NpacIsMounted("map"))
-        NEA_NpacMount("map", mapArchive(mapMounted_).c_str());
+        mountMapArchive(mapArchive(mapMounted_));
 #endif
 }
 
@@ -268,7 +284,7 @@ bool Global::mountMap(const std::string &name)
     if (!hlrt::guest::beginMap(name))
         return false;
 #else
-    if (!hasData || NEA_NpacMount("map", mapArchive(name).c_str()) != 0)
+    if (!hasData || mountMapArchive(mapArchive(name)) != 0)
         return false;
 #endif
     mapMounted_ = name;

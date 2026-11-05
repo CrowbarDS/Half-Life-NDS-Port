@@ -21,6 +21,7 @@
 #include <cctype>
 #include <set>
 
+#include "HlArchive.hpp"
 #include "HlGuest.hpp"
 #include "HlLevelReader.hpp"
 #include "hlds/AtomicWrite.hpp"
@@ -79,6 +80,10 @@ namespace hlds
         result.archiveKb = static_cast<int>(report.cardBytes / 1024);
         result.archiveRawKb = static_cast<int>(report.rawBytes / 1024);
         result.archiveMembers = report.members;
+        if (report.indexBytes > hldata::kMapIndexMost)
+            result.warnings.push_back("its archive's index is " + std::to_string(report.indexBytes) +
+                                      " bytes, over the " + std::to_string(hldata::kMapIndexMost) +
+                                      " the console keeps it in: it is mounted with its index on the heap");
     }
 
     void Converter::packAirGroups()

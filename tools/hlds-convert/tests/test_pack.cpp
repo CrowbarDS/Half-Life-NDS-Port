@@ -20,6 +20,7 @@
 #include "hlds/Converter.hpp"
 #include "hlds/NpacWriter.hpp"
 #include "hlds/Pack.hpp"
+#include "HlArchive.hpp"
 
 namespace fs = std::filesystem;
 using namespace hldata;
@@ -73,6 +74,16 @@ namespace
               "the level's pieces, first in the archive, are the staged level byte for byte");
         check(members[0].data.size() == kLevelDataStart && members[0].method == hlds::kNpacStored,
               "its first piece is the header and directory, not compressed");
+        // Its index, as the console lays it out: what the files' table, their
+        // names and how each is packed come to, within the fixed buffer.
+        {
+            std::uint32_t names = 0;
+            for (const hlds::NpacMember &m : members)
+                names += static_cast<std::uint32_t>(m.path.size());
+            const std::uint32_t index = hldata::npacIndexBytes(archive.data(), archive.size());
+            check(index >= members.size() * 8 + names && index <= hldata::kMapIndexMost,
+                  "its index fits the console's fixed buffer");
+        }
 
         // Folders in the order of a load, each one's files together.
         static const char *const kOrder[] = {"tex/", "spr/", "mdl/", "snd/"};

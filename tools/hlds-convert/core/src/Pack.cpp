@@ -7,6 +7,7 @@
 #include <set>
 
 #include "HlAirBank.hpp"
+#include "HlArchive.hpp"
 #include "HlGuest.hpp"
 #include "HlLevelReader.hpp"
 #include "HlModel.hpp"
@@ -155,6 +156,7 @@ namespace hlds
                 report.rawBytes += back[i].data.size();
             }
             report.cardBytes = archive.size();
+            report.indexBytes = hldata::npacIndexBytes(archive.data(), archive.size());
             return writeFileAtomic(out, archive, error);
         }
     } // namespace

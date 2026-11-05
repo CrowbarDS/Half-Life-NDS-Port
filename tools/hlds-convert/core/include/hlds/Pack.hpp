@@ -31,6 +31,7 @@ namespace hlds
         int missing = 0;            ///< named by the level, not in the stage
         std::size_t rawBytes = 0;   ///< what the members come to
         std::size_t cardBytes = 0;  ///< the archive
+        std::uint32_t indexBytes = 0; ///< what its index takes on the console (HlArchive.hpp)
     };
 
     /// <stage>/maps/<map>.hlm and all it names -> <card>/maps/<map>.npac.
