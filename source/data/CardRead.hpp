@@ -7,7 +7,12 @@
 // than its output ring is ahead of the speakers.
 
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
+
+#ifndef HLDS_CHILD
+#include <NEAMain.h>
+#endif
 
 namespace hlrt
 {
@@ -28,4 +33,32 @@ namespace hlrt
         }
         return done;
     }
+
+#ifndef HLDS_CHILD
+    /// Whether NEA_NpacMemberRead can give `member` whole: stored, or packed
+    /// in a way it undoes as it reads.
+    inline bool cardMemberReadable(const NEA_NpacMember &member)
+    {
+        return member.method == NEA_NPAC_STORED || member.method == NEA_NPAC_LZ77 ||
+               member.method == NEA_NPAC_RLE;
+    }
+
+    /// `bytes` of an archive's member from `from`, with no file opened: a
+    /// stored one in pieces, as above; a packed one (from 0, whole) as it is
+    /// undone, which reads the card 512 bytes at a time.
+    inline bool cardReadMember(const NEA_NpacMember &member, std::uint32_t from, void *to, std::uint32_t bytes)
+    {
+        if (member.method != NEA_NPAC_STORED)
+            return NEA_NpacMemberRead(&member, from, to, bytes) == 0;
+        auto *at = static_cast<unsigned char *>(to);
+        for (std::uint32_t done = 0; done < bytes;)
+        {
+            const std::uint32_t want = bytes - done < kCardPiece ? bytes - done : kCardPiece;
+            if (NEA_NpacMemberRead(&member, from + done, at + done, want) != 0)
+                return false;
+            done += want;
+        }
+        return true;
+    }
+#endif
 } // namespace hlrt

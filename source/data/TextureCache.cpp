@@ -223,9 +223,38 @@ namespace hlrt
                         ref.height, a3i5 ? 1 : 0, materials_[index], palettes_[index], &tints_[index]);
     }
 
+    namespace
+    {
+        /// A .htx header, checked against the file's size and against what it
+        /// was looked up as.
+        bool headerFits(const hldata::TextureHeader &header, std::uint32_t size, int expectWidth, int expectHeight,
+                        int expectA3I5)
+        {
+            const bool a3i5 = (header.flags & hldata::kTextureA3I5) != 0;
+            return hldata::textureHeaderValid(header, size) &&
+                   (expectWidth == 0 || header.width == expectWidth) &&
+                   (expectHeight == 0 || header.height == expectHeight) &&
+                   (expectA3I5 < 0 || a3i5 == (expectA3I5 != 0));
+        }
+    } // namespace
+
     bool TextureCache::readFile(const char *path, int expectWidth, int expectHeight, int expectA3I5,
                                 hldata::TextureHeader &header, std::uint8_t *body, std::size_t capacity)
     {
+#ifndef HLDS_CHILD
+        // In an archive and stored as it is (as a map's textures are): its
+        // size from the archive's index, its bytes read straight in, with no
+        // file opened.
+        NEA_NpacMember member;
+        if (NEA_NpacMemberFind(path, &member) == 0 && member.method == NEA_NPAC_STORED)
+        {
+            const std::uint32_t size = member.size;
+            const bool ok = size > sizeof(header) && cardReadMember(member, 0, &header, sizeof(header)) &&
+                            headerFits(header, size, expectWidth, expectHeight, expectA3I5);
+            const std::uint32_t rest = size - static_cast<std::uint32_t>(sizeof(header));
+            return ok && rest <= capacity && cardReadMember(member, sizeof(header), body, rest);
+        }
+#endif
         std::FILE *file = std::fopen(path, "rb");
         if (file == nullptr)
             return false;
@@ -237,11 +266,7 @@ namespace hlrt
         // in it is used to size an allocation or a read.
         bool ok = size > static_cast<long>(sizeof(header)) &&
                   std::fread(&header, sizeof(header), 1, file) == 1 &&
-                  hldata::textureHeaderValid(header, static_cast<std::uint32_t>(size));
-        const bool a3i5 = ok && (header.flags & hldata::kTextureA3I5) != 0;
-        ok = ok && (expectWidth == 0 || header.width == expectWidth) &&
-             (expectHeight == 0 || header.height == expectHeight) &&
-             (expectA3I5 < 0 || a3i5 == (expectA3I5 != 0));
+                  headerFits(header, static_cast<std::uint32_t>(size), expectWidth, expectHeight, expectA3I5);
         if (ok)
         {
             const std::size_t rest = static_cast<std::size_t>(size) - sizeof(header);
@@ -257,6 +282,25 @@ namespace hlrt
     {
         outMaterial = nullptr;
         outPalette = nullptr;
+#ifndef HLDS_CHILD
+        // In an archive: its size from the index, then the whole of it read
+        // (or undone, if packed) into one buffer, with no file opened.
+        NEA_NpacMember member;
+        if (NEA_NpacMemberFind(path, &member) == 0 && cardMemberReadable(member))
+        {
+            if (member.size <= sizeof(hldata::TextureHeader))
+                return false;
+            auto *data = static_cast<std::uint8_t *>(std::malloc(member.size));
+            hldata::TextureHeader header;
+            bool ok = data != nullptr && cardReadMember(member, 0, data, member.size);
+            if (ok)
+                std::memcpy(&header, data, sizeof(header));
+            ok = ok && headerFits(header, member.size, expectWidth, expectHeight, expectA3I5) &&
+                 create(header, data + sizeof(header), liquid, outMaterial, outPalette, tint, ramBacked);
+            std::free(data);
+            return ok;
+        }
+#endif
         std::FILE *file = std::fopen(path, "rb");
         if (file == nullptr)
             return false;
