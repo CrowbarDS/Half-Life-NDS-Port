@@ -5,10 +5,12 @@
 // console will ask for, with the level's pieces coming back to the level --
 // and it must do so in the order of a load, which is the point of it.
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <map>
 
 #include "HlLevelReader.hpp"
 #include "HlSound.hpp"
@@ -20,6 +22,8 @@
 #include "hlds/Converter.hpp"
 #include "hlds/NpacWriter.hpp"
 #include "hlds/Pack.hpp"
+#include "hlds/TextureEncoder.hpp"
+#include "hlds/TextureCook.hpp"
 #include "HlArchive.hpp"
 
 namespace fs = std::filesystem;
@@ -395,6 +399,136 @@ namespace
 
     /// One of the game's own maps, where the game is at hand: models,
     /// sounds, and a level in more than two pieces.
+
+    /// Every streamed texture's record, in the level the map's archive holds,
+    /// says the colours of the palette that archive holds for it (the
+    /// console gives it that much palette memory). How many were checked.
+    int checkPaletteColours(const fs::path &card, const std::string &map)
+    {
+        Bytes archive, level;
+        std::string error;
+        std::vector<hlds::NpacMember> members;
+        if (!hlds::readFile(card / "maps" / (map + ".npac"), archive, error) || !hlds::readNpac(archive, members, error))
+        {
+            check(false, ("the archive of " + map + " reads").c_str());
+            return 0;
+        }
+        std::map<std::string, const hlds::NpacMember *> byPath;
+        for (const hlds::NpacMember &m : members)
+        {
+            byPath[m.path] = &m;
+            if (m.path == "level." + std::to_string(&m - members.data()))
+                level.insert(level.end(), m.data.begin(), m.data.end());
+        }
+        LevelView view;
+        if (view.open(level.data(), static_cast<std::uint32_t>(level.size())) != LevelError::Ok)
+        {
+            check(false, ("the level in the archive of " + map + " opens").c_str());
+            return 0;
+        }
+        int checked = 0, wrong = 0;
+        for (std::uint32_t i = 0; i < view.textureCount; ++i)
+        {
+            const TextureRef &ref = view.textures[i];
+            if ((ref.flags & kTextureStreamed) == 0)
+                continue;
+            char name[40];
+            textureFileName(ref.name, ref.width, ref.height, false, name);
+            const auto found = byPath.find(std::string("tex/") + name);
+            TextureHeader header{};
+            const bool read = found != byPath.end() && found->second->data.size() >= sizeof(header);
+            if (read)
+                std::memcpy(&header, found->second->data.data(), sizeof(header));
+            if (!read || !textureHeaderValid(header, static_cast<std::uint32_t>(found->second->data.size())) ||
+                header.paletteColours != ref.paletteColours || ref.paletteColours < 1 || ref.paletteColours > 512)
+            {
+                if (++wrong <= 3)
+                    std::printf("  %s texture %u (%s): the record says %u colours, the archive's file %u\n",
+                                map.c_str(), i, name, ref.paletteColours, read ? header.paletteColours : 0u);
+            }
+            ++checked;
+        }
+        check(wrong == 0, ("every streamed texture of " + map + " says its palette's colours as packed").c_str());
+        return checked;
+    }
+
+    /// Cooked with textures (the encoder the converter uses): the palette
+    /// sizes the records say are the files'.
+    void testPaletteColours()
+    {
+        const fs::path exe = hlds::findPtexconv({});
+        check(!exe.empty(), "the texture encoder is there to cook with");
+        if (exe.empty())
+            return;
+        {
+            const fs::path root = fs::temp_directory_path() / "hlds_test_pack_colours";
+            fs::remove_all(root);
+            fs::create_directories(root / "valve" / "maps");
+            std::string error;
+            hlds::writeFileAtomic(root / "valve" / "maps" / "boxroom.bsp", buildBoxRoom(), error);
+            hlds::ConvertOptions options;
+            options.gameDir = root / "valve";
+            options.cardRoot = root / "card";
+            hlds::Converter converter(options);
+            check(converter.cookMaps({"boxroom"}, nullptr, nullptr, nullptr, error) == 0,
+                  "the box room cooks with its textures");
+            check(checkPaletteColours(hlds::Converter::dataDir(root / "card"), "boxroom") > 0,
+                  "... and it has streamed textures to check");
+            // Another map made the shared file again since, with another
+            // palette: packed again, the record follows what is packed.
+            const fs::path tex = hlds::Converter::dataDir(root / "card-stage") / "tex";
+            for (const auto &entry : fs::directory_iterator(tex))
+            {
+                Bytes file;
+                TextureHeader header{};
+                if (!hlds::readFile(entry.path(), file, error) || file.size() < sizeof(header))
+                    continue;
+                hlds::CookedTexture cooked;
+                if (!hlds::unpackTexture(file, cooked, header) || header.paletteColours < 4)
+                    continue;
+                cooked.palette.resize(cooked.palette.size() / 2); // half the colours
+                hlds::writeFileAtomic(entry.path(), hlds::packTexture(cooked, header.flags, header.sourceHash), error);
+            }
+            int packed = 0;
+            check(converter.packAll([&](const hlds::MapResult &r) { packed += r.ok ? 1 : 0; }, error) == 0 && packed == 1,
+                  "packed again from a stage whose textures changed since");
+            check(checkPaletteColours(hlds::Converter::dataDir(root / "card"), "boxroom") > 0,
+                  "... the records say the palettes now packed");
+            fs::remove_all(root);
+        }
+        const char *valve = std::getenv("HLDS_VALVE_DIR");
+        if (valve == nullptr || *valve == '\0')
+            return;
+        // The game's own: c1a0, or every map with HLDS_ALL_MAPS=1 (they
+        // take a long while to cook with their textures).
+        std::vector<std::string> maps{"c1a0"};
+        const char *all = std::getenv("HLDS_ALL_MAPS");
+        if (all != nullptr && std::string(all) == "1")
+        {
+            maps.clear();
+            for (const auto &entry : fs::directory_iterator(fs::path(valve) / "maps"))
+                if (entry.path().extension() == ".bsp")
+                    maps.push_back(entry.path().stem().string());
+            std::sort(maps.begin(), maps.end());
+        }
+        const fs::path root = fs::temp_directory_path() / "hlds_test_pack_colours_real";
+        fs::remove_all(root);
+        hlds::ConvertOptions options;
+        options.gameDir = valve;
+        options.cardRoot = root / "card";
+        hlds::Converter converter(options);
+        std::string error;
+        int cooked = 0, checked = 0;
+        converter.cookMaps(maps, nullptr, [&](const hlds::MapResult &r) { cooked += r.ok ? 1 : 0; }, nullptr, error);
+        for (const std::string &map : maps)
+            if (fs::exists(hlds::Converter::dataDir(root / "card") / "maps" / (map + ".npac")))
+                checked += checkPaletteColours(hlds::Converter::dataDir(root / "card"), map);
+        std::printf("test_pack: %d of %zu maps cooked with their textures, %d streamed textures checked\n", cooked,
+                    maps.size(), checked);
+        check(cooked > 0 && checked > 0, "the game's maps cook with their textures, and are checked");
+        fs::remove_all(root);
+    }
+
     void testRealMap()
     {
         const char *valve = std::getenv("HLDS_VALVE_DIR");
@@ -434,6 +568,7 @@ int main()
     testBundles();
     testBoxRoom();
     testRealMap();
+    testPaletteColours();
     if (g_failures == 0)
         std::printf("test_pack: ok\n");
     return g_failures == 0 ? 0 : 1;

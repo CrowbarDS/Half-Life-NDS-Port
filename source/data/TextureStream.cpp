@@ -172,17 +172,27 @@ namespace hlrt
         Retired retired[kMostRetired];
         int retiredCount = 0;
 
-        /// What a streamed texture costs NEA, and what the plan counts. The
-        /// palette is a guess from above (the cooker's own rule for how many
-        /// colours a texture of that many texels gets: the file has the true
-        /// number, and is never bigger).
+        /// Streamed textures whose record had no believable palette size,
+        /// given the guess from above instead (perf.txt says how many).
+        int paletteGuesses = 0;
+
+        /// What a streamed texture costs NEA, and what the plan counts: its
+        /// palette as the converter cooked it (the record says), two bytes a
+        /// colour, as the file holds it. A record that says nothing
+        /// believable gets the cooker's own rule for how many colours a
+        /// texture of that many texels may have, which no file is bigger than.
         StreamInfo infoFor(const TextureRef &ref)
         {
             StreamInfo info;
             const std::uint32_t texels = static_cast<std::uint32_t>(ref.width) * ref.height;
-            const std::uint32_t colours = std::min<std::uint32_t>(512, std::max<std::uint32_t>(16, texels / 16)) & ~1u;
+            std::uint32_t colours = ref.paletteColours;
+            if (colours < 1 || colours > 512)
+            {
+                colours = std::min<std::uint32_t>(512, std::max<std::uint32_t>(16, texels / 16)) & ~1u;
+                ++paletteGuesses;
+            }
             info.texelBytes = texels / 4; // 4x4: the texels (the index goes where they say)
-            info.paletteBytes = colours * 2;
+            info.paletteBytes = (colours * 2 + 3) & ~3u;
             // (What is read: the texels, their index, half as much, and the
             // colours; as it takes up the staging buffer.)
             info.stageBytes = ByteArena<kStreamMaxBlocks>::round(info.texelBytes + info.texelBytes / 2 + info.paletteBytes);
@@ -429,6 +439,7 @@ namespace hlrt
             end(true);
         const int count = std::min<int>(level.view.textureCount, kStreamMaxTextures);
         streamedTotal = 0;
+        paletteGuesses = 0;
         for (int i = 0; i < count; ++i)
         {
             infos[i] = StreamInfo();
@@ -676,6 +687,16 @@ namespace hlrt
         g_textureSeenAt = seenAt;
         active_ = true;
         report("map loaded");
+        if (paletteGuesses != 0 && perfLogging())
+        {
+            if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
+            {
+                std::fprintf(log, "tex palettes: %d streamed textures with no believable size in the level, "
+                                  "given the most a texture of theirs may have\n",
+                             paletteGuesses);
+                std::fclose(log);
+            }
+        }
     }
 
     void TextureStream::retire(NEA_Material *material, NEA_Palette *palette)
@@ -1017,10 +1038,13 @@ namespace hlrt
             if (log != nullptr)
             {
                 std::fprintf(log, "tex flat spells by frame %lu: %lu, %lu frames in all, the longest %lu (%lu blanks), "
-                                  "at most %d in view; %d loads, %d let go; nea nodes: peak %d of %d, %d from the heap\n",
+                                  "at most %d in view; %d loads, %d let go; palettes %lu of %lu bytes; nea nodes: peak %d of %d, %d from the heap\n",
                              static_cast<unsigned long>(frameNo), static_cast<unsigned long>(f.count),
                              static_cast<unsigned long>(f.frames), static_cast<unsigned long>(f.longest),
-                             static_cast<unsigned long>(f.longestBlanks), f.most, planner.loads(), planner.evictions(), nodes.peak, nodes.capacity, nodes.fallbacks);
+                             static_cast<unsigned long>(f.longestBlanks), f.most, planner.loads(), planner.evictions(),
+                             static_cast<unsigned long>(planner.paletteBytesUsed()),
+                             static_cast<unsigned long>(planner.paletteCapacity()), nodes.peak, nodes.capacity,
+                             nodes.fallbacks);
                 flatSpellsWritten = f;
                 loadsWritten = planner.loads();
             }

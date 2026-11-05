@@ -800,6 +800,103 @@ namespace
         check(s.resident(5) != s.resident(6), "one read ahead, in what was left");
         check(made == 2 && n == 2, "and no more: the PVS does not push out the PVS");
     }
+
+    /// The palette memory of c2a5e on a DS as it was at frame 307 of a run
+    /// where an in-view texture stayed flat for seconds (read off the
+    /// console through the emulator's debugger, 2026-11-05): 39 palettes,
+    /// 848 bytes free in four gaps, the four that may make way scattered.
+    /// Texture 146 (c1a1_crate2, 128x128) was given 1024 bytes by the old
+    /// rule, one colour per 16 texels, and could not be placed; its palette
+    /// as cooked has 128 colours, 256 bytes, which fits a gap as it is.
+    void testFrame307Palettes()
+    {
+        struct Block
+        {
+            std::uint32_t off, size;
+            int owner;
+            bool mayGo;
+        };
+        static const Block kLayout[] = {
+            {0, 512, 42, false},      {512, 64, 2, false},      {576, 1024, 64, false},   {1600, 1024, 56, false},
+            {2624, 1024, 36, false},  {3648, 1024, 37, false},  {4672, 1024, 72, false},  {5696, 512, 144, false},
+            {6208, 512, 12, true},    {6720, 128, 61, false},   {6848, 1024, 65, false},  {7872, 1024, 60, false},
+            {8896, 512, 28, false},   {9408, 256, 39, false},   {9664, 256, 40, false},   {9920, 512, 43, true},
+            {10432, 256, 45, false},  {10688, 1024, 46, false}, {11712, 256, 53, true},   {11968, 1024, 34, false},
+            {12992, 1024, 55, false}, {14016, 1024, 29, false}, {15040, 1024, 73, false}, {16064, 1024, 121, false},
+            {17088, 512, 136, false}, {17600, 256, 35, false},  {17856, 32, 137, false},  {17952, 512, 68, false},
+            {18464, 128, 97, false},  {18592, 512, 109, false}, {19264, 128, 71, true},   {19392, 1024, 126, false},
+            {20416, 512, 139, false}, {20928, 512, 143, false}, {21440, 256, 145, false}, {21696, 512, 111, false},
+            {22464, 1024, 63, false}, {23488, 1024, 141, false}, {24512, 1024, 142, false},
+        };
+        constexpr std::uint32_t kPaletteBytes = 25904;
+        constexpr int kTextures = 168, kFlat = 146;
+        auto build = [&](TextureStreamer &s, std::vector<StreamInfo> &tex, std::uint32_t flatPalette) {
+            tex.assign(kTextures, info(32, 32));
+            tex[kFlat] = info(4096, flatPalette);
+            // The gaps, filled while the layout is made and then let go.
+            std::vector<Block> order;
+            std::uint32_t at = 0;
+            int filler = 150;
+            for (const Block &b : kLayout)
+            {
+                if (b.off > at)
+                    order.push_back({at, b.off - at, filler++, false});
+                order.push_back(b);
+                at = b.off + b.size;
+            }
+            for (const Block &b : order)
+                tex[b.owner] = info(32, b.size);
+            s.init(tex.data(), kTextures, 1u << 20, kPaletteBytes);
+            // In that order, first fit into empty memory: each where the dump had it.
+            s.clearScores();
+            for (std::size_t i = 0; i < order.size(); ++i)
+                s.addScore(order[i].owner, static_cast<std::uint32_t>(100000 - i));
+            s.rebuild();
+            while (step(s) > 0)
+            {
+            }
+            for (const Block &b : order)
+                if (b.owner >= 150 && b.owner < filler)
+                    s.failed(b.owner);
+            // In view and drawn: the rest, and 146. Wanted a little: the four.
+            s.clearScores();
+            for (const Block &b : kLayout)
+            {
+                s.addScore(b.owner, b.mayGo ? 1000 : 1u << 20);
+                if (!b.mayGo)
+                    s.setRecent(b.owner);
+            }
+            s.addScore(kFlat, 1u << 20);
+            s.setRecent(kFlat);
+            s.rebuild();
+        };
+
+        {
+            TextureStreamer s;
+            std::vector<StreamInfo> tex;
+            build(s, tex, 1024);
+            bool same = s.paletteArena().n == static_cast<int>(sizeof(kLayout) / sizeof(kLayout[0])) &&
+                        s.paletteBytesUsed() == kPaletteBytes - 848;
+            for (int i = 0; same && i < s.paletteArena().n; ++i)
+                same = s.paletteArena().b[i].off == kLayout[i].off && s.paletteArena().b[i].owner == kLayout[i].owner;
+            check(same, "frame 307's palette memory is laid out again as the dump had it");
+            StreamLoad loads[8];
+            int evicted[16], n = 0;
+            const int made = s.plan(1u << 20, 1u << 20, loads, 8, evicted, 16, n);
+            check(made == 0 && n == 0 && !s.resident(kFlat),
+                  "1024 bytes for its palette (one colour per 16 texels): it cannot be placed, nothing makes way");
+        }
+        {
+            TextureStreamer s;
+            std::vector<StreamInfo> tex;
+            build(s, tex, 256);
+            StreamLoad loads[8];
+            int evicted[16], n = 0;
+            const int made = s.plan(1u << 20, 1u << 20, loads, 8, evicted, 16, n);
+            check(made == 1 && loads[0].id == kFlat && n == 0,
+                  "its palette as cooked, 256 bytes: placed in a gap as things are, nothing made to go");
+        }
+    }
 } // namespace
 
 int main()
@@ -821,6 +918,7 @@ int main()
     testPipelined();
     testPvsWalk();
     testPvsMakesWayLast();
+    testFrame307Palettes();
     if (g_failures == 0)
         std::printf("test_texturestream: ok\n");
     return g_failures == 0 ? 0 : 1;

@@ -52,12 +52,14 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 49;
+    inline constexpr std::uint16_t kLevelVersion = 50;
     /// The oldest level format this build reads. (49: a map's textures are
     /// stored in its archive as they are, never compressed, so that one that
-    /// streams is read straight in during play; the maps of a converter
-    /// before are refused, to be converted again. A build before reads 49's.)
-    inline constexpr std::uint16_t kLevelMinVersion = 49;
+    /// streams is read straight in during play. 50: each texture's record
+    /// says how many colours its palette has, which is what a streamed one
+    /// is given of palette memory; the record is longer. The maps of a
+    /// converter before are refused, to be converted again.)
+    inline constexpr std::uint16_t kLevelMinVersion = 50;
     /// The oldest build that can read what it writes. (32: what the people
     /// say, after the soldiers' table in Section::Speech, which a build
     /// before would refuse; 33: the round 3 monsters, kinds a build before
@@ -76,8 +78,9 @@ namespace hldata
     /// a build before does not know of. 45: the long jump module, an item a
     /// build before would refuse. (46, how a box floats, 47, a tank's
     /// sprites, and 48, how a monster_generic is drawn, are in fields 45's
-    /// builds leave alone: they read them.)
-    inline constexpr std::uint16_t kLevelMinReader = 45;
+    /// builds leave alone: they read them.) 50: a texture's record is longer
+    /// (its palette's colours), which a build before cannot read.
+    inline constexpr std::uint16_t kLevelMinReader = 50;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,
     /// 28 -> 29 a func_train's global name (extra[3], 0 before: read as
@@ -351,6 +354,11 @@ namespace hldata
         /// level only says it; the guest's has it done (the converter's
         /// Pack: its size, and its surfaces' coordinates) and says 0.
         std::uint8_t guestHalvings;
+        /// How many colours its palette has, as cooked (two bytes each): a
+        /// streamed texture is given that much of palette memory. 0 when it
+        /// was not cooked (a map converted without textures).
+        std::uint16_t paletteColours;
+        std::uint16_t spare;
     };
 
     /// How a brush entity is drawn. From the entity's "rendermode" and
@@ -1509,7 +1517,7 @@ namespace hldata
     static_assert(sizeof(Surface) == 24);
     static_assert(sizeof(Model) == 44);
     static_assert(sizeof(ClipNode) == 8);
-    static_assert(sizeof(TextureRef) == 36);
+    static_assert(sizeof(TextureRef) == 40);
     static_assert(sizeof(EntityRecord) == 32);
     static_assert(sizeof(Brush) == 40);
     static_assert(sizeof(LogicRecord) == 80);

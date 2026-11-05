@@ -70,6 +70,17 @@ int main()
     check(manifestRefusal(bad.data(), bad.size()).find("maps are format " + std::to_string(kLevelVersion ^ 0x40)) !=
               std::string::npos,
           "... and the screen says which");
+    // A card converted before format 50 (the streamed textures' palette
+    // sizes): refused before anything is loaded, the screen naming both
+    // formats (the console adds "Run this version's converter again").
+    bad = bytes;
+    bad[6] = 49;
+    bad[7] = 0;
+    check(readManifest(bad.data(), bad.size(), back) == ManifestError::OtherVersion,
+          "a card of maps of format 49 is refused");
+    check(manifestRefusal(bad.data(), bad.size()) ==
+              "The card's maps are format 49; this version needs " + std::to_string(kLevelMinVersion) + " or newer.",
+          "... saying so, in so many words");
     check(manifestRefusal(bytes.data(), bytes.size()).empty(), "a manifest that is fine has nothing to say");
     check(readManifest(bytes.data(), bytes.size() - 1, back) == ManifestError::NotAManifest,
           "a truncated payload is caught by its length");

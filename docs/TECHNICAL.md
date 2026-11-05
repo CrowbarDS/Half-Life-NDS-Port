@@ -1283,7 +1283,17 @@ before, within 40 percent of the texel budget.
 The level (format version 27+) carries what the console needs: each texture's
 **average colour** (`TextureRef::average`), the **share** of the map's
 leaves that see it (`TextureRef::share`), and the most texels one leaf's view
-lists (`LevelHeader::worstTexels`).
+lists (`LevelHeader::worstTexels`). Since format 50 each texture's record also
+says how many **colours its palette** has (`TextureRef::paletteColours`), and a
+streamed texture is given exactly that much palette memory. It is written when
+the map is packed, from the very texture file packed beside it: the stage's
+file of a name and size is shared by every map that uses it, and a map cooked
+after may have made it again with another palette. Before, it was given what a texture of
+its size might have at most, one colour for every 16 texels: on c2a5e that was
+83 KB for palettes that come to 15 KB, in a palette area of 26 KB, and an
+in-view texture could stay flat for seconds for want of a piece of it big
+enough. A record that says nothing believable (not 1 to 512) gets the old
+guess, and perf.txt says how many did.
 
 On the console `TextureCache` does not load a streamed texture. It draws it
 as a flat colour and `TextureStream` reads the real one in and out of video memory
@@ -1382,7 +1392,9 @@ sound already, are stored as they are, and so are a map's textures, which
 are read during play as they come into view: the engine reads one straight
 from the archive into where it goes, found in the archive's index with no
 file opened (`NEA_NpacMemberRead`). Maps from before level format 49
-compressed them, and are refused.
+compressed them; maps from before format 50 do not say their textures'
+palette sizes. Both are refused: the console says so before anything is
+loaded, and asks for the converter to be run again.
 The map being played is mounted with its archive's index -- its files,
 their names and how each is packed, 6 to 31 KB -- in a fixed buffer of 32 KB
 (`shared/HlArchive.hpp`), not on the heap: one map after another goes into

@@ -262,19 +262,7 @@ namespace hlds
                 return false;
             }
 
-            // The level, in pieces (HlLevel.hpp).
-            const std::uint32_t size = static_cast<std::uint32_t>(level.size());
-            for (std::uint32_t piece = 0; piece < hldata::levelPieces(size); ++piece)
-            {
-                NpacMember member;
-                member.path = "level." + std::to_string(piece);
-                const std::uint32_t start = hldata::levelPieceStart(piece);
-                member.data.assign(level.begin() + start,
-                                   level.begin() + start + hldata::levelPieceBytes(size, piece));
-                packing.named.insert(member.path);
-                packing.members.push_back(std::move(member));
-            }
-
+            const std::size_t levelAt = packing.members.size();
             for (std::uint32_t i = 0; i < view.textureCount; ++i)
             {
                 const hldata::TextureRef &ref = view.textures[i];
@@ -285,6 +273,57 @@ namespace hlds
                 // during play, straight into where it goes.)
                 packing.add(stage / "tex" / name, std::string("tex/") + name, false);
             }
+
+            // Each texture's palette as this archive holds it: what the
+            // console gives a streamed one of palette memory. Said again
+            // here, from the very bytes packed, because the stage's file of
+            // a name and size is shared by the maps that use it, and another
+            // map cooked since may have made it again with another palette.
+            if (!air)
+            {
+                std::map<std::string, std::uint16_t> colours;
+                for (std::size_t m = levelAt; m < packing.members.size(); ++m)
+                {
+                    const NpacMember &member = packing.members[m];
+                    hldata::TextureHeader header;
+                    if (member.data.size() < sizeof(header))
+                        continue;
+                    std::memcpy(&header, member.data.data(), sizeof(header));
+                    if (hldata::textureHeaderValid(header, static_cast<std::uint32_t>(member.data.size())))
+                        colours[member.path] = header.paletteColours;
+                }
+                auto *textures = reinterpret_cast<hldata::TextureRef *>(
+                    level.data() + (reinterpret_cast<const std::uint8_t *>(view.textures) - level.data()));
+                for (std::uint32_t i = 0; i < view.textureCount; ++i)
+                {
+                    char name[40];
+                    hldata::textureFileName(textures[i].name, textures[i].width, textures[i].height,
+                                            (textures[i].flags & hldata::kTextureA3I5) != 0, name);
+                    const auto found = colours.find(std::string("tex/") + name);
+                    textures[i].paletteColours = found != colours.end() ? found->second : 0;
+                }
+                hldata::LevelHeader header;
+                std::memcpy(&header, level.data(), sizeof(header));
+                header.crc32 = hldata::crc32(level.data() + sizeof(header),
+                                             static_cast<std::uint32_t>(level.size() - sizeof(header)));
+                std::memcpy(level.data(), &header, sizeof(header));
+            }
+
+            // The level, in pieces (HlLevel.hpp), first in the archive.
+            const std::uint32_t size = static_cast<std::uint32_t>(level.size());
+            std::vector<NpacMember> pieces;
+            for (std::uint32_t piece = 0; piece < hldata::levelPieces(size); ++piece)
+            {
+                NpacMember member;
+                member.path = "level." + std::to_string(piece);
+                const std::uint32_t start = hldata::levelPieceStart(piece);
+                member.data.assign(level.begin() + start,
+                                   level.begin() + start + hldata::levelPieceBytes(size, piece));
+                packing.named.insert(member.path);
+                pieces.push_back(std::move(member));
+            }
+            packing.members.insert(packing.members.begin() + static_cast<std::ptrdiff_t>(levelAt),
+                                   std::make_move_iterator(pieces.begin()), std::make_move_iterator(pieces.end()));
 
             for (std::uint32_t i = 0; i < view.spriteCount; ++i)
             {
