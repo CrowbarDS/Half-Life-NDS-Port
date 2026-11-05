@@ -709,6 +709,97 @@ namespace
         check(sound2, "and the areas stay sound");
         check(written > 200 && atOnce > 20 && held > 20, "with loads both written at once and held back");
     }
+
+    // The textures the eye's leaf can see, found a piece a frame.
+    void testPvsWalk()
+    {
+        struct L
+        {
+            std::uint16_t firstMark, markCount;
+        };
+        struct S
+        {
+            std::uint16_t texture;
+        };
+        // Leaf 0 sees nothing (the solid one); 1 has surfaces 0 and 1, 2 has
+        // 2, 3 has 3 and 4.
+        const L leaves[4] = {{0, 0}, {0, 2}, {2, 1}, {3, 2}};
+        const std::uint16_t marks[5] = {0, 1, 2, 3, 4};
+        const S surfaces[5] = {{5}, {0xFFFF}, {7}, {5}, {9}};
+        bool seen[4] = {false, true, false, true};
+        auto visible = [&](int leaf) { return seen[leaf]; };
+
+        PvsTextureWalk w;
+        w.reset(10);
+        check(!w.busy() && w.wanted()[5] == 0, "nothing wanted before a walk");
+        w.start(4);
+        // Two surfaces a step: a leaf is never cut, so leaf 1 then leaf 3.
+        int steps = 0;
+        while (!w.step(leaves, marks, surfaces, visible, 2, 64) && steps < 10)
+        {
+            ++steps;
+            check(w.wanted()[5] == 0, "nothing new until the walk is done");
+        }
+        check(steps == 1, "the walk goes as far as its budget, and on the next frame");
+        const std::uint8_t *want = w.wanted();
+        check(want[5] && want[9] && !want[7] && !want[0], "the textures of the leaves seen, and only those");
+        check(!w.busy() && !w.step(leaves, marks, surfaces, visible, 2, 64), "and then nothing more to do");
+
+        // The eye moves on: the old set stands until the new one is done.
+        seen[1] = seen[3] = false;
+        seen[2] = true;
+        w.start(4);
+        w.step(leaves, marks, surfaces, visible, 100, 1);
+        check(w.wanted()[5] && !w.wanted()[7], "half way, the leaves seen before still say");
+        while (!w.step(leaves, marks, surfaces, visible, 100, 1))
+        {
+        }
+        check(!w.wanted()[5] && w.wanted()[7], "done, the new leaves do");
+
+        // A texture number past the map's: left alone.
+        const S wild[5] = {{12}, {12}, {12}, {12}, {12}};
+        w.reset(10);
+        seen[1] = true;
+        w.start(4);
+        while (!w.step(leaves, marks, wild, visible, 100, 100))
+        {
+        }
+        bool none = true;
+        for (int i = 0; i < kStreamMaxTextures; ++i)
+            none = none && w.wanted()[i] == 0;
+        check(none, "a texture the map has not is not wanted");
+    }
+
+    // What the eye's leaf can see is kept over what it cannot, and read
+    // ahead without pushing out the rest of what it can see.
+    void testPvsMakesWayLast()
+    {
+        std::vector<StreamInfo> tex(7, info(1024));
+        TextureStreamer s;
+        s.init(tex.data(), 7, 4 * 1024, 16 * 1024);
+        s.clearScores();
+        for (int i = 0; i < 4; ++i)
+            s.addScore(i, 1);
+        s.rebuild();
+        step(s);
+        // 0 and 1 in the PVS, 2 and 3 not; 4 in view, 5 and 6 in the PVS.
+        s.clearScores();
+        s.addScore(0, 300);
+        s.addScore(1, 300);
+        s.addScore(4, 1u << 20);
+        s.addScore(5, 300);
+        s.addScore(6, 300);
+        s.rebuild();
+        StreamLoad loads[8];
+        int evicted[8], n = 0;
+        const int made = s.plan(1u << 20, 1u << 20, loads, 8, evicted, 8, n);
+        for (int i = 0; i < made; ++i)
+            s.loaded(loads[i].id);
+        check(s.resident(4) && s.resident(0) && s.resident(1), "the one in view comes in, and the PVS stays");
+        check(!s.resident(2) && !s.resident(3), "what cannot be seen from here makes way first");
+        check(s.resident(5) != s.resident(6), "one read ahead, in what was left");
+        check(made == 2 && n == 2, "and no more: the PVS does not push out the PVS");
+    }
 } // namespace
 
 int main()
@@ -728,6 +819,8 @@ int main()
     testBarrier();
     testFreedWait();
     testPipelined();
+    testPvsWalk();
+    testPvsMakesWayLast();
     if (g_failures == 0)
         std::printf("test_texturestream: ok\n");
     return g_failures == 0 ? 0 : 1;

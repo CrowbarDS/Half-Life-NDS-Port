@@ -185,6 +185,74 @@ namespace hldata
         std::uint32_t paletteOffset;
     };
 
+    /// The textures on the world's surfaces in the leaves the eye's leaf can
+    /// see (its PVS), found a few at a time: start() when that set of leaves
+    /// changes, then step() once a frame until it says it is done. Until then
+    /// wanted() is the set the walk before found (empty at first). The
+    /// leaves are anything with firstMark and markCount, the surfaces
+    /// anything with texture (a texture number, or one too big for none).
+    class PvsTextureWalk
+    {
+    public:
+        /// Forget everything (a map is begun): `textures` of them, none wanted.
+        void reset(int textures)
+        {
+            textures_ = textures < kStreamMaxTextures ? textures : kStreamMaxTextures;
+            std::memset(wanted_, 0, sizeof(wanted_));
+            busy_ = false;
+        }
+        /// The leaves seen from where the eye is now are others: walked again.
+        void start(int leafCount)
+        {
+            std::memset(building_, 0, sizeof(building_));
+            leafCount_ = leafCount;
+            next_ = 0;
+            busy_ = true;
+        }
+        bool busy() const { return busy_; }
+
+        /// At most `markBudget` of the leaves' surfaces looked at (a leaf is
+        /// never cut in two), and `leafBudget` leaves; `visible(leaf)` says
+        /// which are seen. True once the walk is done (wanted() is new).
+        template <class Leaf, class Surface, class Visible>
+        bool step(const Leaf *leaves, const std::uint16_t *marks, const Surface *surfaces, Visible visible,
+                  int markBudget, int leafBudget)
+        {
+            if (!busy_)
+                return false;
+            int marksSeen = 0;
+            for (int n = 0; n < leafBudget && marksSeen < markBudget && next_ < leafCount_; ++n, ++next_)
+            {
+                if (!visible(next_))
+                    continue;
+                const Leaf &leaf = leaves[next_];
+                for (int m = 0; m < leaf.markCount; ++m)
+                {
+                    const unsigned texture = surfaces[marks[leaf.firstMark + m]].texture;
+                    if (texture < static_cast<unsigned>(textures_))
+                        building_[texture] = 1;
+                }
+                marksSeen += leaf.markCount;
+            }
+            if (next_ < leafCount_)
+                return false;
+            std::memcpy(wanted_, building_, sizeof(wanted_));
+            busy_ = false;
+            return true;
+        }
+
+        /// One per texture: 1 if it is on a surface the eye's leaf can see.
+        const std::uint8_t *wanted() const { return wanted_; }
+
+    private:
+        std::uint8_t wanted_[kStreamMaxTextures] = {};
+        std::uint8_t building_[kStreamMaxTextures] = {};
+        int textures_ = 0;
+        int leafCount_ = 0;
+        int next_ = 0;
+        bool busy_ = false;
+    };
+
     class TextureStreamer
     {
     public:

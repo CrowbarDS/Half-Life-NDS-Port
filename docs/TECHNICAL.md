@@ -1286,7 +1286,11 @@ as described in `shared/HlTextureStream.hpp`, testable on PC (`test_texturestrea
 
 - Every surface drawn notes its texture (`noteTextureDrawn`). One drawn in
   the last six frames is wanted above all else; one drawn in the last
-  hundred and twenty a little.
+  hundred and twenty a little. One on a world surface the eye's leaf can see
+  (its PVS) is wanted a little less again. It is read ahead if there is room,
+  and what cannot be seen from here makes way first. The PVS's textures are
+  found again each time the eye enters another leaf, a piece a frame
+  (`PvsTextureWalk`), from the leaves the renderer has just marked visible.
 - What there is room for is found when the map has loaded (`begin`): what NEA
   has left after everything that is not streamed. The textures most leaves see
   (a share of 60 and up, as much as a third of the room) are put there for good,

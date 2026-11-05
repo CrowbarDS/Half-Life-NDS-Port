@@ -19,6 +19,7 @@
 #include "data/ModelCache.hpp"
 #include "data/TextureCache.hpp"
 #include "data/VramWriter.hpp"
+#include "render/WorldDraw.hpp"
 
 namespace hlrt
 {
@@ -51,12 +52,23 @@ namespace hlrt
         /// What a picture of a cycle that is not the one shown is wanted
         /// with (if there is room): above what is only remembered.
         constexpr std::uint32_t kSiblingScore = 1500;
+        /// What a texture on a surface the eye's leaf can see (its PVS), not
+        /// drawn lately, is wanted with: read ahead if there is room, below
+        /// anything remembered, and above what cannot be seen from here
+        /// (which makes way first).
+        constexpr std::uint32_t kPvsScore = 300;
+        /// How much of the PVS is walked in a frame, once the eye is in
+        /// another leaf: surfaces and leaves.
+        constexpr int kPvsMarksPerFrame = 768;
+        constexpr int kPvsLeavesPerFrame = 1024;
         /// Of the heap's headroom, as much as a third may be the copies of
         /// textures kept in main memory (the cycles' pictures and the tiled
         /// floors' variants), and this much at the very most.
         constexpr std::size_t kCacheMost = 1024 * 1024;
 
         TextureStreamer planner;
+        PvsTextureWalk pvs;
+        std::uint16_t pvsStamp = 0; ///< WorldDraw::visStamp the walk was begun for
         StreamInfo infos[kStreamMaxTextures];
         std::uint32_t seenAt[kStreamMaxTextures];
         alignas(32) std::uint8_t stage[kStageBytes];
@@ -123,6 +135,7 @@ namespace hlrt
             int most;
         };
         FlatSpells flatSpells{}, flatSpellsWritten{};
+        int loadsWritten = 0; ///< planner.loads() at the last line of them
 
         /// The video memory that is the plan's own: the plan's offsets are
         /// places in it. Texels (with their index where NEA says), in up to
@@ -572,6 +585,9 @@ namespace hlrt
         g_textureFrame = frameNo;
         flatFrom = 0;
         flatSpells = flatSpellsWritten = FlatSpells{};
+        loadsWritten = 0;
+        pvs.reset(count);
+        pvsStamp = worldDraw.visStamp();
 
         // (A console in DSi mode has nothing yet: all of it is asked for.)
         std::memset(fetchWanted, 0, sizeof(fetchWanted));
@@ -729,14 +745,19 @@ namespace hlrt
             if (!infos[id].streamed || planner.pinned(id))
                 continue;
             const std::uint32_t at = seenAt[id];
+            const std::uint32_t pvsScore = pvs.wanted()[id] != 0 ? kPvsScore : 0;
             if (at == 0xFFFFFFFFu)
+            {
+                if (pvsScore != 0)
+                    planner.addScore(id, pvsScore);
                 continue;
+            }
             const std::uint32_t age = frameNo - at;
-            std::uint32_t score = 0;
+            std::uint32_t score = pvsScore;
             if (age <= kSeenFrames)
                 score = kSeenScore;
             else if (age <= kRememberFrames)
-                score = 1000 - age;
+                score += 1000 - age;
             if (score != 0)
                 planner.addScore(id, score);
             if (age <= 2)
@@ -858,6 +879,16 @@ namespace hlrt
         fetchTick();
         if (perfLogging())
             noteFlatSpell();
+        // The eye is in another leaf: what it can see is walked again, a
+        // piece a frame. (Nothing, while it stays.)
+        if (worldDraw.visStamp() != pvsStamp)
+        {
+            pvsStamp = worldDraw.visStamp();
+            pvs.start(static_cast<int>(level.view.leafCount));
+        }
+        if (pvs.busy())
+            pvs.step(level.view.leaves, level.view.marks, level.view.surfaces,
+                     [](int leaf) { return worldDraw.leafVisible(leaf); }, kPvsMarksPerFrame, kPvsLeavesPerFrame);
         demand();
         if (frameNo % 8 == 0)
             planner.retryFailed();
@@ -970,8 +1001,9 @@ namespace hlrt
                              static_cast<unsigned long>(frameNo - frames), static_cast<unsigned long>(frames),
                              static_cast<unsigned long>(blanks), flatMost);
         }
-        // All of them, every ten seconds or so if there were more.
-        if (frameNo % 512 == 0 && flatSpells.count != flatSpellsWritten.count)
+        // All of them, every ten seconds or so if there were more (or more
+        // was read).
+        if (frameNo % 512 == 0 && (flatSpells.count != flatSpellsWritten.count || planner.loads() != loadsWritten))
         {
             if (log == nullptr)
                 log = std::fopen(global.dataPath("perf.txt").c_str(), "a");
@@ -979,11 +1011,12 @@ namespace hlrt
             if (log != nullptr)
             {
                 std::fprintf(log, "tex flat spells by frame %lu: %lu, %lu frames in all, the longest %lu (%lu blanks), "
-                                  "at most %d in view\n",
+                                  "at most %d in view; %d loads, %d let go\n",
                              static_cast<unsigned long>(frameNo), static_cast<unsigned long>(f.count),
                              static_cast<unsigned long>(f.frames), static_cast<unsigned long>(f.longest),
-                             static_cast<unsigned long>(f.longestBlanks), f.most);
+                             static_cast<unsigned long>(f.longestBlanks), f.most, planner.loads(), planner.evictions());
                 flatSpellsWritten = f;
+                loadsWritten = planner.loads();
             }
         }
         if (log != nullptr)

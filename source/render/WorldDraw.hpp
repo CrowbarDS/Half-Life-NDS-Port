@@ -127,6 +127,11 @@ namespace hlrt
         bool spend(int polygons, int vertices);
 
         const WorldStats &stats() const { return stats_; }
+        /// The leaves the eye's leaf can see: changes (to a number not had
+        /// just before) each time they are found again, for a new leaf.
+        std::uint16_t visStamp() const { return visFrame_; }
+        /// Whether `leaf` is one of them.
+        bool leafVisible(int leaf) const { return leafFrame_ != nullptr && leafFrame_[leaf] == visFrame_; }
 
         /// The budget, corrected by what the hardware said of the last pass
         /// (GpuStats): call once a pass, after it is sent.
