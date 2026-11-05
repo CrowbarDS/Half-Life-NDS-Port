@@ -12,6 +12,7 @@
 
 #include "DebugLog.hpp"
 #include "Global.hpp"
+#include "Settings.hpp"
 #include "HlTexture.hpp"
 #include "HlTextureStream.hpp"
 #include "data/LevelFile.hpp"
@@ -60,6 +61,8 @@ namespace hlrt
         std::uint32_t seenAt[kStreamMaxTextures];
         alignas(32) std::uint8_t stage[kStageBytes];
 
+        /// What was read and waits to be written, then drawn: several at
+        /// once, the plan going on while they wait.
         struct Staged
         {
             int id;
@@ -68,10 +71,22 @@ namespace hlrt
             const std::uint8_t *body; ///< or where it is in main memory (then `at` is not used)
             std::uint32_t texelOffset; ///< where the plan put it
             std::uint32_t paletteOffset;
+            /// The frame (TextureStream::blanks) from which it may be
+            /// written: two after its place was let go by another (the
+            /// picture on the screen until then may be drawn from it), at
+            /// once if nothing was there.
+            std::uint32_t readyBlank;
+            std::uint32_t ticket; ///< its last write's (VramWriter), once queued
+            bool queued;
+            bool drawn;
         };
+        /// In the order they were read: `stagedFirst` the oldest. Their
+        /// bodies are in `stage` one after another, in a ring: from the
+        /// oldest's to `stageHead`, where the next is read.
         Staged staged[kMaxStaged];
+        int stagedFirst = 0;
         int stagedCount = 0;
-        std::uint32_t stageUsed = 0;
+        std::uint32_t stageHead = 0;
 
         /// For a picture of a cycle (the game's '+' textures, and the other
         /// face's): the cycle's first picture and how many pictures it has.
@@ -97,6 +112,17 @@ namespace hlrt
         std::uint32_t frameNo = 0;
         std::uint8_t failures[kStreamMaxTextures]; ///< how often each could not be loaded (HLDS_PROFILE's report)
         int refusalsLogged = 0;
+        /// Spells of textures in view drawn flat (after a map starts, a
+        /// teleport, a turn): the one going on, from when, and the most at
+        /// once; and all of them since the map began.
+        std::uint32_t flatFrom = 0, flatFromBlank = 0;
+        int flatMost = 0;
+        struct FlatSpells
+        {
+            std::uint32_t count, frames, longest, longestBlanks;
+            int most;
+        };
+        FlatSpells flatSpells{}, flatSpellsWritten{};
 
         /// The video memory that is the plan's own: the plan's offsets are
         /// places in it. Texels (with their index where NEA says), in up to
@@ -117,13 +143,6 @@ namespace hlrt
         /// reserveSkinSlots' slots: regions[0] is them, for begin() (0: none set by).
         std::uint32_t earlyBytes = 0;
 
-        /// What was read, and when: it is queued to be written two frames
-        /// after (the picture on the screen until then may be drawn from
-        /// where it goes), `stagedNext` of them so far; and drawn once the
-        /// last write's ticket is done.
-        std::uint32_t stagedBlank = 0;
-        int stagedNext = 0;
-        std::uint32_t stagedTicket = 0;
 
         /// What was let go, freed two blanks after.
         struct Retired
@@ -147,7 +166,9 @@ namespace hlrt
             const std::uint32_t colours = std::min<std::uint32_t>(512, std::max<std::uint32_t>(16, texels / 16)) & ~1u;
             info.texelBytes = texels / 4; // 4x4: the texels (the index goes where they say)
             info.paletteBytes = colours * 2;
-            info.stageBytes = info.texelBytes + info.paletteBytes;
+            // (What is read: the texels, their index, half as much, and the
+            // colours; as it takes up the staging buffer.)
+            info.stageBytes = ByteArena<kStreamMaxBlocks>::round(info.texelBytes + info.texelBytes / 2 + info.paletteBytes);
             info.streamed = true;
             return info;
         }
@@ -220,6 +241,33 @@ namespace hlrt
             NEA_MaterialSetPalette(material, palette);
             textureCache.attachStreamed(static_cast<unsigned>(id), material, palette);
             planner.loaded(id);
+        }
+
+        Staged &stagedAt(int k) { return staged[(stagedFirst + k) % kMaxStaged]; }
+
+        /// How much can be read at `stageHead`, in one piece: what is after
+        /// the newest body, or the start of the buffer if that has more
+        /// room (then `stageHead` goes there).
+        std::uint32_t stageSpan()
+        {
+            int oldest = -1;
+            for (int k = 0; k < stagedCount && oldest < 0; ++k)
+                oldest = stagedAt(k).body == nullptr ? k : -1;
+            if (oldest < 0)
+            {
+                stageHead = 0;
+                return kStageBytes;
+            }
+            const std::uint32_t tail = stagedAt(oldest).at;
+            if (stageHead < tail)
+                return tail - stageHead;
+            if (stageHead == tail)
+                return 0; // (all of it, the ring gone round)
+            const std::uint32_t end = kStageBytes - stageHead;
+            if (end >= tail)
+                return end;
+            stageHead = 0;
+            return tail;
         }
     } // namespace
 
@@ -522,6 +570,8 @@ namespace hlrt
         flatNow = 0;
         frameNo = 1;
         g_textureFrame = frameNo;
+        flatFrom = 0;
+        flatSpells = flatSpellsWritten = FlatSpells{};
 
         // (A console in DSi mode has nothing yet: all of it is asked for.)
         std::memset(fetchWanted, 0, sizeof(fetchWanted));
@@ -600,9 +650,9 @@ namespace hlrt
         }
         // Those that did not fit are tried again once something is seen.
         planner.retryFailed();
+        stagedFirst = 0;
         stagedCount = 0;
-        stagedNext = 0;
-        stageUsed = 0;
+        stageHead = 0;
         g_textureSeenAt = seenAt;
         active_ = true;
         report("map loaded");
@@ -662,9 +712,9 @@ namespace hlrt
         }
         g_textureSeenAt = nullptr;
         active_ = false;
+        stagedFirst = 0;
         stagedCount = 0;
-        stagedNext = 0;
-        stageUsed = 0;
+        stageHead = 0;
         streamedTotal = 0;
         pinnedTotal = 0;
         // (The materials go with TextureCache.)
@@ -730,44 +780,73 @@ namespace hlrt
         }
     }
 
+    namespace
+    {
+        /// What may be written by now (`now`: TextureStream::blanks) is
+        /// queued to be (VramWriter, in the vertical blanks to come), in the
+        /// order it was read; what the queue has no room for, next time.
+        void queueReady(std::uint32_t now)
+        {
+            // (No more waiting in the queue at once than a frame's reading
+            // on a DSi: a weapon's skin queued behind it waits no longer.)
+            constexpr std::uint32_t kQueuedMost = 8 * 1024;
+            auto bytesOf = [](const Staged &s)
+            { return s.header.texelBytes + s.header.indexBytes + s.header.paletteBytes; };
+            std::uint32_t waiting = 0;
+            for (int k = 0; k < stagedCount; ++k)
+            {
+                const Staged &s = stagedAt(k);
+                if (s.queued && !s.drawn && !vramWriter.done(s.ticket))
+                    waiting += bytesOf(s);
+            }
+            for (int k = 0; k < stagedCount && waiting < kQueuedMost; ++k)
+            {
+                Staged &s = stagedAt(k);
+                if (s.queued || static_cast<std::int32_t>(now - s.readyBlank) < 0)
+                    continue;
+                const std::uint8_t *body = s.body != nullptr ? s.body : stage + s.at;
+                std::uint8_t *texels = texelsAt(s.texelOffset);
+                const TextureHeader &h = s.header;
+                if (vramWriter.write(texels, body, h.texelBytes) == 0)
+                    return;
+                const std::uint32_t index =
+                    vramWriter.write(NEA_Texture4x4IndexAddress(texels), body + h.texelBytes, h.indexBytes);
+                const std::uint32_t colours =
+                    index != 0 ? vramWriter.write(paletteAt(s.paletteOffset), body + h.texelBytes + h.indexBytes,
+                                                  h.paletteBytes)
+                               : 0;
+                if (colours == 0)
+                    return; // (half queued: what was queued is written again with the rest)
+                s.ticket = colours;
+                s.queued = true;
+                waiting += bytesOf(s);
+            }
+        }
+    } // namespace
+
     void TextureStream::upload()
     {
         ++blank_;
         freeRetired(false);
-        if (!active_ || stagedCount == 0 || blank_ - stagedBlank < 2)
+        if (!active_ || stagedCount == 0)
             return;
-        // Queued to be written (VramWriter, in the vertical blanks to come);
-        // what the queue has no room for, next frame.
-        while (stagedNext < stagedCount)
-        {
-            const Staged &s = staged[stagedNext];
-            const std::uint8_t *body = s.body != nullptr ? s.body : stage + s.at;
-            std::uint8_t *texels = texelsAt(s.texelOffset);
-            const TextureHeader &h = s.header;
-            if (vramWriter.write(texels, body, h.texelBytes) == 0)
-                break;
-            const std::uint32_t index =
-                vramWriter.write(NEA_Texture4x4IndexAddress(texels), body + h.texelBytes, h.indexBytes);
-            const std::uint32_t colours =
-                index != 0 ? vramWriter.write(paletteAt(s.paletteOffset), body + h.texelBytes + h.indexBytes,
-                                              h.paletteBytes)
-                           : 0;
-            if (colours == 0)
-            {
-                // (Half queued: what was queued is written again with the rest.)
-                break;
-            }
-            stagedTicket = colours;
-            ++stagedNext;
-        }
-        if (stagedNext < stagedCount || !vramWriter.done(stagedTicket))
-            return;
-        // All there: drawn from the next frame on.
+        queueReady(blank_);
+        // Each one all there: drawn from the next frame on.
         for (int k = 0; k < stagedCount; ++k)
-            bind(staged[k].id, staged[k].header, staged[k].texelOffset, staged[k].paletteOffset);
-        stagedCount = 0;
-        stagedNext = 0;
-        stageUsed = 0;
+        {
+            Staged &s = stagedAt(k);
+            if (s.queued && !s.drawn && vramWriter.done(s.ticket))
+            {
+                bind(s.id, s.header, s.texelOffset, s.paletteOffset);
+                s.drawn = true;
+            }
+        }
+        // (The oldest that are drawn give their room in the staging back.)
+        while (stagedCount > 0 && stagedAt(0).drawn)
+        {
+            stagedFirst = (stagedFirst + 1) % kMaxStaged;
+            --stagedCount;
+        }
     }
 
     void TextureStream::update(int budgetBytes)
@@ -777,8 +856,8 @@ namespace hlrt
         ++frameNo;
         g_textureFrame = frameNo;
         fetchTick();
-        if (stagedCount != 0)
-            return;
+        if (perfLogging())
+            noteFlatSpell();
         demand();
         if (frameNo % 8 == 0)
             planner.retryFailed();
@@ -789,23 +868,35 @@ namespace hlrt
         if (frameNo % 4 == 0 || frameNo < 16)
             planner.rebuild();
 
+        // More is read while what was read before waits to be written, as
+        // far as the staging buffer goes.
+        planner.setClock(blank_);
+        const std::uint32_t span = stagedCount < kMaxStaged ? stageSpan() : 0;
+        if (span == 0)
+            return;
         StreamLoad loads[kMaxStaged];
         int evicted[kMaxEvicted], evictedCount = 0;
-        const int made = planner.plan(static_cast<std::uint32_t>(budgetBytes), kStageBytes, loads, kMaxStaged, evicted,
-                                      kMaxEvicted, evictedCount);
+        const int made = planner.plan(static_cast<std::uint32_t>(budgetBytes), span, loads, kMaxStaged - stagedCount,
+                                      evicted, kMaxEvicted, evictedCount);
         // Those that make way are drawn flat from now on; what takes their
-        // place is written no sooner than two frames from now (upload), when
-        // no picture drawn with them is still being drawn.
+        // place is written no sooner than two frames from now, when no
+        // picture drawn with them is still being drawn. (What goes where
+        // nothing was is written at the next vertical blank.)
         for (int k = 0; k < evictedCount; ++k)
             textureCache.detachStreamed(static_cast<unsigned>(evicted[k]));
+        std::uint32_t used = 0;
         for (int k = 0; k < made; ++k)
         {
-            Staged &s = staged[stagedCount];
+            Staged &s = stagedAt(stagedCount);
             s.id = loads[k].id;
-            s.at = stageUsed;
+            s.at = stageHead + used;
             s.body = nullptr;
             s.texelOffset = loads[k].texelOffset;
             s.paletteOffset = loads[k].paletteOffset;
+            s.readyBlank = planner.readyAt(loads[k]);
+            s.ticket = 0;
+            s.queued = false;
+            s.drawn = false;
             if (ram[s.id] != nullptr)
             {
                 // In main memory already: nothing to read.
@@ -819,7 +910,7 @@ namespace hlrt
                 ++stagedCount;
                 continue;
             }
-            if (!fileFor(s.id, s.header, stage + stageUsed, kStageBytes - stageUsed))
+            if (!fileFor(s.id, s.header, stage + s.at, span - used))
             {
                 planner.failed(s.id);
                 fetchWanted[s.id] = 1;
@@ -831,11 +922,72 @@ namespace hlrt
                 continue;
             }
             const std::uint32_t body = s.header.texelBytes + s.header.indexBytes + s.header.paletteBytes;
-            stageUsed += (body + 31u) & ~31u;
+            used += (body + 31u) & ~31u;
             ++stagedCount;
         }
-        stagedNext = 0;
-        stagedBlank = blank_;
+        stageHead += used;
+        queueReady(blank_);
+    }
+
+    void TextureStream::noteFlatSpell()
+    {
+        // (Counted here, every frame, whatever the plan is doing.)
+        int flat = 0;
+        for (int id = 0; id < planner.count(); ++id)
+        {
+            if (infos[id].streamed && seenAt[id] != 0xFFFFFFFFu && frameNo - seenAt[id] <= kSeenFrames &&
+                !planner.resident(id))
+                ++flat;
+        }
+        std::FILE *log = nullptr;
+        if (flat != 0)
+        {
+            if (flatFrom == 0)
+            {
+                flatFrom = frameNo;
+                flatFromBlank = Global::vblanks();
+                flatMost = 0;
+            }
+            flatMost = std::max(flatMost, flat);
+        }
+        else if (flatFrom != 0)
+        {
+            // A spell ends: counted, and a long one said at once.
+            const std::uint32_t frames = frameNo - flatFrom;
+            const std::uint32_t blanks = Global::vblanks() - flatFromBlank;
+            flatFrom = 0;
+            FlatSpells &f = flatSpells;
+            ++f.count;
+            f.frames += frames;
+            f.most = std::max(f.most, flatMost);
+            if (frames > f.longest)
+            {
+                f.longest = frames;
+                f.longestBlanks = blanks;
+            }
+            if (frames >= 30 && (log = std::fopen(global.dataPath("perf.txt").c_str(), "a")) != nullptr)
+                std::fprintf(log, "tex flat: from frame %lu, %lu frames (%lu blanks), at most %d in view\n",
+                             static_cast<unsigned long>(frameNo - frames), static_cast<unsigned long>(frames),
+                             static_cast<unsigned long>(blanks), flatMost);
+        }
+        // All of them, every ten seconds or so if there were more.
+        if (frameNo % 512 == 0 && flatSpells.count != flatSpellsWritten.count)
+        {
+            if (log == nullptr)
+                log = std::fopen(global.dataPath("perf.txt").c_str(), "a");
+            const FlatSpells &f = flatSpells;
+            if (log != nullptr)
+            {
+                std::fprintf(log, "tex flat spells by frame %lu: %lu, %lu frames in all, the longest %lu (%lu blanks), "
+                                  "at most %d in view\n",
+                             static_cast<unsigned long>(frameNo), static_cast<unsigned long>(f.count),
+                             static_cast<unsigned long>(f.frames), static_cast<unsigned long>(f.longest),
+                             static_cast<unsigned long>(f.longestBlanks), f.most);
+                flatSpellsWritten = f;
+            }
+        }
+        if (log != nullptr)
+            std::fclose(log);
     }
 
     StreamStats TextureStream::stats() const
@@ -870,11 +1022,11 @@ namespace hlrt
         const StreamStats st = stats();
         const VramWriter::Stats w = vramWriter.stats();
         std::fprintf(log, "tex %s: frame %lu, %d/%d resident (%d attached), %d flat in view, %d/%d KB of %d KB, "
-                          "palettes %d/%d, %d refused, %d retired, staged %d/%d\n",
+                          "palettes %d/%d, %d refused, %d retired, staged %d\n",
                      why, static_cast<unsigned long>(frameNo), st.resident, st.streamed, st.attached, st.flatNow,
                      static_cast<int>(planner.texelBytesUsed() / 1024), static_cast<int>(planner.texelCapacity() / 1024),
                      regionTotal / 1024, static_cast<int>(planner.paletteBytesUsed()),
-                     static_cast<int>(planner.paletteCapacity()), st.refused, retiredCount, stagedNext, stagedCount);
+                     static_cast<int>(planner.paletteCapacity()), st.refused, retiredCount, stagedCount);
         std::fprintf(log, "  region: %d KB of texels in %d pieces (%d, %d, %d, %d; %d skin slots of %lu), %d of palettes; "
                           "writes: %lu KB in %lu blanks, %lu pieces, %lu blanks ran out of time, the latest line %d "
                           "(the last %d)\n",

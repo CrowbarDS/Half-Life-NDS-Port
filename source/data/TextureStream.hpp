@@ -22,8 +22,10 @@
 // map is loaded (NEA_TextureRegionReserve4x4 and NEA_PaletteRegionReserve):
 // the plan's places are the places in it, so what the plan says fits does fit.
 // What is read is written by VramWriter, a piece at a time in the vertical
-// blanks, and drawn once it is all there. The top of the region is the
-// weapons' skin slots (ModelCache).
+// blanks, and each texture is drawn once it is all there; reading goes on
+// meanwhile. A texture written where another was let go is written no sooner
+// than two frames after (TextureStreamer::readyAt). The top of the region is
+// the weapons' skin slots (ModelCache).
 
 #include <cstdint>
 
@@ -88,16 +90,17 @@ namespace hlrt
         void end(bool keepRam = false);
         bool active() const { return active_; }
 
-        /// Once a frame, after the vertical blank: what was read two frames
-        /// ago is queued to be written, and what is written is drawn.
+        /// Once a frame, after the vertical blank: what may be written now
+        /// is queued to be, and each texture all written is drawn.
         void upload();
         /// The frames counted by upload().
         std::uint32_t blanks() const { return blank_; }
         /// A texture let go: freed two blanks from now, when no picture
         /// still on the screen can be drawing it.
         void retire(NEA_Material *material, NEA_Palette *palette);
-        /// At the end of each frame, calculate what is wanted next,
-        /// and how many `budgetBytes` of the card read for it.
+        /// At the end of each frame, calculate what is wanted next, and
+        /// read `budgetBytes` of the card for it (while what was read before
+        /// waits to be written, as far as the staging buffer goes).
         void update(int budgetBytes);
 
         StreamStats stats() const;
@@ -110,6 +113,9 @@ namespace hlrt
         bool loadNow(int id, std::uint32_t texelOffset, std::uint32_t paletteOffset);
         void demand();
         void freeRetired(bool all);
+        /// A spell of flat textures in view that has ended: how long, in
+        /// perf.txt (when lines go there: perfLogging).
+        void noteFlatSpell();
 
         bool active_ = false;
         bool fetchCame_ = false;

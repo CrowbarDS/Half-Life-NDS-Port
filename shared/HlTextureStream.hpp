@@ -21,6 +21,12 @@
 // Two areas of memory, each an arena of its own: the texels (for a 4x4
 // compressed texture, with its index words, which sit where the texels' place
 // says; the console works that out), and the palettes.
+//
+// The planner keeps a clock (setClock: the caller's frames) and remembers
+// what space was let go when: a texture placed where one was let go less
+// than two frames before must not be written yet (a picture still on the
+// screen may be drawn from it), one placed in space free for longer may be
+// written at once (readyAt).
 
 #include <cstdint>
 #include <cstring>
@@ -198,6 +204,58 @@ namespace hldata
             palettes_.init(paletteBytes);
             queueSize_ = queuePos_ = 0;
             resident_ = loads_ = evictions_ = 0;
+            freedCount_ = 0;
+            freedFloor_ = 0;
+            freedFloorSet_ = false;
+        }
+
+        /// What was let go this long ago (in setClock's frames) or longer
+        /// may be written over.
+        static constexpr std::uint32_t kFreedFrames = 2;
+        /// How many pieces let go are remembered at once (more than two
+        /// frames' worth: the oldest is then folded into one moment, later
+        /// than it was, so that nothing is ever written too soon).
+        static constexpr int kRecentFrees = 64;
+
+        /// The caller's frame now: space let go from here on is let go at
+        /// `now`. (Forgets what was let go long enough ago.)
+        void setClock(std::uint32_t now)
+        {
+            clock_ = now;
+            int kept = 0;
+            for (int i = 0; i < freedCount_; ++i)
+            {
+                if (clock_ - freed_[i].at < kFreedFrames)
+                    freed_[kept++] = freed_[i];
+            }
+            freedCount_ = kept;
+            if (freedFloorSet_ && clock_ - freedFloor_ >= kFreedFrames)
+                freedFloorSet_ = false;
+        }
+        std::uint32_t clock() const { return clock_; }
+
+        /// The first frame at which `load` may be written: the clock if now,
+        /// later if some of its texel or palette space was let go less than
+        /// kFreedFrames ago.
+        std::uint32_t readyAt(const StreamLoad &load) const
+        {
+            const std::uint32_t texelEnd =
+                load.texelOffset + ByteArena<kStreamMaxBlocks>::round(info_[load.id].texelBytes);
+            const std::uint32_t paletteEnd =
+                load.paletteOffset + ByteArena<kStreamMaxBlocks>::round(info_[load.id].paletteBytes);
+            std::uint32_t wait = 0; // frames from now
+            if (freedFloorSet_)
+                wait = kFreedFrames - (clock_ - freedFloor_);
+            for (int i = 0; i < freedCount_; ++i)
+            {
+                const Freed &f = freed_[i];
+                const bool overlaps = f.palette ? f.off < paletteEnd && load.paletteOffset < f.off + f.size
+                                                : f.off < texelEnd && load.texelOffset < f.off + f.size;
+                const std::uint32_t w = kFreedFrames - (clock_ - f.at);
+                if (overlaps && w > wait)
+                    wait = w;
+            }
+            return clock_ + wait;
         }
 
         /// The texel area is in pieces of memory one after another: a block
@@ -438,12 +496,38 @@ namespace hldata
         {
             const int t = texels_.find(id);
             if (t >= 0)
+            {
+                noteFreed(texels_.b[t].off, texels_.b[t].size, false);
                 texels_.free(t);
+            }
             const int p = palettes_.find(id);
             if (p >= 0)
+            {
+                noteFreed(palettes_.b[p].off, palettes_.b[p].size, true);
                 palettes_.free(p);
+            }
             if (state_[id] == StreamState::Resident)
                 --resident_;
+        }
+
+        void noteFreed(std::uint32_t off, std::uint32_t size, bool palette)
+        {
+            if (freedCount_ == kRecentFrees)
+            {
+                // (Full: the oldest becomes the floor, which holds back every
+                // write, not only those over it, until it is old enough.)
+                int oldest = 0;
+                for (int i = 1; i < freedCount_; ++i)
+                {
+                    if (clock_ - freed_[i].at > clock_ - freed_[oldest].at)
+                        oldest = i;
+                }
+                if (!freedFloorSet_ || clock_ - freed_[oldest].at < clock_ - freedFloor_)
+                    freedFloor_ = freed_[oldest].at;
+                freedFloorSet_ = true;
+                freed_[oldest] = freed_[--freedCount_];
+            }
+            freed_[freedCount_++] = {off, size, clock_, palette};
         }
 
         static constexpr int kBarrierOwner = -1;
@@ -522,5 +606,18 @@ namespace hldata
         std::uint32_t queueScore_[kStreamCandidates];
         int queueSize_ = 0, queuePos_ = 0;
         int resident_ = 0, loads_ = 0, evictions_ = 0;
+        /// Space let go in the last kFreedFrames, and when.
+        struct Freed
+        {
+            std::uint32_t off;
+            std::uint32_t size;
+            std::uint32_t at;
+            bool palette;
+        };
+        Freed freed_[kRecentFrees];
+        int freedCount_ = 0;
+        std::uint32_t clock_ = 0;
+        std::uint32_t freedFloor_ = 0;
+        bool freedFloorSet_ = false;
     };
 } // namespace hldata

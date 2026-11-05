@@ -1297,10 +1297,14 @@ as described in `shared/HlTextureStream.hpp`, testable on PC (`test_texturestrea
   DSi). When there is no room, a resident texture makes way for one wanted
   more than twice as much; what is nearly as wanted is left alone, so that two
   textures cannot take each other's place for ever.
-- They are written to video memory only right after the vertical blank
-  (`upload`, called straight after `NEA_WaitForVBL`), when the 3D engine is
-  not reading it. NEA places each texture; if it has no room where the plan
-  thought there was, the plan is told how much the memory really holds.
+- What is read is written to video memory by `VramWriter`, in the vertical
+  blanks, when the 3D engine is not reading it, and each texture is drawn as
+  soon as its own writes are done. Reading goes on every frame while earlier
+  textures wait to be written, as far as the 32 KB staging buffer goes. A
+  texture placed where another was let go waits two frames first, since the
+  picture on the screen until then may still be drawn from there. One placed
+  in memory free for longer is written at the next blank (the plan remembers
+  when each piece was let go: `readyAt`).
 
 The debug readout shows it: `tex 72/75 +63 -0 flat 0 210/211K` is textures
 in memory of those streamed, loaded and let go since the map began, how many
