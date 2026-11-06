@@ -893,7 +893,7 @@ namespace hlrt
                 {
                     ++pressure_;
                     sinceRise_ = 0;
-                    if (sinceRelax_ < 600 && relaxWait_ < kRelaxWait * 16)
+                    if (sinceRelax_ < 600 && relaxWait_ < kRelaxWaitMost)
                         relaxWait_ *= 2;
                 }
             }

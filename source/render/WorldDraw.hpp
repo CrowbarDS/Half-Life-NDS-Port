@@ -124,6 +124,9 @@ namespace hlrt
         /// would go in two pieces.
         static constexpr int kListWords = 24 * 1024;
         static constexpr int kRelaxWait = 120;
+        /// The most relaxWait_ is let grow to (it doubles each time the
+        /// pressure has to go straight back up).
+        static constexpr int kRelaxWaitMost = kRelaxWait * 16;
         /// Near is nearer than the view's reach shifted down by this (1: a
         /// half): what is sent first (THE ORDER, above).
         static constexpr int kNearShift = 1;

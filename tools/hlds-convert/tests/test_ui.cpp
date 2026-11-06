@@ -688,11 +688,11 @@ namespace
                     before = budget;
                 }
                 settles = settles && strained == 0;
-                gentle = gentle && jump <= 10;
+                gentle = gentle && jump <= kBudgetClimb;
             }
         }
         check(settles, "the budget settles below where the hardware strains");
-        check(gentle, "... and does not jump about once it has");
+        check(gentle, "... and does not jump about once it has (no more than a climb's step a pass)");
         {
             BudgetState state;
             state.extra = 300;
@@ -700,6 +700,24 @@ namespace
             overflowed.overflow = true;
             budgetStep(state, overflowed);
             check(state.extra == 60 && state.ceiling == 60, "an overflow takes a step off at once, and marks a ceiling");
+        }
+        {
+            // Room to spare, a great deal of it off the screen: the budget
+            // climbs a step a pass, and no further than the most spare.
+            BudgetState state;
+            BudgetReport easy;
+            easy.polygons = 1900;
+            easy.vertices = 5800;
+            easy.hwPolygons = 400;
+            easy.hwVertices = 1200;
+            budgetStep(state, easy);
+            budgetStep(state, easy);
+            check(state.extra == kBudgetClimb && state.extraVertices == kBudgetClimb * 3,
+                  "with room to spare, the budget climbs one step a pass");
+            for (int pass = 0; pass < 1000; ++pass)
+                budgetStep(state, easy);
+            check(state.extra == kBudgetMostSparePolygons && state.extraVertices == kBudgetMostSpareVertices,
+                  "... up to the most spare, and no further");
         }
     }
 

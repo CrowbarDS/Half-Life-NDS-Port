@@ -1305,6 +1305,19 @@ a map heavy by, and changing it would change which maps have the fog on
 always. These are emulator figures: a console's own may differ, and are
 what to set the headroom by.
 
+**The governor's climb and the pressure's wait** were tried faster, and
+are left as they were, as named numbers to try again on a console: the
+climb towards what was counted and not used (`kBudgetClimb`, 10 polygons a
+pass; tried at 30, with up to 900 polygons and 2200 vertices added in
+place of 600 and 1500: `kBudgetMostSpare*`), and the most the pressure's
+wait to come down may grow to (`WorldDraw::kRelaxWaitMost`, sixteen times
+its start; tried at four). Neither measured any different at these places.
+What the climb aims at is three quarters of what was counted and not used,
+and that is small where a view is heavy; a faster climb only gets there
+sooner. And at c1a2 the pressure stays because what is counted, with what
+it leaves out, never fits in fifteen sixteenths of the budget: the wait
+never starts.
+
 ## Streaming textures
 
 A map cooked without `--no-stream-textures` (streaming is the default) has its plain opaque textures (one

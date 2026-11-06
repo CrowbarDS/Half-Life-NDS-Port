@@ -203,10 +203,16 @@ namespace hldata
     /// more (or less, held back) than the pass's own budget may be counted,
     /// for what is counted but clipped away off the screen, and for when the
     /// hardware strains (WorldDraw::govern).
+    /// The most budgetStep adds for what the hardware threw away off the
+    /// screen, and how much it climbs a pass towards that (polygons; three
+    /// times as many vertices).
+    inline constexpr int kBudgetMostSparePolygons = 600, kBudgetMostSpareVertices = 1500;
+    inline constexpr int kBudgetClimb = 10;
     struct BudgetState
     {
         int extra = 0, extraVertices = 0;        ///< added to the budget (less than 0: held back)
-        int ceiling = 600, ceilingVertices = 1500; ///< where it last strained: not gone past at once
+        /// Where it last strained: not gone past at once.
+        int ceiling = kBudgetMostSparePolygons, ceilingVertices = kBudgetMostSpareVertices;
         int unusedPolygons = 0, unusedVertices = 0; ///< what the pass before did not use
     };
     /// What the hardware said of a pass, and what was counted for it.
@@ -228,10 +234,10 @@ namespace hldata
     /// as it was, it went round and round: up, strained, down, up.)
     inline void budgetStep(BudgetState &s, const BudgetReport &r)
     {
-        constexpr int kMostSparePolygons = 600, kMostSpareVertices = 1500;
+        constexpr int kMostSparePolygons = kBudgetMostSparePolygons, kMostSpareVertices = kBudgetMostSpareVertices;
         constexpr int kMostHeld = 900;
         constexpr int kLowLines = 6, kEasyLines = 14;
-        constexpr int kClimb = 10; // (polygons a pass; three times as many vertices)
+        constexpr int kClimb = kBudgetClimb;
         int drop = 0;
         if (r.overflow || r.hwPolygons > 2040 || r.hwVertices > 6100)
             drop = 240;
