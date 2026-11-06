@@ -1316,6 +1316,15 @@ as described in `shared/HlTextureStream.hpp`, testable on PC (`test_texturestrea
   DSi). When there is no room, a resident texture makes way for one wanted
   more than twice as much; what is nearly as wanted is left alone, so that two
   textures cannot take each other's place for ever.
+- Palette memory is not moved about to join its free pieces. A texture
+  whose palette finds no piece big enough, even with what may make way let
+  go, waits (drawn flat) until the view changes. How often that happened
+  although the pieces came to enough in all is counted ("refused in pieces"
+  in perf.txt, beside how full palette memory was at most). Measured on a DS
+  on the maps with the most palette to stream (c1a1a, c1a0d, c1a3, c1a1f,
+  c1a0b, t0a0b, c2a2b1, c2a5e: up to 99% full), it never happened once
+  palettes were given their real size (format 50), so joining the pieces is
+  left undone until a map shows it is needed.
 - What is read is written to video memory by `VramWriter`, in the vertical
   blanks, when the 3D engine is not reading it, and each texture is drawn as
   soon as its own writes are done. Reading goes on every frame while earlier

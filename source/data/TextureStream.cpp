@@ -1038,12 +1038,15 @@ namespace hlrt
             if (log != nullptr)
             {
                 std::fprintf(log, "tex flat spells by frame %lu: %lu, %lu frames in all, the longest %lu (%lu blanks), "
-                                  "at most %d in view; %d loads, %d let go; palettes %lu of %lu bytes; nea nodes: peak %d of %d, %d from the heap\n",
+                                  "at most %d in view; %d loads, %d let go; palettes %lu of %lu bytes (most %lu), %d refused in pieces; "
+                                  "nea nodes: peak %d of %d, %d from the heap\n",
                              static_cast<unsigned long>(frameNo), static_cast<unsigned long>(f.count),
                              static_cast<unsigned long>(f.frames), static_cast<unsigned long>(f.longest),
                              static_cast<unsigned long>(f.longestBlanks), f.most, planner.loads(), planner.evictions(),
                              static_cast<unsigned long>(planner.paletteBytesUsed()),
-                             static_cast<unsigned long>(planner.paletteCapacity()), nodes.peak, nodes.capacity,
+                             static_cast<unsigned long>(planner.paletteCapacity()),
+                             static_cast<unsigned long>(planner.palettePeak()), planner.paletteScattered(), nodes.peak,
+                             nodes.capacity,
                              nodes.fallbacks);
                 flatSpellsWritten = f;
                 loadsWritten = planner.loads();

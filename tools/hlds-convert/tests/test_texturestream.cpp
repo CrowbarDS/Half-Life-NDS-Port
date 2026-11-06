@@ -885,6 +885,8 @@ namespace
             const int made = s.plan(1u << 20, 1u << 20, loads, 8, evicted, 16, n);
             check(made == 0 && n == 0 && !s.resident(kFlat),
                   "1024 bytes for its palette (one colour per 16 texels): it cannot be placed, nothing makes way");
+            check(s.paletteScattered() == 1,
+                  "... though what is free and what may make way come to enough in all: counted");
         }
         {
             TextureStreamer s;
@@ -895,6 +897,9 @@ namespace
             const int made = s.plan(1u << 20, 1u << 20, loads, 8, evicted, 16, n);
             check(made == 1 && loads[0].id == kFlat && n == 0,
                   "its palette as cooked, 256 bytes: placed in a gap as things are, nothing made to go");
+            check(s.paletteScattered() == 0 && s.paletteBytesUsed() == kPaletteBytes - 848 + 256 &&
+                      s.palettePeak() == kPaletteBytes - 368,
+                  "nothing counted as refused; the most in use was while the layout was made (its gaps filled)");
         }
     }
 } // namespace

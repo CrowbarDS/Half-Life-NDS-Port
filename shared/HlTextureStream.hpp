@@ -266,6 +266,8 @@ namespace hldata
             std::memset(score_, 0, sizeof(score_));
             std::memset(recent_, 0, sizeof(recent_));
             dropped_ = 0;
+            paletteScattered_ = 0;
+            palettePeak_ = 0;
             for (int i = 0; i < count_; ++i)
                 info_[i] = info[i];
             texels_.init(texelBytes);
@@ -463,6 +465,8 @@ namespace hldata
                     ok = makeRoom(best, evicted, maxEvicted, evictedCount) && place(best, texelOffset, paletteOffset);
                 if (!ok)
                 {
+                    if (!paletteFree(best) && paletteInPieces(best))
+                        ++paletteScattered_;
                     state_[best] = StreamState::Failed;
                     ++fails;
                     continue;
@@ -518,6 +522,12 @@ namespace hldata
         /// How often a plan stopped making way because its list of what
         /// made way was full (the rest waits for the next plan).
         int dropped() const { return dropped_; }
+        /// How often a texture could not be placed for want of palette memory
+        /// in one piece, though what is free and what may make way came to
+        /// enough in all (what moving palettes together would have saved).
+        int paletteScattered() const { return paletteScattered_; }
+        /// The most palette memory in use at once since init().
+        std::uint32_t palettePeak() const { return palettePeak_; }
 
         /// Failed textures are tried again (at the next demand pass).
         void retryFailed()
@@ -557,6 +567,8 @@ namespace hldata
             }
             texelOffset = texels_.b[t].off;
             paletteOffset = palettes_.b[p].off;
+            if (palettes_.used > palettePeak_)
+                palettePeak_ = palettes_.used;
             return true;
         }
 
@@ -657,6 +669,16 @@ namespace hldata
         }
 
         bool texelFree(int id) const { return texels_.fit(info_[id].texelBytes) >= 0; }
+        /// Whether what is free of palette memory and what may make way for
+        /// `id` come to its palette in all, in however many pieces.
+        bool paletteInPieces(int id) const
+        {
+            std::uint64_t room = palettes_.cap - palettes_.used;
+            for (int i = 0; i < palettes_.n; ++i)
+                if (evictable(palettes_.b[i].owner, score_[id]))
+                    room += palettes_.b[i].size;
+            return room >= ByteArena<kStreamMaxBlocks>::round(info_[id].paletteBytes);
+        }
         bool paletteFree(int id) const { return palettes_.fit(info_[id].paletteBytes) >= 0; }
 
         int count_ = 0;
@@ -666,6 +688,8 @@ namespace hldata
         std::uint32_t score_[kStreamMaxTextures];
         bool recent_[kStreamMaxTextures];
         int dropped_ = 0;
+        int paletteScattered_ = 0;
+        std::uint32_t palettePeak_ = 0;
         ByteArena<kStreamMaxBlocks> texels_, palettes_;
         // (Members, not locals: the console's stack is small.)
         bool evictTexel_[kStreamMaxBlocks];
