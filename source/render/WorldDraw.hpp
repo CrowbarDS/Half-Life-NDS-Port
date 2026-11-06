@@ -99,8 +99,15 @@ namespace hlrt
         // Kept under the hardware's 2048 / 6144: clipping against the screen's
         // edges turns one polygon into one with more vertices, and that is
         // counted against the same RAM.
-        static constexpr int kPolygonBudget = hldata::kPassPolygons;
-        static constexpr int kVertexBudget = hldata::kPassVertices;
+        //
+        // ... and above the level's own pass (what the converter judges a
+        // map heavy by: kPassPolygons) by this much, at run time: what the
+        // hardware was measured to hold of a pass the walk had filled (see
+        // docs/TECHNICAL.md, "The pass's budget"). 0 puts it back.
+        static constexpr int kHeadroomPolygons = 200;
+        static constexpr int kHeadroomVertices = 600;
+        static constexpr int kPolygonBudget = hldata::kPassPolygons + kHeadroomPolygons;
+        static constexpr int kVertexBudget = hldata::kPassVertices + kHeadroomVertices;
 
         // How every polygon of a level is sent.
         //

@@ -1287,6 +1287,24 @@ still comes after both, so an overflow in the far half takes them too: as
 it did before. It costs an extra texture bind for a texture worn on both
 sides of the line, and nothing measurable in the walk or the send.
 
+**What the hardware really holds.** `perf.txt` gives, for each map, the
+hardware's count less the walk's -- the most of it, and nineteen passes in
+twenty -- and the most the hardware held on a pass the walk had filled
+(`excess-poly-most`, `full-poly-most` and the like). In melonDS, over the
+c1a0 hall, the c1a2 fight and c2a5's worst place (DSi; DS for c1a0), the
+hardware held less than the walk counted on every pass: at least 155
+polygons and 336 vertices less. At c1a2, cut and pressed on almost every
+pass with the old budget, it never held more than 1562 polygons and 3883
+vertices. So the pass's budget is the level's (`kPassPolygons`, 1700 and
+5200) and 200 polygons and 600 vertices more at run time
+(`WorldDraw::kHeadroomPolygons`): with them, c1a2's cut passes went from 19
+to 9 of 1536, c2a5's pressure went away, and the most the hardware held
+anywhere was 1778 polygons and 4149 vertices -- 270 and 2000 short of
+full. `kPassPolygons` itself is left alone: it is what the converter calls
+a map heavy by, and changing it would change which maps have the fog on
+always. These are emulator figures: a console's own may differ, and are
+what to set the headroom by.
+
 ## Streaming textures
 
 A map cooked without `--no-stream-textures` (streaming is the default) has its plain opaque textures (one
