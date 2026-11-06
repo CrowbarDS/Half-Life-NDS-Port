@@ -39,7 +39,9 @@ namespace hlrt
         const fx *eye = camera.pos;
 
         std::memset(chosen_, 0, chosenWords_ * 4);
+        std::memset(far_, 0, chosenWords_ * 4);
         int polygons = 0;
+        int farPolygons = 0;
         int vertices = 0;
         int surfaces = 0;
         int dropped = 0, droppedPolygons = 0, droppedVertices = 0;
@@ -55,6 +57,18 @@ namespace hlrt
         const std::int32_t *forward = camera.forward;
         const std::int32_t eyeAt[3] = {fxToInt(eye[0]), fxToInt(eye[1]), fxToInt(eye[2])};
         stats_.cutDistance = 0;
+        // How far along the view a surface's nearest point may be and still
+        // be sent with the near ones: half of how far the view reaches --
+        // where the fog was whole last pass, or with no fog, the map's own
+        // farthest (THE ORDER, WorldDraw.hpp).
+        const std::int32_t nearLimit = (fogEnd_ < kNoFog ? fogEnd_ : camera.mapFarUnits) >> kNearShift;
+        // How far in front of the eye a surface's middle is (whole units).
+        auto depthOf = [&](const Surface &surface) -> std::int32_t
+        {
+            return ((surface.center[0] - eyeAt[0]) * forward[0] + (surface.center[1] - eyeAt[1]) * forward[1] +
+                    (surface.center[2] - eyeAt[2]) * forward[2]) >>
+                   12;
+        };
         // The models have been costed already (ModelDraw::plan): the world
         // has what they leave.
         // (... and the brushes, whose share is set aside too: planBrushes.)
@@ -133,11 +147,7 @@ namespace hlrt
                 if (!stats_.budgetHit)
                 {
                     stats_.budgetHit = true;
-                    const std::int32_t depth = ((surface.center[0] - eyeAt[0]) * forward[0] +
-                                                (surface.center[1] - eyeAt[1]) * forward[1] +
-                                                (surface.center[2] - eyeAt[2]) * forward[2]) >>
-                                               12;
-                    stats_.cutDistance = depth - surface.radius;
+                    stats_.cutDistance = depthOf(surface) - surface.radius;
                 }
                 ++stats_.surfacesCut;
                 if (++misses >= kMissesMost || polygonBudget - polygons < kRoomLeast ||
@@ -149,6 +159,11 @@ namespace hlrt
             }
             misses = 0;
             word |= bit;
+            if (depthOf(surface) - surface.radius >= nearLimit)
+            {
+                far_[s >> 5] |= bit;
+                farPolygons += surface.polygons;
+            }
             polygons += surface.polygons;
             vertices += surface.vertices;
             ++surfaces;
@@ -215,6 +230,7 @@ namespace hlrt
         stats_.droppedVertices = droppedVertices;
         stats_.polygons = polygons;
         stats_.vertices = vertices;
+        stats_.farPolygons = farPolygons;
     }
 
     namespace
@@ -264,9 +280,11 @@ namespace hlrt
         const std::uint32_t *const end = list_ + kListWords;
         constexpr int kPiece = 512; // words worth starting the DMA for
 
+        // The near surfaces, then the far (THE ORDER, WorldDraw.hpp).
+        for (int tier = 0; tier < 2; ++tier)
         for (std::uint32_t w = 0; w < chosenWords_; ++w)
         {
-            std::uint32_t bits = chosen_[w];
+            std::uint32_t bits = tier == 0 ? chosen_[w] & ~far_[w] : far_[w];
             while (bits != 0)
             {
                 const int b = __builtin_ctz(bits);
@@ -352,12 +370,14 @@ namespace hlrt
         }
         const LevelView &view = level.view;
         // Surfaces are stored sorted by texture, so walking the bits in order
-        // changes texture as seldom as it can.
+        // changes texture as seldom as it can: the near ones, then the far
+        // (THE ORDER, WorldDraw.hpp).
         std::uint32_t bound = 0xFFFFFFFFu;
 
+        for (int tier = 0; tier < 2; ++tier)
         for (std::uint32_t w = 0; w < chosenWords_; ++w)
         {
-            std::uint32_t bits = chosen_[w];
+            std::uint32_t bits = tier == 0 ? chosen_[w] & ~far_[w] : far_[w];
             while (bits != 0)
             {
                 const int b = __builtin_ctz(bits);

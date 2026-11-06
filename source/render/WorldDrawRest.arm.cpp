@@ -50,8 +50,9 @@ namespace hlrt
         leafFrame_ = static_cast<std::uint16_t *>(std::calloc(view.leafCount + 1, 2));
         chosen_ = static_cast<std::uint32_t *>(std::calloc(chosenWords_ + 1, 4));
         skipped_ = static_cast<std::uint32_t *>(std::calloc(chosenWords_ + 1, 4));
+        far_ = static_cast<std::uint32_t *>(std::calloc(chosenWords_ + 1, 4));
         detailKept_ = static_cast<std::uint32_t *>(std::malloc((chosenWords_ + 1) * 4));
-        if (nodeFrame_ == nullptr || leafFrame_ == nullptr || chosen_ == nullptr || skipped_ == nullptr ||
+        if (nodeFrame_ == nullptr || leafFrame_ == nullptr || chosen_ == nullptr || skipped_ == nullptr || far_ == nullptr ||
             detailKept_ == nullptr)
         {
             destroy();
@@ -80,6 +81,8 @@ namespace hlrt
         std::free(chosen_);
         std::free(skipped_);
         skipped_ = nullptr;
+        std::free(far_);
+        far_ = nullptr;
         std::free(detailKept_);
         detailKept_ = nullptr;
         std::free(list_);

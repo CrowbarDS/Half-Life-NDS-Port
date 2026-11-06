@@ -1267,6 +1267,26 @@ them be, with that material's own sound -- the dent a fifth of a second after
 the blow, the hand left as its last swing left it, and put away before
 another weapon comes out (`shared/HlMonsters.hpp`, `crowbarBlow`).
 
+## The pass's budget
+
+The hardware holds 2048 polygons and 6144 vertices a frame, counted after
+clipping. Once full it drops every polygon sent after, and says so only at
+the next blank (`DISP3DCNT` bit 13). The walk counts before clipping, and a
+surface whole, however little of it is on the screen. So the two counts
+differ, and the renderer has to live with both.
+
+**Near first, far last.** The walk marks each surface it takes as near or
+far: far when its nearest point (its middle along the view, less its radius)
+is past half of how far the view reaches -- where the fog was whole last
+pass, or, with no fog, the map's own farthest (`WorldDraw::kNearShift`).
+The send goes through the near ones by texture, then the far ones by
+texture (`emit`, `emitList`). An overflow then takes what is far, which the
+fog is already fading, and never a near ceiling that happened to have the
+last texture. What is sent after the world -- models, brushes, effects --
+still comes after both, so an overflow in the far half takes them too: as
+it did before. It costs an extra texture bind for a texture worn on both
+sides of the line, and nothing measurable in the walk or the send.
+
 ## Streaming textures
 
 A map cooked without `--no-stream-textures` (streaming is the default) has its plain opaque textures (one

@@ -10,14 +10,26 @@
 //  2. Walk the BSP tree front to back, skipping branches with no stamp and
 //     boxes outside the view. In each leaf reached, take the surfaces that face
 //     the eye and are inside the view, until the frame's budget is spent.
-//  3. Send the chosen surfaces in index order -- they are stored sorted by
-//     texture -- by copying their words to the geometry FIFO.
+//  3. Send the chosen surfaces in two goes, the near ones and then the far
+//     ones (see THE ORDER below), each in index order -- they are stored
+//     sorted by texture -- by copying their words to the geometry FIFO.
 //
 // THE BUDGET is the whole reason for the order of step 2. The hardware stops
 // at 2048 polygons and 6144 vertices and simply drops the rest, in whatever
 // order they were sent. Walking front to back and stopping at a budget of our
 // own means that what gets left out is the farthest geometry, which the fog
 // is already hiding, rather than whichever wall happened to come last.
+//
+// THE ORDER of step 3 is for when the budget is wrong. The walk counts a
+// surface whole, before clipping; the hardware counts what is left of it
+// after, and a polygon cut by the screen's edge can come out with more
+// vertices than it went in with. When the hardware fills up, it is whatever
+// was sent last that goes. Sent by texture alone, that could be a near
+// ceiling. So the surfaces whose nearest point is past half the distance the
+// view reaches (the fog's end, or the map's own farthest) go after all the
+// others: what a full hardware drops is then far, and in the fog. (What is
+// drawn after the world -- models, brushes, effects -- still comes after
+// both; an overflow in the world's far half takes those too.)
 //
 // BRUSH ENTITIES -- doors, grates, glass -- are drawn after the world, each
 // under its own translation, when one of the leaves it touches is visible and
@@ -71,6 +83,9 @@ namespace hlrt
         /// Surfaces in view that the walk had no room for (each time one did
         /// not fit; what was still to come when it gave up is not counted).
         int surfacesCut = 0;
+        /// What of `polygons` was the world's far half, sent last (the
+        /// part a full hardware drops).
+        int farPolygons = 0;
         /// Brush entities in view not drawn: no room in the pass for them, or
         /// (`brushesOverflow`, counted in both) more of them than the lists
         /// hold.
@@ -102,6 +117,9 @@ namespace hlrt
         /// would go in two pieces.
         static constexpr int kListWords = 24 * 1024;
         static constexpr int kRelaxWait = 120;
+        /// Near is nearer than the view's reach shifted down by this (1: a
+        /// half): what is sent first (THE ORDER, above).
+        static constexpr int kNearShift = 1;
         /// Nearer than this (whole units, along the view), nothing is left
         /// out for being small: under pressure, only what is farther goes.
         static constexpr int kDetailNearest = hldata::kDetailNearest;
@@ -236,6 +254,7 @@ namespace hlrt
         std::uint16_t *nodeFrame_ = nullptr; ///< vis stamp per node
         std::uint16_t *leafFrame_ = nullptr; ///< vis stamp per leaf
         std::uint32_t *chosen_ = nullptr;    ///< one bit per surface
+        std::uint32_t *far_ = nullptr;       ///< ... of those, the far ones: sent last
         /// ... whether World detail kept it the last time it was asked (kept
         /// while it is out of view: turned away from and back to, it is as
         /// it was). All kept again whenever detail is off.

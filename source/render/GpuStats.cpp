@@ -106,7 +106,7 @@ namespace hlrt
                      "underflow %d overflow %d cut-world %lu cut-brush %lu pressed %lu enemies-cut %lu enemies-seen-cut %lu effects-refused %lu models-hidden %lu "
                      "poly-mean %lu surfaces-cut-mean %lu.%02lu surfaces-cut-most %d detail-cut-mean %lu brushes-dropped-mean %lu.%02lu "
                      "brushes-dropped-most %d brushes-overflow %lu enemies-dropped %lu heap-least %luK "
-                     "excess-poly-most %d excess-poly-95 %d excess-vert-most %d excess-vert-95 %d full-poly-most %d full-vert-most %d\n",
+                     "excess-poly-most %d excess-poly-95 %d excess-vert-most %d excess-vert-95 %d full-poly-most %d full-vert-most %d far-poly-mean %lu\n",
                      map, global.isDSi ? "DSi" : "DS", mode,
                      static_cast<unsigned long>(map_.frames), static_cast<unsigned long>(map_.slow),
                      map_.vblanks, map_.polygons, map_.vertices, map_.lowLines, map_.underflows,
@@ -125,7 +125,8 @@ namespace hlrt
                      static_cast<unsigned long>(map_.heapLeast == 0xFFFFFFFFu ? 0 : map_.heapLeast / 1024),
                      map_.excessPolygonsMost, under95(map_.excessPolygons, map_.frames, kPolygonStep),
                      map_.excessVerticesMost, under95(map_.excessVertices, map_.frames, kVertexStep),
-                     map_.fullPolygonsMost, map_.fullVerticesMost);
+                     map_.fullPolygonsMost, map_.fullVerticesMost,
+                     static_cast<unsigned long>(map_.farPolygonsSum / map_.frames));
         return std::fclose(file) == 0;
     }
 } // namespace hlrt

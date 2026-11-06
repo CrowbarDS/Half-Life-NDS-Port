@@ -80,8 +80,11 @@ namespace hlrt
         /// first, the worst and nineteen passes in twenty, and what the
         /// hardware held on the passes the walk filled. (What the pass's
         /// budget can be, under the hardware's 2048 and 6144.)
-        void clipping(int polygons, int vertices, int hwPolygons, int hwVertices, bool full)
+        /// (`farPolygons`: what of `polygons` was the world's far half, sent
+        /// last.)
+        void clipping(int polygons, int vertices, int hwPolygons, int hwVertices, bool full, int farPolygons)
         {
+            map_.farPolygonsSum += static_cast<std::uint32_t>(farPolygons);
             const int p = hwPolygons - polygons, v = hwVertices - vertices;
             map_.excessPolygonsMost = p > map_.excessPolygonsMost ? p : map_.excessPolygonsMost;
             map_.excessVerticesMost = v > map_.excessVerticesMost ? v : map_.excessVerticesMost;
@@ -153,6 +156,7 @@ namespace hlrt
             int excessPolygonsMost = -100000, excessVerticesMost = -100000;
             std::uint32_t excessPolygons[kBuckets] = {}, excessVertices[kBuckets] = {};
             int fullPolygonsMost = 0, fullVerticesMost = 0;
+            std::uint32_t farPolygonsSum = 0;
         };
         Frame last_;
         Totals map_;
