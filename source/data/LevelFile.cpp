@@ -43,17 +43,12 @@ namespace hlrt
                hldata::levelVersionOk(header.version, header.minReader);
     }
 
-    bool Level::load(std::string &error)
+    bool Level::readFiles(hldata::LevelHeader &header, bool &got, std::string &error)
     {
-        unload();
-
-        // The first piece says how long the level is: the card's word, so
-        // it is checked before it is trusted with an allocation. No cooked
-        // map is anywhere near 8 MB. (The piece is read once, header first:
-        // a map sent over the air comes once, and is not read again.)
-        hldata::LevelHeader header{};
+        // (Not in an archive -- sent over the air, or packed in a way that
+        // can't be undone as it is read: as files, a piece at a time.)
         std::FILE *file = std::fopen(global.mapPath("level.0").c_str(), "rb");
-        bool got = file != nullptr && std::fread(&header, sizeof(header), 1, file) == 1;
+        got = file != nullptr && std::fread(&header, sizeof(header), 1, file) == 1;
         const std::uint32_t size = header.fileSize;
         if (got && (size < hldata::kLevelDataStart || size > 8 * 1024 * 1024))
         {
@@ -77,11 +72,7 @@ namespace hlrt
         if (file != nullptr)
             std::fclose(file);
         if (!got)
-        {
-            unload();
-            error = "Map not found on the card.";
-            return false;
-        }
+            return true;
         // Piece by piece, each to its place. (A compressed piece is inflated
         // by the archive as it is opened, beside this block, and let go
         // when it is closed: that is why a level is in pieces.)
@@ -102,6 +93,77 @@ namespace hlrt
                 return false;
             }
         }
+        return true;
+    }
+
+    bool Level::load(std::string &error)
+    {
+        unload();
+
+        // The first piece says how long the level is: the card's word, so
+        // it is checked before it is trusted with an allocation. No cooked
+        // map is anywhere near 8 MB. (The piece is read once, header first:
+        // a map sent over the air comes once, and is not read again.)
+        hldata::LevelHeader header{};
+        bool got = false;
+#ifndef HLDS_CHILD
+        // In the map's archive: each piece read straight to its place in the
+        // level's block (undone as it is read, if packed), with no file
+        // opened and no copy of it beside the block. (A packed piece opened
+        // as a file is undone whole into a block of its own first: as big as
+        // a piece, it left a hole behind it every map.)
+        NEA_NpacMember member;
+        if (NEA_NpacMemberFind(global.mapPath("level.0").c_str(), &member) == 0 && cardMemberReadable(member))
+        {
+            // (Only the first piece's size is known before its header is
+            // read: the whole of it, here. Small: the header and the
+            // sections' list.)
+            alignas(4) static std::uint8_t first[hldata::kLevelDataStart];
+            got = member.size == sizeof(first) && cardReadMember(member, 0, first, sizeof(first));
+            std::memcpy(&header, first, sizeof(header));
+            const std::uint32_t size = header.fileSize;
+            if (got && (size < hldata::kLevelDataStart || size > 8 * 1024 * 1024))
+            {
+                error = "Map file is damaged. Convert again.";
+                return false;
+            }
+            if (got)
+            {
+                block_ = static_cast<std::uint8_t *>(std::malloc(size));
+                if (block_ == nullptr)
+                {
+                    error = "Not enough memory for this map.";
+                    return false;
+                }
+                std::memcpy(block_, first, sizeof(first));
+                for (std::uint32_t piece = 1; got && piece < hldata::levelPieces(size); ++piece)
+                {
+                    char name[16];
+                    std::snprintf(name, sizeof(name), "level.%u", static_cast<unsigned>(piece));
+                    const std::uint32_t bytes = hldata::levelPieceBytes(size, piece);
+                    got = NEA_NpacMemberFind(global.mapPath(name).c_str(), &member) == 0 &&
+                          cardMemberReadable(member) && member.size == bytes &&
+                          cardReadMember(member, 0, block_ + hldata::levelPieceStart(piece), bytes);
+                }
+                if (!got)
+                {
+                    unload();
+                    error = "Map could not be read from the card.";
+                    return false;
+                }
+            }
+        }
+        else
+#endif
+        if (!readFiles(header, got, error))
+            return false;
+        if (!got)
+        {
+            unload();
+            error = "Map not found on the card.";
+            return false;
+        }
+        const std::uint32_t size = header.fileSize;
 
 #ifdef HLDS_PROFILE
         const std::uint32_t before = DebugLog::Perf::now();

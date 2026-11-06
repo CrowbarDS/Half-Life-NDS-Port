@@ -45,6 +45,11 @@ namespace hlrt
         Level &operator=(const Level &) = delete;
 
     private:
+        /// The level read as files (load's way when it is not in an
+        /// archive): false, with `error`, if it was found but could not be
+        /// had; `got`, whether it was found.
+        bool readFiles(hldata::LevelHeader &header, bool &got, std::string &error);
+
         std::uint8_t *block_ = nullptr;
         std::size_t size_ = 0;
     };

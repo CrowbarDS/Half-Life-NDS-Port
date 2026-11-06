@@ -34,6 +34,27 @@ namespace hlrt
         /// not there, too big, or `spare` bytes would not be left after it.
         std::uint8_t *readModel(const std::string &path, std::uint32_t &size, std::size_t spare = 0)
         {
+#ifndef HLDS_CHILD
+            // In an archive: its size from the index, and read (undone, if
+            // packed) straight into its block, with no file opened. (Opened as
+            // a file, a packed model is undone whole into a block of its own
+            // first, beside this one: a hole left behind each time.)
+            NEA_NpacMember member;
+            if (NEA_NpacMemberFind(path.c_str(), &member) == 0 && cardMemberReadable(member))
+            {
+                std::uint8_t *block = nullptr;
+                if (member.size > 0 && member.size <= static_cast<std::uint32_t>(kMaxModelBytes) &&
+                    global.heapHeadroom() >= member.size + spare)
+                    block = static_cast<std::uint8_t *>(std::malloc(member.size));
+                if (block == nullptr || !cardReadMember(member, 0, block, member.size))
+                {
+                    std::free(block);
+                    return nullptr;
+                }
+                size = member.size;
+                return block;
+            }
+#endif
             std::FILE *file = std::fopen(path.c_str(), "rb");
             if (file == nullptr)
                 return nullptr;
