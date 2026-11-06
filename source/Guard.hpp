@@ -33,6 +33,10 @@ namespace hlrt::guard
     void noteLibrary(const void *base, std::uint32_t size, std::uint32_t codeBytes);
     /// Every frame: the stack's pattern. Halts if it is gone.
     void frame();
+    /// The first word of DTCM above the stack's pattern: the lowest the
+    /// stack may reach. (What paints the stack to measure it starts here,
+    /// or it paints the pattern over and is taken for an overflow.)
+    std::uint32_t *stackLimit();
     /// Everything checked (heap, library, stack): halts on anything wrong.
     /// `where`: what the game was doing, for the screen.
     void check(const char *where);

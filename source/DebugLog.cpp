@@ -7,6 +7,7 @@
 #include <nds.h>
 
 #include "Global.hpp"
+#include "Guard.hpp"
 
 // (The linker's: where the 16 KB of fast data memory starts. The stack is
 // the top of it and grows down.)
@@ -37,10 +38,11 @@ namespace hlrt::DebugLog::Perf
 
     void markStack()
     {
-        // From the bottom of the fast memory up to a little under where the
-        // stack is now.
+        // From the bottom of the stack's room -- above the guard's pattern,
+        // which is the fast memory's first words -- up to a little under
+        // where the stack is now.
         volatile std::uint32_t here = 0;
-        std::uint32_t *from = reinterpret_cast<std::uint32_t *>(__dtcm_start);
+        std::uint32_t *from = guard::stackLimit();
         std::uint32_t *to = const_cast<std::uint32_t *>(&here) - 64;
         for (; from < to; ++from)
             *from = kStackPaint;
@@ -51,8 +53,8 @@ namespace hlrt::DebugLog::Perf
         if (framesIn < frames)
             return;
         // The lowest word the stack has written over.
-        const std::uint32_t *low = reinterpret_cast<const std::uint32_t *>(__dtcm_start);
-        const std::uint32_t *top = low + 16384 / 4;
+        const std::uint32_t *low = guard::stackLimit();
+        const std::uint32_t *top = reinterpret_cast<const std::uint32_t *>(__dtcm_start) + 16384 / 4;
         while (low < top && *low == kStackPaint)
             ++low;
         if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))

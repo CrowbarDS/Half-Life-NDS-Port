@@ -453,6 +453,8 @@ namespace hlrt::guard
         librarySum = sum(libraryBase, libraryCode);
     }
 
+    std::uint32_t *stackLimit() { return stackFloor() + kStackWords; }
+
     void frame()
     {
         if (!stackIntact())
