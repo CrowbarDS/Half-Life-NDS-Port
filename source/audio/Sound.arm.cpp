@@ -164,6 +164,7 @@ namespace hlrt
     {
         const LevelView &view = level.view;
         const int count = static_cast<int>(view.soundCount) < kMaxSounds ? static_cast<int>(view.soundCount) : kMaxSounds;
+        stats_ = LoadStats();
         clips_ = static_cast<Clip *>(std::calloc(count + 1, sizeof(Clip)));
         bool *kept = static_cast<bool *>(std::calloc(view.soundCount + 1, sizeof(bool)));
         if (clips_ == nullptr || kept == nullptr)
@@ -171,6 +172,7 @@ namespace hlrt
             std::free(clips_);
             std::free(kept);
             clips_ = nullptr;
+            stats_.tableFailed = true;
             return;
         }
         count_ = count;
@@ -240,16 +242,25 @@ namespace hlrt
             const bool later = i >= laterFrom && i < laterTo;
             if (later != (pass == 1) || !kept[i] || view.sounds[i].name[0] == '\0')
                 continue;
+            ++stats_.kept;
+            // (Below this, the rest of the pass is not tried: nothing given
+            // back in between, it stays below.)
             if (global.heapHeadroom() < 300 * 1024)
-                break;
+            {
+                ++stats_.skippedRoom;
+                continue;
+            }
             // (A DSi has the memory for the better copy, where there is one.)
             char twin[sizeof(SoundRef)];
             if ((global.isDSi && soundTwinName(view.sounds[i], twin, sizeof(twin)) && readClip(twin, clips_[i])) ||
                 readClip(view.sounds[i].name, clips_[i]))
             {
                 ++loaded_;
+                ++stats_.loaded;
                 bytes_ += static_cast<int>(clips_[i].bytes);
             }
+            else
+                ++stats_.failed;
         }
         std::free(kept);
         lastVblank_ = Global::vblanks();
@@ -655,8 +666,14 @@ namespace hlrt
             clips_[gone] = Clip();
             lazyClip_[place] = -1;
         }
-        if (global.heapHeadroom() < 200 * 1024 || !readClip(level.view.sounds[sound].name, clips_[sound]))
+        if (global.heapHeadroom() < 200 * 1024)
         {
+            ++stats_.lateSkippedRoom;
+            return;
+        }
+        if (!readClip(level.view.sounds[sound].name, clips_[sound]))
+        {
+            ++stats_.lateFailed;
             return;
         }
         lazyClip_[place] = sound;
@@ -837,10 +854,18 @@ namespace hlrt
         releaseWord(speech, other);
         speech.ahead = -1;
         if (index >= static_cast<int>(level.view.soundCount) || level.view.sounds[index].name[0] == '\0' ||
-            (index < count_ && clips_[index].data != nullptr) || global.heapHeadroom() < 200 * 1024)
+            (index < count_ && clips_[index].data != nullptr))
             return;
+        if (global.heapHeadroom() < 200 * 1024)
+        {
+            ++stats_.lateSkippedRoom;
+            return;
+        }
         if (!readClip(level.view.sounds[index].name, speech.clip[other]))
+        {
+            ++stats_.lateFailed;
             return;
+        }
         if (up_)
             speech.ahead = index;
         else

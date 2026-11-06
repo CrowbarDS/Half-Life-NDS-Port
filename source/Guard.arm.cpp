@@ -51,6 +51,8 @@ namespace hlrt::guard
 
         Block *first = nullptr;
         std::uint32_t blocks = 0, bytes = 0;
+        /// The most `bytes` has been since markPlay(), and what it was then.
+        std::uint32_t playBase = 0, playPeak = 0;
 
         /// Small blocks given back are held a while, filled: a write into
         /// one is seen when it really goes (or at a check).
@@ -145,6 +147,8 @@ namespace hlrt::guard
             first = b;
             ++blocks;
             bytes += b->size;
+            if (bytes > playPeak)
+                playPeak = bytes;
             leaveCriticalSection(saved);
             return user;
         }
@@ -483,6 +487,60 @@ namespace hlrt::guard
 
     std::uint32_t liveBlocks() { return blocks; }
     std::uint32_t liveBytes() { return bytes; }
+
+    void markPlay()
+    {
+        const int saved = enterCriticalSection();
+        playBase = playPeak = bytes;
+        leaveCriticalSection(saved);
+    }
+
+    std::uint32_t playRise() { return playPeak - playBase; }
+
+    HeapRoom heapRoom()
+    {
+        // Every block taken from the allocator, live or held: from where it
+        // starts to the end of its tail (the allocator's own header, up to 8
+        // bytes, is in front of each). What lies between two of them, or between the heap's
+        // start and the first, is free; the heap's top (sbrk) is the end.
+        auto start = [](Block *b) { return reinterpret_cast<std::uint32_t>(rawOf(b)); };
+        auto end = [](Block *b) { return reinterpret_cast<std::uint32_t>(userOf(b)) + b->size + sizeof(kTail); };
+        const std::uint32_t heapStart = reinterpret_cast<std::uint32_t>(getHeapStart());
+        const std::uint32_t heapEnd = reinterpret_cast<std::uint32_t>(getHeapEnd());
+        HeapRoom room;
+        room.top = reinterpret_cast<std::uint32_t>(getHeapLimit()) - heapEnd;
+        const int saved = enterCriticalSection();
+        auto gapAfter = [&](std::uint32_t from) {
+            // The nearest block start at or after `from`, among all of them.
+            std::uint32_t next = heapEnd;
+            for (Block *b = first; b != nullptr; b = b->next)
+                if (start(b) >= from && start(b) < next)
+                    next = start(b);
+            for (int i = 0; i < heldCount; ++i)
+            {
+                Block *h = held[(heldAt - heldCount + i + kHeld) % kHeld];
+                if (start(h) >= from && start(h) < next)
+                    next = start(h);
+            }
+            // (Less the allocator's header in front of the next block.)
+            return next - from > 8 ? next - from - 8 : 0;
+        };
+        auto note = [&](std::uint32_t from) {
+            if (from >= heapEnd)
+                return;
+            const std::uint32_t gap = gapAfter(from);
+            room.inHoles += gap;
+            if (gap > room.largestHole)
+                room.largestHole = gap;
+        };
+        note(heapStart);
+        for (Block *b = first; b != nullptr; b = b->next)
+            note(end(b));
+        for (int i = 0; i < heldCount; ++i)
+            note(end(held[(heldAt - heldCount + i + kHeld) % kHeld]));
+        leaveCriticalSection(saved);
+        return room;
+    }
 } // namespace hlrt::guard
 
 // ---- what the linker sends malloc and the rest to

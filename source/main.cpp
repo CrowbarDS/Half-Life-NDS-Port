@@ -317,6 +317,25 @@ namespace
         }
     }
 
+    /// At the end of a map's load (perf.txt): how much room the heap has
+    /// left, and what of the map's sounds could be had.
+    void writeLoadRoom(const char *map)
+    {
+        const hlrt::guard::HeapRoom room = hlrt::guard::heapRoom();
+        const hlrt::StreamStats st = hlrt::textureStream.stats();
+        const hlrt::Sound::LoadStats &snd = hlrt::sound.loadStats();
+        std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a");
+        if (log == nullptr)
+            return;
+        std::fprintf(log, "room: %s top %lu, largest hole %lu, %lu in holes; copies %d (%d KB); sounds %s%d of %d, "
+                          "%d not tried for room, %d failed\n",
+                     map, static_cast<unsigned long>(room.top), static_cast<unsigned long>(room.largestHole),
+                     static_cast<unsigned long>(room.inHoles), st.copies, st.copiesKb,
+                     snd.tableFailed ? "NONE (no room for their list), " : "", snd.loaded, snd.kept,
+                     snd.skippedRoom, snd.failed);
+        std::fclose(log);
+    }
+
 #ifdef HLDS_PROFILE
     /// Where a load went: a line in perf.txt, a stage at a time, in
     /// milliseconds. (The card's share of each can only be judged on a card.)
@@ -726,7 +745,11 @@ namespace
             hlrt::sound.setMusic(-1, 0);
         hlrt::sound.load();
         clock.mark("snd");
+        // What play takes of the heap from here is measured.
+        hlrt::guard::markPlay();
         clock.write(name.c_str());
+        if (perfLogging())
+            writeLoadRoom(name.c_str());
         if (hlrt::player.debugTrack >= 0)
         {
             hlrt::game.logic.musicRequest = hlrt::player.debugTrack;

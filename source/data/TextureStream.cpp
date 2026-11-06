@@ -1,6 +1,7 @@
 #include "data/TextureStream.hpp"
 #include "net/NetGame.hpp"
 #include "audio/Sound.hpp"
+#include "Guard.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -140,6 +141,7 @@ namespace hlrt
         };
         FlatSpells flatSpells{}, flatSpellsWritten{};
         int loadsWritten = 0; ///< planner.loads() at the last line of them
+        std::uint32_t riseWritten = 0; ///< guard::playRise() at the last line
 
         /// The video memory that is the plan's own: the plan's offsets are
         /// places in it. Texels (with their index where NEA says), in up to
@@ -1028,7 +1030,8 @@ namespace hlrt
         }
         // All of them, every ten seconds or so if there were more (or more
         // was read).
-        if (frameNo % 512 == 0 && (flatSpells.count != flatSpellsWritten.count || planner.loads() != loadsWritten))
+        if (frameNo % 512 == 0 && (flatSpells.count != flatSpellsWritten.count || planner.loads() != loadsWritten ||
+                                   guard::playRise() != riseWritten))
         {
             if (log == nullptr)
                 log = std::fopen(global.dataPath("perf.txt").c_str(), "a");
@@ -1039,7 +1042,8 @@ namespace hlrt
             {
                 std::fprintf(log, "tex flat spells by frame %lu: %lu, %lu frames in all, the longest %lu (%lu blanks), "
                                   "at most %d in view; %d loads, %d let go; palettes %lu of %lu bytes (most %lu), %d refused in pieces; "
-                                  "nea nodes: peak %d of %d, %d from the heap\n",
+                                  "nea nodes: peak %d of %d, %d from the heap; "
+                                  "play: heap rise %lu, late sounds %d failed, %d not tried for room\n",
                              static_cast<unsigned long>(frameNo), static_cast<unsigned long>(f.count),
                              static_cast<unsigned long>(f.frames), static_cast<unsigned long>(f.longest),
                              static_cast<unsigned long>(f.longestBlanks), f.most, planner.loads(), planner.evictions(),
@@ -1047,9 +1051,11 @@ namespace hlrt
                              static_cast<unsigned long>(planner.paletteCapacity()),
                              static_cast<unsigned long>(planner.palettePeak()), planner.paletteScattered(), nodes.peak,
                              nodes.capacity,
-                             nodes.fallbacks);
+                             nodes.fallbacks, static_cast<unsigned long>(guard::playRise()),
+                             sound.loadStats().lateFailed, sound.loadStats().lateSkippedRoom);
                 flatSpellsWritten = f;
                 loadsWritten = planner.loads();
+                riseWritten = guard::playRise();
             }
         }
         if (log != nullptr)

@@ -96,6 +96,19 @@ namespace hlrt
         void holdPipeline(bool hold);
 
         int loaded() const { return loaded_; }
+        /// How a map's sounds came to be loaded or not (perf.txt): at its
+        /// load, and since, those read when first played.
+        struct LoadStats
+        {
+            bool tableFailed = false; ///< no memory for the list of clips: no sound at all
+            int kept = 0;             ///< sounds the map plays, to be loaded
+            int loaded = 0;
+            int skippedRoom = 0;      ///< not tried: too little left in the heap
+            int failed = 0;           ///< tried, and could not be read or had no memory
+            int lateSkippedRoom = 0;  ///< read when first played: too little left
+            int lateFailed = 0;       ///< ... tried, and not read
+        };
+        const LoadStats &loadStats() const { return stats_; }
         /// How many voices each layer has just now (for the readout).
         int voicesOf(hldata::SoundLayer layer) const { return mixer_.count(layer); }
         int bytes() const { return bytes_; }
@@ -230,6 +243,7 @@ namespace hlrt
         void askGun(const char *viewModel);
         private:
         int aheadNext_ = 0;
+        LoadStats stats_;
         int loaded_ = 0;
         int bytes_ = 0;
         Clip ui_[hldata::kUiSoundCount];

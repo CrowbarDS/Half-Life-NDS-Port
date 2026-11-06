@@ -44,6 +44,22 @@ namespace hlrt::guard
     /// Blocks and bytes held (the debug readout).
     std::uint32_t liveBlocks();
     std::uint32_t liveBytes();
+
+    /// From now on, how far the heap's live bytes rise above what they are
+    /// now (playRise): what play takes on top of what a map's load left.
+    void markPlay();
+    std::uint32_t playRise();
+
+    /// Room in the heap: above its top, and in the holes inside it (the
+    /// largest one, and all of them). A walk of every block: for a map's
+    /// load, not for every frame.
+    struct HeapRoom
+    {
+        std::uint32_t top = 0;
+        std::uint32_t largestHole = 0;
+        std::uint32_t inHoles = 0;
+    };
+    HeapRoom heapRoom();
 } // namespace hlrt::guard
 
 extern "C"
