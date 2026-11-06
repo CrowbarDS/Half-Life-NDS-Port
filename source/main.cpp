@@ -317,6 +317,15 @@ namespace
         }
     }
 
+    /// What play takes of the heap past what a map's load left, at most, on
+    /// the maps that take the most (weapons' skins, the people and monsters
+    /// loaded when first met, sounds read when first played), and a margin:
+    /// kept back from the streamer's copies (TextureStream::makeCopies).
+    /// (Measured on a DS, 2026-11-06, walking among the people and taking up
+    /// every weapon: 121 KB at most, on maps with room for their sounds,
+    /// which are read when first played; 5 KB where there was not.)
+    constexpr std::size_t kPlayReserve = 160 * 1024;
+
     /// At the end of a map's load (perf.txt): how much room the heap has
     /// left, and what of the map's sounds could be had.
     void writeLoadRoom(const char *map)
@@ -745,7 +754,10 @@ namespace
             hlrt::sound.setMusic(-1, 0);
         hlrt::sound.load();
         clock.mark("snd");
-        // What play takes of the heap from here is measured.
+        // Last, from what is left past what play takes: the streamer's copies
+        // of the pictures that change often. Then what play takes from here
+        // is measured.
+        hlrt::textureStream.makeCopies(kPlayReserve);
         hlrt::guard::markPlay();
         clock.write(name.c_str());
         if (perfLogging())

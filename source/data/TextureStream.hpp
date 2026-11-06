@@ -78,6 +78,10 @@ namespace hlrt
         /// main memory, where begin() and the plan find it (there is no card
         /// to read it off later).
         void keepFromStream(int id);
+        /// Once the map and the game are in: copies in main memory of the
+        /// pictures that change often, from what the heap has left past
+        /// `keepBack` bytes (what play will take).
+        void makeCopies(std::size_t keepBack);
         /// A console in DSi mode: on with asking the host for the textures it
         /// has not (those wanted first, then the widest, as long as the map
         /// lasts); what it asked for came, or never will.

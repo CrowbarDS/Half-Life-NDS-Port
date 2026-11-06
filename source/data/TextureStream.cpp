@@ -557,38 +557,8 @@ namespace hlrt
             if (ref.other != kNoTexture && ref.otherFrames > 1)
                 markCycle(ref.other, ref.otherFrames);
         }
-        // Main-memory copies of the pictures of the cycles and of the variants
-        // a floor is tiled with (the game's '-' textures), as far as the heap
-        // can spare: a cycle changes picture ten times a second, and a tiled
-        // floor wears several, and when video memory is short the ones not
-        // wanted at the moment are let go and come back from here, not from the
-        // card.
-        {
-            const std::size_t room = std::min<std::size_t>(global.heapHeadroom() / 3, kCacheMost);
-            for (int i = 0; i < count; ++i)
-            {
-                const TextureRef &ref = level.view.textures[i];
-                const bool tiled = ref.name[0] == '-' && ref.name[1] >= '0' && ref.name[1] <= '9';
-                if (ram[i] != nullptr || !infos[i].streamed || (groupCount[i] <= 1 && !tiled))
-                    continue;
-                TextureHeader header;
-                if (!fileFor(i, header, stage, kStageBytes))
-                    continue;
-                const std::size_t body = header.texelBytes + header.indexBytes + header.paletteBytes;
-                if (ramBytes + sizeof(header) + body > room)
-                    continue;
-                auto *copy = static_cast<std::uint8_t *>(std::malloc(sizeof(header) + body));
-                if (copy == nullptr)
-                    continue;
-                std::memcpy(copy, &header, sizeof(header));
-                std::memcpy(copy + sizeof(header), stage, body);
-                ram[i] = copy;
-                // (Nothing to read, but as much to write in the blank: it
-                // counts against what one blank may take as any other.)
-                ramBytes += sizeof(header) + body;
-                ++ramCount;
-            }
-        }
+        // (Main-memory copies of some of them are made once the rest of the
+        // map is in: makeCopies.)
 
         planner.init(infos, count, room, static_cast<std::uint32_t>(paletteRegion.bytes));
         for (int r = 1; r < regionCount; ++r)
@@ -698,6 +668,47 @@ namespace hlrt
                              paletteGuesses);
                 std::fclose(log);
             }
+        }
+    }
+
+    void TextureStream::makeCopies(std::size_t keepBack)
+    {
+        // Main-memory copies of the pictures of the cycles and of the variants
+        // a floor is tiled with (the game's '-' textures), as far as the heap
+        // can spare: a cycle changes picture ten times a second, and a tiled
+        // floor wears several, and when video memory is short the ones not
+        // wanted at the moment are let go and come back from here, not from
+        // the card. Made last, once the map and the game are in -- they are
+        // only a help, and what the game needs comes first -- and only from
+        // what is left past what play will take (`keepBack`).
+        if (!active_ || streamedTotal == 0)
+            return;
+        const std::size_t headroom = global.heapHeadroom();
+        const std::size_t room =
+            headroom > keepBack ? std::min<std::size_t>((headroom - keepBack) / 3, kCacheMost) : 0;
+        const int count = planner.count();
+        for (int i = 0; i < count && room != 0; ++i)
+        {
+            const TextureRef &ref = level.view.textures[i];
+            const bool tiled = ref.name[0] == '-' && ref.name[1] >= '0' && ref.name[1] <= '9';
+            if (ram[i] != nullptr || !infos[i].streamed || (groupCount[i] <= 1 && !tiled))
+                continue;
+            TextureHeader header;
+            if (!fileFor(i, header, stage, kStageBytes))
+                continue;
+            const std::size_t body = header.texelBytes + header.indexBytes + header.paletteBytes;
+            if (ramBytes + sizeof(header) + body > room)
+                continue;
+            auto *copy = static_cast<std::uint8_t *>(std::malloc(sizeof(header) + body));
+            if (copy == nullptr)
+                continue;
+            std::memcpy(copy, &header, sizeof(header));
+            std::memcpy(copy + sizeof(header), stage, body);
+            ram[i] = copy;
+            // (Nothing to read, but as much to write in the blank: it
+            // counts against what one blank may take as any other.)
+            ramBytes += sizeof(header) + body;
+            ++ramCount;
         }
     }
 
