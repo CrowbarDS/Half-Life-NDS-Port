@@ -37,6 +37,11 @@ profile = ['HLDS_PROFILE=1'] if os.environ.get('HLDS_PROFILE') else []
 # HLDS_BOX_TEST=1 ./make.sh builds the world's box test in (an experiment:
 # WorldDraw.hpp, THE BOX TEST).
 profile += ['HLDS_BOX_TEST=1'] if os.environ.get('HLDS_BOX_TEST') else []
+# HLDS_DEBUG=1 ./make.sh builds the full heap guard in (source/Guard.hpp): a
+# header and four bytes after every block, and small blocks held a while once
+# given back. Without it (the release) the blocks are the allocator's own,
+# with nothing added, and its chain is what is checked.
+guard = ['HLDS_GUARD_FULL'] if os.environ.get('HLDS_DEBUG') else []
 
 # The 64-bit divide goes to the console's divider (source/HwMath.s), and to
 # the library's for what the divider would answer otherwise.
@@ -52,7 +57,7 @@ arm9 = Arm9Binary(
     # the geometry engine, on the overlay and in perf.txt. Off, every one of
     # its entry points is an empty inline (DebugLog.hpp), so the shipped
     # build carries none of it.
-    defines=['HL_HW_MATH'] + profile,
+    defines=['HL_HW_MATH'] + profile + guard,
     # The wireless is the dswifi fork that also does DS Download Play
     # (github.com/Warioware64/dswifi, installed as "dswifi_dl" beside the
     # stock one). Its headers have the stock names (dswifi9.h), so

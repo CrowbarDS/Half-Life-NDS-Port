@@ -1104,21 +1104,32 @@ neighbour whose links had been zeroed) -- the culprit long gone.
 
 - **The heap.** Every malloc, calloc, realloc, memalign, aligned_alloc,
   posix_memalign and free -- the program's by `--wrap` (build.py), the
-  library's by the loader's resolver (GameDll) -- goes through a block with a
-  header (its size, the address of the code that asked for it) and four
-  bytes after its end. Freeing checks both; small blocks (up to 4 KB, 32 KB
-  of them in all) are then held a while, filled with a pattern that must
-  still be there when they really go. A write past a block's end, into one
-  given back, a free of something that is not a block or of one twice: the
-  game stops on the crash screen with the block, its size and who asked for
-  it. Every block is checked at each map load (old map gone, new one in)
-  and save. Cost: 24 + 4 bytes a block and the held blocks (the readout's
-  heap is about 40 KB lower). NEA's video memory lists take no blocks during play: each
-  split of them needs a node, and the nodes come from a reserve of 1,024 set
-  aside at start-up (`Global.cpp`; 548 at most were measured, on
-  rocket_frenzy on a DSi; not in the Download Play child, whose memory was
-  measured without it). One from the heap took 48 bytes and a piece of
-  it each time; c2a5e did not start on a DS before.
+  library's by the loader's resolver (GameDll) -- goes through the guard.
+  - **In every build**, the allocator's own chain is walked at each map load
+    (old map gone, new one in) and save: libnds's dlmalloc keeps a size word
+    in front of every chunk, chunks follow one another from the heap's start
+    to the top chunk, and two free chunks are never side by side. A write
+    past a block's end lands on the next chunk's size word, and the chain
+    no longer adds up: the game stops on the crash screen with that chunk,
+    the word found there and the chunk before it (whose end it was). It costs
+    nothing per block. The same walk gives `heapRoom()`, the `room:` line of
+    `perf.txt`.
+  - **A debug build** (`HLDS_DEBUG=1 ./make.sh`, `HLDS_GUARD_FULL`) adds the
+    full guard: a header in front of every block (its size, the address of
+    the code that asked for it) and four bytes after its end. Freeing checks
+    both; small blocks (up to 4 KB, 32 KB of them in all) are then held a
+    while, filled with a pattern that must still be there when they really
+    go. A write past a block's end, into one given back, a free of something
+    that is not a block or of one twice: the crash screen names the block,
+    its size and who asked for it. Cost: 24 + 4 bytes a block and the held
+    blocks, 10 to 16 KB on the tightest DS maps, which is why a release
+    build is without it.
+  - NEA's video memory lists take no blocks during play: each
+    split of them needs a node, and the nodes come from a reserve of 1,024 set
+    aside at start-up (`Global.cpp`; 548 at most were measured, on
+    rocket_frenzy on a DSi; not in the Download Play child, whose memory was
+    measured without it). One from the heap took 48 bytes and a piece of
+    it each time; c2a5e did not start on a DS before.
 - **The stack.** Sixteen words at the bottom of the stack's room in DTCM hold
   a pattern, looked at every frame.
 - **The library's code** (and constants) is summed once loaded and at each

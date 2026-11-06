@@ -47,6 +47,9 @@ extra = ['HLDS_CHILD_FROMCARD=\\"%s\\"' % fromcard] if fromcard else []
 # the ARM7 (Sound.hpp, vramTest), at the start.
 if os.environ.get('HLDS_CHILD_VRAMSOUND'):
     extra.append('HLDS_CHILD_VRAMSOUND')
+# HLDS_DEBUG=1: the full heap guard, as the parent's (../build.py).
+if os.environ.get('HLDS_DEBUG'):
+    extra.append('HLDS_GUARD_FULL')
 
 arm9 = Arm9Binary(
     sourcedirs=['engine', 'game'],

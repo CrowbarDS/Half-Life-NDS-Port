@@ -16,6 +16,9 @@ extern "C"
     void *__real_malloc(std::size_t size);
     void __real_free(void *p);
     void *__real_memalign(std::size_t align, std::size_t size);
+    void *__real_calloc(std::size_t count, std::size_t size);
+    void *__real_realloc(void *p, std::size_t size);
+    std::size_t malloc_usable_size(void *p);
 
     // libnds's own, for the crash screen (not in its headers).
     extern const char *exceptionMsg;
@@ -29,6 +32,121 @@ namespace hlrt::guard
 {
     namespace
     {
+        // ---- the heap's counts (both builds)
+
+        std::uint32_t blocks = 0, bytes = 0;
+        /// The most `bytes` has been since markPlay(), and what it was then.
+        std::uint32_t playBase = 0, playPeak = 0;
+
+#ifndef HLDS_GUARD_FULL
+        /// A block of the allocator's taken (+1) or given back (-1): what it
+        /// holds, as the allocator says.
+        void counted(void *p, int way)
+        {
+            const std::uint32_t n = static_cast<std::uint32_t>(malloc_usable_size(p));
+            const int saved = enterCriticalSection();
+            if (way > 0)
+            {
+                ++blocks;
+                bytes += n;
+                if (bytes > playPeak)
+                    playPeak = bytes;
+            }
+            else
+            {
+                --blocks;
+                bytes -= n;
+            }
+            leaveCriticalSection(saved);
+        }
+#endif
+
+        // ---- the allocator's chain (both builds)
+        //
+        // libnds's dlmalloc (built without FOOTERS): every chunk is a word
+        // before it (the size of the one before, when that one is free) and a
+        // word that is its own size with two bits: 1, the one before is in
+        // use; 2, this one is. The chunks follow one another from the heap's
+        // start (rounded so that what a chunk holds is on eight) to the top
+        // chunk, the free room at the end, and after it a last false chunk
+        // whose size takes it exactly to sbrk's end. A write past a block's
+        // end lands on the next chunk's size: the chain no longer adds up, or
+        // its bits disagree. Nothing is added to a block for it.
+        struct ChainWalk
+        {
+            std::uint32_t bad = 0;          ///< the chunk where it went wrong, or 0
+            std::uint32_t badHead = 0;      ///< ... its size word
+            std::uint32_t before = 0;       ///< ... the chunk before it
+            std::uint32_t topFree = 0;      ///< the top chunk
+            std::uint32_t largestHole = 0;  ///< the largest free chunk inside, what it can hold
+            std::uint32_t inHoles = 0;      ///< ... all of them
+        };
+
+        ChainWalk walkChain()
+        {
+            ChainWalk w;
+            const std::uint32_t start = reinterpret_cast<std::uint32_t>(getHeapStart());
+            const std::uint32_t end = reinterpret_cast<std::uint32_t>(getHeapEnd());
+            if (end <= start + 64)
+                return w; // (nothing taken yet)
+            auto word = [](std::uint32_t a) { return *reinterpret_cast<const volatile std::uint32_t *>(a); };
+            // The false chunk at the end: its size takes it to sbrk's end.
+            auto isLast = [&](std::uint32_t c) {
+                if (c + 8 > end)
+                    return false;
+                const std::uint32_t head = word(c + 4);
+                return (head & 3) == 0 && c + (head & ~7u) == end;
+            };
+            std::uint32_t c = start + ((8 - ((start + 8) & 7)) & 7);
+            std::uint32_t before = 0;
+            bool beforeFree = false;
+            std::uint32_t lastFree = 0;
+            auto fail = [&](std::uint32_t at) {
+                w.bad = at;
+                w.badHead = at + 8 <= end ? word(at + 4) : 0;
+                w.before = before;
+                return w;
+            };
+            while (true)
+            {
+                if (c + 8 > end || (c & 7) != 0)
+                    return fail(c);
+                if (isLast(c))
+                {
+                    // (What was before it is the top chunk: free.)
+                    if (!beforeFree)
+                        return fail(c);
+                    w.topFree = lastFree;
+                    // (Counted among the holes as it was met: not one.)
+                    w.inHoles -= lastFree > 4 ? lastFree - 4 : 0;
+                    return w;
+                }
+                const std::uint32_t head = word(c + 4);
+                const std::uint32_t size = head & ~7u;
+                const std::uint32_t next = c + size;
+                const bool lastNext = size >= 8 && next <= end && isLast(next);
+                if (size < (lastNext ? 8u : 16u) || next > end || ((head & 1) != 0) == beforeFree)
+                    return fail(c);
+                const bool free = (head & 2) == 0;
+                if (free)
+                {
+                    // (Two free chunks side by side are always made one;
+                    // and a free one's size is also in front of the next.)
+                    if (beforeFree || (!lastNext && word(next) != size))
+                        return fail(c);
+                    const std::uint32_t holds = size - 4;
+                    w.inHoles += holds;
+                    if (!lastNext && holds > w.largestHole)
+                        w.largestHole = holds;
+                    lastFree = size;
+                }
+                before = c;
+                beforeFree = free;
+                c = next;
+            }
+        }
+
+#ifdef HLDS_GUARD_FULL
         // ---- the heap
 
         constexpr std::uint32_t kLive = 0x4C495645;  // "LIVE"
@@ -50,9 +168,6 @@ namespace hlrt::guard
         static_assert(sizeof(Block) == 24);
 
         Block *first = nullptr;
-        std::uint32_t blocks = 0, bytes = 0;
-        /// The most `bytes` has been since markPlay(), and what it was then.
-        std::uint32_t playBase = 0, playPeak = 0;
 
         /// Small blocks given back are held a while, filled: a write into
         /// one is seen when it really goes (or at a check).
@@ -201,6 +316,27 @@ namespace hlrt::guard
             leaveCriticalSection(saved);
         }
 
+#else
+        // ---- the heap, in a release build: the allocator's own blocks as
+        // they are (nothing added to them), counted. What is checked is the
+        // allocator's chain itself (allocatorBroken, below).
+
+        void *take(std::size_t align, std::size_t size, std::uint32_t)
+        {
+            void *p = align <= 8 ? __real_malloc(size) : __real_memalign(align, size);
+            if (p != nullptr)
+                counted(p, 1);
+            return p;
+        }
+
+        void give(void *p, std::uint32_t)
+        {
+            if (p == nullptr)
+                return;
+            counted(p, -1);
+            __real_free(p);
+        }
+#endif
         std::uint32_t callerOf(void *returnAddress) { return reinterpret_cast<std::uint32_t>(returnAddress); }
 
         // ---- the library and the stack
@@ -241,6 +377,7 @@ namespace hlrt::guard
             return true;
         }
 
+#ifdef HLDS_GUARD_FULL
         /// The first block whose header or end is wrong, or null.
         Block *heapBroken()
         {
@@ -262,6 +399,8 @@ namespace hlrt::guard
             }
             return nullptr;
         }
+
+#endif
 
         // ---- the crash screen
 
@@ -395,7 +534,11 @@ namespace hlrt::guard
                 ++shown;
             }
             // The checks.
-            const bool heap = heapBroken() == nullptr && heldBroken() == nullptr;
+#ifdef HLDS_GUARD_FULL
+            const bool heap = heapBroken() == nullptr && heldBroken() == nullptr && walkChain().bad == 0;
+#else
+            const bool heap = walkChain().bad == 0;
+#endif
             at(0, 20);
             print(heap ? "heap ok " : "heap BAD ");
             print(libraryIntact() ? "dsl ok " : "dsl BAD ");
@@ -465,6 +608,7 @@ namespace hlrt::guard
     {
         frame();
         const int saved = enterCriticalSection();
+#ifdef HLDS_GUARD_FULL
         Block *bad = heapBroken();
         if (bad != nullptr)
             crash(bad->magic != kLive ? "HEAP: a block's header broken" : "HEAP: written past its end",
@@ -473,6 +617,12 @@ namespace hlrt::guard
         if (bad != nullptr)
             crash("HEAP: written after it was freed", reinterpret_cast<std::uint32_t>(userOf(bad)), bad->size,
                   bad->caller);
+#endif
+        // (The block's address, the size word found there, the chunk
+        // before: whose end it was written past.)
+        const ChainWalk chain = walkChain();
+        if (chain.bad != 0)
+            crash("HEAP: the allocator's chain broken", chain.bad, chain.badHead, chain.before);
         leaveCriticalSection(saved);
         if (!libraryIntact())
             crash("DSL: its code was written over", reinterpret_cast<std::uint32_t>(libraryBase), libraryCode,
@@ -501,46 +651,20 @@ namespace hlrt::guard
 
     HeapRoom heapRoom()
     {
-        // Every block taken from the allocator, live or held: from where it
-        // starts to the end of its tail (the allocator's own header, up to 8
-        // bytes, is in front of each). What lies between two of them, or between the heap's
-        // start and the first, is free; the heap's top (sbrk) is the end.
-        auto start = [](Block *b) { return reinterpret_cast<std::uint32_t>(rawOf(b)); };
-        auto end = [](Block *b) { return reinterpret_cast<std::uint32_t>(userOf(b)) + b->size + sizeof(kTail); };
-        const std::uint32_t heapStart = reinterpret_cast<std::uint32_t>(getHeapStart());
-        const std::uint32_t heapEnd = reinterpret_cast<std::uint32_t>(getHeapEnd());
-        HeapRoom room;
-        room.top = reinterpret_cast<std::uint32_t>(getHeapLimit()) - heapEnd;
+        // From the allocator's chain: the top is what sbrk has not given
+        // yet and the free top chunk below it, one piece; the holes are the
+        // free chunks inside.
         const int saved = enterCriticalSection();
-        auto gapAfter = [&](std::uint32_t from) {
-            // The nearest block start at or after `from`, among all of them.
-            std::uint32_t next = heapEnd;
-            for (Block *b = first; b != nullptr; b = b->next)
-                if (start(b) >= from && start(b) < next)
-                    next = start(b);
-            for (int i = 0; i < heldCount; ++i)
-            {
-                Block *h = held[(heldAt - heldCount + i + kHeld) % kHeld];
-                if (start(h) >= from && start(h) < next)
-                    next = start(h);
-            }
-            // (Less the allocator's header in front of the next block.)
-            return next - from > 8 ? next - from - 8 : 0;
-        };
-        auto note = [&](std::uint32_t from) {
-            if (from >= heapEnd)
-                return;
-            const std::uint32_t gap = gapAfter(from);
-            room.inHoles += gap;
-            if (gap > room.largestHole)
-                room.largestHole = gap;
-        };
-        note(heapStart);
-        for (Block *b = first; b != nullptr; b = b->next)
-            note(end(b));
-        for (int i = 0; i < heldCount; ++i)
-            note(end(held[(heldAt - heldCount + i + kHeld) % kHeld]));
+        const ChainWalk chain = walkChain();
         leaveCriticalSection(saved);
+        HeapRoom room;
+        room.top = static_cast<std::uint32_t>(getHeapLimit() - getHeapEnd());
+        if (chain.bad == 0)
+        {
+            room.top += chain.topFree > 4 ? chain.topFree - 4 : 0;
+            room.largestHole = chain.largestHole;
+            room.inHoles = chain.inHoles;
+        }
         return room;
     }
 } // namespace hlrt::guard
@@ -563,9 +687,15 @@ extern "C"
     {
         if (size != 0 && count > 0x0FFFFFFF / size)
             return nullptr;
+#ifdef HLDS_GUARD_FULL
         void *p = hlrt::guard::take(8, count * size, reinterpret_cast<std::uint32_t>(__builtin_return_address(0)));
         if (p != nullptr)
             std::memset(p, 0, count * size);
+#else
+        void *p = __real_calloc(count, size);
+        if (p != nullptr)
+            hlrt::guard::counted(p, 1);
+#endif
         return p;
     }
 
@@ -604,6 +734,7 @@ extern "C"
             hlrt::guard::give(p, caller);
             return nullptr;
         }
+#ifdef HLDS_GUARD_FULL
         const int saved = enterCriticalSection();
         hlrt::guard::Block *b = hlrt::guard::checked(p, caller);
         const std::uint32_t had = b->size, align = b->align;
@@ -614,5 +745,11 @@ extern "C"
         std::memcpy(q, p, had < size ? had : size);
         hlrt::guard::give(p, caller);
         return q;
+#else
+        hlrt::guard::counted(p, -1);
+        void *q = __real_realloc(p, size);
+        hlrt::guard::counted(q != nullptr ? q : p, 1);
+        return q;
+#endif
     }
 }
