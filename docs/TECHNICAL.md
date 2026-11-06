@@ -1318,6 +1318,28 @@ sooner. And at c1a2 the pressure stays because what is counted, with what
 it leaves out, never fits in fifteen sixteenths of the budget: the wait
 never starts.
 
+**The box test** (an experiment: `HLDS_BOX_TEST=1 ./make.sh`). The geometry
+engine can say whether a box is inside the view as it clips (`BOX_TEST`),
+which for a flat surface is much tighter than its ball against five planes.
+Each surface's box is worked out at load from its own commands
+(`shared/HlGxBounds.hpp`), so the cooked level is as it was. It is in the
+vertices' own numbers -- quarter-units, read as 4.12 under the world's own
+matrix -- so the test is asked in the same space the polygons are drawn
+in. Its corners are vertices, so they fit the test's 16 bits; only its
+size might not, and on c1a0, c1a2, c2a5, c2a5x and c4a1 the widest is 4300
+of 32767 (`test_gxbounds`). The test needs far-plane-crossing and one-dot
+polygons kept, so the walk sets that format with an empty begin and end,
+and puts the world's back after. It waits for the answer, so it is not
+asked while a DSi's DMA may be feeding the geometry engine: `finishList`
+has always waited for the list before the walk comes round, and the walk
+checks the DMA as well (skipped: never, in every run). In melonDS it left
+out 9 to 42 more surfaces a pass than the balls did, 2 to 5% of the
+polygons counted, with the hardware drawing the same -- and the walk took
+2.5 to 4 ms longer a pass on a DSi. It is off: melonDS is not the
+console's clock for the geometry engine, and only a console's numbers
+(the walk's time on the overlay, `perf.txt`'s `box-out-mean`) can say
+whether it should be on.
+
 ## Streaming textures
 
 A map cooked without `--no-stream-textures` (streaming is the default) has its plain opaque textures (one

@@ -34,6 +34,9 @@ from architectds import *
 
 # HLDS_PROFILE=1 ./make.sh builds the frame-time readout in (see below).
 profile = ['HLDS_PROFILE=1'] if os.environ.get('HLDS_PROFILE') else []
+# HLDS_BOX_TEST=1 ./make.sh builds the world's box test in (an experiment:
+# WorldDraw.hpp, THE BOX TEST).
+profile += ['HLDS_BOX_TEST=1'] if os.environ.get('HLDS_BOX_TEST') else []
 
 # The 64-bit divide goes to the console's divider (source/HwMath.s), and to
 # the library's for what the divider would answer otherwise.

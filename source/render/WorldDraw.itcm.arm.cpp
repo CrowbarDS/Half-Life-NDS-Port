@@ -31,6 +31,27 @@ namespace hlrt
     using namespace hldata;
     using namespace worldparts;
 
+#ifdef HLDS_BOX_TEST
+    namespace
+    {
+        /// The geometry engine's BOX_TEST: whether any of the box (mins,
+        /// maxs: vertex numbers) is in the view as the hardware clips it.
+        /// Waits for the answer (GBATEK: about a hundred of its cycles).
+        inline bool boxInView(const std::int16_t *box)
+        {
+            auto pair = [](int lo, int hi) -> std::int32_t
+            { return static_cast<std::int32_t>((lo & 0xFFFF) | (static_cast<std::uint32_t>(hi) << 16)); };
+            GFX_BOX_TEST = pair(box[0], box[1]);
+            GFX_BOX_TEST = pair(box[2], box[3] - box[0]);
+            GFX_BOX_TEST = pair(box[4] - box[1], box[5] - box[2]);
+            while (GFX_STATUS & GFX_STATUS_TEST_BUSY)
+            {
+            }
+            return (GFX_STATUS & BIT(1)) != 0;
+        }
+    } // namespace
+#endif
+
     void WorldDraw::walk()
     {
         const LevelView &view = level.view;
@@ -40,6 +61,28 @@ namespace hlrt
 
         std::memset(chosen_, 0, chosenWords_ * 4);
         std::memset(far_, 0, chosenWords_ * 4);
+        stats_.sphereOut = 0;
+        stats_.boxOut = 0;
+        stats_.boxSkipped = false;
+#ifdef HLDS_BOX_TEST
+        int sphereOut = 0, boxOut = 0;
+        std::memset(out_, 0, chosenWords_ * 4);
+        // (Not while the DSi's DMA may still be feeding the geometry engine:
+        // THE BOX TEST, WorldDraw.hpp.)
+        const bool boxes = boxTest_ && !(list_ != nullptr && ndmaBusy(0));
+        stats_.boxSkipped = boxTest_ && !boxes;
+        if (boxes)
+        {
+            // What the test needs of the polygon format (GBATEK): far-plane
+            // crossing and one-dot polygons kept, set by a begin and end
+            // with nothing in them. The world's own is put back after.
+            NEA_PolyFormat(31, 0, static_cast<NEA_LightEnum>(0), kCull,
+                           static_cast<NEA_OtherFormatEnum>(polygonMode() | NEA_RENDER_FAR_CLIPPED |
+                                                            NEA_RENDER_ONEA_DOT_POLYS));
+            GFX_BEGIN = 0;
+            GFX_END = 0;
+        }
+#endif
         int polygons = 0;
         int farPolygons = 0;
         int vertices = 0;
@@ -93,6 +136,11 @@ namespace hlrt
             const std::uint32_t bit = 1u << (s & 31);
             if (word & bit)
                 return true; // already taken through another leaf
+#ifdef HLDS_BOX_TEST
+            std::uint32_t &outWord = out_[s >> 5];
+            if (outWord & bit)
+                return true; // already left out through another leaf
+#endif
 
             const Surface &surface = view.surfaces[s];
             const std::uint32_t planeIndex = surface.planeRef & kSurfacePlaneMask;
@@ -103,7 +151,25 @@ namespace hlrt
             if ((surface.planeRef & kSurfacePlaneBack) ? side >= 0 : side <= 0)
                 return true;
             if (sphereOutside(planes, surface.center, surface.radius))
+            {
+#ifdef HLDS_BOX_TEST
+                outWord |= bit;
+                ++sphereOut;
+#endif
                 return true;
+            }
+#ifdef HLDS_BOX_TEST
+            if (boxes)
+            {
+                const std::int16_t *box = boxes_[s];
+                if (box[0] <= box[3] && !boxInView(box))
+                {
+                    outWord |= bit;
+                    ++boxOut;
+                    return true;
+                }
+            }
+#endif
             if (detail != 0)
             {
                 // How far it is, the same however the eye is turned (the
@@ -231,6 +297,12 @@ namespace hlrt
         stats_.polygons = polygons;
         stats_.vertices = vertices;
         stats_.farPolygons = farPolygons;
+#ifdef HLDS_BOX_TEST
+        stats_.sphereOut = sphereOut;
+        stats_.boxOut = boxOut;
+        if (boxes)
+            NEA_PolyFormat(31, 0, static_cast<NEA_LightEnum>(0), kCull, polygonMode());
+#endif
     }
 
     namespace

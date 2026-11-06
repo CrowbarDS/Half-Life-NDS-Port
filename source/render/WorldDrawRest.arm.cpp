@@ -15,6 +15,7 @@
 #include "render/EffectDraw.hpp"
 #include "render/HudDraw.hpp"
 #include "Global.hpp"
+#include "HlGxBounds.hpp"
 #include "HlLamp.hpp"
 #include "HlPlaneMath.hpp"
 #include "game/Game.hpp"
@@ -51,6 +52,24 @@ namespace hlrt
         chosen_ = static_cast<std::uint32_t *>(std::calloc(chosenWords_ + 1, 4));
         skipped_ = static_cast<std::uint32_t *>(std::calloc(chosenWords_ + 1, 4));
         far_ = static_cast<std::uint32_t *>(std::calloc(chosenWords_ + 1, 4));
+#ifdef HLDS_BOX_TEST
+        out_ = static_cast<std::uint32_t *>(std::calloc(chosenWords_ + 1, 4));
+        boxes_ = static_cast<std::int16_t(*)[6]>(std::malloc(view.surfaceCount * sizeof(*boxes_) + 1));
+        // (No room for them: the map is played by balls alone -- an
+        // experiment does not stop a map loading.)
+        boxTest_ = out_ != nullptr && boxes_ != nullptr;
+        for (std::uint32_t s = 0; boxTest_ && s < view.surfaceCount; ++s)
+        {
+            const Surface &surface = view.surfaces[s];
+            std::int16_t *box = boxes_[s];
+            if (!gxStreamBounds(view.gxStream + surface.gxOfs, surface.gxWords, box, box + 3) ||
+                !gxBoxFits(box, box + 3))
+            {
+                box[0] = 1; // (none: judged by the ball)
+                box[3] = 0;
+            }
+        }
+#endif
         detailKept_ = static_cast<std::uint32_t *>(std::malloc((chosenWords_ + 1) * 4));
         if (nodeFrame_ == nullptr || leafFrame_ == nullptr || chosen_ == nullptr || skipped_ == nullptr || far_ == nullptr ||
             detailKept_ == nullptr)
@@ -83,6 +102,12 @@ namespace hlrt
         skipped_ = nullptr;
         std::free(far_);
         far_ = nullptr;
+#ifdef HLDS_BOX_TEST
+        std::free(out_);
+        out_ = nullptr;
+        std::free(boxes_);
+        boxes_ = nullptr;
+#endif
         std::free(detailKept_);
         detailKept_ = nullptr;
         std::free(list_);

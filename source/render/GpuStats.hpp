@@ -96,6 +96,15 @@ namespace hlrt
                 map_.fullVerticesMost = hwVertices > map_.fullVerticesMost ? hwVertices : map_.fullVerticesMost;
             }
         }
+        /// What the view's planes, and the box test (HLDS_BOX_TEST), left
+        /// out of the world this pass; and whether the box test was not
+        /// done.
+        void culls(int sphereOut, int boxOut, bool boxSkipped)
+        {
+            map_.sphereOutSum += static_cast<std::uint32_t>(sphereOut);
+            map_.boxOutSum += static_cast<std::uint32_t>(boxOut);
+            map_.boxSkipped += boxSkipped;
+        }
         const Frame &last() const { return last_; }
 
         /// The lowest lead since this was last asked (the overlay asks).
@@ -157,6 +166,7 @@ namespace hlrt
             std::uint32_t excessPolygons[kBuckets] = {}, excessVertices[kBuckets] = {};
             int fullPolygonsMost = 0, fullVerticesMost = 0;
             std::uint32_t farPolygonsSum = 0;
+            std::uint32_t sphereOutSum = 0, boxOutSum = 0, boxSkipped = 0;
         };
         Frame last_;
         Totals map_;

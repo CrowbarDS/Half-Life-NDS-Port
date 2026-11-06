@@ -86,6 +86,13 @@ namespace hlrt
         /// What of `polygons` was the world's far half, sent last (the
         /// part a full hardware drops).
         int farPolygons = 0;
+        /// Surfaces the view's planes left out (each once a pass), and --
+        /// in a build with HLDS_BOX_TEST -- those of the rest the hardware's
+        /// box test left out; and whether the box test was not done this
+        /// pass (the DSi's DMA was still feeding the geometry engine).
+        int sphereOut = 0;
+        int boxOut = 0;
+        bool boxSkipped = false;
         /// Brush entities in view not drawn: no room in the pass for them, or
         /// (`brushesOverflow`, counted in both) more of them than the lists
         /// hold.
@@ -265,6 +272,30 @@ namespace hlrt
         std::uint16_t *leafFrame_ = nullptr; ///< vis stamp per leaf
         std::uint32_t *chosen_ = nullptr;    ///< one bit per surface
         std::uint32_t *far_ = nullptr;       ///< ... of those, the far ones: sent last
+#ifdef HLDS_BOX_TEST
+        /// THE BOX TEST (an experiment, off unless built with HLDS_BOX_TEST):
+        /// after a surface's ball is found in the view, the geometry
+        /// engine's own BOX_TEST is asked whether the box round its
+        /// vertices is -- against the view as the hardware clips it, under
+        /// the world's own matrix. A ball round a flat surface is far bigger
+        /// than the surface; the box is not.
+        ///
+        /// The box is in the vertices' own numbers (quarter-units, read as
+        /// 4.12: HlGxBounds.hpp), worked out at load from each surface's own
+        /// commands, so the cooked level is as it was. Its corners are
+        /// vertices, so they fit the test's 16 bits; its size could not,
+        /// and such a surface (none on the game's maps: test_gxbounds) has
+        /// no box and is judged by its ball alone.
+        ///
+        /// The test waits for the geometry engine's answer, so it is not
+        /// asked while the DSi's DMA is still feeding it the last list
+        /// (emitList): that pass is judged by balls alone. (finishList has
+        /// always waited for the list before the walk comes round again;
+        /// this only makes sure of it.)
+        std::int16_t (*boxes_)[6] = nullptr; ///< per surface: mins, maxs; mins[0] > maxs[0]: none
+        std::uint32_t *out_ = nullptr;       ///< left out this pass (tested once)
+        bool boxTest_ = true;
+#endif
         /// ... whether World detail kept it the last time it was asked (kept
         /// while it is out of view: turned away from and back to, it is as
         /// it was). All kept again whenever detail is off.

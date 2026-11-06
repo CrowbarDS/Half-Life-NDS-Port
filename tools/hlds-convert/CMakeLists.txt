@@ -199,6 +199,7 @@ if(HLDS_BUILD_TESTS)
             test_bosses
             test_xen
             test_portals
+            test_gxbounds
             test_brushplan
             test_round39
             test_revisit
