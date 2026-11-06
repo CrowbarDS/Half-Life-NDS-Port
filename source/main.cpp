@@ -6,6 +6,7 @@
 
 #include <cstdlib>
 #include <malloc.h>
+#include <new>
 
 #include "Achievements.hpp"
 #include <sys/stat.h>
@@ -66,6 +67,9 @@ namespace
     }
 
     std::string currentMap;
+    /// The map being loaded, while it is (for the screen that says it did
+    /// not fit: currentMap is still the one left).
+    char loadingMap[32] = {};
     /// A map loaded only to be photographed (takeAllPreviews): nothing of it
     /// is shown -- the curtain stays down, the touch screen says what is
     /// being done.
@@ -582,6 +586,7 @@ namespace
     {
         hldata::LevelHeader header{};
         LoadClock clock;
+        std::snprintf(loadingMap, sizeof(loadingMap), "%s", name.c_str());
         // (A save still being written is of the map being left: finished
         // first, at once.)
         hlrt::SaveGame::finish();
@@ -1453,6 +1458,11 @@ int main(int argc, char *argv[])
     // whole (Guard.hpp). A photograph of it, and build/elf/<build>/, say
     // which line.
     hlrt::guard::install();
+    // Out of memory where nothing could say so (a string, a list: what the
+    // program builds with new): said on the touch screen, as a map that
+    // does not fit is, rather than the console switching itself off -- what
+    // an exception nobody catches does.
+    std::set_new_handler([] { haltWith("Cannot go on:", "Not enough memory for this map.", loadingMap); });
     global.Init(argc > 0 ? argv[0] : nullptr);
     // The game library, first: before anything else takes the heap, so that
     // it sits next to the program (GameDll.arm.cpp).
