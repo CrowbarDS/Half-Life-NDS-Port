@@ -651,6 +651,9 @@ namespace
         // heap is still in one piece: the rest of the load breaks it up.
         // (If there is no room even now, create says so below.)
         hlrt::game.reserve();
+        // ... and the list of the map's sounds (with none, the map has no
+        // sound at all: c1a3 on a DS, when it came last).
+        hlrt::sound.prepare();
         clock.mark("level");
         // Textures before models: if video memory runs short it is a model
         // that goes without its skin, not a wall. Models before the game:
@@ -761,7 +764,7 @@ namespace
         // after this.)
         if (!changing)
             hlrt::sound.setMusic(-1, 0);
-        hlrt::sound.load();
+        hlrt::sound.load(kPlayReserve);
         clock.mark("snd");
         // Last, from what is left past what play takes: the streamer's copies
         // of the pictures that change often. Then what play takes from here

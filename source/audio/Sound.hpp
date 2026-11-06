@@ -40,8 +40,16 @@ namespace hlrt
     public:
         /// Once, at start-up, before any map is loaded.
         void init();
-        /// Read the loaded level's sounds. Call once the game is up.
-        void load();
+        /// The loaded level's list of clips and what goes with it (small),
+        /// taken early in the map's load, before the heap is broken up: with
+        /// no list there is no sound at all. (load() takes it itself if this
+        /// was not called.)
+        void prepare();
+        /// Read the loaded level's sounds. Call once the game is up. Each is
+        /// read if it fits in what the heap has left above `keepBack` (what
+        /// play is to have), the map's own things' sounds first; one that
+        /// does not is read when it is first played, as room allows.
+        void load(std::size_t keepBack = 0);
         /// Silence everything but the music, and let the level's sounds go.
         /// The music is held where it is until load() is called again.
         void unload();
@@ -182,7 +190,9 @@ namespace hlrt
         static constexpr int kMaxSpoken = 32;
         static constexpr int kLoops = 8; ///< loops of a place at once, where there are voices
 
-        bool readClip(const char *name, Clip &clip);
+        /// `most`: the most its samples may take (more: not read, and
+        /// `tooBig` says so).
+        bool readClip(const char *name, Clip &clip, std::size_t most = ~std::size_t(0), bool *tooBig = nullptr);
 #ifdef HLDS_CHILD
         /// The group's base's copy, if it has one (net/GuestLoad.hpp).
         bool borrowClip(const char *name, Clip &clip);
@@ -244,6 +254,8 @@ namespace hlrt
         private:
         int aheadNext_ = 0;
         LoadStats stats_;
+        bool prepared_ = false;
+        bool *kept_ = nullptr; ///< between prepare() and load(): which are the map's
         int loaded_ = 0;
         int bytes_ = 0;
         Clip ui_[hldata::kUiSoundCount];

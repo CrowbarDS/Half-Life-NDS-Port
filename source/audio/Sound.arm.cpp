@@ -94,9 +94,11 @@ namespace hlrt
         loopsDue_ = 0;
     }
 
-    bool Sound::readClip(const char *name, Clip &clip)
+    bool Sound::readClip(const char *name, Clip &clip, std::size_t most, bool *tooBig)
     {
         clip = Clip();
+        if (tooBig != nullptr)
+            *tooBig = false;
         // The map's own, out of its archive; the menu's, out of the card's.
         const std::string inArchive = std::string("snd/") + name + ".hsn";
         std::FILE *file = std::fopen(global.mapPath(inArchive).c_str(), "rb");
@@ -114,6 +116,12 @@ namespace hlrt
                   std::fread(&header, sizeof(header), 1, file) == 1 &&
                   soundHeaderValid(header, static_cast<std::uint32_t>(size));
         std::uint8_t *data = nullptr;
+        if (ok && header.dataBytes > most)
+        {
+            ok = false;
+            if (tooBig != nullptr)
+                *tooBig = true;
+        }
         if (ok)
         {
             data = static_cast<std::uint8_t *>(std::malloc(header.dataBytes));
@@ -160,35 +168,47 @@ namespace hlrt
     }
 #endif
 
-    void Sound::load()
+    void Sound::prepare()
     {
         const LevelView &view = level.view;
         const int count = static_cast<int>(view.soundCount) < kMaxSounds ? static_cast<int>(view.soundCount) : kMaxSounds;
         stats_ = LoadStats();
+        prepared_ = true;
         clips_ = static_cast<Clip *>(std::calloc(count + 1, sizeof(Clip)));
-        bool *kept = static_cast<bool *>(std::calloc(view.soundCount + 1, sizeof(bool)));
-        if (clips_ == nullptr || kept == nullptr)
+        // (Two lists: what the map plays, then which of it is its own things'.)
+        kept_ = static_cast<bool *>(std::calloc(2 * (view.soundCount + 1), sizeof(bool)));
+        if (clips_ == nullptr || kept_ == nullptr)
         {
             std::free(clips_);
-            std::free(kept);
+            std::free(kept_);
             clips_ = nullptr;
+            kept_ = nullptr;
             stats_.tableFailed = true;
             return;
         }
         count_ = count;
-        aheadNext_ = 0;
         played_ = static_cast<std::uint32_t *>(std::calloc(view.logicCount / 32 + 1, sizeof(std::uint32_t)));
+        lazy_ = static_cast<std::uint8_t *>(std::calloc(count + 1, 1));
+    }
+
+    void Sound::load(std::size_t keepBack)
+    {
+        const LevelView &view = level.view;
+        if (!prepared_)
+            prepare();
+        prepared_ = false;
+        bool *const kept = kept_;
+        kept_ = nullptr;
+        if (clips_ == nullptr)
+            return;
+        const int count = count_;
+        aheadNext_ = 0;
         soundsKept(view.logic, view.logicCount, view.logicSounds, view.logicSoundCount,
                    view.soundCount, kept, view.modelSounds, view.modelSoundCount, view.sounds);
-        lazy_ = static_cast<std::uint8_t *>(std::calloc(count + 1, 1));
         for (int i = 0; lazy_ != nullptr && i < count; ++i)
             lazy_[i] = soundLazy(view.sounds[i]) && view.sounds[i].name[0] != '\0' ? 1 : 0;
         for (int k = 0; k < kLazyClips; ++k)
             lazyClip_[k] = -1;
-        // In two goes: everything but the later weapons' sounds, then those.
-        // Left with too little to play in (a DS, in a map with every weapon),
-        // the map does without the rest rather than without its memory --
-        // and the rest is a weapon's noise, not the map's own.
 #ifdef HLDS_CHILD
         // Sent the game: every sound the map was sent, in the order it was
         // sent -- those kept, then the rest -- each borrowed from the group's
@@ -234,33 +254,51 @@ namespace hlrt
         resumeMusic();
         return;
 #endif
+        // In three goes, as long as there is room above what play keeps back:
+        // the map's own things' sounds (its ambients, its doors and lifts),
+        // then the rest of what it plays (the player's, its models'), then
+        // the later weapons'. Left with too little (a DS, a big map), it does
+        // without the last rather than without its memory, and what was not
+        // read is read when first played, if there is room then.
         const int laterFrom = static_cast<int>(kCommonSoundsBefore30);
         const int laterTo = static_cast<int>(commonsOf(view.header->version));
-        for (int pass = 0; pass < 2; ++pass)
+        bool *const own = kept + view.soundCount + 1;
+        soundsKept(view.logic, view.logicCount, view.logicSounds, view.logicSoundCount, view.soundCount, own,
+                   nullptr, 0, view.sounds);
+        for (std::uint32_t i = 0; i < view.soundCount && i < static_cast<std::uint32_t>(CommonSound::Count); ++i)
+            own[i] = false;
+        for (int pass = 0; pass < 3; ++pass)
         for (int i = 0; i < count; ++i)
         {
             const bool later = i >= laterFrom && i < laterTo;
-            if (later != (pass == 1) || !kept[i] || view.sounds[i].name[0] == '\0')
+            const int of = later ? 2 : (own[i] ? 0 : 1);
+            if (of != pass || !kept[i] || view.sounds[i].name[0] == '\0')
                 continue;
             ++stats_.kept;
-            // (Below this, the rest of the pass is not tried: nothing given
-            // back in between, it stays below.)
-            if (global.heapHeadroom() < 300 * 1024)
-            {
-                ++stats_.skippedRoom;
-                continue;
-            }
+            const std::size_t headroom = global.heapHeadroom();
+            // (Room for the clip's own block as well: a few bytes.)
+            const std::size_t room = headroom > keepBack + 64 ? headroom - keepBack - 64 : 0;
             // (A DSi has the memory for the better copy, where there is one.)
             char twin[sizeof(SoundRef)];
-            if ((global.isDSi && soundTwinName(view.sounds[i], twin, sizeof(twin)) && readClip(twin, clips_[i])) ||
-                readClip(view.sounds[i].name, clips_[i]))
+            bool tooBig = false;
+            if ((global.isDSi && soundTwinName(view.sounds[i], twin, sizeof(twin)) &&
+                 readClip(twin, clips_[i], room)) ||
+                readClip(view.sounds[i].name, clips_[i], room, &tooBig))
             {
                 ++loaded_;
                 ++stats_.loaded;
                 bytes_ += static_cast<int>(clips_[i].bytes);
+                continue;
             }
+            if (tooBig)
+                ++stats_.skippedRoom;
             else
                 ++stats_.failed;
+            // (Read when first played, then: lazyTouch. Not the map's own
+            // things': those loop -- a lift, an ambient -- and a clip read
+            // that way can be let go while a loop of it still plays.)
+            if (lazy_ != nullptr && pass > 0)
+                lazy_[i] = 1;
         }
         std::free(kept);
         lastVblank_ = Global::vblanks();
@@ -427,6 +465,9 @@ namespace hlrt
             lazyClip_[k] = -1;
         std::free(clips_);
         clips_ = nullptr;
+        std::free(kept_);
+        kept_ = nullptr;
+        prepared_ = false;
         count_ = 0;
         loaded_ = 0;
         bytes_ = 0;
