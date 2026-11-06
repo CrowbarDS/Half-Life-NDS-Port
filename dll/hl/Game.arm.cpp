@@ -40,30 +40,73 @@ namespace hlrt
         /// longer -- a load, a hitch -- is played in slow motion rather than
         /// letting a door cover half its travel between two collision checks.
         constexpr int kMaxVblanks = 4;
+
+        /// Where each of create()'s arrays goes in the one block reserve()
+        /// takes: sizes from the level alone, each on eight.
+        struct ArrayPlan
+        {
+            std::uint32_t brushStates, movers, reach, states, ladders, corners, actorStates, actorBoxes, linkShut,
+                aiSlots, aiHeld, total;
+            int ladderCount, actorCount;
+        };
+
+        ArrayPlan planArrays(const LevelView &view)
+        {
+            ArrayPlan plan{};
+            plan.ladderCount = 0;
+            for (std::uint32_t i = 0; i < view.logicCount; ++i)
+                plan.ladderCount += view.logic[i].kind == static_cast<std::uint8_t>(LogicKind::Ladder);
+            // (On a multiplayer map, room for a match's players instead.)
+            plan.actorCount = static_cast<int>(view.actorCount) + spareActorsOf(view);
+            const std::uint32_t actors = static_cast<std::uint32_t>(plan.actorCount > 0 ? plan.actorCount : 1);
+            std::uint32_t at = 0;
+            // + 1: a level with no brushes or no logic still gets a valid pointer.
+            auto take = [&](std::uint32_t &where, std::uint32_t bytes) {
+                where = at;
+                at += (bytes + 7) & ~7u;
+            };
+            take(plan.brushStates, (view.brushCount + 1) * sizeof(BrushState));
+            take(plan.movers, (view.brushCount + 1) * sizeof(MoverHull));
+            take(plan.reach, (view.brushCount + 1) * sizeof(MoverReach));
+            take(plan.states, (view.logicCount + 1) * sizeof(LogicState));
+            take(plan.ladders, (plan.ladderCount + 1) * sizeof(LadderVolume));
+            take(plan.corners, view.cornerCount + 1);
+            take(plan.actorStates, actors * sizeof(ActorState));
+            take(plan.actorBoxes, actors * sizeof(SolidBox));
+            take(plan.linkShut, view.pathLinkCount + 1);
+            take(plan.aiSlots, actors * sizeof(std::int16_t));
+            take(plan.aiHeld, actors);
+            plan.total = at;
+            return plan;
+        }
     } // namespace
+
+    bool Game::reserve()
+    {
+        const ArrayPlan plan = planArrays(level.view);
+        if (arrays_ != nullptr && arraysBytes_ == plan.total)
+            return true;
+        std::free(arrays_);
+        arrays_ = static_cast<std::uint8_t *>(std::malloc(plan.total));
+        arraysBytes_ = arrays_ != nullptr ? plan.total : 0;
+        return arrays_ != nullptr;
+    }
 
     void Game::destroy()
     {
         hlrt::think.detach(); // (before what the worker reads goes)
         actors.ai = nullptr;
         std::free(aiMonsters_);
-        std::free(aiSlots_);
-        std::free(aiHeld_);
         aiMonsters_ = nullptr;
         aiSlots_ = nullptr;
         aiHeld_ = nullptr;
-        std::free(linkShut_);
         linkShut_ = nullptr;
         actors.linkShut = nullptr;
-        std::free(brushStates_);
-        std::free(movers_);
-        std::free(reach_);
-        std::free(states_);
-        std::free(ladders_);
-        std::free(cornerState_);
+        // (Every other array is in this one block.)
+        std::free(arrays_);
+        arrays_ = nullptr;
+        arraysBytes_ = 0;
         cornerState_ = nullptr;
-        std::free(actorStates_);
-        std::free(actorBoxes_);
         actorStates_ = nullptr;
         actorBoxes_ = nullptr;
         renew(actors);
@@ -81,7 +124,13 @@ namespace hlrt
 
     bool Game::create()
     {
+        // (What reserve() took for this level stays through the clearing.)
+        std::uint8_t *const reserved = arrays_;
+        const std::uint32_t reservedBytes = arraysBytes_;
+        arrays_ = nullptr;
         destroy();
+        arrays_ = reserved;
+        arraysBytes_ = reservedBytes;
         // (Nothing of the changing lights has been worked out yet.)
         std::memset(styleValues_, 0xFF, sizeof(styleValues_));
         // The chapter's name, half a second into the map (not from a save:
@@ -100,28 +149,30 @@ namespace hlrt
             break;
         }
 
-        // + 1: a level with no brushes or no logic still gets a valid pointer.
-        brushStates_ =
-            static_cast<BrushState *>(std::calloc(view.brushCount + 1, sizeof(BrushState)));
-        movers_ = static_cast<MoverHull *>(std::calloc(view.brushCount + 1, sizeof(MoverHull)));
-        reach_ = static_cast<MoverReach *>(std::calloc(view.brushCount + 1, sizeof(MoverReach)));
-        states_ = static_cast<LogicState *>(std::calloc(view.logicCount + 1, sizeof(LogicState)));
-        int ladderCount = 0;
-        for (std::uint32_t i = 0; i < view.logicCount; ++i)
-            ladderCount += view.logic[i].kind == static_cast<std::uint8_t>(LogicKind::Ladder);
-        ladders_ = static_cast<LadderVolume *>(std::calloc(ladderCount + 1, sizeof(LadderVolume)));
-        cornerState_ = static_cast<std::uint8_t *>(std::calloc(view.cornerCount + 1, 1));
-        // (On a multiplayer map, room for a match's players instead.)
-        const int actorCount = static_cast<int>(view.actorCount) + spareActorsOf(view);
-        actorStates_ = static_cast<ActorState *>(std::calloc(actorCount, sizeof(ActorState)));
-        actorBoxes_ = static_cast<SolidBox *>(std::calloc(actorCount, sizeof(SolidBox)));
-        if (brushStates_ == nullptr || movers_ == nullptr || reach_ == nullptr || states_ == nullptr ||
-            ladders_ == nullptr || cornerState_ == nullptr || actorStates_ == nullptr ||
-            actorBoxes_ == nullptr)
+        // Every array in one block, taken at the start of the map's load
+        // (reserve), before the rest of the map broke the heap up: each one
+        // apart, at the end of it, found no piece big enough on the tightest
+        // maps (the actors' states, 264 bytes each).
+        const ArrayPlan plan = planArrays(view);
+        if (!reserve())
         {
             destroy();
             return false;
         }
+        std::memset(arrays_, 0, plan.total);
+        brushStates_ = reinterpret_cast<BrushState *>(arrays_ + plan.brushStates);
+        movers_ = reinterpret_cast<MoverHull *>(arrays_ + plan.movers);
+        reach_ = reinterpret_cast<MoverReach *>(arrays_ + plan.reach);
+        states_ = reinterpret_cast<LogicState *>(arrays_ + plan.states);
+        ladders_ = reinterpret_cast<LadderVolume *>(arrays_ + plan.ladders);
+        cornerState_ = arrays_ + plan.corners;
+        actorStates_ = reinterpret_cast<ActorState *>(arrays_ + plan.actorStates);
+        actorBoxes_ = reinterpret_cast<SolidBox *>(arrays_ + plan.actorBoxes);
+        linkShut_ = arrays_ + plan.linkShut;
+        aiSlots_ = reinterpret_cast<std::int16_t *>(arrays_ + plan.aiSlots);
+        aiHeld_ = arrays_ + plan.aiHeld;
+        const int ladderCount = plan.ladderCount;
+        const int actorCount = plan.actorCount;
         for (std::uint32_t i = 0; i < view.brushCount; ++i)
         {
             const Model &model = view.models[view.brushes[i].model];
@@ -233,8 +284,6 @@ namespace hlrt
         actors.nodeCount = static_cast<int>(view.pathNodeCount);
         actors.linkCount = static_cast<int>(view.pathLinkCount);
         // (How each way between two nodes is just now: the logic keeps it.)
-        std::free(linkShut_);
-        linkShut_ = static_cast<std::uint8_t *>(std::calloc(view.pathLinkCount + 1, 1));
         actors.linkShut = linkShut_;
         actors.doorsWanted = 0;
         weapon_ = WeaponState();
@@ -244,11 +293,7 @@ namespace hlrt
         {
             const int thinkers = aiNeeded(actors);
             std::free(aiMonsters_);
-            std::free(aiSlots_);
-            std::free(aiHeld_);
             aiMonsters_ = static_cast<AiMonster *>(std::malloc(sizeof(AiMonster) * (thinkers > 0 ? thinkers : 1)));
-            aiSlots_ = static_cast<std::int16_t *>(std::malloc(sizeof(std::int16_t) * (actors.count > 0 ? actors.count : 1)));
-            aiHeld_ = static_cast<std::uint8_t *>(std::malloc(actors.count > 0 ? actors.count : 1));
             if (aiMonsters_ != nullptr && aiSlots_ != nullptr && aiHeld_ != nullptr)
                 aiAttach(actors, ai_, aiMonsters_, thinkers, aiSlots_, aiHeld_, actors.count);
             ai_.speechCount = static_cast<int>(view.speechCount);

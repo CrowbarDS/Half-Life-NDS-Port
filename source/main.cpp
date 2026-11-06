@@ -642,6 +642,10 @@ namespace
         }
         if (!hlrt::level.load(error))
             return LoadResult::Failed;
+        // The game's arrays for this level next, in one block, while the
+        // heap is still in one piece: the rest of the load breaks it up.
+        // (If there is no room even now, create says so below.)
+        hlrt::game.reserve();
         clock.mark("level");
         // Textures before models: if video memory runs short it is a model
         // that goes without its skin, not a wall. Models before the game:

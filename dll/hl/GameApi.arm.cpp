@@ -9,6 +9,7 @@ namespace
     using namespace hlrt;
 
     constexpr GameFuncs kGame = {
+        .reserve = [](Game &g) { return g.reserve(); },
         .create = [](Game &g) { return g.create(); },
         .destroy = [](Game &g) { g.destroy(); },
         .frame = [](Game &g, int vblanks) { g.frame(vblanks); },

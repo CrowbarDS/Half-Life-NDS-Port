@@ -101,6 +101,11 @@ namespace hlrt
         /// destroy(): only a new game clears them.
         hldata::Globals globals;
 
+        /// The memory create() will need for the level just read, taken in
+        /// one block before anything else of the map's: called at the start
+        /// of its load, while the heap is still in one piece. (create()
+        /// takes it itself if this was not called, or was for another level.)
+        bool reserve();
         /// Allocate and initialise the live state for the loaded level.
         bool create();
         void destroy();
@@ -186,6 +191,10 @@ namespace hlrt
         std::uint8_t *cornerState_ = nullptr;
         hldata::ActorState *actorStates_ = nullptr;
         hldata::SolidBox *actorBoxes_ = nullptr;
+        /// The one block the arrays above (and linkShut_, aiSlots_, aiHeld_)
+        /// are laid out in (reserve), and how big it is.
+        std::uint8_t *arrays_ = nullptr;
+        std::uint32_t arraysBytes_ = 0;
         /// Put in hand the model of the weapon the player has out.
         void takeInHand();
         hldata::WeaponState weapon_;
