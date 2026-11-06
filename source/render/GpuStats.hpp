@@ -75,6 +75,24 @@ namespace hlrt
             if (heapFree < map_.heapLeast)
                 map_.heapLeast = heapFree;
         }
+        /// What the walk counted for the pass (before clipping) beside what
+        /// the hardware held (after): how far the second runs past the
+        /// first, the worst and nineteen passes in twenty, and what the
+        /// hardware held on the passes the walk filled. (What the pass's
+        /// budget can be, under the hardware's 2048 and 6144.)
+        void clipping(int polygons, int vertices, int hwPolygons, int hwVertices, bool full)
+        {
+            const int p = hwPolygons - polygons, v = hwVertices - vertices;
+            map_.excessPolygonsMost = p > map_.excessPolygonsMost ? p : map_.excessPolygonsMost;
+            map_.excessVerticesMost = v > map_.excessVerticesMost ? v : map_.excessVerticesMost;
+            ++map_.excessPolygons[bucket(p, kPolygonStep)];
+            ++map_.excessVertices[bucket(v, kVertexStep)];
+            if (full)
+            {
+                map_.fullPolygonsMost = hwPolygons > map_.fullPolygonsMost ? hwPolygons : map_.fullPolygonsMost;
+                map_.fullVerticesMost = hwVertices > map_.fullVerticesMost ? hwVertices : map_.fullVerticesMost;
+            }
+        }
         const Frame &last() const { return last_; }
 
         /// The lowest lead since this was last asked (the overlay asks).
@@ -88,6 +106,22 @@ namespace hlrt
         bool writeLog(const char *map, const char *mode) const;
 
     private:
+        /// clipping()'s counts of passes by how far over they ran: steps of
+        /// these, the first bucket all of sixteen steps under or more (the
+        /// hardware's count is mostly well under the walk's).
+        static constexpr int kBuckets = 32;
+        static constexpr int kPolygonStep = 16, kVertexStep = 64;
+        static int bucket(int excess, int step)
+        {
+            // (Shifted up first: a division rounds towards 0, and a pass a
+            // little under is to go with those under, not over.)
+            const int up = excess + 16 * step;
+            const int b = up < 0 ? 0 : up / step;
+            return b >= kBuckets ? kBuckets - 1 : b;
+        }
+        /// The excess nineteen passes in twenty stay at or under (the top
+        /// of their bucket).
+        static int under95(const std::uint32_t *counts, std::uint32_t passes, int step);
         struct Totals
         {
             std::uint32_t frames = 0;
@@ -115,6 +149,10 @@ namespace hlrt
             int surfacesCutMost = 0;
             int brushesDroppedMost = 0;
             std::uint32_t heapLeast = 0xFFFFFFFFu;
+            // (clipping(): the hardware's count less the walk's.)
+            int excessPolygonsMost = -100000, excessVerticesMost = -100000;
+            std::uint32_t excessPolygons[kBuckets] = {}, excessVertices[kBuckets] = {};
+            int fullPolygonsMost = 0, fullVerticesMost = 0;
         };
         Frame last_;
         Totals map_;

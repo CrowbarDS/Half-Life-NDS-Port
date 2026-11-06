@@ -82,6 +82,18 @@ namespace hlrt
         lowLines_ = 46;
     }
 
+    int GpuStats::under95(const std::uint32_t *counts, std::uint32_t passes, int step)
+    {
+        std::uint32_t seen = 0;
+        for (int b = 0; b < kBuckets; ++b)
+        {
+            seen += counts[b];
+            if (seen * 20 >= passes * 19)
+                return (b - 16 + 1) * step;
+        }
+        return (kBuckets - 16) * step;
+    }
+
     bool GpuStats::writeLog(const char *map, const char *mode) const
     {
         if (!global.hasFat || map_.frames == 0)
@@ -93,7 +105,8 @@ namespace hlrt
                      "%s %s %s passes %lu slow %lu longest %d poly %d vert %d lines %d "
                      "underflow %d overflow %d cut-world %lu cut-brush %lu pressed %lu enemies-cut %lu enemies-seen-cut %lu effects-refused %lu models-hidden %lu "
                      "poly-mean %lu surfaces-cut-mean %lu.%02lu surfaces-cut-most %d detail-cut-mean %lu brushes-dropped-mean %lu.%02lu "
-                     "brushes-dropped-most %d brushes-overflow %lu enemies-dropped %lu heap-least %luK\n",
+                     "brushes-dropped-most %d brushes-overflow %lu enemies-dropped %lu heap-least %luK "
+                     "excess-poly-most %d excess-poly-95 %d excess-vert-most %d excess-vert-95 %d full-poly-most %d full-vert-most %d\n",
                      map, global.isDSi ? "DSi" : "DS", mode,
                      static_cast<unsigned long>(map_.frames), static_cast<unsigned long>(map_.slow),
                      map_.vblanks, map_.polygons, map_.vertices, map_.lowLines, map_.underflows,
@@ -109,7 +122,10 @@ namespace hlrt
                      static_cast<unsigned long>((map_.brushesDroppedSum % map_.frames) * 100 / map_.frames),
                      map_.brushesDroppedMost, static_cast<unsigned long>(map_.brushesOverflowSum),
                      static_cast<unsigned long>(map_.enemiesCutTotal),
-                     static_cast<unsigned long>(map_.heapLeast == 0xFFFFFFFFu ? 0 : map_.heapLeast / 1024));
+                     static_cast<unsigned long>(map_.heapLeast == 0xFFFFFFFFu ? 0 : map_.heapLeast / 1024),
+                     map_.excessPolygonsMost, under95(map_.excessPolygons, map_.frames, kPolygonStep),
+                     map_.excessVerticesMost, under95(map_.excessVertices, map_.frames, kVertexStep),
+                     map_.fullPolygonsMost, map_.fullVerticesMost);
         return std::fclose(file) == 0;
     }
 } // namespace hlrt

@@ -2297,6 +2297,8 @@ int main(int argc, char *argv[])
                 hlrt::gpuStats.view(stats.budgetHit, stats.brushCut, hlrt::worldDraw.pressure() != 0);
                 hlrt::gpuStats.losses(hlrt::modelDraw.cutOf(0), hlrt::effectDraw.refused(), hlrt::modelDraw.seenEnemiesCut(),
                                       hlrt::modelDraw.hidden());
+                hlrt::gpuStats.clipping(stats.polygons, stats.vertices, stats.hwPolygons, stats.hwVertices,
+                                        stats.budgetHit);
                 hlrt::gpuStats.world(stats.polygons, stats.surfacesCut, stats.dropped, stats.brushesDropped, stats.brushesOverflow,
                                      static_cast<std::uint32_t>(global.heapHeadroom()));
                 lastPass = now;
