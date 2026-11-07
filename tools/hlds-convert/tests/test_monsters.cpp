@@ -91,6 +91,26 @@ namespace
             check(said == 40 && quietest == 32 && loudest == 32, "the suit speaks at a quarter of full, at the player");
             check(higher > 5 && higher < 35, "... and about half the time a little higher");
         }
+        {
+            // A grenade's debris: one of three, at 0.55 of full (CGrenade::Explode).
+            LogicWorld w;
+            ActorWorld actors;
+            SoundQueue heard;
+            w.heard = &heard;
+            w.actors = &actors;
+            const fx at[3] = {0, 0, 0};
+            unsigned which = 0;
+            bool loud = true;
+            for (int n = 0; n < 30; ++n)
+            {
+                heard.count = 0;
+                grenadeDebris(w, at);
+                const int k = static_cast<int>(heard.events[0].sound) - static_cast<int>(CommonSound::Debris1);
+                which |= (k >= 0 && k < 3) ? 1u << k : 8u;
+                loud = loud && heard.count == 1 && heard.events[0].volume == 70 && heard.events[0].radius == kRadiusLarge;
+            }
+            check(loud && which == 7, "a grenade's blast throws up one of its three debris sounds, at 0.55");
+        }
         p = fresh(100, 0);
         playerTakeDamage(p, 10, kDmgCrush);
         check(p.suit.value.queue[0] < 0, "... and nothing is said of a hurt with health still over 75");

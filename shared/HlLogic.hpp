@@ -2821,6 +2821,19 @@ namespace hldata
                           (trainPicture(state.speed, w.records[index].speed) << kTrainShownShift);
         }
 
+        /// It sets off: its start, as loud as its engine (UpdateSound,
+        /// ttrain_start1; the engine itself is Sound.arm.cpp's loop).
+        inline void trainStarts(LogicWorld &w, int index)
+        {
+            const LogicRecord &record = w.records[index];
+            if (w.heard == nullptr || record.brush == kNoBrush)
+                return;
+            const MoverHull &hull = w.movers[record.brush];
+            const fx at[3] = {(hull.mins[0] + hull.maxs[0]) / 2, (hull.mins[1] + hull.maxs[1]) / 2,
+                              (hull.mins[2] + hull.maxs[2]) / 2};
+            w.heard->add(CommonSound::TrainStart, at, moverVolume(record), kRadiusLarge);
+        }
+
         /// It has come to a stop: its brakes (its engine is the sound loop's
         /// to stop: Sound.arm.cpp keeps it going for as long as it moves).
         inline void trainBrakes(LogicWorld &w, int index)
@@ -2951,7 +2964,11 @@ namespace hldata
                     state.phase &= ~kTrainDriven;
                 }
                 if (((record.flags & kLogicSelfDriven) || state.running) && passed.speed != 0)
+                {
+                    if (state.speed == 0)
+                        trainStarts(w, index);
                     state.speed = passed.speed;
+                }
                 if (passed.fireTarget != 0 && !spent)
                 {
                     if ((passed.flags & kCornerFireOnce) && w.cornerState != nullptr)
@@ -4211,8 +4228,11 @@ namespace hldata
             // "off" only ever do the one.
             if (state.speed == 0)
             {
-                if (useType != kUseOff)
+                if (useType != kUseOff && record.speed != 0)
+                {
                     state.speed = record.speed;
+                    detail::trainStarts(w, index);
+                }
             }
             else if (useType != kUseOn)
             {
@@ -5505,6 +5525,8 @@ namespace hldata
         detail::trainShow(w, index);
         if (was != 0 && state.speed == 0)
             detail::trainBrakes(w, index);
+        else if (was == 0 && state.speed != 0)
+            detail::trainStarts(w, index);
     }
 
     /// What the display shows of the train the player drives: the frame of

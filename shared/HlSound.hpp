@@ -344,6 +344,16 @@ namespace hldata
         // ... and a body falling to the floor (from version 43: kCommonSoundsBefore43).
         BodyDrop3,
         BodyDrop4,
+        // ... and swimming, a track train setting off, and what a grenade's
+        // blast throws up (from version 54: kCommonSoundsBefore54).
+        Swim1,
+        Swim2,
+        Swim3,
+        Swim4,
+        TrainStart,
+        Debris1,
+        Debris2,
+        Debris3,
         Count
     };
     /// How many of these a map of level version 29 or before has.
@@ -418,6 +428,7 @@ namespace hldata
     inline constexpr std::uint16_t kCommonSoundsBefore37 = static_cast<std::uint16_t>(CommonSound::ShotShell);
     /// ... and of versions 37 to 42.
     inline constexpr std::uint16_t kCommonSoundsBefore43 = static_cast<std::uint16_t>(CommonSound::BodyDrop3);
+    inline constexpr std::uint16_t kCommonSoundsBefore54 = static_cast<std::uint16_t>(CommonSound::Swim1);
     /// How many of them a map of level version `version` has (its sounds
     /// after those are its own).
     inline constexpr std::uint16_t commonsOf(std::uint16_t version)
@@ -430,6 +441,7 @@ namespace hldata
                : version < 35 ? kCommonSoundsBefore35
                : version < 37 ? kCommonSoundsBefore37
                : version < 43 ? kCommonSoundsBefore43
+               : version < 54 ? kCommonSoundsBefore54
                               : static_cast<std::uint16_t>(CommonSound::Count);
     }
     inline constexpr std::uint16_t kNoSound = 0xFFFF;
@@ -519,7 +531,10 @@ namespace hldata
             "x/x_attack1.wav",          "x/x_ballattack1.wav",     "x/x_recharge1.wav",
             "x/x_laugh1.wav",           "x/x_pain1.wav",           "x/x_die1.wav",
             "boid/boid_idle1.wav",      "boid/boid_alert1.wav",
-            "weapons/sshell1.wav",      "common/bodydrop3.wav",    "common/bodydrop4.wav"};
+            "weapons/sshell1.wav",      "common/bodydrop3.wav",    "common/bodydrop4.wav",
+            "player/pl_swim1.wav",      "player/pl_swim2.wav",     "player/pl_swim3.wav",
+            "player/pl_swim4.wav",      "plats/ttrain_start1.wav", "weapons/debris1.wav",
+            "weapons/debris2.wav",      "weapons/debris3.wav"};
         static_assert(sizeof(kPaths) / sizeof(kPaths[0]) == static_cast<std::size_t>(CommonSound::Count));
         return kPaths[static_cast<int>(sound)];
     }

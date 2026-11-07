@@ -230,6 +230,7 @@ namespace hlrt
         std::int16_t *aiSlots_ = nullptr;
         std::uint8_t *aiHeld_ = nullptr;
         bool wasDeep_ = false; ///< the player was in water to the waist a frame ago
+        std::uint32_t swimSeed_ = 1; ///< the chance in when a swimming sound is heard
         int trainForward_ = 0; ///< forward or back as it was held a frame ago: a press drives a train
         /// The view from a trigger_camera (LogicWorld::camera), put over the
         /// player's own after it is worked out -- whose yaw and pitch (the

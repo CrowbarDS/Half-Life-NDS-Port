@@ -3946,6 +3946,15 @@ namespace hlds
         // (Water and coming down hard are everywhere; rungs where there is
         // a ladder.)
         use(CommonSound::Wade1, CommonSound::JumpLand);
+        // (Swimming where there is water to be under: the world's, or a
+        // func_water's.)
+        bool water = false;
+        for (const BspLeaf &leaf : bsp.leaves)
+            water = water || (leaf.contents <= kContentsWater && leaf.contents >= kContentsLava);
+        for (const Entity &entity : entities)
+            water = water || entity.value("classname") == "func_water";
+        if (water)
+            use(CommonSound::Swim1, CommonSound::Swim4);
         // (Steps by what is underfoot: all of them here; whoever knows the
         // map's textures drops those it has no floor for -- Cooker.cpp.)
         use(CommonSound::Metal1, CommonSound::Tile4);
@@ -3957,6 +3966,9 @@ namespace hlds
             // (... and the scrape of a box, where there is one to push.)
             if (record.kind == static_cast<std::uint8_t>(LogicKind::Pushable))
                 use(CommonSound::PushBox1, CommonSound::PushBox3);
+            // (... and a track train's start, where there is one.)
+            if (record.kind == static_cast<std::uint8_t>(LogicKind::TrackTrain))
+                use(CommonSound::TrainStart, CommonSound::TrainStart);
         }
         // The guns' own: those of what the map has to be held, and (`lazy`)
         // of what it has not -- a weapon given by a cheat, whose model and
@@ -3988,6 +4000,22 @@ namespace hlds
             }
         };
         gunSounds(models);
+        // (A grenade's debris: where one of the guns that throw one -- a
+        // grenade, the MP5's, a satchel, a tripmine, a rocket -- is to be
+        // had, or a tank's rocket or an apache's.)
+        bool blasts = soundUsed[static_cast<int>(CommonSound::GrenadeBounce2)] ||
+                      soundUsed[static_cast<int>(CommonSound::Launcher)] ||
+                      soundUsed[static_cast<int>(CommonSound::SatchelBounce)] ||
+                      soundUsed[static_cast<int>(CommonSound::MineDeploy)] ||
+                      soundUsed[static_cast<int>(CommonSound::RocketFire)];
+        for (const Entity &entity : entities)
+        {
+            const std::string_view cls = entity.value("classname");
+            blasts = blasts || cls == "func_tankrocket" || cls == "monster_apache" || cls == "monster_human_grunt" ||
+                     cls == "monster_tripmine" || cls == "monster_satchel";
+        }
+        if (blasts)
+            use(CommonSound::Debris1, CommonSound::Debris3);
         lazy = true;
         gunSounds(lazyModels);
         lazy = false;

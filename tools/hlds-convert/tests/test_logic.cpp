@@ -379,6 +379,21 @@ namespace
             heard.count = 0;
         }
         check(loud == 51, "the plat is heard moving at its volume");
+
+        // The track train, set off: its start, as loud as it is; the sounds
+        // the room has a use for (a train's start), and not (no water: no
+        // swimming; no gun that throws a grenade: no debris).
+        heard.count = 0;
+        g.use(track);
+        int started = -1;
+        for (int i = 0; i < heard.count; ++i)
+            started = heard.events[i].sound == static_cast<std::uint16_t>(CommonSound::TrainStart) ? heard.events[i].volume
+                                                                                                    : started;
+        check(started == 51, "a track train set off is heard starting, at its volume");
+        auto named = [&](CommonSound c)
+        { return static_cast<std::uint32_t>(c) < g.view.soundCount && g.view.sounds[static_cast<int>(c)].name[0] != 0; };
+        check(named(CommonSound::TrainStart) && !named(CommonSound::Swim1) && !named(CommonSound::Debris1),
+              "the room has its train's start, and no swimming nor debris it has no use for");
     }
 
     void testCookRules()

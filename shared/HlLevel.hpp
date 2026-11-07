@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 53;
+    inline constexpr std::uint16_t kLevelVersion = 54;
     /// The oldest level format this build reads. (49: a map's textures are
     /// stored in its archive as they are, never compressed, so that one that
     /// streams is read straight in during play. 50: each texture's record
@@ -83,7 +83,9 @@ namespace hldata
     /// spark that is switched says so, which a build of 50 reads as one it
     /// may switch anyway. 52: a spark's six sounds, in extra, which a build
     /// before leaves alone. 53: how loud a mover's sounds are, in its pad,
-    /// which a build before plays at full.)
+    /// which a build before plays at full. 54: four common sounds of
+    /// swimming, a track train's start and a grenade's debris, after those a
+    /// build before knows: it reads them as the map's own.)
     inline constexpr std::uint16_t kLevelMinReader = 50;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,

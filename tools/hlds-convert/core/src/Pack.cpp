@@ -678,7 +678,14 @@ namespace hlds
             if (!ladder)
                 drop(hldata::CommonSound::Ladder1, hldata::CommonSound::Ladder4);
             if (!water)
+            {
                 drop(hldata::CommonSound::Wade1, hldata::CommonSound::Slosh4);
+                drop(hldata::CommonSound::Swim1, hldata::CommonSound::Swim4);
+            }
+            // (A grenade's debris only where a match has a gun that throws one.)
+            if (held.count("v_grenade") == 0 && held.count("v_9mmar") == 0 && held.count("v_satchel") == 0 &&
+                held.count("v_tripmine") == 0 && held.count("v_rpg") == 0)
+                drop(hldata::CommonSound::Debris1, hldata::CommonSound::Debris3);
             std::set<std::string> sounds;
             for (std::uint32_t i = 0; i < view.soundCount; ++i)
             {

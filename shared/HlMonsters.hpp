@@ -448,6 +448,17 @@ namespace hldata
     inline void shakeStart(LogicWorld &w, fx amplitude, int ms);
     inline void explodeAt(LogicWorld &w, PlayerState &player, const fx *at, int size, bool fireball, bool sound,
                           bool hurts);
+    /// What a grenade's blast throws up, a moment after it: one of three,
+    /// at a little over half of full (CGrenade::Explode). Every grenade's:
+    /// a hand grenade, the MP5's, a satchel, a tripmine, a rocket.
+    inline void grenadeDebris(LogicWorld &w, const fx *at)
+    {
+        if (w.heard == nullptr || w.actors == nullptr)
+            return;
+        w.actors->seed = w.actors->seed * 1664525u + 1013904223u;
+        w.heard->add(static_cast<CommonSound>(static_cast<int>(CommonSound::Debris1) + static_cast<int>((w.actors->seed >> 12) % 3)),
+                     at, 70, kRadiusLarge);
+    }
     inline void monsterHurt(LogicWorld &w, int index, int damage, bool bullet, int group = kHitBody,
                             std::uint32_t type = kDmgUnset, std::int16_t attacker = kAiPlayer,
                             const fx *from = nullptr);
@@ -1629,6 +1640,7 @@ namespace hldata
                         const fx at[3] = {shot.pos[0] + shot.velocity[0] * 8, shot.pos[1] + shot.velocity[1] * 8,
                                           shot.pos[2] + shot.velocity[2] * 8};
                         explodeAt(w, player, at, kMineBlast, true, true, true);
+                        grenadeDebris(w, at);
                         continue;
                     }
                     if (shot.sprite == 0)
@@ -1965,6 +1977,7 @@ namespace hldata
                         // Off, where it met something: 100, to 250 units.
                         shot.active = false;
                         explodeAt(w, player, shot.pos, 100, true, true, true);
+                        grenadeDebris(w, shot.pos);
                         continue;
                     }
                     if (!rocket && struck >= 0)
@@ -2150,6 +2163,7 @@ namespace hldata
                     {
                         shot.active = false;
                         explodeAt(w, player, shot.pos, kGrenadeBlast, true, true, true);
+                        grenadeDebris(w, shot.pos);
                     }
                     else if ((shot.leftMs + ms) / 200 != shot.leftMs / 200)
                     {
@@ -2226,6 +2240,7 @@ namespace hldata
                         {
                             shot.active = false;
                             explodeAt(w, player, shot.pos, kSatchelBlast, true, true, true);
+                            grenadeDebris(w, shot.pos);
                         }
                         continue;
                     }
@@ -2240,6 +2255,7 @@ namespace hldata
                         if (w.heard != nullptr)
                             w.heard->add(CommonSound::Explode, shot.pos, 127, 2000);
                         radiusDamage(w, player, shot.pos, kGrenadeBlast, kGrenadeRadius, -1);
+                        grenadeDebris(w, shot.pos);
                         // (Felt, near to.)
                         const fx d[3] = {player.origin[0] - shot.pos[0], player.origin[1] - shot.pos[1],
                                          player.origin[2] - shot.pos[2]};
@@ -2927,6 +2943,7 @@ namespace hldata
                 const fx at[3] = {mine.pos[0] + forward[0] * 8, mine.pos[1] + forward[1] * 8,
                                   mine.pos[2] + forward[2] * 8};
                 explodeAt(w, player, at, kMineBlast, true, true, true);
+                grenadeDebris(w, at);
                 return;
             }
             const fx end[3] = {mine.pos[0] + forward[0] * kMineRange, mine.pos[1] + forward[1] * kMineRange,
@@ -5420,7 +5437,11 @@ namespace hldata
                     return did;
                 ars->tripmines = static_cast<std::int16_t>(ars->tripmines - 1);
                 if (w.heard != nullptr)
+                {
                     w.heard->add(CommonSound::MineDeploy, at, 127, kRadiusLarge);
+                    // (... and its charging, quietly: a fifth of full.)
+                    w.heard->add(CommonSound::MineCharge, at, 25, kRadiusLarge);
+                }
                 state.anim = "draw";
                 state.idleMs = 3000;
                 did |= kWeaponFired;

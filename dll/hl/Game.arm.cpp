@@ -1219,6 +1219,17 @@ namespace hlrt
                 heard.add(static_cast<std::uint16_t>(static_cast<int>(CommonSound::Wade1) + (stepCount_++ & 3)),
                           nullptr, 127, 0);
             wasDeep_ = deep;
+            // Under, short of breath: now and then a swimming sound, the
+            // more often the less air is left (WaterMove: one frame in 32,
+            // when a draw of 0 to 11 is at least the seconds left).
+            if (player.state.waterLevel == 3)
+            {
+                swimSeed_ = swimSeed_ * 1664525u + 1013904223u;
+                const int left = 12 - player.state.underMs / 1000;
+                if (((swimSeed_ >> 8) & 31) == 0 && static_cast<int>((swimSeed_ >> 13) % 12) >= left)
+                    heard.add(static_cast<CommonSound>(static_cast<int>(CommonSound::Swim1) + ((swimSeed_ >> 24) & 3)),
+                              nullptr, 102);
+            }
             if (player.state.health < lastHealth_ && player.state.health > 0)
                 heard.add(CommonSound::Pain, nullptr, 110);
         }
