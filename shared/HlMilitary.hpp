@@ -334,7 +334,7 @@ namespace hldata
                 return;
             const auto tag = static_cast<std::uint16_t>(kSoundTagActor | c.index);
             if (on && static_cast<std::uint16_t>(CommonSound::OspreyRotor) < c.w.heard->commons)
-                c.w.heard->add(static_cast<std::uint16_t>(CommonSound::OspreyRotor), c.me.pos, 127, 4000, kSoundLoopOn,
+                c.w.heard->add(static_cast<std::uint16_t>(CommonSound::OspreyRotor), c.me.pos, 127, 6667, kSoundLoopOn,
                                100, tag);
             else if (!on)
                 c.w.heard->add(kNoSound, nullptr, 0, 0, kSoundLoopOff, 100, tag);

@@ -1391,7 +1391,7 @@ namespace hldata
             shot.active = false;
             effectAdd(a, kEffectSplat, shot.pos, nullptr, 48, 500);
             if (w.heard != nullptr)
-                w.heard->add(CommonSound::SpitHit, shot.pos, 127, kRadiusMedium);
+                w.heard->add(CommonSound::SpitHit, shot.pos, 127, kRadiusLarge);
             radiusDamage(w, player, shot.pos, skillOf(w).bigmommaDmgBlast, skillOf(w).bigmommaRadiusBlast, -1, kDmgAcid, kAiNone);
         }
 
@@ -1599,7 +1599,7 @@ namespace hldata
                         shot.active = false;
                         monsterHurt(w, struck, kBoltDamage, false);
                         if (w.heard != nullptr)
-                            w.heard->add(CommonSound::XbowHitBody, shot.pos, 127, kRadiusMedium);
+                            w.heard->add(CommonSound::XbowHitBody, shot.pos, 127, kRadiusLarge);
                     }
                     else if (line.fraction < kFractionOne)
                     {
@@ -1607,7 +1607,7 @@ namespace hldata
                         shot.sprite = 1;
                         shot.leftMs = 10000;
                         if (w.heard != nullptr)
-                            w.heard->add(CommonSound::XbowHit, shot.pos, 127, kRadiusMedium);
+                            w.heard->add(CommonSound::XbowHit, shot.pos, 127, kRadiusLarge);
                     }
                     else if (shot.leftMs <= 0)
                     {
@@ -1639,7 +1639,7 @@ namespace hldata
                         shot.sprite = 1;
                         shot.leftMs = beamReach(w, player, shot.pos, end, -1);
                         if (w.heard != nullptr)
-                            w.heard->add(CommonSound::MineActivate, shot.pos, 127, kRadiusMedium);
+                            w.heard->add(CommonSound::MineActivate, shot.pos, 127, kRadiusLarge);
                         continue;
                     }
                     // Armed: anything across its beam, and it goes.
@@ -1665,9 +1665,9 @@ namespace hldata
                         effectAdd(a, kEffectSplat, shot.pos, nullptr, 16, 300);
                         if (w.heard != nullptr)
                         {
-                            w.heard->add(CommonSound::SnarkBlast, shot.pos, 127, kRadiusMedium);
+                            w.heard->add(CommonSound::SnarkBlast, shot.pos, 127, 2000); // (attn 0.5)
                             // (... and the game's splat with it, high.)
-                            w.heard->add(CommonSound::BodySplat, shot.pos, 95, kRadiusMedium, 200);
+                            w.heard->add(CommonSound::BodySplat, shot.pos, 95, kRadiusLarge, 200);
                         }
                         radiusDamage(w, player, shot.pos, damage, damage * 5 / 2, -1);
                         continue;
@@ -1748,7 +1748,7 @@ namespace hldata
                                 a.got |= kGotHurt;
                             }
                             if (w.heard != nullptr)
-                                w.heard->add(CommonSound::SnarkDeploy, shot.pos, 127, kRadiusMedium);
+                                w.heard->add(CommonSound::SnarkDeploy, shot.pos, 127, kRadiusLarge);
                             const int bites = snarkBites(shot) < 255 ? snarkBites(shot) + 1 : 255;
                             wait = 50; // (half a second)
                             shot.sprite = static_cast<std::uint16_t>(bites | (wait << 8));
@@ -1796,7 +1796,7 @@ namespace hldata
                                 const int which = static_cast<int>(chance(a) % 3);
                                 w.heard->add(which == 0 ? CommonSound::SnarkHunt1
                                                         : (which == 1 ? CommonSound::SnarkHunt2 : CommonSound::SnarkHunt3),
-                                             shot.pos, 100, kRadiusMedium, pitch);
+                                             shot.pos, 100, kRadiusLarge, pitch);
                             }
                         }
                         else
@@ -1843,7 +1843,7 @@ namespace hldata
                             {
                                 shot.sprite = 1;
                                 if (w.heard != nullptr)
-                                    w.heard->add(CommonSound::RocketFly, shot.pos, 110, kRadiusMedium);
+                                    w.heard->add(CommonSound::RocketFly, shot.pos, 110, 2000); // (attn 0.5)
                             }
                         }
                         else
@@ -1910,7 +1910,7 @@ namespace hldata
                         }
                         if (w.heard != nullptr && (chance(a) % 40) == 0)
                             w.heard->add(static_cast<CommonSound>(static_cast<int>(CommonSound::HornetBuzz1) + static_cast<int>(chance(a) % 3)),
-                                         shot.pos, 70, kRadiusSmall);
+                                         shot.pos, 70, kRadiusLarge);
                     }
                     fx to[3];
                     for (int i = 0; i < 3; ++i)
@@ -1954,7 +1954,7 @@ namespace hldata
                         a.got |= kGotHurt;
                         if (w.heard != nullptr)
                             w.heard->add(static_cast<CommonSound>(static_cast<int>(CommonSound::HornetHit1) + static_cast<int>(chance(a) % 3)),
-                                         shot.pos, 100, kRadiusSmall);
+                                         shot.pos, 100, kRadiusLarge);
                         continue;
                     }
                     for (int i = 0; i < 3; ++i)
@@ -1974,7 +1974,7 @@ namespace hldata
                         monsterHurt(w, struck, foe ? skillOf(w).hornetDmg : 7, false); // (plrDmgHornet: 7 at every level)
                         if (w.heard != nullptr)
                             w.heard->add(static_cast<CommonSound>(static_cast<int>(CommonSound::HornetHit1) + static_cast<int>(chance(a) % 3)),
-                                         shot.pos, 100, kRadiusSmall);
+                                         shot.pos, 100, kRadiusLarge);
                         continue;
                     }
                     if (!rocket && (line.fraction < kFractionOne || shot.leftMs <= 0))
@@ -2029,7 +2029,7 @@ namespace hldata
                             monsterHurt(w, whom, damage, false, kHitGeneric, type, kAiNone, shot.pos);
                         }
                         if (w.heard != nullptr)
-                            w.heard->add(CommonSound::Electro4, shot.pos, head ? 64 : 40, kRadiusSmall);
+                            w.heard->add(CommonSound::Electro4, shot.pos, head ? 64 : 40, kRadiusLarge);
                     };
                     if (head)
                     {
@@ -2192,7 +2192,7 @@ namespace hldata
                             w.heard->add(satchel      ? CommonSound::SatchelBounce
                                          : which == 0 ? CommonSound::GrenadeBounce
                                                       : (which == 1 ? CommonSound::GrenadeBounce2 : CommonSound::GrenadeBounce3),
-                                         shot.pos, 48, kRadiusMedium);
+                                         shot.pos, 48, kRadiusLarge);
                         }
                     }
                     for (int i = 0; i < 3; ++i)
@@ -2293,7 +2293,7 @@ namespace hldata
                     shot.active = false;
                     effectAdd(a, kEffectSplat, end, nullptr, 12, 200);
                     if (w.heard != nullptr)
-                        w.heard->add(CommonSound::SpitHit, end, 110, kRadiusMedium);
+                        w.heard->add(CommonSound::SpitHit, end, 110, kRadiusLarge);
                     continue;
                 }
                 for (int i = 0; i < 3; ++i)
@@ -2525,7 +2525,9 @@ namespace hldata
                                 const fx *eye, const fx *forward)
         {
             ActorWorld &a = *w.actors;
-            monsterSound(w, actor, kind.fire);
+            // (The big one's gun carries further: attenuation 0.6.)
+            if (w.heard != nullptr)
+                w.heard->add(kind.fire, actor.pos, 127, kind.fire == CommonSound::TurretFire ? 1667 : kRadiusLarge);
             const fx end[3] = {eye[0] + forward[0] * kTurretRange * 2, eye[1] + forward[1] * kTurretRange * 2,
                                eye[2] + forward[2] * kTurretRange * 2};
             const Shot shot = traceShot(*w.world, eye, end);
@@ -3926,7 +3928,7 @@ namespace hldata
                     at[i] = eye[i] + static_cast<fx>((static_cast<std::int64_t>(end[i] - eye[i]) * nearest) >>
                                                      kFractionShift);
                 if (bullet && w.heard != nullptr)
-                    w.heard->add(CommonSound::BulletFlesh, at, 90, kRadiusSmall);
+                    w.heard->add(CommonSound::BulletFlesh, at, 90, 1000); // (attn 1)
                 monsterHurt(w, struck, damage, bullet, bullet ? struckGroup : hitGroup(*a, a->states[struck], eye, end), kDmgUnset,
                             from >= 0 ? static_cast<std::int16_t>(from) : kAiPlayer,
                             from >= 0 ? a->states[from].pos : nullptr);
@@ -3986,7 +3988,7 @@ namespace hldata
             for (int i = 0; i < 3; ++i)
                 at[i] = eye[i] + static_cast<fx>((static_cast<std::int64_t>(end[i] - eye[i]) * shot.fraction) >> kFractionShift);
             w.heard->add(detail::chance(*w.actors) & 1 ? CommonSound::Ricochet1 : CommonSound::Ricochet2, at, 100,
-                         kRadiusMedium);
+                         kRadiusLarge);
         }
         return false;
     }
@@ -4254,7 +4256,7 @@ namespace hldata
                 if (w.heard == nullptr || w.sounds == nullptr || w.sounds[index].move == kNoSound)
                     return;
                 if (on)
-                    w.heard->add(w.sounds[index].move, state.base, 108, kRadiusMedium, kSoundLoopOn, 100,
+                    w.heard->add(w.sounds[index].move, state.base, 108, kRadiusLarge, kSoundLoopOn, 100,
                                  static_cast<std::uint16_t>(index));
                 else
                     w.heard->add(kNoSound, nullptr, 0, 0, kSoundLoopOff, 100, static_cast<std::uint16_t>(index));
@@ -4762,7 +4764,7 @@ namespace hldata
             const int loud = breaks ? struck.loud * 2 / 3 : struck.loud;
             const int ring = breaks ? struck.ring / 2 : struck.ring;
             w.heard->add(static_cast<std::uint16_t>(static_cast<int>(struck.first) + static_cast<int>(roll % struck.count) * struck.step),
-                         at, loud, kRadiusMedium, 0, 96 + static_cast<int>((roll >> 8) & 15));
+                         at, loud, kRadiusLarge, 0, 96 + static_cast<int>((roll >> 8) & 15));
             if (ring > 0)
                 w.heard->add((roll >> 16) & 1 ? CommonSound::CrowbarHit : CommonSound::CrowbarHit2, nullptr, ring, 0);
             if (ring > 0 && w.heard->count > 0)
@@ -5409,7 +5411,7 @@ namespace hldata
                     return did;
                 ars->tripmines = static_cast<std::int16_t>(ars->tripmines - 1);
                 if (w.heard != nullptr)
-                    w.heard->add(CommonSound::MineDeploy, at, 127, kRadiusMedium);
+                    w.heard->add(CommonSound::MineDeploy, at, 127, kRadiusLarge);
                 state.anim = "draw";
                 state.idleMs = 3000;
                 did |= kWeaponFired;

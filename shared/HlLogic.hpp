@@ -1714,8 +1714,8 @@ namespace hldata
             if (w.heard != nullptr && record.auxCount > 0 && w.aux != nullptr)
             {
                 const LogicAux &line = w.aux[record.firstAux + logicChance(w) % record.auxCount];
-                w.heard->add(line.target, record.move, static_cast<int>(record.extra[0]), kRadiusEverywhere,
-                             kSoundSentence);
+                // (From where it is, at the game's attenuation 0.3.)
+                w.heard->add(line.target, record.move, static_cast<int>(record.extra[0]), 3333, kSoundSentence);
             }
             state.timer = 15000 + static_cast<std::int32_t>(logicChance(w) % 120000);
         }
@@ -2172,7 +2172,7 @@ namespace hldata
             const fx from[3] = {(hull.mins[0] + hull.maxs[0]) / 2, (hull.mins[1] + hull.maxs[1]) / 2, hull.mins[2]};
             const int which = static_cast<int>((w.effectSeed >> 12) % 3);
             w.heard->add(which == 0 ? CommonSound::PushBox1 : (which == 1 ? CommonSound::PushBox2 : CommonSound::PushBox3),
-                         from, 64, kRadiusMedium);
+                         from, 64, kRadiusLarge);
         }
 
         /// A box no faster than its top speed, its direction kept.
@@ -3733,7 +3733,7 @@ namespace hldata
                             if (w.heard != nullptr && !actor.airborne)
                                 w.heard->add(((actor.frame >> 8) ^ i) & 1 ? CommonSound::BodyDrop4
                                                                           : CommonSound::BodyDrop3,
-                                             actor.pos, 127, kRadiusMedium, event.target != 0 ? 90 : 100);
+                                             actor.pos, 127, kRadiusLarge, event.target != 0 ? 90 : 100);
                             continue;
                         }
                         // A sound of its own: a footstep in its walk, a

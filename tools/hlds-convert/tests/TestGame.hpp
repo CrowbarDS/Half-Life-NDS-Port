@@ -77,8 +77,8 @@ namespace hldstest
         SoundQueue heard;
         std::vector<int> timesHeard;
         /// ... the loudest each has been put in (0..127), and of the lines
-        /// said by someone somewhere: heard less the further off (not the
-        /// suit's, at the player, nor a speaker's, heard everywhere).
+        /// said by someone at the game's normal attenuation (a monster's, a
+        /// door's: not the suit's, at the player, nor a speaker's).
         std::vector<int> loudestHeard;
         int sentencesHeard = 0, loudestSentence = 0;
         /// Every line said (its index in the level's Sentences), in order.
@@ -92,7 +92,7 @@ namespace hldstest
                 {
                     ++sentencesHeard;
                     said.push_back(event.sound);
-                    if (!(event.flags & kSoundHere) && event.radius != kRadiusEverywhere)
+                    if (!(event.flags & kSoundHere) && event.radius == kRadiusLarge)
                         loudestSentence = std::max(loudestSentence, static_cast<int>(event.volume));
                 }
                 else if (event.sound < timesHeard.size())

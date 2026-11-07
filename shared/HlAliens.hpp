@@ -1280,7 +1280,9 @@ namespace hldata
                 c.m.enemy = kAiPlayer;
                 c.m.state = c.m.idealState = kStateCombat;
                 c.m.time1 = c.ai.now + aiRandomMs(c.a, 18000, 25000);
-                detail::aiSay(c, CommonSound::LeechAlert);
+                // (At ATTN_NORM * 0.5.)
+                if (c.w.heard != nullptr)
+                    c.w.heard->add(CommonSound::LeechAlert, c.me.pos, 127, 2500);
             }
         }
 
@@ -2037,7 +2039,7 @@ namespace hldata
         inline void say(AiCtx &c, CommonSound sound)
         {
             if (c.w.heard != nullptr)
-                c.w.heard->add(sound, c.me.pos, 101, kRadiusLarge, 100 + aiRandomLong(c.a, 40, 50));
+                c.w.heard->add(sound, c.me.pos, 101, kRadiusSmall, 100 + aiRandomLong(c.a, 40, 50));
         }
         inline void sound(AiCtx &c, int which)
         {
@@ -2157,7 +2159,7 @@ namespace hldata
         inline void say(AiCtx &c, CommonSound sound)
         {
             if (c.w.heard != nullptr)
-                c.w.heard->add(sound, c.me.pos, 127, kRadiusLarge, aiRandomLong(c.a, 95, 105));
+                c.w.heard->add(sound, c.me.pos, 127, 1667, aiRandomLong(c.a, 95, 105)); // (attn 0.6)
         }
 
         /// ProbeZ, then a trace of its hull: how far along the probe it gets
@@ -2865,7 +2867,7 @@ namespace hldata
                 return;
             const auto tag = static_cast<std::uint16_t>(kSoundTagActor | c.index);
             if (on && static_cast<std::uint16_t>(sound) < c.w.heard->commons)
-                c.w.heard->add(static_cast<std::uint16_t>(sound), c.me.pos, 110, kRadiusMedium, kSoundLoopOn, 100, tag);
+                c.w.heard->add(static_cast<std::uint16_t>(sound), c.me.pos, 110, kRadiusLarge, kSoundLoopOn, 100, tag);
             else if (!on)
                 c.w.heard->add(kNoSound, nullptr, 0, 0, kSoundLoopOff, 100, tag);
         }
@@ -3860,7 +3862,7 @@ namespace hldata
         inline void say(AiCtx &c, CommonSound sound)
         {
             if (c.w.heard != nullptr)
-                c.w.heard->add(sound, c.me.pos, 127, 4000);
+                c.w.heard->add(sound, c.me.pos, 127, sound == CommonSound::NihilDie ? 10000 : 5000); // (attn 0.2; dying 0.1)
         }
 
         /// Where its hands and its head are (the game's attachments, as the
@@ -3954,7 +3956,7 @@ namespace hldata
                     {
                         aiDamageTarget(c, kAiPlayer, skillOf(c.w).nihilanthZap, kDmgShock);
                         if (c.w.heard != nullptr)
-                            c.w.heard->add(CommonSound::Electro4, shot.pos, 64, kRadiusMedium);
+                            c.w.heard->add(CommonSound::Electro4, shot.pos, 64, kRadiusLarge);
                         effectAdd(c.a, kEffectBolt, shot.pos, target, 0, 200);
                         shot.active = false;
                         continue;
@@ -4002,7 +4004,7 @@ namespace hldata
                         // ZapTouch: a jolt about it.
                         radiusDamage(c.w, c.player, shot.pos, 50, 125, c.index, kDmgShock, static_cast<std::int16_t>(c.index));
                         if (c.w.heard != nullptr)
-                            c.w.heard->add(CommonSound::Electro4, shot.pos, 127, kRadiusMedium);
+                            c.w.heard->add(CommonSound::Electro4, shot.pos, 127, kRadiusLarge);
                     }
                     else if (shot.kind == kShotNihilPortal && wall.fraction < kFractionOne)
                     {
@@ -4535,7 +4537,7 @@ namespace hldata
         {
             if (c.w.heard != nullptr)
                 c.w.heard->add(c.m.time3 > c.ai.now ? CommonSound::BoidAlert : CommonSound::BoidIdle, c.me.pos, 90,
-                               kRadiusMedium);
+                               kRadiusLarge);
         }
 
         inline void leaderThink(AiCtx &c)

@@ -360,7 +360,7 @@ namespace hldata
                 }
                 break;
             case kAiSoundDeath:
-                detail::aiSay(c, aiRandomLong(c.a, 0, 1) ? CommonSound::GruntDie2 : CommonSound::GruntDie1);
+                detail::aiSayNear(c, aiRandomLong(c.a, 0, 1) ? CommonSound::GruntDie2 : CommonSound::GruntDie1);
                 break;
             default:
                 break;
@@ -743,7 +743,7 @@ namespace hldata
                 break;
             case kReload:
                 if (c.w.heard != nullptr)
-                    c.w.heard->add(CommonSound::GruntReload, c.me.pos, 127, kRadiusMedium);
+                    c.w.heard->add(CommonSound::GruntReload, c.me.pos, 127, kRadiusLarge);
                 c.me.ammo = static_cast<std::uint8_t>(clipSize(c));
                 aiClear(c, kCondNoAmmoLoaded);
                 break;
@@ -760,7 +760,7 @@ namespace hldata
             case kGrenLaunch:
             {
                 if (c.w.heard != nullptr)
-                    c.w.heard->add(CommonSound::Launcher, c.me.pos, 100, kRadiusMedium);
+                    c.w.heard->add(CommonSound::Launcher, c.me.pos, 100, kRadiusLarge);
                 fx gun[3];
                 gunPosition(c, gun);
                 if (Projectile *shot = projectileAdd(c.a, kShotContact, gun, c.m.vec1, 10000))

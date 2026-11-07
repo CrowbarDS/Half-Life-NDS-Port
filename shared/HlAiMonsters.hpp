@@ -18,6 +18,12 @@ namespace hldata
         {
             monsterSound(c.w, c.me, sound);
         }
+        /// ... heard only near by (ATTN_IDLE).
+        inline void aiSayNear(AiCtx &c, CommonSound sound)
+        {
+            if (c.w.heard != nullptr)
+                c.w.heard->add(sound, c.me.pos, 127, kRadiusSmall);
+        }
         /// What a blow of a claw or a tail does to the player's view
         /// (punchangle) -- set, as the game's is.
         inline void aiPunch(AiCtx &c, std::int16_t hit, fx pitch, fx roll)
@@ -105,9 +111,9 @@ namespace hldata
         {
             switch (which)
             {
-            case kAiSoundAlert: detail::aiSay(c, CommonSound::HeadcrabAlert); break;
-            case kAiSoundPain:  detail::aiSay(c, CommonSound::HeadcrabPain); break;
-            case kAiSoundDeath: detail::aiSay(c, CommonSound::HeadcrabDie); break;
+            case kAiSoundAlert: detail::aiSayNear(c, CommonSound::HeadcrabAlert); break;
+            case kAiSoundPain:  detail::aiSayNear(c, CommonSound::HeadcrabPain); break;
+            case kAiSoundDeath: detail::aiSayNear(c, CommonSound::HeadcrabDie); break;
             default: break;
             }
         }
@@ -149,7 +155,7 @@ namespace hldata
                 jump[2] = fxFromInt(350);
             }
             if (aiRandomLong(c.a, 0, 2) != 0)
-                detail::aiSay(c, CommonSound::HeadcrabAttack);
+                detail::aiSayNear(c, CommonSound::HeadcrabAttack);
             aiLeap(c, jump);
             c.m.time1 = c.ai.now + 2000; // m_flNextAttack (read by nothing)
         }
@@ -162,7 +168,7 @@ namespace hldata
                 return;
             if (c.m.inAir)
             {
-                detail::aiSay(c, CommonSound::HeadcrabBite);
+                detail::aiSayNear(c, CommonSound::HeadcrabBite);
                 aiDamageTarget(c, other, skillOf(c.w).headcrabDmgBite, kDmgSlash);
             }
             c.m.touchArmed = false;
@@ -172,7 +178,7 @@ namespace hldata
         {
             if (task.task != kTaskRangeAttack1)
                 return false;
-            detail::aiSay(c, CommonSound::HeadcrabAttack);
+            detail::aiSayNear(c, CommonSound::HeadcrabAttack);
             c.m.idealActivity = kActRangeAttack1;
             c.m.touchArmed = true;
             return true;

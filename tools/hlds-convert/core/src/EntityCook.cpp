@@ -2665,10 +2665,12 @@ namespace hlds
                     for (int a = 0; a < 3; ++a)
                         record.move[a] = fxFromDouble(origin[a]);
                     record.extra[0] = static_cast<std::uint32_t>(index);
+                    // (Flags 1, 2, 4, 8: everywhere, small, medium, large;
+                    // none is the game's medium.)
                     record.extra[1] = (spawnflags & 1)   ? kRadiusEverywhere
                                       : (spawnflags & 2) ? kRadiusSmall
-                                      : (spawnflags & 4) ? kRadiusMedium
-                                                         : kRadiusLarge;
+                                      : (spawnflags & 8) && !(spawnflags & 4) ? kRadiusLarge
+                                                         : kRadiusMedium;
                     const double volume = numberKey(entity, "health", 10);
                     record.extra[2] = static_cast<std::uint32_t>(
                         std::clamp(std::lround(volume * 12.7), 0L, 127L));
