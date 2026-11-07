@@ -936,6 +936,16 @@ namespace
             azerty.keyboardLayout = kKeyboardLayouts;
             written = writeSettings(azerty);
             check(!readSettings(written.data(), written.size(), read21), "... and a layout there is not, not believed");
+
+            // A file whose length is not its version's (an earlier build's
+            // version 21, a byte short): refused, not read past its end.
+            SettingsHeader shortHeader = h20;
+            shortHeader.version = kSettingsVersion;
+            std::vector<std::uint8_t> shortFile = file20;
+            std::memcpy(shortFile.data(), &shortHeader, sizeof(shortHeader));
+            check(settingsPayloadBytes(kSettingsVersion) == written.size() - sizeof(SettingsHeader) &&
+                      !readSettings(shortFile.data(), shortFile.size(), read21),
+                  "a file too short for its version is refused");
         }
     }
 

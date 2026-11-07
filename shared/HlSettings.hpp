@@ -342,6 +342,53 @@ namespace hldata
 
     /// False -- leaving `out` at its defaults -- for anything that is not a
     /// settings file of this version, and for values out of range.
+    /// `data` read or written as a file of `version` has it.
+    template <class Ar>
+    inline void serializeSettings(std::uint16_t version, SettingsData &data, Ar &ar)
+    {
+        if (version == kSettingsVersionBefore)
+            data.serializeEight(ar);
+        else if (version == kSettingsVersionNine)
+            data.serializeNine(ar);
+        else if (version == kSettingsVersionTen)
+            data.serializeTen(ar);
+        else if (version == kSettingsVersionEleven)
+            data.serializeEleven(ar);
+        else if (version == kSettingsVersionTwelve)
+            data.serializeTwelve(ar);
+        else if (version == kSettingsVersionThirteen)
+            data.serializeThirteen(ar);
+        else if (version == kSettingsVersionFourteen)
+            data.serializeFourteen(ar);
+        else if (version == kSettingsVersionFifteen)
+            data.serializeFifteen(ar);
+        else if (version == kSettingsVersionSixteen)
+            data.serializeSixteen(ar);
+        else if (version == kSettingsVersionSeventeen)
+            data.serializeSeventeen(ar);
+        else if (version == kSettingsVersionEighteen)
+            data.serializeEighteen(ar);
+        else if (version == kSettingsVersionNineteen)
+            data.serializeNineteen(ar);
+        else if (version == kSettingsVersionTwenty)
+            data.serializeTwenty(ar);
+        else
+            ar &data;
+    }
+
+    /// How many bytes a file of `version` holds after its header: every
+    /// setting is a fixed size, so one length for each version. (A file of
+    /// another length, read, would run out, which stops the console.)
+    inline std::size_t settingsPayloadBytes(std::uint16_t version)
+    {
+        constexpr std::size_t flags = yas::mem | yas::binary | yas::no_header;
+        SettingsData data;
+        yas::mem_ostream os;
+        yas::binary_oarchive<yas::mem_ostream, flags> oa(os);
+        serializeSettings(version, data, oa);
+        return os.get_intrusive_buffer().size;
+    }
+
     inline bool readSettings(const std::uint8_t *bytes, std::size_t size, SettingsData &out)
     {
         constexpr std::size_t flags = yas::mem | yas::binary | yas::no_header;
@@ -363,6 +410,7 @@ namespace hldata
              header.version != kSettingsVersionTen &&
              header.version != kSettingsVersionNine && header.version != kSettingsVersionBefore) ||
             header.payloadBytes != size - sizeof(header) ||
+            header.payloadBytes != settingsPayloadBytes(header.version) ||
             crc32(bytes + sizeof(header), header.payloadBytes) != header.crc32)
             return false;
 
@@ -372,34 +420,7 @@ namespace hldata
         // (A file from before there was a choice was played the classic way.)
         if (header.version == kSettingsVersionBefore)
             read.controlScheme = kControlsClassic;
-        if (header.version == kSettingsVersionBefore)
-            read.serializeEight(ia);
-        else if (header.version == kSettingsVersionNine)
-            read.serializeNine(ia);
-        else if (header.version == kSettingsVersionTen)
-            read.serializeTen(ia);
-        else if (header.version == kSettingsVersionEleven)
-            read.serializeEleven(ia);
-        else if (header.version == kSettingsVersionTwelve)
-            read.serializeTwelve(ia);
-        else if (header.version == kSettingsVersionThirteen)
-            read.serializeThirteen(ia);
-        else if (header.version == kSettingsVersionFourteen)
-            read.serializeFourteen(ia);
-        else if (header.version == kSettingsVersionFifteen)
-            read.serializeFifteen(ia);
-        else if (header.version == kSettingsVersionSixteen)
-            read.serializeSixteen(ia);
-        else if (header.version == kSettingsVersionSeventeen)
-            read.serializeSeventeen(ia);
-        else if (header.version == kSettingsVersionEighteen)
-            read.serializeEighteen(ia);
-        else if (header.version == kSettingsVersionNineteen)
-            read.serializeNineteen(ia);
-        else if (header.version == kSettingsVersionTwenty)
-            read.serializeTwenty(ia);
-        else
-            ia &read;
+        serializeSettings(header.version, read, ia);
         // (Autoaim was on until asked off: off now until asked for, once.)
         if (header.version < kSettingsVersionSeventeen)
             read.autoaim = 0;
