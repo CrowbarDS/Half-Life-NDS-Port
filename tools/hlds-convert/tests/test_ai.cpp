@@ -991,6 +991,107 @@ namespace
         check(h.arrived, "and gets where it was going");
     }
 
+    /// A bullet strikes through hit boxes, not the bounding box (the game's
+    /// point trace through a model): one between a scientist's legs misses
+    /// him and goes on to the wall behind -- an NPC's and the player's alike
+    /// -- one through his chest does not.
+    void testShotBetweenLegs(const char *dir)
+    {
+        auto game = load(dir, "c1a2a");
+        if (!game)
+            return;
+        Game &g = *game;
+        const int sci = findKind(g, ActorKind::Scientist);
+        const int shooter = findKind(g, ActorKind::Scientist, 1);
+        check(sci >= 0 && shooter >= 0, "c1a2a has two scientists");
+        if (sci < 0 || shooter < 0)
+            return;
+        alone(g, {sci, shooter});
+        g.player.origin[2] += fxFromInt(4096); // (out of the line)
+        for (int i = 0; i < 10; ++i)
+            tickStill(g);
+        ActorState &a = g.actors.states[sci];
+        const ModelView *model = actorModel(g.actors, a);
+        check(model != nullptr && model->header->hitboxCount > 0, "the scientist's model has hit boxes");
+        if (model == nullptr)
+            return;
+        // (The shooter well out of the way.)
+        g.actors.states[shooter].pos[2] += fxFromInt(4096);
+        actorPlaceBox(g.actors, shooter);
+        fx sine, cosine;
+        fxSinCos(a.yaw, sine, cosine);
+        auto line = [&](int up, int across, fx *src, fx *dir)
+        {
+            // From 64 in front of him, back through him, `up` above his feet.
+            src[0] = a.pos[0] + cosine * 64 - sine * across;
+            src[1] = a.pos[1] + sine * 64 + cosine * across;
+            src[2] = a.pos[2] + fxFromInt(up);
+            dir[0] = -cosine;
+            dir[1] = -sine;
+            dir[2] = 0;
+        };
+        // A line below the crotch through his box, and none of his hit boxes.
+        int up = -1, across = 0;
+        fx lo[3], hi[3];
+        targetBox(a, lo, hi);
+        for (int h = 4; h <= 34 && up < 0; h += 2)
+        {
+            for (int x = -4; x <= 4 && up < 0; x += 2)
+            {
+                fx src[3], d[3];
+                line(h, x, src, d);
+                const fx to[3] = {src[0] + d[0] * 128, src[1] + d[1] * 128, src[2]};
+                std::int64_t enter;
+                int group;
+                if (lineEntersBox(src, to, lo, hi, enter) && !lineHitsHitbox(g.actors, a, src, to, enter, group))
+                {
+                    up = h;
+                    across = x;
+                }
+            }
+        }
+        std::printf("test_ai: a line between his legs, %d above his feet, %d across\n", up, across);
+        check(up >= 0, "a line between the scientist's legs, through his box and none of his hit boxes");
+        if (up < 0)
+            return;
+        AiMonster &m = mind(g, shooter);
+        AiCtx c = aiCtx(g.logic, g.player, shooter, m, *aiKindOf(g.actors.states[shooter].kind));
+        fx src[3], d[3], end[3];
+        line(up, across, src, d);
+        int group = -1;
+        std::int16_t hit = aiTraceLine(c, src, d, 2048, end, &group);
+        const fx gone[3] = {end[0] - src[0], end[1] - src[1], end[2] - src[2]};
+        check(hit != sci, "an NPC's bullet between his legs misses him");
+        check(fxLength(gone) > fxFromInt(64 + 16), "... and goes on past him");
+        // (A box is still a box for what is not a bullet: a look for a
+        // clear line.)
+        check(aiTraceLine(c, src, d, 2048, end) == sci, "the same line, not a bullet, is stopped by his box");
+
+        const int health = a.health;
+        int met = -1;
+        fx reached[3];
+        fireLine(g.logic, g.player, src, d, 2048, 8, true, false, &met, -1, reached);
+        const fx went[3] = {reached[0] - src[0], reached[1] - src[1], reached[2] - src[2]};
+        check(a.health == health && met != kMetFlesh && met != kMetKilled,
+              "the player's bullet between his legs misses him too");
+        check(fxLength(went) > fxFromInt(64 + 16), "... and goes on past him");
+
+        line(50, 0, src, d);
+        hit = aiTraceLine(c, src, d, 2048, end, &group);
+        std::printf("test_ai: a bullet through his chest strikes part %d\n", group);
+        check(hit == sci && group != kHitBody, "a bullet through his chest strikes him, in a part of him");
+
+        // Something with no model to try is struck by its box.
+        ActorState bare = a;
+        bare.model = 0xFFFF;
+        std::int64_t enter;
+        int part;
+        line(up, across, src, d);
+        const fx low[3] = {src[0] + d[0] * 128, src[1] + d[1] * 128, src[2]};
+        check(lineHitsHitbox(g.actors, bare, src, low, enter, part) && part == kHitBody,
+              "with no model to try, a bullet strikes the box");
+    }
+
     int actorNamed(const Game &g, const char *name)
     {
         const std::uint16_t id = nameIdOfHash(g.view.nameHashes, g.view.nameCount, nameHash(name));
@@ -1175,6 +1276,7 @@ int main()
         testBarnacle(dir);
         testMoveEndsShort(dir);
         testBlockedWalk(dir);
+        testShotBetweenLegs(dir);
         testC1a1fScripts(dir);
         testC1a1cMakers(dir);
     }

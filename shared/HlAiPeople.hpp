@@ -700,7 +700,8 @@ namespace hldata
                                                    static_cast<std::int64_t>(up[k]) * y * cone) >>
                                                   (2 * kFxShift));
             fx end[3];
-            const std::int16_t hit = aiTraceLine(c, gun, aim, 1024, end);
+            int group = kHitBody;
+            const std::int16_t hit = aiTraceLine(c, gun, aim, 1024, end, &group);
             effectAdd(c.a, kEffectTracer, gun, end, 0, 60);
             if (hit == kAiNone)
             {
@@ -709,7 +710,6 @@ namespace hldata
             }
             else
             {
-                const int group = hit >= 0 ? hitGroup(c.a, c.a.states[hit], gun, end) : kHitBody;
                 if (hit >= 0)
                     bleed(c.w, hit, end, aim, false);
                 aiDamageTarget(c, hit, skillOf(c.w).monster9mmBullet, kDmgBullet | kDmgNeverGib, static_cast<std::uint8_t>(group)); // (BULLET_MONSTER_9MM)

@@ -1356,8 +1356,16 @@ namespace hldata
     /// A line from `src` along `dir` (unit, Q12) for `range` units that
     /// hits the first thing in its way, or the world. The end, and what was
     /// hit (kAiNone: the world, or nothing).
-    inline std::int16_t aiTraceLine(AiCtx &c, const fx *src, const fx *dir, int range, fx *end)
+    ///
+    /// With `group`, it is a bullet: an actor is struck only through its hit
+    /// boxes (lineHitsHitbox), and the part struck is put there; a line that
+    /// passes between them goes on, to what is behind. (The player is
+    /// their box.)
+    inline std::int16_t aiTraceLine(AiCtx &c, const fx *src, const fx *dir, int range, fx *end,
+                                    int *group = nullptr)
     {
+        if (group != nullptr)
+            *group = kHitBody;
         const fx to[3] = {src[0] + dir[0] * range, src[1] + dir[1] * range, src[2] + dir[2] * range};
         const Shot wall = traceShot(*c.w.world, src, to);
         std::int64_t best = wall.fraction;
@@ -1382,10 +1390,17 @@ namespace hldata
             fx lo[3], hi[3];
             targetBox(other, lo, hi);
             std::int64_t enter = 0;
-            if (lineEntersBox(src, to, lo, hi, enter) && enter < best)
+            if (!lineEntersBox(src, to, lo, hi, enter) || enter >= best)
+                continue;
+            int part = kHitBody;
+            if (group != nullptr && !lineHitsHitbox(c.a, other, src, to, enter, part))
+                continue;
+            if (enter < best)
             {
                 best = enter;
                 hit = static_cast<std::int16_t>(i);
+                if (group != nullptr)
+                    *group = part;
             }
         }
         for (int k = 0; k < 3; ++k)

@@ -3754,16 +3754,26 @@ namespace hldata
     inline constexpr int kMetWall = 3;
     inline constexpr int kMetKilled = 4;  ///< flesh, and that was the end of it
 
-    /// Which part of the actor a line from `from` to `to` strikes first
-    /// (kHit*): the model is posed as the actor stands, and the line tried
-    /// against each of its hit boxes, in the box's bone's own space. A line
-    /// that goes between them all, or a model that has none, is a hit to
-    /// the body: whoever fired was near enough.
-    inline int hitGroup(const ActorWorld &a, const ActorState &actor, const fx *from, const fx *to)
+    /// Whether a line from `from` to `to` strikes the actor, as a bullet
+    /// does (a point trace through a model: its hit boxes, the model posed
+    /// as the actor stands, the line tried against each in its bone's own
+    /// space). If so, how far along the line it goes in (`enter`, Q30 --
+    /// the same along the world's line as along a box's, both ends being
+    /// moved alike) and which part (`group`, kHit*). A line that goes
+    /// between them all misses. An actor with no hit boxes to try (no
+    /// model, or a model with none) is struck where the line enters its
+    /// box, as the body.
+    inline bool lineHitsHitbox(const ActorWorld &a, const ActorState &actor, const fx *from, const fx *to,
+                               std::int64_t &enter, int &group)
     {
         const ModelView *model = actorModel(a, actor);
+        group = kHitBody;
         if (model == nullptr || model->header->hitboxCount == 0 || actor.clip < 0)
-            return kHitBody;
+        {
+            fx mins[3], maxs[3];
+            targetBox(actor, mins, maxs);
+            return lineEntersBox(from, to, mins, maxs, enter);
+        }
         static BoneMatrix bones[kModelMaxBones];
         std::int32_t controls[kModelControls];
         const bool controlled = actorControls(actor, controls);
@@ -3782,7 +3792,7 @@ namespace hldata
             ends[e][1] = over ? fxMul(d[0], sine) - fxMul(d[1], cosine) : fxMul(d[1], cosine) - fxMul(d[0], sine);
             ends[e][2] = over ? -d[2] : d[2];
         }
-        int group = kHitBody;
+        bool struck = false;
         std::int64_t nearest = kFractionOne + 1;
         for (int n = 0; n < model->header->hitboxCount; ++n)
         {
@@ -3804,14 +3814,27 @@ namespace hldata
                 mins[k] = static_cast<fx>(box.mins[k]) << (kFxShift - kHitboxShift);
                 maxs[k] = static_cast<fx>(box.maxs[k]) << (kFxShift - kHitboxShift);
             }
-            std::int64_t enter;
-            if (lineEntersBox(local[0], local[1], mins, maxs, enter) && enter < nearest)
+            std::int64_t in;
+            if (lineEntersBox(local[0], local[1], mins, maxs, in) && in < nearest)
             {
-                nearest = enter;
+                nearest = in;
                 group = box.group;
+                struck = true;
             }
         }
-        return group;
+        enter = struck ? nearest : 0;
+        return struck;
+    }
+
+    /// Which part of the actor a line from `from` to `to` strikes first
+    /// (kHit*), by its hit boxes (lineHitsHitbox). A line that goes between
+    /// them all is taken as a hit to the body: for what has already been
+    /// judged to strike it (a blow, a beam).
+    inline int hitGroup(const ActorWorld &a, const ActorState &actor, const fx *from, const fx *to)
+    {
+        std::int64_t enter;
+        int group;
+        return lineHitsHitbox(a, actor, from, to, enter, group) ? group : kHitBody;
     }
 
     /// Where the actor's model's attachment `which` is in the world, posed as
@@ -3850,8 +3873,11 @@ namespace hldata
             *met = kMetNothing;
         const fx end[3] = {eye[0] + dir[0] * range, eye[1] + dir[1] * range, eye[2] + dir[2] * range};
         const Shot shot = traceShot(*w.world, eye, end);
-        // The nearest monster the line goes through before that.
+        // The nearest monster the line goes through before that -- for a
+        // bullet, through its hit boxes: one that passes between them goes
+        // on, to what is behind.
         int struck = -1;
+        int struckGroup = kHitBody;
         std::int64_t nearest = shot.fraction;
         const ActorWorld *a = w.actors;
         for (int i = 0; a != nullptr && i < a->count; ++i)
@@ -3865,11 +3891,16 @@ namespace hldata
             fx mins[3], maxs[3];
             targetBox(actor, mins, maxs);
             std::int64_t enter = 0;
-            const bool miss = !lineEntersBox(eye, end, mins, maxs, enter);
-            if (!miss && enter < nearest)
+            if (!lineEntersBox(eye, end, mins, maxs, enter) || enter >= nearest)
+                continue;
+            int group = kHitBody;
+            if (bullet && !lineHitsHitbox(*a, actor, eye, end, enter, group))
+                continue;
+            if (enter < nearest)
             {
                 nearest = enter;
                 struck = i;
+                struckGroup = group;
             }
         }
         // (Where it got to, for whoever draws it: a beam's end.)
@@ -3889,7 +3920,7 @@ namespace hldata
                                                      kFractionShift);
                 if (bullet && w.heard != nullptr)
                     w.heard->add(CommonSound::BulletFlesh, at, 90, kRadiusSmall);
-                monsterHurt(w, struck, damage, bullet, hitGroup(*a, a->states[struck], eye, end), kDmgUnset,
+                monsterHurt(w, struck, damage, bullet, bullet ? struckGroup : hitGroup(*a, a->states[struck], eye, end), kDmgUnset,
                             from >= 0 ? static_cast<std::int16_t>(from) : kAiPlayer,
                             from >= 0 ? a->states[from].pos : nullptr);
                 const bool killed = a->states[struck].ai >= kAiDying || !a->states[struck].active;
@@ -3898,7 +3929,7 @@ namespace hldata
                 bleed(w, struck, at, dir, killed || damage >= 40);
                 return true;
             }
-            monsterHurt(w, struck, damage, bullet, hitGroup(*a, a->states[struck], eye, end), kDmgUnset,
+            monsterHurt(w, struck, damage, bullet, bullet ? struckGroup : hitGroup(*a, a->states[struck], eye, end), kDmgUnset,
                         from >= 0 ? static_cast<std::int16_t>(from) : kAiPlayer,
                         from >= 0 ? a->states[from].pos : nullptr);
             if (met != nullptr)

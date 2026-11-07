@@ -678,7 +678,8 @@ namespace hldata
             for (int k = 0; k < 3; ++k)
                 aim[k] = dir[k] + fxMul(c.m.value1, fxFromInt(aiRandomLong(c.a, -1000, 1000)) / 1000);
             fx end[3];
-            const std::int16_t hit = aiTraceLine(c, gun, aim, 2048, end);
+            int group = kHitBody;
+            const std::int16_t hit = aiTraceLine(c, gun, aim, 2048, end, &group);
             effectAdd(c.a, kEffectTracer, gun, end, 0, 60);
             const fx flash[3] = {gun[0] + dir[0] * 16, gun[1] + dir[1] * 16, gun[2] + dir[2] * 16};
             effectAdd(c.a, kEffectMuzzle, flash, nullptr, 0, 50);
@@ -700,7 +701,6 @@ namespace hldata
                 markShot(c.a, *c.w.world, gun, far, false);
                 return;
             }
-            const int group = hit >= 0 ? hitGroup(c.a, c.a.states[hit], gun, end) : kHitBody;
             if (hit >= 0)
                 bleed(c.w, hit, end, aim, false);
             aiDamageTarget(c, hit, skillOf(c.w).monster9mmBullet, kDmgBullet | kDmgNeverGib, static_cast<std::uint8_t>(group)); // (BULLET_MONSTER_9MM)
@@ -1200,7 +1200,8 @@ namespace hldata
                 aim[k] = barrel[k] + fxMul(right[k], fxFromInt(aiRandomLong(c.a, -35, 35)) / 1000) +
                          fxMul(up[k], fxFromInt(aiRandomLong(c.a, -35, 35)) / 1000);
             fx end[3];
-            const std::int16_t hit = aiTraceLine(c, gun, aim, 8192, end);
+            int group = kHitBody;
+            const std::int16_t hit = aiTraceLine(c, gun, aim, 8192, end, &group);
             effectAdd(c.a, kEffectTracer, gun, end, 0, 60);
             effectAdd(c.a, kEffectMuzzle, gun, nullptr, 0, 50);
             if (c.w.heard != nullptr)
@@ -1212,7 +1213,8 @@ namespace hldata
             }
             else
             {
-                aiDamageTarget(c, hit, skillOf(c.w).monster12mmBullet, kDmgBullet | kDmgNeverGib); // (BULLET_MONSTER_12MM)
+                aiDamageTarget(c, hit, skillOf(c.w).monster12mmBullet, kDmgBullet | kDmgNeverGib,
+                               static_cast<std::uint8_t>(group)); // (BULLET_MONSTER_12MM)
             }
             return true;
         }

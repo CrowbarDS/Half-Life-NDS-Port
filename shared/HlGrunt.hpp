@@ -699,7 +699,8 @@ namespace hldata
                                                        static_cast<std::int64_t>(up[k]) * y * cone) >>
                                                       (2 * kFxShift));
                 fx end[3];
-                const std::int16_t hit = aiTraceLine(c, gun, aim, 2048, end);
+                int group = kHitBody;
+                const std::int16_t hit = aiTraceLine(c, gun, aim, 2048, end, &group);
                 if (n == 0)
                     effectAdd(c.a, kEffectTracer, gun, end, 0, 60);
                 if (hit == kAiNone)
@@ -708,9 +709,8 @@ namespace hldata
                     markShot(c.a, *c.w.world, gun, far, false);
                     continue;
                 }
-                // Where it lands on what it hits (a head is three times), and
-                // its blood.
-                const int group = hit >= 0 ? hitGroup(c.a, c.a.states[hit], gun, end) : kHitBody;
+                // Where it lands on what it hits (a head is three times:
+                // `group`), and its blood.
                 if (hit >= 0)
                     bleed(c.w, hit, end, aim, false);
                 aiDamageTarget(c, hit, shotgun ? skillOf(c.w).plrBuckshot : skillOf(c.w).monster9mmARBullet, kDmgBullet | kDmgNeverGib,
