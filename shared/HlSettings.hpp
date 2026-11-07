@@ -21,6 +21,7 @@
 #include "HlControls.hpp"
 #include "HlFog.hpp"
 #include "HlLineEdit.hpp"
+#include "HlMixer.hpp"
 
 namespace hldata
 {
@@ -92,6 +93,9 @@ namespace hldata
         /// A quick tap on the aim pad is USE (the modern layout). Off unless
         /// asked for: a touch to aim was too often a USE.
         std::uint8_t tapUse = 0;
+        /// How far the music and the ambience are let down while someone
+        /// speaks (kFocus*, HlMixer.hpp).
+        std::uint8_t dialogueFocus = kFocusLight;
         /// The COMMAND line's cheats let through (version 21). Off: refused.
         std::uint8_t cheats = 0;
         /// Where the touch keyboard's letters are (kKeyboard*, HlLineEdit.hpp;
@@ -211,6 +215,14 @@ namespace hldata
         template <class Ar>
         void serialize(Ar &ar)
         {
+            serializeTwentyOne(ar);
+            ar &dialogueFocus;
+        }
+        /// ... and of version 21: no dialogue focus (read as light, the
+        /// default).
+        template <class Ar>
+        void serializeTwentyOne(Ar &ar)
+        {
             serializeTwenty(ar);
             ar &cheats &keyboardLayout;
         }
@@ -280,8 +292,9 @@ namespace hldata
     inline constexpr std::uint8_t kQualityStandard = 0, kQualityHigh = 1, kQualityChoices = 2;
 
     inline constexpr char kSettingsMagic[4] = {'H', 'L', 'S', 'T'};
-    inline constexpr std::uint16_t kSettingsVersion = 21;
-    /// The versions before, which are still read: 19 had taps always USE in
+    inline constexpr std::uint16_t kSettingsVersion = 22;
+    /// The versions before, which are still read: 21 had no dialogue focus
+    /// (read as light, the default); 19 had taps always USE in
     /// the modern layout (read as off, the default now); 18 had no choice
     /// about the double tap (it jumped); 17 had no walk; 16 had no autosave to turn
     /// off, and its autoaim was on by default, so is read as off; 13 had no profile and no
@@ -290,6 +303,7 @@ namespace hldata
     /// 11 had no achievements' pop-ups to turn off; 10 had no autoaim; 9 had
     /// the layouts but no aim speed, custom buttons or stylus pressure; 8 no
     /// controls to choose.
+    inline constexpr std::uint16_t kSettingsVersionTwentyOne = 21;
     inline constexpr std::uint16_t kSettingsVersionTwenty = 20;
     inline constexpr std::uint16_t kSettingsVersionNineteen = 19;
     inline constexpr std::uint16_t kSettingsVersionEighteen = 18;
@@ -372,6 +386,8 @@ namespace hldata
             data.serializeNineteen(ar);
         else if (version == kSettingsVersionTwenty)
             data.serializeTwenty(ar);
+        else if (version == kSettingsVersionTwentyOne)
+            data.serializeTwentyOne(ar);
         else
             ar &data;
     }
@@ -397,7 +413,8 @@ namespace hldata
             return false;
         std::memcpy(&header, bytes, sizeof(header));
         if (std::memcmp(header.magic, kSettingsMagic, sizeof(header.magic)) != 0 ||
-            (header.version != kSettingsVersion && header.version != kSettingsVersionTwenty &&
+            (header.version != kSettingsVersion && header.version != kSettingsVersionTwentyOne &&
+             header.version != kSettingsVersionTwenty &&
              header.version != kSettingsVersionNineteen &&
              header.version != kSettingsVersionEighteen &&
              header.version != kSettingsVersionSeventeen &&
@@ -429,7 +446,7 @@ namespace hldata
         if (header.version < kSettingsVersionThirteen)
             read.roomEffects = read.dspAudio != 0 ? kRoomEnhanced : kRoomClassic;
         if (read.roomEffects >= kRoomChoices || read.outputMode >= kOutputChoices ||
-            read.soundQuality >= kQualityChoices)
+            read.soundQuality >= kQualityChoices || read.dialogueFocus >= kFocusChoices)
             return false;
         if (read.controlScheme >= kControlsSchemes || read.padTurns > 1 || read.padLooks > 1)
             return false;

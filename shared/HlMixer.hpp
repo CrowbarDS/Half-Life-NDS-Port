@@ -41,12 +41,58 @@ namespace hldata
         std::int32_t tag = -1;    ///< the caller's (which loop of the map it is)
     };
 
+    /// Dialogue focus: while someone speaks, the music and the ambience
+    /// are let down -- never the effects -- so that what is said is heard
+    /// over them, and brought back up once it is over. `kFocusFloor`: how
+    /// far down, of 256, for each choice (off; light, 60 %; strong, 35 %).
+    inline constexpr std::uint8_t kFocusOff = 0, kFocusLight = 1, kFocusStrong = 2, kFocusChoices = 3;
+    inline constexpr int kFocusFloor[kFocusChoices] = {256, 154, 90};
+    /// How long the whole way down or up takes; how long after the last
+    /// word it stays down (a pause between two lines does not bring it up).
+    inline constexpr int kFocusRampMs = 250;
+    inline constexpr int kFocusHoldMs = 300;
+    /// How far each choice moves in a millisecond, in 256ths of its 256:
+    /// its whole way in kFocusRampMs (off: back up from wherever it was, at
+    /// the strong one's pace).
+    inline constexpr int kFocusStep[kFocusChoices] = {((256 - 90) << 8) / kFocusRampMs,
+                                                      ((256 - 154) << 8) / kFocusRampMs,
+                                                      ((256 - 90) << 8) / kFocusRampMs};
+
+    struct DialogueFocus
+    {
+        int level = 256 << 8; ///< where it is, of 256, in 256ths
+        int holdMs = 0;
+
+        /// `ms` on, with someone speaking or not, for the choice `mode`
+        /// (kFocus*): how loud the music and the ambience are now, of 256.
+        int tick(int ms, bool speaking, std::uint8_t mode)
+        {
+            if (mode >= kFocusChoices)
+                mode = kFocusOff;
+            const int floor = kFocusFloor[mode];
+            if (speaking)
+                holdMs = kFocusHoldMs;
+            else if (holdMs > 0)
+                holdMs -= ms;
+            const int want = (holdMs > 0 ? floor : 256) << 8;
+            const int step = ms * kFocusStep[mode];
+            if (level > want)
+                level = level - step > want ? level - step : want;
+            else if (level < want)
+                level = level + step < want ? level + step : want;
+            return level >> 8;
+        }
+    };
+
     struct Mixer
     {
         static constexpr int kVoices = 13;
         MixVoice voices[kVoices];
         std::uint32_t clock = 0;
         std::uint8_t volume[static_cast<int>(SoundLayer::Count)] = {10, 10, 10, 10, 10};
+        /// How far the ambience is let down while someone speaks, of 256
+        /// (DialogueFocus): 256, not at all.
+        int focus = 256;
 
         static constexpr int share(SoundLayer layer)
         {
@@ -68,10 +114,12 @@ namespace hldata
             return n;
         }
 
-        /// `gain` (0..127) as loud as the layer's volume has it.
+        /// `gain` (0..127) as loud as the layer's volume has it (and the
+        /// ambience, as far down as the focus has it).
         int scaled(SoundLayer layer, int gain) const
         {
-            return (gain * volume[static_cast<int>(layer)]) / 10;
+            const int loud = (gain * volume[static_cast<int>(layer)]) / 10;
+            return layer == SoundLayer::Ambience ? (loud * focus) >> 8 : loud;
         }
 
         /// The voice a new sound of `layer`, `gain` loud, is to have: a free

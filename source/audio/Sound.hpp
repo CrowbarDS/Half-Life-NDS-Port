@@ -273,6 +273,11 @@ namespace hlrt
         int dsiHz_ = 0; ///< the DSi's speakers' rate, in kHz (0: not yet set)
         void sendMode();
         hldata::Mixer mixer_;
+        /// The dialogue focus (HlMixer.hpp): where it is, and the music's
+        /// loudness the ARM7 was last told (0..256).
+        hldata::DialogueFocus focus_;
+        int musicShown_ = -1;
+        void focusTick(int ms);
         Voice voices_[hldata::Mixer::kVoices];
         std::uint32_t lastVblank_ = 0;
         /// The time between frames, exact over any run of them (a vblank is

@@ -29,6 +29,7 @@ void Settings::load()
         soundQuality = data.soundQuality;
         for (int i = 0; i < 4; ++i)
             volume[i] = data.volume[i];
+        dialogueFocus = data.dialogueFocus;
         debugReadout = data.debugReadout != 0;
         leftHanded = data.leftHanded != 0;
         viewBob = data.viewBob != 0;
@@ -101,6 +102,7 @@ void Settings::reset(int category)
         soundQuality = first.soundQuality;
         for (int i = 0; i < 4; ++i)
             volume[i] = first.volume[i];
+        dialogueFocus = first.dialogueFocus;
         break;
     case 1:
         graphics = first.graphics;
@@ -166,6 +168,7 @@ bool Settings::save() const
     data.dspAudio = roomEffects == hldata::kRoomEnhanced ? 1 : 0;
     for (int i = 0; i < 4; ++i)
         data.volume[i] = volume[i];
+    data.dialogueFocus = dialogueFocus;
     data.debugReadout = debugReadout ? 1 : 0;
     data.leftHanded = leftHanded ? 1 : 0;
     data.viewBob = viewBob ? 1 : 0;

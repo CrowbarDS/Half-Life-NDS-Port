@@ -381,6 +381,39 @@ namespace
             check(readSettings(file.data(), file.size(), read) && read.chatSeconds == 25 && read.voteSeconds == kVoteDefault,
                   "a file of version 15 is read, with the vote's time as it is at first");
         }
+        // The dialogue focus: light unless asked; kept; nothing out of range;
+        // a file of version 21, from before it, read with it light.
+        {
+            SettingsData focused;
+            focused.dialogueFocus = kFocusStrong;
+            bytes = writeSettings(focused);
+            check(SettingsData().dialogueFocus == kFocusLight && readSettings(bytes.data(), bytes.size(), back) &&
+                      back.dialogueFocus == kFocusStrong,
+                  "the dialogue focus is light unless asked otherwise, and what is asked is kept");
+            focused.dialogueFocus = kFocusChoices;
+            bytes = writeSettings(focused);
+            check(!readSettings(bytes.data(), bytes.size(), back), "a dialogue focus there is not: not read");
+            SettingsData older;
+            older.volume[kVolumeAmbience] = 3;
+            older.dialogueFocus = kFocusOff;
+            constexpr std::size_t flags = yas::mem | yas::binary | yas::no_header;
+            yas::mem_ostream os;
+            yas::binary_oarchive<yas::mem_ostream, flags> oa(os);
+            older.serializeTwentyOne(oa);
+            const auto buf = os.get_intrusive_buffer();
+            SettingsHeader header{};
+            std::memcpy(header.magic, kSettingsMagic, sizeof(header.magic));
+            header.version = kSettingsVersionTwentyOne;
+            header.payloadBytes = static_cast<std::uint16_t>(buf.size);
+            header.crc32 = crc32(reinterpret_cast<const std::uint8_t *>(buf.data), static_cast<std::uint32_t>(buf.size));
+            std::vector<std::uint8_t> file(sizeof(header) + buf.size);
+            std::memcpy(file.data(), &header, sizeof(header));
+            std::memcpy(file.data() + sizeof(header), buf.data, buf.size);
+            SettingsData read;
+            check(readSettings(file.data(), file.size(), read) && read.volume[kVolumeAmbience] == 3 &&
+                      read.dialogueFocus == kFocusLight,
+                  "a file of version 21 keeps its volumes, and its dialogue focus is light");
+        }
         // A file of version 13 keeps all it had; the profile and the match
         // hosted are as they are at first.
         {

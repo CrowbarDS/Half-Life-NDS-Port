@@ -17,6 +17,9 @@ public:
     std::uint8_t soundQuality = hldata::kQualityStandard;
     /// How loud each layer of the sound is, 0 to 10 (hldata::kVolume*).
     std::uint8_t volume[4] = {8, 10, 10, 8};
+    /// How far the music and the ambience are let down while someone
+    /// speaks (hldata::kFocus*).
+    std::uint8_t dialogueFocus = hldata::kFocusLight;
     /// The debug readout along the top of the touch screen.
     bool debugReadout = false;
     /// The stylus is in the left hand: the touch screen is mirrored.

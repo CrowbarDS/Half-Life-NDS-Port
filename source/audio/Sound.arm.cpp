@@ -90,8 +90,34 @@ namespace hlrt
         mixer_.volume[static_cast<int>(SoundLayer::Ambience)] = settings.volume[kVolumeAmbience];
         // (The music's is the ARM7's to apply. What is playing in the other
         // layers is told when it is next placed.)
-        arm7Audio.musicVolume(musicGain());
+        musicShown_ = (musicGain() * mixer_.focus) >> 8;
+        arm7Audio.musicVolume(musicShown_);
         loopsDue_ = 0;
+    }
+
+    void Sound::focusTick(int ms)
+    {
+        // Someone is speaking: a word of a line in the air, or the next of
+        // it to come (one too far off to be heard is not).
+        bool speaking = false;
+        for (const Speech &speech : speech_)
+            speaking = speaking || (speech.busy() && speech.voice >= 0);
+        const int focus = focus_.tick(ms, speaking, settings.dialogueFocus);
+        if (focus == mixer_.focus)
+            return;
+        mixer_.focus = focus;
+        // The music, told when it has moved a little, or arrived; the
+        // ambience, looked at more often while it moves (loopsTick).
+        const int music = (musicGain() * focus) >> 8;
+        const int moved = music - musicShown_;
+        const int floor = hldata::kFocusFloor[settings.dialogueFocus < hldata::kFocusChoices ? settings.dialogueFocus : 0];
+        if (moved >= 4 || moved <= -4 || focus == 256 || focus == floor)
+        {
+            musicShown_ = music;
+            arm7Audio.musicVolume(music);
+        }
+        if (loopsDue_ > 50)
+            loopsDue_ = 50;
     }
 
     bool Sound::readClip(const char *name, Clip &clip, std::size_t most, bool *tooBig)
@@ -1549,7 +1575,8 @@ namespace hlrt
             arm7Audio.musicWrote(1);
             --musicLeft_;
         }
-        arm7Audio.musicOpen(musicRing, kMusicRingBlocks, header.rate, pairs, musicGain());
+        musicShown_ = (musicGain() * mixer_.focus) >> 8;
+        arm7Audio.musicOpen(musicRing, kMusicRingBlocks, header.rate, pairs, musicShown_);
     }
 
     std::uint32_t Sound::musicPlayed() const
@@ -1671,6 +1698,7 @@ namespace hlrt
         }
         queue.count = 0;
         speechTick(ms);
+        focusTick(ms);
         // The loops, and whatever has a place, are looked at a few times a
         // second: each change is a message to the other processor.
         loopsDue_ -= ms;

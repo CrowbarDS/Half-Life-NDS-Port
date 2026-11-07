@@ -64,6 +64,7 @@ namespace hlrt
             kEffects,
             kVoices,
             kAmbience,
+            kFocus, ///< the dialogue focus
             kReadout,
             kHand,
             kControls,
@@ -864,10 +865,11 @@ namespace hlrt
         const Row kSoundRows[] = {{Kind::Value, kDsp, "Room effects"},  {Kind::Value, kOutput, "Output"},
                                   {Kind::Value, kQuality, "Quality"},    {Kind::Slider, kMusic, "Music"},
                                   {Kind::Slider, kEffects, "Effects"},   {Kind::Slider, kVoices, "Voices"},
-                                  {Kind::Slider, kAmbience, "Ambience"}};
+                                  {Kind::Slider, kAmbience, "Ambience"}, {Kind::Value, kFocus, "Dialogue focus"}};
         const char *const kQualityName[hldata::kQualityChoices] = {"standard", "high"};
         const char *const kRoomName[hldata::kRoomChoices] = {"off", "classic", "enhanced"};
         const char *const kOutputName[hldata::kOutputChoices] = {"speakers", "headphones", "mono"};
+        const char *const kFocusName[hldata::kFocusChoices] = {"off", "light", "strong"};
         const Row kGraphicsRows[] = {{Kind::Value, kFog, "Fog"},
                                      {Kind::Slider, kFogStrength, "Fog strength"},
                                      {Kind::Slider, kFogDistance, "Fog distance"},
@@ -1282,6 +1284,7 @@ namespace hlrt
             case kProfSprayColour: std::snprintf(out, size, "%s", kSprayColourName[settings.sprayColour % kSprayColours]); break;
             case kDsp: std::snprintf(out, size, "%s", kRoomName[settings.roomEffects]); break;
             case kOutput: std::snprintf(out, size, "%s", kOutputName[settings.outputMode]); break;
+            case kFocus: std::snprintf(out, size, "%s", kFocusName[settings.dialogueFocus]); break;
             case kQuality:
                 std::snprintf(out, size, "%s", isDSiMode() ? kQualityName[settings.soundQuality] : "standard (DS)");
                 break;
@@ -1367,6 +1370,7 @@ namespace hlrt
             case kEffects: return "How loud the guns, the blows and the world are.";
             case kVoices: return "How loud the people and the monsters speak.";
             case kAmbience: return "How loud the hum and drip of a place is.";
+            case kFocus: return "While someone speaks, the music and the hum of a place are let down: off, a little, or more.";
             case kFog: return "Fog, where the view ends: off, only where the map is too big to draw whole, or always.";
             case kFogStrength: return "How thick the fog is.";
             case kFogDistance: return "How near the fog begins.";
@@ -1483,6 +1487,7 @@ namespace hlrt
                 cycle(settings.soundQuality, hldata::kQualityChoices);
                 sound.applySoundMode();
                 return true;
+            case kFocus: cycle(settings.dialogueFocus, hldata::kFocusChoices); return true;
             case kReadout: settings.debugReadout = !settings.debugReadout; return true;
             case kBob: settings.viewBob = !settings.viewBob; return true;
             case kAutoaim: settings.autoaim = !settings.autoaim; return true;

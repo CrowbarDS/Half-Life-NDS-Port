@@ -24,6 +24,48 @@ namespace
 int main()
 {
     {
+        // Dialogue focus: down while someone speaks, in about a quarter of a
+        // second, to the choice's floor; held over a short pause; back up
+        // as fast once they are done; the effects never touched.
+        DialogueFocus focus;
+        int msDown = 0, level = 256;
+        while (level > kFocusFloor[kFocusStrong] && msDown < 2000)
+        {
+            level = focus.tick(16, true, kFocusStrong);
+            msDown += 16;
+        }
+        check(level == 90 && msDown >= 200 && msDown <= 300, "strong: down to 35 % in 0.2 to 0.3 s");
+        int held = 256;
+        for (int t = 0; t < 250; t += 16)
+            held = focus.tick(16, false, kFocusStrong);
+        check(held == 90, "... and held over a pause between two lines");
+        int msUp = 0;
+        while (level < 256 && msUp < 2000)
+        {
+            level = focus.tick(16, false, kFocusStrong);
+            msUp += 16;
+        }
+        check(level == 256 && msUp <= 300 + kFocusHoldMs, "... and back up within 0.3 s once the hold is over");
+        DialogueFocus light;
+        msDown = 0;
+        level = 256;
+        while (level > kFocusFloor[kFocusLight] && msDown < 2000)
+        {
+            level = light.tick(16, true, kFocusLight);
+            msDown += 16;
+        }
+        check(level == 154 && msDown >= 200 && msDown <= 300, "light: down to 60 %, as gently");
+        DialogueFocus off;
+        for (int t = 0; t < 1000; t += 16)
+            level = off.tick(16, true, kFocusOff);
+        check(level == 256, "off: never down");
+        Mixer mixer;
+        mixer.focus = 154;
+        check(mixer.scaled(SoundLayer::Ambience, 100) == 60 && mixer.scaled(SoundLayer::World, 100) == 100 &&
+                  mixer.scaled(SoundLayer::Player, 100) == 100 && mixer.scaled(SoundLayer::Voice, 100) == 100,
+              "the ambience is let down with it, never the effects nor the voices");
+    }
+    {
         int shares = 0;
         for (int l = 0; l < static_cast<int>(SoundLayer::Count); ++l)
             shares += Mixer::share(static_cast<SoundLayer>(l));
