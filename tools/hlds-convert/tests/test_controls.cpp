@@ -887,6 +887,41 @@ namespace
             check(readSettings(written.data(), written.size(), read20) && read20.tapUse == 1 &&
                       written.size() <= kSettingsMostBytes,
                   "tap to use asked for is kept");
+
+            // Version 20, before the Cheats switch: every old setting kept,
+            // and the switch off.
+            SettingsData twenty;
+            twenty.tapUse = 1;
+            twenty.autosave = 0;
+            twenty.aimSpeed = 7;
+            twenty.cheats = 1; // (not in the file)
+            yas::mem_ostream os20;
+            yas::binary_oarchive<yas::mem_ostream, flags> oa20(os20);
+            twenty.serializeTwenty(oa20);
+            const auto buf20 = os20.get_intrusive_buffer();
+            SettingsHeader h20{};
+            std::memcpy(h20.magic, kSettingsMagic, sizeof(h20.magic));
+            h20.version = kSettingsVersionTwenty;
+            h20.payloadBytes = static_cast<std::uint16_t>(buf20.size);
+            h20.crc32 = crc32(reinterpret_cast<const std::uint8_t *>(buf20.data), static_cast<std::uint32_t>(buf20.size));
+            std::vector<std::uint8_t> file20(sizeof(h20) + buf20.size);
+            std::memcpy(file20.data(), &h20, sizeof(h20));
+            std::memcpy(file20.data() + sizeof(h20), buf20.data, buf20.size);
+            SettingsData from20;
+            check(readSettings(file20.data(), file20.size(), from20) && from20.tapUse == 1 && from20.autosave == 0 &&
+                      from20.aimSpeed == 7 && from20.cheats == 0,
+                  "settings of version 20 are read, every one kept, with cheats off");
+            SettingsData cheating;
+            cheating.cheats = 1;
+            written = writeSettings(cheating);
+            SettingsData read21;
+            check(readSettings(written.data(), written.size(), read21) && read21.cheats == 1 &&
+                      written.size() <= kSettingsMostBytes,
+                  "cheats turned on are kept, and the file still fits");
+            check(SettingsData().cheats == 0, "... and they are off until asked for");
+            cheating.cheats = 2;
+            written = writeSettings(cheating);
+            check(!readSettings(written.data(), written.size(), read21), "... and nonsense is not believed");
         }
     }
 

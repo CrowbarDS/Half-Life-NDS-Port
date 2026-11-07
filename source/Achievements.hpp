@@ -32,6 +32,11 @@ public:
     void frame();
     /// The COMMAND line has been used to cheat.
     void cheated();
+    /// The Cheats setting has just been turned on (Cheater is earned) or
+    /// off (what the cheats had on is turned off).
+    void cheatsSwitched(bool on);
+    /// None but Cheater is earned now: the Cheats setting is on.
+    bool held() const;
     /// The game has been started (the title).
     void started();
     /// None are earned or shown now: in a game between consoles, and ever

@@ -26,6 +26,8 @@ void Achievements::attach(const std::string &) { hlrt::game.logic.achievements =
 void Achievements::travelled(const std::string &, const std::string &) {}
 void Achievements::frame() {}
 void Achievements::cheated() {}
+void Achievements::cheatsSwitched(bool) {}
+bool Achievements::held() const { return true; }
 void Achievements::started() {}
 bool Achievements::off() const { return true; }
 #else
@@ -105,9 +107,25 @@ void Achievements::attach(const std::string &map)
     hlrt::game.logic.achievements = &events;
 }
 
+bool Achievements::held() const { return settings.cheats; }
+
+void Achievements::cheatsSwitched(bool on)
+{
+    if (on)
+    {
+        cheated();
+        flush();
+        return;
+    }
+    // (Off: what the cheats had on goes off with it. What they gave stays:
+    // it cannot be told from what was found.)
+    hlrt::game.cheats = hldata::Cheats();
+    hlrt::player.noclip = false;
+}
+
 void Achievements::travelled(const std::string &left, const std::string &entered)
 {
-    if (off())
+    if (off() || held())
         return;
     tracker.travelled(hldata::nameHash(left.c_str()), hldata::nameHash(entered.c_str()));
 }
@@ -120,11 +138,16 @@ void Achievements::frame()
         events.count = 0;
         return;
     }
-    hldata::AchContext context;
-    if (map_ == hldata::ach::kLiftMap && events.count > 0)
-        context.minesIntact = minesIntact();
-    tracker.apply(map_, events, context);
-    tracker.standing(map_, hlrt::player.state.origin);
+    // (With cheats on, what the game reports counts for nothing; Cheater,
+    // earned as they were turned on, is still shown.)
+    if (!held())
+    {
+        hldata::AchContext context;
+        if (map_ == hldata::ach::kLiftMap && events.count > 0)
+            context.minesIntact = minesIntact();
+        tracker.apply(map_, events, context);
+        tracker.standing(map_, hlrt::player.state.origin);
+    }
     events.count = 0;
     if (tracker.unsaved)
         save();
@@ -167,6 +190,8 @@ void Achievements::cheated()
 
 void Achievements::started()
 {
+    if (held())
+        return;
     tracker.unlock(hldata::kAchInit);
     flush();
 }

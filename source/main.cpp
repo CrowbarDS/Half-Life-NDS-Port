@@ -1145,25 +1145,10 @@ namespace
         // (Not in a game between consoles: nobody there may cheat.)
         if (hlrt::netGame.playing())
             return "not in a game between consoles";
-        // What the game would only let through with sv_cheats on.
-        switch (line.command)
-        {
-        case Command::GiveAll:
-        case Command::Give:
-        case Command::Heal:
-        case Command::Health:
-        case Command::God:
-        case Command::Notarget:
-        case Command::Noclip:
-        case Command::BarnacleKill:
-        case Command::KillAll:
-        case Command::Gravity:
-        case Command::Timescale:
-            achievements.cheated();
-            break;
-        default:
-            break;
-        }
+        // What the game would only let through with sv_cheats on: here, with
+        // the Cheats setting (Cheater was earned as it was turned on).
+        if (hldata::commandIsCheat(line.command) && !settings.cheats)
+            return "cheats are off: Options > Other > Cheats";
         switch (line.command)
         {
         case Command::Help:

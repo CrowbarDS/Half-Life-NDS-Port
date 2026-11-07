@@ -91,6 +91,8 @@ namespace hldata
         /// A quick tap on the aim pad is USE (the modern layout). Off unless
         /// asked for: a touch to aim was too often a USE.
         std::uint8_t tapUse = 0;
+        /// The COMMAND line's cheats let through (version 21). Off: refused.
+        std::uint8_t cheats = 0;
         /// How strict the stylus is about light touches (0..10), and what a
         /// firm press on the aim pad does (kFirm*): HlControls.hpp. Only
         /// where the console can say how hard it is pressed.
@@ -205,6 +207,13 @@ namespace hldata
         template <class Ar>
         void serialize(Ar &ar)
         {
+            serializeTwenty(ar);
+            ar &cheats;
+        }
+        /// ... and of version 20: no Cheats switch (every cheat let through).
+        template <class Ar>
+        void serializeTwenty(Ar &ar)
+        {
             serializeNineteen(ar);
             ar &tapUse;
         }
@@ -266,7 +275,7 @@ namespace hldata
     inline constexpr std::uint8_t kQualityStandard = 0, kQualityHigh = 1, kQualityChoices = 2;
 
     inline constexpr char kSettingsMagic[4] = {'H', 'L', 'S', 'T'};
-    inline constexpr std::uint16_t kSettingsVersion = 20;
+    inline constexpr std::uint16_t kSettingsVersion = 21;
     /// The versions before, which are still read: 19 had taps always USE in
     /// the modern layout (read as off, the default now); 18 had no choice
     /// about the double tap (it jumped); 17 had no walk; 16 had no autosave to turn
@@ -276,6 +285,7 @@ namespace hldata
     /// 11 had no achievements' pop-ups to turn off; 10 had no autoaim; 9 had
     /// the layouts but no aim speed, custom buttons or stylus pressure; 8 no
     /// controls to choose.
+    inline constexpr std::uint16_t kSettingsVersionTwenty = 20;
     inline constexpr std::uint16_t kSettingsVersionNineteen = 19;
     inline constexpr std::uint16_t kSettingsVersionEighteen = 18;
     inline constexpr std::uint16_t kSettingsVersionSeventeen = 17;
@@ -335,7 +345,8 @@ namespace hldata
             return false;
         std::memcpy(&header, bytes, sizeof(header));
         if (std::memcmp(header.magic, kSettingsMagic, sizeof(header.magic)) != 0 ||
-            (header.version != kSettingsVersion && header.version != kSettingsVersionNineteen &&
+            (header.version != kSettingsVersion && header.version != kSettingsVersionTwenty &&
+             header.version != kSettingsVersionNineteen &&
              header.version != kSettingsVersionEighteen &&
              header.version != kSettingsVersionSeventeen &&
              header.version != kSettingsVersionSixteen &&
@@ -380,6 +391,8 @@ namespace hldata
             read.serializeEighteen(ia);
         else if (header.version == kSettingsVersionNineteen)
             read.serializeNineteen(ia);
+        else if (header.version == kSettingsVersionTwenty)
+            read.serializeTwenty(ia);
         else
             ia &read;
         // (Autoaim was on until asked off: off now until asked for, once.)
@@ -404,7 +417,8 @@ namespace hldata
                 return false;
         }
         if (read.dspAudio > 1 || read.autoaim > 1 || read.autosave > 1 || read.achievementPopups > 1 ||
-            read.debugReadout > 1 || read.leftHanded > 1 || read.viewBob > 1 || !read.graphics.valid())
+            read.debugReadout > 1 || read.leftHanded > 1 || read.viewBob > 1 || read.cheats > 1 ||
+            !read.graphics.valid())
             return false;
         for (std::uint8_t level : read.volume)
         {

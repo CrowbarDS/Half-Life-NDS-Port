@@ -36,6 +36,23 @@ namespace
         line = parseCommand("give weapon_crossbow");
         check(line.command == Command::Give && itemOfName(line.args[0]) == ItemKind::Crossbow, "give one thing");
         check(parseCommand("GOD").command == Command::God, "capitals are as small letters");
+        // Which are cheats: what the game lets through only with sv_cheats.
+        {
+            const char *const cheats[] = {"god", "notarget", "noclip", "give", "give weapon_crossbow", "impulse 101",
+                                          "heal", "health 50", "killall", "barnaclekill", "sv_gravity 400",
+                                          "host_timescale 0.5"};
+            bool all = true;
+            for (const char *typed : cheats)
+                all = all && commandIsCheat(parseCommand(typed).command);
+            check(all, "god, notarget, noclip, give, impulse 101, heal, health, killall, barnaclekill, "
+                       "sv_gravity and host_timescale are cheats");
+            const char *const free[] = {"help", "god help", "fov 90", "crosshair 0", "save", "load", "map c1a0",
+                                        "changelevel c1a1", "restart", "kill", "impulse 100", "impulse 201"};
+            bool none = true;
+            for (const char *typed : free)
+                none = none && !commandIsCheat(parseCommand(typed).command);
+            check(none, "help, fov, crosshair, save, load, map, changelevel, restart, kill and the flashlight are not");
+        }
         line = parseCommand("killall   monster_barnacle");
         check(line.command == Command::KillAll && kindOfName(line.args[0]) == ActorKind::Barnacle,
               "killall, by the maps' class name");

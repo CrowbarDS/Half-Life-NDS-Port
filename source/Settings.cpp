@@ -6,6 +6,7 @@
 
 #include "Global.hpp"
 #include "net/NetLink.hpp"
+#include "Achievements.hpp"
 
 Settings settings;
 
@@ -50,6 +51,7 @@ void Settings::load()
         autoaim = data.autoaim != 0;
         autosave = data.autosave != 0;
         achievementPopups = data.achievementPopups != 0;
+        cheats = data.cheats != 0;
         std::memcpy(name, data.name, sizeof(name));
         playerModel = data.playerModel;
         topColour = data.topColour;
@@ -143,6 +145,9 @@ void Settings::reset(int category)
         debugReadout = first.debugReadout;
         achievementPopups = first.achievementPopups;
         autosave = first.autosave;
+        if (cheats && !first.cheats)
+            achievements.cheatsSwitched(false);
+        cheats = first.cheats;
         break;
     }
 }
@@ -181,6 +186,7 @@ bool Settings::save() const
     data.autoaim = autoaim ? 1 : 0;
     data.autosave = autosave ? 1 : 0;
     data.achievementPopups = achievementPopups ? 1 : 0;
+    data.cheats = cheats ? 1 : 0;
     std::memcpy(data.name, name, sizeof(name));
     data.playerModel = playerModel;
     data.topColour = topColour;

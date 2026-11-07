@@ -74,6 +74,30 @@ namespace hldata
         {"host_timescale", Command::Timescale, "host_timescale <x>", "game speed (0.25..2)"},
     };
 
+    /// Whether `command` is a cheat: what the game would only let through
+    /// with sv_cheats on, and what the Cheats setting lets through here.
+    /// (impulse 101 is everything, a cheat; impulse 100 the flashlight, not.)
+    inline bool commandIsCheat(Command command)
+    {
+        switch (command)
+        {
+        case Command::GiveAll:
+        case Command::Give:
+        case Command::Heal:
+        case Command::Health:
+        case Command::God:
+        case Command::Notarget:
+        case Command::Noclip:
+        case Command::BarnacleKill:
+        case Command::KillAll:
+        case Command::Gravity:
+        case Command::Timescale:
+            return true;
+        default:
+            return false;
+        }
+    }
+
     /// The entry of the command called `name`, or null.
     inline const CommandInfo *commandInfo(const char *name)
     {

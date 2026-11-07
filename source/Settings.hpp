@@ -52,6 +52,9 @@ public:
     bool autosave = true;
     /// An achievement earned is shown as it is (else only listed).
     bool achievementPopups = true;
+    /// The COMMAND line's cheats are let through. While it is on, Cheater
+    /// is earned and no other achievement is.
+    bool cheats = false;
     /// All of it, for whoever reads the buttons.
     hldata::ControlSettings controls() const
     {
