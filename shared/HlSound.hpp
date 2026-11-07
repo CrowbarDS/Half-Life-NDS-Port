@@ -560,6 +560,16 @@ namespace hldata
             if (logic[i].kind == static_cast<std::uint8_t>(LogicKind::Ambient) &&
                 logic[i].extra[3] == 0 && logic[i].extra[0] < soundCount)
                 kept[logic[i].extra[0]] = true;
+            // (A spark's sounds, two to a word.)
+            if (logic[i].kind == static_cast<std::uint8_t>(LogicKind::Spark))
+            {
+                for (std::uint32_t n = 0; n < logic[i].extra[3] && n < 6; ++n)
+                {
+                    const std::uint32_t sound = (logic[i].extra[n / 2] >> (n % 2 * 16)) & 0xFFFF;
+                    if (sound < soundCount)
+                        kept[sound] = true;
+                }
+            }
         }
         // (What the map's models sound like as they move.)
         for (std::uint32_t i = 0; modelSounds != nullptr && i < modelSoundCount; ++i)

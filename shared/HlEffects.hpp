@@ -515,7 +515,16 @@ namespace hldata
                     spark.sprite = static_cast<std::uint16_t>(CommonSprite::Glow);
                     spark.colour = 0x3BFF; // a yellow white
                 }
-                if (w.heard != nullptr && w.sounds != nullptr && w.sounds[i].move != kNoSound)
+                // One of its six sounds, at 0.10..0.30 of full, carrying as
+                // the game's normal attenuation does (DoSpark). A map cooked
+                // before has only the one, in `move`.
+                if (w.heard != nullptr && record.extra[3] != 0)
+                {
+                    const std::uint32_t n = detail::effectChance(w) % record.extra[3];
+                    w.heard->add(static_cast<std::uint16_t>(record.extra[n / 2] >> (n % 2 * 16)), record.move,
+                                 13 + static_cast<int>(detail::effectChance(w) % 26), kRadiusLarge);
+                }
+                else if (w.heard != nullptr && w.sounds != nullptr && w.sounds[i].move != kNoSound)
                     w.heard->add(w.sounds[i].move, record.move, 90, kRadiusMedium);
                 break;
             case LogicKind::Shooter:

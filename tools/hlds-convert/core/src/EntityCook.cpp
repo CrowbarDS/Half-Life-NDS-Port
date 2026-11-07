@@ -2985,6 +2985,13 @@ namespace hlds
                     record.flags |= kLogicToggle;
                 if ((spawnflags & 64) || !(spawnflags & 32))
                     record.flags |= kLogicStartOpen;
+                // Its six sounds, one picked each time (two to a word of
+                // extra[0..2], extra[3] how many); and the one a build that
+                // reads only `move` plays.
+                for (int n = 0; n < 6; ++n)
+                    record.extra[n / 2] |= static_cast<std::uint32_t>(numbered("buttons/spark", n + 1, 6))
+                                           << (n % 2 * 16);
+                record.extra[3] = 6;
                 heardSpark = soundIndex("buttons/spark5.wav", false);
             }
             else if (cls == "env_shooter" || cls == "gibshooter")

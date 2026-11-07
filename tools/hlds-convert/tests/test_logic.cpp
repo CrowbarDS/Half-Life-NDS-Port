@@ -15,6 +15,7 @@
 #include <vector>
 #include <cstring>
 #include <functional>
+#include <memory>
 #include <random>
 
 #include "HlLevelReader.hpp"
@@ -210,6 +211,25 @@ namespace
                   (r[3]->flags & kLogicStartOpen),
               "one that is not switched sparks from the start, named or not");
         check(r[2]->waitMs == 1500 && r[4]->waitMs == 1500, "no MaxDelay, or 0, is the game's 1.5 s");
+        // Its sounds: buttons/spark1..6, all six, each its own.
+        std::uint16_t own[6];
+        for (int n = 0; n < 6; ++n)
+            own[n] = static_cast<std::uint16_t>(r[0]->extra[n / 2] >> (n % 2 * 16));
+        bool six = r[0]->extra[3] == 6;
+        for (int n = 0; n < 6; ++n)
+        {
+            for (int m = 0; m < n; ++m)
+                six = six && own[n] != own[m];
+            six = six && own[n] != kNoSound && r[2]->extra[n / 2] == r[0]->extra[n / 2];
+        }
+        check(six, "a spark has the six spark sounds to pick from");
+        std::unique_ptr<bool[]> kept(new bool[g.view.soundCount + 1]);
+        soundsKept(g.view.logic, g.view.logicCount, g.view.logicSounds, g.view.logicSoundCount, g.view.soundCount,
+                   kept.get());
+        bool allKept = true;
+        for (int n = 0; n < 6; ++n)
+            allKept = allKept && own[n] < g.view.soundCount && kept[own[n]];
+        check(allKept, "... all kept in memory, as what a logic record plays is");
 
         std::vector<LogicSound> sounds(g.view.logicCount,
                                        LogicSound{kNoSound, kNoSound, kNoSound, kNoSound, kNoSound, kNoSound});
@@ -218,7 +238,11 @@ namespace
         SoundQueue heard;
         g.logic.heard = &heard;
         g.logic.sounds = sounds.data();
-        // How many times each sparked in `ms`.
+        // How many times each sparked in `ms`; how loud, how far, and which
+        // of its sounds.
+        int quietest = 127, loudest = 0;
+        bool far = true;
+        unsigned picked = 0;
         auto run = [&](int ms, int *n)
         {
             for (int k = 0; k < 5; ++k)
@@ -229,8 +253,14 @@ namespace
                 effectsTick(g.logic, g.player, 33);
                 for (int i = 0; i < heard.count; ++i)
                 {
+                    const SoundEvent &e = heard.events[i];
                     for (int k = 0; k < 5; ++k)
-                        n[k] += heard.events[i].pos[0] == r[k]->move[0];
+                        n[k] += e.pos[0] == r[k]->move[0];
+                    quietest = std::min(quietest, static_cast<int>(e.volume));
+                    loudest = std::max(loudest, static_cast<int>(e.volume));
+                    far = far && e.radius == kRadiusLarge;
+                    for (int m = 0; m < 6; ++m)
+                        picked |= (e.sound == own[m]) << m;
                 }
             }
         };
@@ -238,6 +268,9 @@ namespace
         run(5000, n);
         check(n[0] == 0, "the unnamed switched spark never sparks");
         check(n[1] > 0 && n[2] > 0 && n[3] > 0, "the others do");
+        check(quietest >= 13 && loudest <= 38 && loudest > quietest,
+              "at 0.10 to 0.30 of full, as the game's DoSpark");
+        check(far && picked == 0x3F, "carrying as far as ATTN_NORM, each of the six heard in turn");
         check(n[4] == 0, "nor does the named switched one before it is used");
 
         g.use(at[3]);
