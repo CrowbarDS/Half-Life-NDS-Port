@@ -44,7 +44,7 @@ DSi mode has more memory, so it gets richer content than DS mode.
 
 ## Quick start
 
-1. **Get the release.** Download the ROM zip and the converter for your system from the [Releases](https://github.com/Warioware64/Half-Life-NDS-Port/releases) page. `SHA256SUMS.txt` lists each file's checksum.
+1. **Get the release.** Download the ROM zip and the converter for your system from the [Releases](https://github.com/CrowbarDS/Half-Life-NDS-Port/releases) page. `SHA256SUMS.txt` lists each file's checksum.
 2. **Run the converter on your own Half-Life copy.** Open the installer, which finds your game and your SD card, or use the command line:
 
    ```sh
@@ -94,7 +94,7 @@ Multiplayer has been tested on Nintendo DSi and Nintendo 3DS, and also through D
 The container has everything, pinned to exact versions in [docker/](docker/). Only [Docker](https://docs.docker.com/get-docker/) is needed:
 
 ```sh
-git clone https://github.com/Warioware64/Half-Life-NDS-Port.git
+git clone https://github.com/CrowbarDS/Half-Life-NDS-Port.git
 cd Half-Life-NDS-Port
 ./docker.sh ./make.sh                   # Linux, macOS
 docker compose run --rm dev ./make.sh   # Windows PowerShell, or anywhere

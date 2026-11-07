@@ -31,7 +31,8 @@ jobs:
         id: name
         run: |
           tag="${{ hashFiles('docker/**') }}"
-          echo "image=ghcr.io/warioware64/half-life-nds-port-toolchain:${tag:0:16}" >> "$GITHUB_OUTPUT"
+          owner="${GITHUB_REPOSITORY_OWNER,,}" # ghcr names are lowercase
+          echo "image=ghcr.io/$owner/half-life-nds-port-toolchain:${tag:0:16}" >> "$GITHUB_OUTPUT"
 
       - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
