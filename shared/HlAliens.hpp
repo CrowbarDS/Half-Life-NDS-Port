@@ -93,7 +93,7 @@ namespace hldata
             }
             // Now and then, a skitter as it goes.
             if (aiRandomLong(c.a, 0, 9) == 1)
-                detail::aiSay(c, CommonSound::RoachWalk);
+                detail::aiSay(c, CommonSound::RoachWalk, aiRandomLong(c.a, 80, 119));
         }
 
         /// WALK_MOVE for something two units across: a step through the
@@ -280,7 +280,7 @@ namespace hldata
             const bool cries = aiRandomLong(c.a, 0, 4) == 1;
             if (c.w.heard != nullptr)
                 c.w.heard->add(cries ? CommonSound::RoachDie : CommonSound::RoachSmash, c.me.pos, cries ? 102 : 89,
-                               kRadiusLarge);
+                               kRadiusLarge, aiRandomLong(c.a, 80, 119));
             soundInsert(c.ai.sounds, c.ai.now, kSoundWorld, c.me.pos, 128, 1000);
             c.me.ai = kAiDead;
             c.m.deadflag = 2;
@@ -617,7 +617,7 @@ namespace hldata
             const std::int16_t hit = aiHullAttack(c, kMeleeDist, skillOf(c.w).agruntDmgPunch, kDmgClub);
             if (hit == kAiNone)
             {
-                detail::aiSay(c, CommonSound::ClawMiss);
+                detail::aiSay(c, CommonSound::ClawMiss, aiRandomLong(c.a, 95, 105));
                 return;
             }
             detail::aiPunch(c, hit, fxFromInt(8), fxFromInt(25) * side);
@@ -625,7 +625,7 @@ namespace hldata
             aiRight(c.me.yaw, right);
             const fx shove[3] = {right[0] * 250 * side, right[1] * 250 * side, 0};
             detail::aiShove(c, hit, shove);
-            detail::aiSay(c, CommonSound::ClawStrike);
+            detail::aiSay(c, CommonSound::ClawStrike, aiRandomLong(c.a, 95, 105));
         }
 
         inline void animEvent(AiCtx &c, int event)
@@ -938,13 +938,14 @@ namespace hldata
         {
             switch (which)
             {
-            case kAiSoundIdle:  detail::aiSay(c, CommonSound::ControllerIdle); break;
-            case kAiSoundAlert: detail::aiSay(c, CommonSound::ControllerAlert); break;
+            case kAiSoundIdle:  detail::aiSay(c, CommonSound::ControllerIdle, aiRandomLong(c.a, 95, 105)); break;
+            case kAiSoundAlert: detail::aiSay(c, CommonSound::ControllerAlert, aiRandomLong(c.a, 95, 105)); break;
             case kAiSoundPain:
                 if (aiRandomLong(c.a, 0, 5) < 2)
-                    detail::aiSay(c, aiRandomLong(c.a, 0, 1) == 0 ? CommonSound::ControllerPain1 : CommonSound::ControllerPain2);
+                    detail::aiSay(c, aiRandomLong(c.a, 0, 1) == 0 ? CommonSound::ControllerPain1 : CommonSound::ControllerPain2,
+                                 aiRandomLong(c.a, 95, 105));
                 break;
-            case kAiSoundDeath: detail::aiSay(c, CommonSound::ControllerDie); break;
+            case kAiSoundDeath: detail::aiSay(c, CommonSound::ControllerDie, aiRandomLong(c.a, 95, 105)); break;
             default:            break;
             }
         }
@@ -1000,7 +1001,7 @@ namespace hldata
             case kSmallShoot:
                 // A stream of small ones, five a second, for the next while
                 // (the event's own length: a second, as the model has it).
-                detail::aiSay(c, CommonSound::ControllerAttack);
+                detail::aiSay(c, CommonSound::ControllerAttack, aiRandomLong(c.a, 95, 105));
                 c.m.time1 = c.ai.now;
                 c.m.time2 = c.ai.now + 1000;
                 break;
@@ -1766,7 +1767,7 @@ namespace hldata
                 shot->leftMs = length; // (and a speed of nothing)
             }
             shakeStart(c.w, fxFromInt(12), 2000);
-            detail::aiSay(c, CommonSound::GargStomp);
+            detail::aiSay(c, CommonSound::GargStomp, aiRandomLong(c.a, 90, 110));
         }
 
         inline void animEvent(AiCtx &c, int event)
@@ -1783,11 +1784,11 @@ namespace hldata
                     aiRight(c.me.yaw, right);
                     const fx shove[3] = {-right[0] * 100, -right[1] * 100, 0};
                     detail::aiShove(c, hit, shove);
-                    detail::aiSay(c, CommonSound::ClawStrike);
+                    detail::aiSay(c, CommonSound::ClawStrike, aiRandomLong(c.a, 50, 65));
                 }
                 else
                 {
-                    detail::aiSay(c, CommonSound::ClawMiss);
+                    detail::aiSay(c, CommonSound::ClawMiss, aiRandomLong(c.a, 50, 65));
                 }
                 break;
             }
@@ -1798,7 +1799,7 @@ namespace hldata
                                  c.player.origin[2] - c.me.pos[2]};
                 if (fxLength(d) < fxFromInt(750))
                     shakeStart(c.w, fxFromInt(4), 1000);
-                detail::aiSay(c, CommonSound::GargStep);
+                detail::aiSay(c, CommonSound::GargStep, aiRandomLong(c.a, 90, 110));
                 break;
             }
             case kStomp:
@@ -1806,7 +1807,7 @@ namespace hldata
                 c.m.time2 = c.ai.now + 12000;
                 break;
             case kBreathe:
-                detail::aiSay(c, CommonSound::GargBreathe);
+                detail::aiSay(c, CommonSound::GargBreathe, aiRandomLong(c.a, 90, 110));
                 break;
             default:
                 break;

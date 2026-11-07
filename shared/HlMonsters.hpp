@@ -327,10 +327,10 @@ namespace hldata
     namespace detail
     {
         /// Something heard from where a monster is.
-        inline void monsterSound(LogicWorld &w, const ActorState &actor, CommonSound sound)
+        inline void monsterSound(LogicWorld &w, const ActorState &actor, CommonSound sound, int pitch = 100)
         {
             if (w.heard != nullptr)
-                w.heard->add(sound, actor.pos, 127, kRadiusLarge);
+                w.heard->add(sound, actor.pos, 127, kRadiusLarge, pitch);
         }
         /// A turret's machinery -- spinning up and down, the alarm, opening
         /// and closing -- at the game's half of full (TURRET_MACHINE_VOLUME).
@@ -1402,7 +1402,7 @@ namespace hldata
             shot.active = false;
             effectAdd(a, kEffectSplat, shot.pos, nullptr, 48, 500);
             if (w.heard != nullptr)
-                w.heard->add(CommonSound::SpitHit, shot.pos, 127, kRadiusLarge);
+                w.heard->add(CommonSound::SpitHit, shot.pos, 127, kRadiusLarge, 90 + static_cast<int>(chance(a) % 21));
             radiusDamage(w, player, shot.pos, skillOf(w).bigmommaDmgBlast, skillOf(w).bigmommaRadiusBlast, -1, kDmgAcid, kAiNone);
         }
 
@@ -2309,7 +2309,7 @@ namespace hldata
                     shot.active = false;
                     effectAdd(a, kEffectSplat, end, nullptr, 12, 200);
                     if (w.heard != nullptr)
-                        w.heard->add(CommonSound::SpitHit, end, 127, kRadiusLarge);
+                        w.heard->add(CommonSound::SpitHit, end, 127, kRadiusLarge, 90 + static_cast<int>(chance(a) % 21));
                     continue;
                 }
                 for (int i = 0; i < 3; ++i)

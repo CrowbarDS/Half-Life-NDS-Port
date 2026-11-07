@@ -14,9 +14,9 @@ namespace hldata
 {
     namespace detail
     {
-        inline void aiSay(AiCtx &c, CommonSound sound)
+        inline void aiSay(AiCtx &c, CommonSound sound, int pitch = 100)
         {
-            monsterSound(c.w, c.me, sound);
+            monsterSound(c.w, c.me, sound, pitch);
         }
         /// ... at `volume` of 127.
         inline void aiSayAt(AiCtx &c, CommonSound sound, int volume)
@@ -280,11 +280,11 @@ namespace hldata
         {
             switch (which)
             {
-            case kAiSoundAlert: detail::aiSay(c, CommonSound::ZombieAlert); break;
+            case kAiSoundAlert: detail::aiSay(c, CommonSound::ZombieAlert, aiRandomLong(c.a, 95, 104)); break;
             case kAiSoundPain:
                 // (Two times in six.)
                 if (aiRandomLong(c.a, 0, 5) < 2)
-                    detail::aiSay(c, CommonSound::ZombiePain);
+                    detail::aiSay(c, CommonSound::ZombiePain, aiRandomLong(c.a, 95, 104));
                 break;
             default: break;
             }
@@ -319,14 +319,14 @@ namespace hldata
                     const fx shove[3] = {-forward[0] * 100, -forward[1] * 100, 0};
                     detail::aiShove(c, hit, shove);
                 }
-                detail::aiSay(c, CommonSound::ClawStrike);
+                detail::aiSay(c, CommonSound::ClawStrike, aiRandomLong(c.a, 95, 105));
             }
             else
             {
-                detail::aiSay(c, CommonSound::ClawMiss);
+                detail::aiSay(c, CommonSound::ClawMiss, aiRandomLong(c.a, 95, 105));
             }
             if (aiRandomLong(c.a, 0, 1))
-                detail::aiSay(c, CommonSound::ZombieAttack);
+                detail::aiSay(c, CommonSound::ZombieAttack, aiRandomLong(c.a, 95, 104));
         }
 
         /// IgnoreConditions: in its swing, a blow is not felt until two
@@ -447,10 +447,10 @@ namespace hldata
                 break;
             case kAiSoundPain:
                 if (aiRandomLong(c.a, 0, 2) == 0)
-                    detail::aiSay(c, CommonSound::SlavePain);
+                    detail::aiSay(c, CommonSound::SlavePain, c.m.talk.voicePitch);
                 break;
             case kAiSoundDeath:
-                detail::aiSay(c, CommonSound::SlaveDie);
+                detail::aiSay(c, CommonSound::SlaveDie, c.m.talk.voicePitch);
                 break;
             default:
                 break;
@@ -541,11 +541,11 @@ namespace hldata
                 if (hit != kAiNone)
                 {
                     detail::aiPunch(c, hit, fxFromInt(5), -fxFromInt(18));
-                    detail::aiSay(c, CommonSound::ClawStrike);
+                    detail::aiSay(c, CommonSound::ClawStrike, c.m.talk.voicePitch);
                 }
                 else
                 {
-                    detail::aiSay(c, CommonSound::ClawMiss);
+                    detail::aiSay(c, CommonSound::ClawMiss, c.m.talk.voicePitch);
                 }
                 break;
             }
@@ -598,6 +598,14 @@ namespace hldata
         }
         /// (Bringing the dead back up was never finished: it is always no.)
         inline bool checkRange2(AiCtx &, fx, fx) { return false; }
+
+        /// Its own voice, 85 to 110, for its cries and its blows (Spawn's
+        /// m_voicePitch): from which it is, not a draw of the fight's.
+        inline void started(AiCtx &c)
+        {
+            const std::uint32_t who = static_cast<std::uint32_t>(c.index + 1) * 2654435761u;
+            c.m.talk.voicePitch = static_cast<std::uint8_t>(85 + (who >> 16) % 26);
+        }
 
         inline void clearBeams(AiCtx &c)
         {
@@ -714,6 +722,7 @@ namespace hldata
                 k.getSchedule = getSchedule;
                 k.scheduleOfType = scheduleOfType;
                 k.scheduleChange = clearBeams;
+                k.started = started;
                 k.clipNames = kClips;
                 k.clipEvents = kEvents;
                 return k;
@@ -906,8 +915,8 @@ namespace hldata
         {
             switch (which)
             {
-            case kAiSoundAlert: detail::aiSay(c, CommonSound::SquidAlert); break;
-            case kAiSoundPain:  detail::aiSay(c, CommonSound::SquidPain); break;
+            case kAiSoundAlert: detail::aiSay(c, CommonSound::SquidAlert, aiRandomLong(c.a, 140, 160)); break;
+            case kAiSoundPain:  detail::aiSay(c, CommonSound::SquidPain, aiRandomLong(c.a, 85, 120)); break;
             case kAiSoundDeath: detail::aiSay(c, CommonSound::SquidDie); break;
             default: break;
             }
@@ -949,7 +958,7 @@ namespace hldata
             case kBite:
             {
                 const std::int16_t hit = aiHullAttack(c, 70, skillOf(c.w).bullsquidDmgBite, kDmgSlash);
-                detail::aiSay(c, CommonSound::SquidBite);
+                detail::aiSay(c, CommonSound::SquidBite, aiRandomLong(c.a, 90, 110));
                 const fx shove[3] = {-forward[0] * 100, -forward[1] * 100, fxFromInt(100)};
                 if (hit != kAiNone)
                     detail::aiShove(c, hit, shove);

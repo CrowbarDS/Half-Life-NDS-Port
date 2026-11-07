@@ -655,6 +655,19 @@ namespace
         check(badToss == 0, "grenades keep to the rules: not from close to, not twice in six seconds");
         check(g.sentencesHeard > 0, "they call out");
         check(g.loudestSentence == 44, "... at the game's 0.35 of full (HGRUNT_SENTENCE_VOLUME)");
+        // Each with his own voice: 100, or a little higher (109 to 116).
+        int voices = 0, higher = 0;
+        bool fair = true;
+        for (int i = 0; i < g.actors.count; ++i)
+        {
+            const AiMonster *m = aiFind(g.actors, i);
+            if (m == nullptr || g.actors.states[i].kind != static_cast<std::uint8_t>(ActorKind::Grunt) || !m->started)
+                continue;
+            ++voices;
+            higher += m->talk.voicePitch != 100;
+            fair = fair && (m->talk.voicePitch == 100 || (m->talk.voicePitch >= 109 && m->talk.voicePitch <= 116));
+        }
+        check(voices > 0 && fair, "... each in his own voice: 100, or 109 to 116");
     }
 
     /// A hand grenade, by the game's rules (CheckRangeAttack2): thrown in an

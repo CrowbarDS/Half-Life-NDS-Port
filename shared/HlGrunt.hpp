@@ -313,7 +313,8 @@ namespace hldata
             while (count < kSpeechLines && lines[count] != 0xFFFF)
                 ++count;
             if (count != 0)
-                c.w.heard->add(lines[aiRandomLong(a, 0, count - 1)], c.me.pos, kGruntLineVolume, kRadiusLarge, kSoundSentence);
+                c.w.heard->add(lines[aiRandomLong(a, 0, count - 1)], c.me.pos, kGruntLineVolume, kRadiusLarge, kSoundSentence,
+                               c.m.talk.voicePitch);
         }
 
         /// SpeakSentence: what he was to say, if he may.
@@ -1104,6 +1105,11 @@ namespace hldata
                 c.me.ammo = static_cast<std::uint8_t>(clipSize(c));
             c.m.time1 = c.ai.now + 1000; // m_flNextGrenadeCheck
             c.m.count1 = kSentenceNone;
+            // His voice: half of them a little higher, 109 to 116 (Spawn's
+            // m_voicePitch). From who he is, not a draw: the fight's own
+            // chances go on as they would.
+            const std::uint32_t who = static_cast<std::uint32_t>(c.index + 1) * 2654435761u;
+            c.m.talk.voicePitch = static_cast<std::uint8_t>((who >> 31) ? 109 + ((who >> 20) & 7) : 100);
         }
 
         inline constexpr AiClipName kClips[] = {
