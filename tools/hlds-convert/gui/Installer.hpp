@@ -60,6 +60,7 @@ private:
     void showStep(int id);
 
     QString game_, card_, ptexconv_, why_;
+    QString language_; ///< a translation beside the game (french); empty: English
     QStringList limit_;
     QString cache_;
     bool succeeded_ = false;

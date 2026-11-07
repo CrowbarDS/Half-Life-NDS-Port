@@ -3,6 +3,7 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDesktopServices>
 #include <QDir>
 #include <QElapsedTimer>
@@ -129,6 +130,17 @@ public:
         layout->addLayout(row);
         connect(browse, &QPushButton::clicked, this, &GamePage::browse);
         connect(list_, &QListWidget::currentRowChanged, this, [this](int) { choose(); });
+        // The language: the game's own (English), or a translation Steam put
+        // beside it (valve_french), whose text and voices then go on the card.
+        auto *languageRow = new QHBoxLayout;
+        languageLabel_ = new QLabel(QStringLiteral("Language:"));
+        languageRow->addWidget(languageLabel_);
+        language_ = new QComboBox;
+        languageRow->addWidget(language_);
+        languageRow->addStretch(1);
+        layout->addLayout(languageRow);
+        connect(language_, &QComboBox::currentIndexChanged, this, [this](int)
+                { owner_->language_ = language_->currentData().toString(); });
     }
 
     void initializePage() override
@@ -181,10 +193,29 @@ private:
             return;
         const GameFolder &game = found_[static_cast<std::size_t>(row)];
         owner_->game_ = fromPath(game.valve);
+        fillLanguages();
         say(status_, game.campaign ? QStringLiteral("Found Half-Life.")
                                    : QStringLiteral("Found part of Half-Life: only what is there can be installed."),
             game.campaign ? kGood : kOrange);
         emit completeChanged();
+    }
+    void fillLanguages()
+    {
+        const QSignalBlocker quiet(language_);
+        language_->clear();
+        language_->addItem(QStringLiteral("English"), QString());
+        for (const std::string &found : hlds::gameLanguages(owner_->game_.toStdWString()))
+        {
+            QString name = QString::fromStdString(found);
+            if (!name.isEmpty())
+                name[0] = name[0].toUpper();
+            language_->addItem(name, QString::fromStdString(found));
+        }
+        language_->setCurrentIndex(0);
+        owner_->language_.clear();
+        // (Only the game's own: nothing to choose.)
+        languageLabel_->setVisible(language_->count() > 1);
+        language_->setVisible(language_->count() > 1);
     }
     void browse()
     {
@@ -204,8 +235,9 @@ private:
 
     Installer *owner_;
     std::vector<GameFolder> found_;
-    QLabel *status_ = nullptr, *hint_ = nullptr;
+    QLabel *status_ = nullptr, *hint_ = nullptr, *languageLabel_ = nullptr;
     QListWidget *list_ = nullptr;
+    QComboBox *language_ = nullptr;
 };
 
 class CardPage : public QWizardPage
@@ -751,6 +783,7 @@ void Installer::start()
     job.ptexconv = ptexconv_;
     job.maps = chosenMaps();
     job.textures = textures_;
+    job.language = language_;
     worker_ = new InstallWorker(std::move(job), this);
     connect(worker_, &InstallWorker::step, this, [page](int step) { page->showLines(step - 1); });
     connect(worker_, &InstallWorker::progress, this, [page](int permille, const QString &now) { page->setProgress(permille, now); });

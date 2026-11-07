@@ -21,17 +21,19 @@ namespace
 
     std::filesystem::path toPath(const QString &text) { return std::filesystem::path(text.toStdWString()); }
 
-    /// What says a map's conversion is still good: this program, and that file.
-    QString stampOf(const QString &bsp, bool textures)
+    /// What says a map's conversion is still good: this program, that file,
+    /// and the language it was made in.
+    QString stampOf(const QString &bsp, bool textures, const QString &language)
     {
         const QFileInfo program(QCoreApplication::applicationFilePath());
         const QFileInfo map(bsp);
-        return QStringLiteral("%1 %2 %3 %4 %5")
+        return QStringLiteral("%1 %2 %3 %4 %5 %6")
             .arg(program.size())
             .arg(program.lastModified().toSecsSinceEpoch())
             .arg(map.size())
             .arg(map.lastModified().toSecsSinceEpoch())
-            .arg(textures ? 1 : 0);
+            .arg(textures ? 1 : 0)
+            .arg(language.isEmpty() ? QStringLiteral("english") : language);
     }
 
     /// The file of `map` in the game's maps folder, whatever its case.
@@ -86,6 +88,15 @@ bool InstallWorker::convert(QString &why)
     options.cardRoot = toPath(cardCache);
     options.stageRoot = toPath(stage);
     options.textures = job_.textures;
+    if (!job_.language.isEmpty())
+    {
+        options.languageDir = hlds::languageFolder(options.gameDir, job_.language.toStdString());
+        if (options.languageDir.empty())
+        {
+            why = QStringLiteral("The %1 translation is no longer beside the game.").arg(job_.language);
+            return false;
+        }
+    }
     if (!job_.ptexconv.isEmpty())
         options.ptexconv = toPath(job_.ptexconv);
     options.status = [this](const std::string &what)
@@ -122,7 +133,7 @@ bool InstallWorker::convert(QString &why)
     for (const QString &map : job_.maps)
     {
         QFile stamp(stamps + QLatin1Char('/') + map);
-        const QString now = stampOf(bspOf(job_.game, map), job_.textures);
+        const QString now = stampOf(bspOf(job_.game, map), job_.textures, job_.language);
         if (stamp.open(QIODevice::ReadOnly) && QString::fromUtf8(stamp.readAll()) == now)
             continue;
         names.push_back(map.toStdString());
@@ -155,7 +166,7 @@ bool InstallWorker::convert(QString &why)
                 {
                     QFile stamp(stamps + QLatin1Char('/') + name);
                     if (stamp.open(QIODevice::WriteOnly))
-                        stamp.write(stampOf(bspOf(job_.game, name), job_.textures).toUtf8());
+                        stamp.write(stampOf(bspOf(job_.game, name), job_.textures, job_.language).toUtf8());
                 }
                 const int now = ++done;
                 emit progress(kConvertShare * now / total, QStringLiteral("Converted %1 of %2 maps").arg(now).arg(total));

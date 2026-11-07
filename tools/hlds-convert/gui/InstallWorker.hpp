@@ -24,6 +24,7 @@ public:
         QString ptexconv; ///< empty: look for it
         QStringList maps; ///< those to install
         bool textures = true;
+        QString language; ///< a translation beside the game (french); empty: the game's own
     };
 
     explicit InstallWorker(Job job, QObject *parent = nullptr) : QThread(parent), job_(std::move(job)) {}
