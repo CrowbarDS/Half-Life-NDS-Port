@@ -1314,12 +1314,7 @@ namespace hlrt
             // (Which side of the touch screen its column of buttons is, and
             // which hand has the pad and the trigger.)
             case kHand: std::snprintf(out, size, "%s", settings.leftHanded ? "left" : "right"); break;
-            case kScheme:
-                std::snprintf(out, size, "%s",
-                              settings.controlScheme == kControlsModern
-                                  ? "modern"
-                                  : (settings.controlScheme == kControlsCustom ? "custom" : "classic"));
-                break;
+            case kScheme: std::snprintf(out, size, "%s", controlsName(settings.controlScheme)); break;
             case kDuck: std::snprintf(out, size, "%s", settings.duckToggle ? "toggle" : "hold"); break;
             case kWalk: std::snprintf(out, size, "%s", settings.walkToggle ? "toggle" : "hold"); break;
             case kJumpButton: std::snprintf(out, size, "%s", settings.jumpWalks ? "walk" : "jump"); break;
@@ -1382,7 +1377,7 @@ namespace hlrt
             case kWorldDetail: return "How much of the walls is drawn far off.";
             case kModelLimit: return "How many people and monsters are drawn at once: auto, or a number.";
             case kDrawDistance: return "How far the world is drawn.";
-            case kScheme: return "Which button does what: classic, modern, or your own (BUTTONS).";
+            case kScheme: return "Which button does what: classic, modern, buttons only (no stylus), or your own (BUTTONS).";
             case kHand: return "Which hand holds the stylus: the touch screen's buttons go to the other side.";
             case kDuck: return "Crouch held down, or pressed once to crouch and again to stand.";
             case kWalk: return "Walk held down, or pressed once to walk and again to run.";
@@ -1523,7 +1518,11 @@ namespace hlrt
             {
                 // (Into CUSTOM with nothing made yet: it starts as the layout
                 // it came from.)
-                const std::uint8_t next = static_cast<std::uint8_t>((settings.controlScheme + kControlsSchemes + step) % kControlsSchemes);
+                // (In the order kControlsOrder has them.)
+                int at = 0;
+                for (int i = 0; i < kControlsSchemes; ++i)
+                    at = kControlsOrder[i] == settings.controlScheme ? i : at;
+                const std::uint8_t next = kControlsOrder[(at + kControlsSchemes + step) % kControlsSchemes];
                 bool none = true;
                 for (std::uint16_t key : settings.keys)
                     none = none && key == 0;

@@ -312,8 +312,9 @@ namespace
         auto same = [](const SettingsData &d)
         {
             bool keys = true;
+            // (The actions v0.2.1 had; those after are on no button.)
             for (int i = 0; i < kActionCount; ++i)
-                keys = keys && d.keys[i] == static_cast<std::uint16_t>(1u << (i % 3));
+                keys = keys && d.keys[i] == (i < kActionsBeforeLook ? static_cast<std::uint16_t>(1u << (i % 3)) : 0);
             return d.volume[0] == 3 && d.volume[1] == 7 && d.volume[2] == 9 && d.volume[3] == 2 && d.debugReadout == 1 &&
                    d.leftHanded == 1 && d.viewBob == 1 && d.graphics.fog == 0 && d.graphics.fogStrength == 3 &&
                    d.graphics.fogDistance == 8 && d.graphics.fogColour == 2 && d.graphics.modelDetail == 2 &&

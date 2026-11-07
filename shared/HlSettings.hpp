@@ -219,6 +219,15 @@ namespace hldata
         template <class Ar>
         void serialize(Ar &ar)
         {
+            serializeTwentyThree(ar);
+            for (int a = kActionsBeforeLook; a < kActionCount; ++a)
+                ar &keys[a];
+        }
+        /// ... and of version 23: no buttons that look (a custom layout's
+        /// read with none).
+        template <class Ar>
+        void serializeTwentyThree(Ar &ar)
+        {
             serializeTwentyTwo(ar);
             ar &hideMapName;
         }
@@ -304,8 +313,9 @@ namespace hldata
     inline constexpr std::uint8_t kQualityStandard = 0, kQualityHigh = 1, kQualityChoices = 2;
 
     inline constexpr char kSettingsMagic[4] = {'H', 'L', 'S', 'T'};
-    inline constexpr std::uint16_t kSettingsVersion = 23;
-    /// The versions before, which are still read: 22 always showed the map's
+    inline constexpr std::uint16_t kSettingsVersion = 24;
+    /// The versions before, which are still read: 23 had no buttons that
+    /// look, nor the BUTTONS ONLY layout; 22 always showed the map's
     /// name while it loaded (read as hidden, the default); 21 had no dialogue focus
     /// (read as light, the default); 19 had taps always USE in
     /// the modern layout (read as off, the default now); 18 had no choice
@@ -316,6 +326,7 @@ namespace hldata
     /// 11 had no achievements' pop-ups to turn off; 10 had no autoaim; 9 had
     /// the layouts but no aim speed, custom buttons or stylus pressure; 8 no
     /// controls to choose.
+    inline constexpr std::uint16_t kSettingsVersionTwentyThree = 23;
     inline constexpr std::uint16_t kSettingsVersionTwentyTwo = 22;
     inline constexpr std::uint16_t kSettingsVersionTwentyOne = 21;
     inline constexpr std::uint16_t kSettingsVersionTwenty = 20;
@@ -404,6 +415,8 @@ namespace hldata
             data.serializeTwentyOne(ar);
         else if (version == kSettingsVersionTwentyTwo)
             data.serializeTwentyTwo(ar);
+        else if (version == kSettingsVersionTwentyThree)
+            data.serializeTwentyThree(ar);
         else
             ar &data;
     }
@@ -429,7 +442,8 @@ namespace hldata
             return false;
         std::memcpy(&header, bytes, sizeof(header));
         if (std::memcmp(header.magic, kSettingsMagic, sizeof(header.magic)) != 0 ||
-            (header.version != kSettingsVersion && header.version != kSettingsVersionTwentyTwo &&
+            (header.version != kSettingsVersion && header.version != kSettingsVersionTwentyThree &&
+             header.version != kSettingsVersionTwentyTwo &&
              header.version != kSettingsVersionTwentyOne &&
              header.version != kSettingsVersionTwenty &&
              header.version != kSettingsVersionNineteen &&

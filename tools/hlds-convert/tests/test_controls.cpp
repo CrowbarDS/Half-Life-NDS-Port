@@ -599,6 +599,132 @@ namespace
         }
     }
 
+    /// BUTTONS ONLY: the D-pad looks, A B X Y step, the other shoulder is a
+    /// shift (and alone, a reload); the look actions in a custom layout; and
+    /// a settings file from before them.
+    void testButtonsOnly()
+    {
+        std::uint32_t blank = 100;
+        ControlSettings set;
+        set.scheme = kControlsButtons;
+        ControlsState state;
+        press(set, state, 0, blank); // (the first frame is as long as it likes)
+        ControlsOut out = press(set, state, kButtonUp | kButtonRight, blank);
+        check(out.moveForward == 0 && out.moveSide == 0 && out.lookDx == kPadTurnPixels &&
+                  out.lookDy == -kPadLookPixels && out.lookFineX == kPadTurnPixels << kFineShift &&
+                  out.lookFineY == -kPadLookPixels << kFineShift,
+              "buttons only: the D-pad looks up and turns right, and is no step");
+        out = press(set, state, kButtonX | kButtonA, blank);
+        check(out.moveForward == 1 && out.moveSide == 1 && out.lookDx == 0 && out.lookDy == 0,
+              "... X steps forward, A right, and do not look");
+        out = press(set, state, kButtonB | kButtonY | kButtonL | kButtonSelect, blank);
+        check(out.moveForward == -1 && out.moveSide == -1 && out.attack && !out.second && out.usePressed &&
+                  out.useHeld && !out.lampPressed,
+              "... B back, Y left, L fires, Select is USE");
+        press(set, state, 0, blank);
+        // Under the shift: forward still, and a jump on the run.
+        press(set, state, kButtonX, blank);
+        press(set, state, kButtonX | kButtonR, blank);
+        out = press(set, state, kButtonX | kButtonR | kButtonUp, blank);
+        check(out.jump && out.moveForward == 1 && out.lookDy == 0 && !out.reloadPressed,
+              "R held: up jumps, the step goes on, and the view stands still");
+        out = press(set, state, kButtonR | kButtonDown, blank);
+        check(out.duck && !out.jump, "... down crouches");
+        out = press(set, state, kButtonR | kButtonRight, blank);
+        check(out.weaponStep == 1 && out.lookDx == 0, "... right is the weapon after");
+        press(set, state, kButtonR, blank);
+        out = press(set, state, kButtonR | kButtonLeft, blank);
+        check(out.weaponStep == -1, "... left the weapon before");
+        out = press(set, state, kButtonR | kButtonL | kButtonSelect, blank);
+        check(out.second && !out.attack && out.lampPressed && !out.usePressed,
+              "... L is the second fire, Select the lamp");
+        out = press(set, state, 0, blank);
+        check(!out.reloadPressed, "... and let go of after all that, no reload");
+        // Tapped alone: a reload, once; held long: nothing.
+        press(set, state, kButtonR, blank);
+        out = press(set, state, 0, blank);
+        check(out.reloadPressed, "R tapped alone reloads");
+        out = press(set, state, 0, blank);
+        check(!out.reloadPressed, "... once");
+        press(set, state, kButtonR, blank);
+        for (int n = 0; n < 40; ++n)
+            press(set, state, kButtonR, blank);
+        out = press(set, state, 0, blank);
+        check(!out.reloadPressed, "R held a while and let go: no reload");
+        // The pad's choices are not this layout's.
+        set.padTurns = set.padLooks = true;
+        out = press(set, state, kButtonX | kButtonLeft, blank);
+        check(out.moveForward == 1 && out.lookDx == -kPadTurnPixels, "the pad's turn and look settings change nothing here");
+        set.padTurns = set.padLooks = false;
+        // The left hand: all mirrored.
+        set.leftHanded = true;
+        ControlsState left;
+        press(set, left, 0, blank);
+        out = press(set, left, kButtonX | kButtonUp, blank);
+        check(out.lookDy == -kPadLookPixels && out.moveForward == 1, "left hand: X looks up, the D-pad's up steps");
+        press(set, left, kButtonL, blank);
+        out = press(set, left, kButtonL | kButtonX, blank);
+        check(out.jump, "... L is the shift: L+X jumps");
+        out = press(set, left, kButtonR, blank);
+        check(out.attack, "... R fires");
+        check(jumpsOtherwise(set) && std::strcmp(controlsName(kControlsButtons), "buttons only") == 0 &&
+                  controlsLegend(set, 0) != nullptr && controlsLegend(set, 4) == nullptr,
+              "it jumps without the double tap, and has a name and a legend");
+
+        // A custom layout's look buttons.
+        ControlSettings custom;
+        custom.scheme = kControlsCustom;
+        defaultKeys(kControlsModern, false, custom.keys);
+        assignKey(custom.keys, kActionTurnLeft, kButtonY);
+        ControlsState cs;
+        press(custom, cs, 0, blank);
+        out = press(custom, cs, kButtonY, blank);
+        check(out.lookDx == -kPadTurnPixels && !out.reloadPressed && custom.keys[kActionReload] == 0,
+              "custom: a button given TURN LEFT turns, and what it was is on no button");
+        ControlSettings modern;
+        modern.scheme = kControlsModern;
+        std::uint16_t keys[kActionCount];
+        keysOf(modern, keys);
+        check(keys[kActionLookUp] == 0 && keys[kActionLookDown] == 0 && keys[kActionTurnLeft] == 0 &&
+                  keys[kActionTurnRight] == 0,
+              "the modern layout has no buttons that look");
+
+        // Settings: the look buttons kept; a file of version 23 read with none.
+        SettingsData data;
+        data.controlScheme = kControlsButtons;
+        data.keys[kActionLookUp] = static_cast<std::uint16_t>(kButtonX);
+        data.keys[kActionTurnRight] = static_cast<std::uint16_t>(kButtonA);
+        std::vector<std::uint8_t> written = writeSettings(data);
+        SettingsData back;
+        check(readSettings(written.data(), written.size(), back) && back.controlScheme == kControlsButtons &&
+                  back.keys[kActionLookUp] == kButtonX && back.keys[kActionTurnRight] == kButtonA &&
+                  written.size() <= kSettingsMostBytes,
+              "buttons only and the look buttons are kept, and the file still fits");
+        SettingsData older;
+        older.controlScheme = kControlsCustom;
+        older.keys[kActionFire] = static_cast<std::uint16_t>(kButtonL);
+        older.keys[kActionLookUp] = static_cast<std::uint16_t>(kButtonX); // (not in that version)
+        constexpr std::size_t flags = yas::mem | yas::binary | yas::no_header;
+        yas::mem_ostream os;
+        yas::binary_oarchive<yas::mem_ostream, flags> oa(os);
+        older.serializeTwentyThree(oa);
+        const auto buf = os.get_intrusive_buffer();
+        SettingsHeader header{};
+        std::memcpy(header.magic, kSettingsMagic, sizeof(header.magic));
+        header.version = kSettingsVersionTwentyThree;
+        header.payloadBytes = static_cast<std::uint16_t>(buf.size);
+        header.crc32 = crc32(reinterpret_cast<const std::uint8_t *>(buf.data), static_cast<std::uint32_t>(buf.size));
+        std::vector<std::uint8_t> file(sizeof(header) + buf.size);
+        std::memcpy(file.data(), &header, sizeof(header));
+        std::memcpy(file.data() + sizeof(header), buf.data, buf.size);
+        check(readSettings(file.data(), file.size(), back) && back.controlScheme == kControlsCustom &&
+                  back.keys[kActionFire] == kButtonL && back.keys[kActionLookUp] == 0,
+              "a file of version 23 keeps its buttons, and has none that look");
+        data.controlScheme = kControlsSchemes;
+        written = writeSettings(data);
+        check(!readSettings(written.data(), written.size(), back), "a layout there is not: not read");
+    }
+
     void testWeaponStep()
     {
         Inventory inv;
@@ -1286,6 +1412,7 @@ int main()
     testTaps();
     testHand();
     testSticks();
+    testButtonsOnly();
     testWeaponStep();
     testSettings();
     testWalk();

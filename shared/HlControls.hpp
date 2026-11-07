@@ -17,6 +17,14 @@
 // crouched -- and up stands. One short tap of the stylus on the aim pad is
 // USE.
 //
+// BUTTONS ONLY is for play without the stylus: the D-pad looks (left and
+// right turn, up and down look up and down), A B X Y step (X forward, B back,
+// Y left, A right), the trigger fires and Select is USE. The other shoulder
+// held is a shift: with it, the D-pad's up jumps, its down crouches, its left
+// and right take the weapon before and after; the trigger is the second fire
+// and Select the lamp. The shift tapped on its own reloads. The steps go on
+// under the shift, so a jump or a crouch can be made on the run.
+//
 // CUSTOM is the player's own: any action on any button (Start is always the
 // menu, so nobody can lose the way out). Each layout is a table of which
 // buttons each action is (defaultKeys); a custom one starts as a copy of the
@@ -85,7 +93,19 @@ namespace hldata
     inline constexpr std::uint8_t kControlsClassic = 0;
     inline constexpr std::uint8_t kControlsModern = 1;
     inline constexpr std::uint8_t kControlsCustom = 2;
-    inline constexpr std::uint8_t kControlsSchemes = 3;
+    inline constexpr std::uint8_t kControlsButtons = 3;
+    inline constexpr std::uint8_t kControlsSchemes = 4;
+    /// The layouts in the order the options go through them.
+    inline constexpr std::uint8_t kControlsOrder[kControlsSchemes] = {kControlsClassic, kControlsModern,
+                                                                      kControlsButtons, kControlsCustom};
+    /// A layout's name, for the options.
+    inline const char *controlsName(std::uint8_t scheme)
+    {
+        return scheme == kControlsModern   ? "modern"
+               : scheme == kControlsCustom  ? "custom"
+               : scheme == kControlsButtons ? "buttons only"
+                                            : "classic";
+    }
 
     /// What a button can be made to do.
     enum Action : std::uint8_t
@@ -104,16 +124,23 @@ namespace hldata
         kActionPrevWeapon,
         kActionLamp,
         kActionWalk,
+        kActionLookUp,
+        kActionLookDown,
+        kActionTurnLeft,
+        kActionTurnRight,
         kActionCount
     };
     /// How many a settings file before version 18 keeps (HlSettings.hpp).
     inline constexpr int kActionsBeforeWalk = kActionWalk;
+    /// ... and before version 24.
+    inline constexpr int kActionsBeforeLook = kActionLookUp;
     /// Their names, for the options.
     inline const char *actionName(int action)
     {
         static const char *const kNames[kActionCount] = {"Forward", "Back",   "Left",   "Right",       "Fire",
                                                      "Alt fire", "Jump",  "Duck",   "Reload",      "Use",
-                                                     "Next weapon", "Weapon before", "Flashlight", "Walk"};
+                                                     "Next weapon", "Weapon before", "Flashlight", "Walk",
+                                                     "Look up",  "Look down", "Turn left", "Turn right"};
         return action >= 0 && action < kActionCount ? kNames[action] : "";
     }
     /// The buttons that may be given an action: all but Start.
@@ -174,6 +201,20 @@ namespace hldata
         for (int a = 0; a < kActionCount; ++a)
             keys[a] = 0;
         keys[kActionFire] = static_cast<std::uint16_t>(trigger);
+        if (scheme == kControlsButtons)
+        {
+            // (The other shoulder is the shift: shiftedKeys.)
+            keys[kActionForward] = static_cast<std::uint16_t>(faceTop);
+            keys[kActionBack] = static_cast<std::uint16_t>(faceBottom);
+            keys[kActionLeft] = static_cast<std::uint16_t>(faceLeft);
+            keys[kActionRight] = static_cast<std::uint16_t>(faceRight);
+            keys[kActionLookUp] = static_cast<std::uint16_t>(padUp);
+            keys[kActionLookDown] = static_cast<std::uint16_t>(padDown);
+            keys[kActionTurnLeft] = static_cast<std::uint16_t>(padLeft);
+            keys[kActionTurnRight] = static_cast<std::uint16_t>(padRight);
+            keys[kActionUse] = static_cast<std::uint16_t>(kButtonSelect);
+            return;
+        }
         keys[kActionAltFire] = static_cast<std::uint16_t>(other);
         keys[kActionLamp] = static_cast<std::uint16_t>(kButtonSelect);
         if (scheme == kControlsModern)
@@ -195,6 +236,28 @@ namespace hldata
         keys[kActionRight] = static_cast<std::uint16_t>(padRight | faceRight);
     }
 
+    /// BUTTONS ONLY: the shift (the shoulder that is not the trigger).
+    inline std::uint32_t shiftButton(bool leftHanded) { return leftHanded ? kButtonL : kButtonR; }
+    /// ... and the table played by while it is held: the steps as they
+    /// were, the D-pad, the trigger and Select given other work.
+    inline void shiftedKeys(bool leftHanded, std::uint16_t *keys)
+    {
+        defaultKeys(kControlsButtons, leftHanded, keys);
+        const std::uint32_t padUp = leftHanded ? kButtonX : kButtonUp;
+        const std::uint32_t padDown = leftHanded ? kButtonB : kButtonDown;
+        const std::uint32_t padLeft = leftHanded ? kButtonY : kButtonLeft;
+        const std::uint32_t padRight = leftHanded ? kButtonA : kButtonRight;
+        const std::uint32_t trigger = leftHanded ? kButtonR : kButtonL;
+        keys[kActionLookUp] = keys[kActionLookDown] = keys[kActionTurnLeft] = keys[kActionTurnRight] = 0;
+        keys[kActionFire] = keys[kActionUse] = 0;
+        keys[kActionJump] = static_cast<std::uint16_t>(padUp);
+        keys[kActionDuck] = static_cast<std::uint16_t>(padDown);
+        keys[kActionPrevWeapon] = static_cast<std::uint16_t>(padLeft);
+        keys[kActionNextWeapon] = static_cast<std::uint16_t>(padRight);
+        keys[kActionAltFire] = static_cast<std::uint16_t>(trigger);
+        keys[kActionLamp] = static_cast<std::uint16_t>(kButtonSelect);
+    }
+
     /// The table `set` plays by.
     inline void keysOf(const ControlSettings &set, std::uint16_t *keys)
     {
@@ -214,7 +277,8 @@ namespace hldata
     /// its place), or a button that jumps.
     inline bool jumpsOtherwise(const ControlSettings &set)
     {
-        if (!set.jumpWalks)
+        // (BUTTONS ONLY jumps under its shift, whatever the jump button does.)
+        if (!set.jumpWalks || set.scheme == kControlsButtons)
             return true;
         std::uint16_t keys[kActionCount];
         keysOf(set, keys);
@@ -362,6 +426,10 @@ namespace hldata
         int firmest = 0;
         int baseline = 0, baseSamples = 0;
         bool firm = false;
+        /// BUTTONS ONLY: since when the shift is held, and whether anything
+        /// was pressed under it (else, let go of soon, it was a reload).
+        std::uint32_t shiftBlank = 0;
+        bool shiftUsed = false;
     };
 
     /// How far a stylus step of `fine` sixteenths of a pixel turns the view,
@@ -379,8 +447,28 @@ namespace hldata
         const std::uint32_t held = in.held;
         const std::uint32_t pressed = held & ~state.lastHeld;
         const bool classic = set.scheme == kControlsClassic;
+        const bool buttonsOnly = set.scheme == kControlsButtons;
         std::uint16_t keys[kActionCount];
-        keysOf(set, keys);
+        // BUTTONS ONLY's shift: held, its own table; tapped alone, a reload.
+        const std::uint32_t shift = buttonsOnly ? shiftButton(set.leftHanded) : 0;
+        bool shiftReload = false;
+        if (buttonsOnly)
+        {
+            if (pressed & shift)
+            {
+                state.shiftBlank = in.blank;
+                state.shiftUsed = false;
+            }
+            if ((held & shift) && (pressed & ~shift & kAssignable))
+                state.shiftUsed = true;
+            if ((state.lastHeld & shift) && !(held & shift) && !state.shiftUsed &&
+                in.blank - state.shiftBlank <= 2 * kTapBlanks)
+                shiftReload = true;
+        }
+        if (held & shift)
+            shiftedKeys(set.leftHanded, keys);
+        else
+            keysOf(set, keys);
         auto on = [&](int action) { return (held & keys[action]) != 0; };
         auto now = [&](int action) { return (pressed & keys[action]) != 0; };
 
@@ -389,7 +477,7 @@ namespace hldata
         // Edges are worked out here, from what was held last frame.
         out.lampPressed = now(kActionLamp);
         out.startPressed = (pressed & kButtonStart) != 0;
-        out.reloadPressed = now(kActionReload);
+        out.reloadPressed = now(kActionReload) || shiftReload;
         out.usePressed = now(kActionUse);
         if (now(kActionNextWeapon))
             out.weaponStep = 1;
@@ -561,7 +649,10 @@ namespace hldata
         // The two sticks, an axis at a time.
         std::uint32_t blanks = in.blank - state.lastBlank;
         blanks = blanks < 1 ? 1 : (blanks > 4 ? 4 : blanks);
-        if (set.padTurns)
+        // (BUTTONS ONLY has its D-pad looking already: the sticks' choices
+        // are not its.)
+        const bool padTurns = set.padTurns && !buttonsOnly, padLooks = set.padLooks && !buttonsOnly;
+        if (padTurns)
         {
             out.moveSide = stickX >= kStickDeadZone ? 1 : (stickX <= -kStickDeadZone ? -1 : 0);
             out.lookDx = padSide * kPadTurnPixels * static_cast<int>(blanks);
@@ -571,7 +662,7 @@ namespace hldata
             out.moveSide = padSide;
             out.lookDx = dragX;
         }
-        if (set.padLooks)
+        if (padLooks)
         {
             // (Up the screen is forward; and the pad's up looks up, as a
             // stylus pushed up does.)
@@ -586,7 +677,7 @@ namespace hldata
 
         // The stylus finely, and how hard: the view's turn.
         const bool weighed = in.touching && in.pressure > 0 && state.touch == kTouchAim;
-        if (in.touching && state.touch == kTouchAim && !set.padTurns && !set.padLooks)
+        if (in.touching && state.touch == kTouchAim && !padTurns && !padLooks)
         {
             const int fx = in.fineX >= 0 ? in.fineX : in.touchX << kFineShift;
             const int fy = in.fineY >= 0 ? in.fineY : in.touchY << kFineShift;
@@ -645,10 +736,22 @@ namespace hldata
             state.firm = false;
         }
         // (A pad that turns or looks: whole pixels, as the sticks have them.)
-        if (set.padTurns || set.padLooks)
+        if (padTurns || padLooks)
         {
             out.lookFineX = out.lookDx << kFineShift;
             out.lookFineY = out.lookDy << kFineShift;
+        }
+        // Buttons that look (BUTTONS ONLY's D-pad, or a custom layout's):
+        // as the pad does when it turns and looks, on top of the stylus.
+        {
+            const int turn = (on(kActionTurnRight) ? 1 : 0) - (on(kActionTurnLeft) ? 1 : 0);
+            const int look = (on(kActionLookUp) ? 1 : 0) - (on(kActionLookDown) ? 1 : 0);
+            const int dx = turn * kPadTurnPixels * static_cast<int>(blanks);
+            const int dy = -look * kPadLookPixels * static_cast<int>(blanks);
+            out.lookDx += dx;
+            out.lookDy += dy;
+            out.lookFineX += dx << kFineShift;
+            out.lookFineY += dy << kFineShift;
         }
         // Pressed hard: against how hard the stroke began (its first few
         // readings), half the resistance is firm, and it stays firm until
@@ -734,6 +837,25 @@ namespace hldata
             return text;
         };
         const bool classic = set.scheme == kControlsClassic;
+        if (set.scheme == kControlsButtons)
+        {
+            // (Under the shift: what the look buttons become, by the hand.)
+            const bool left = set.leftHanded;
+            const char *const r = left ? "L" : "R";
+            switch (line)
+            {
+            case 0: return left ? "A B X Y look   D-pad steps" : "D-pad looks   A B X Y step";
+            case 1: return pair(kActionFire, "fire", kActionUse, "use");
+            case 2:
+                std::snprintf(text, sizeof(text), "%s+%s jump  %s+%s crouch", r, left ? "X" : "Up", r,
+                              left ? "B" : "Down");
+                return text;
+            case 3:
+                std::snprintf(text, sizeof(text), "%s+%s weapon  %s: reload", r, left ? "Y/A" : "Left/Right", r);
+                return text;
+            default: return nullptr;
+            }
+        }
         if (classic)
         {
             switch (line)
