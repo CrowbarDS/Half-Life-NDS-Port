@@ -1211,11 +1211,6 @@ namespace hldata
                     w.heard->add(CommonSound::Charge, nullptr, 127);
                 state.hurt = 560;
             }
-            if (state.phase == 1 && state.hurt <= 0)
-            {
-                state.phase = 2;
-                chargerSound(w, index, sounds.move, kSoundLoopOn);
-            }
             // A point.
             if (suit)
                 player.inv.armor = static_cast<std::int16_t>(player.inv.armor + 1);
@@ -1223,6 +1218,18 @@ namespace hldata
                 ++player.health;
             ++state.bits;
             state.speed = 100;
+            // The point that fills them: it is off there and then, its loop
+            // with it (not a frame on, or when its quarter second is up).
+            if (suit ? player.inv.armor >= 100 : player.health >= 100)
+            {
+                chargerOff(w, index);
+                return;
+            }
+            if (state.phase == 1 && state.hurt <= 0)
+            {
+                state.phase = 2;
+                chargerSound(w, index, sounds.move, kSoundLoopOn);
+            }
         }
 
         inline void chargerTick(LogicWorld &w, PlayerState &, int index, int ms)

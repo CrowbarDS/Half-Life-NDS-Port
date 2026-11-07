@@ -317,11 +317,44 @@ namespace
         for (int n = 0; n < 30; ++n)
             frame(g, charger, false);
         g.player.health = 85;
-        int filledOff = -1;
-        for (int n = 0; n < 120 && filledOff < 0; ++n)
-            filledOff = frame(g, charger, true).loopOff > 0 ? n : -1;
-        check(filledOff >= 0 && g.player.health == 100 && !g.states[charger].running,
-              "held until they are full, it stops as they are");
+        int filledOff = -1, filledAt = -1, loopedAfter = 0;
+        bool runningAtFull = false;
+        for (int n = 0; n < 120; ++n)
+        {
+            const Heard h = frame(g, charger, true);
+            if (filledOff < 0 && h.loopOff > 0)
+                filledOff = n;
+            if (filledAt < 0 && g.player.health >= 100)
+            {
+                filledAt = n;
+                runningAtFull = g.states[charger].running;
+            }
+            else if (filledAt >= 0)
+                loopedAfter += h.loopOn;
+        }
+        check(filledOff >= 0 && filledOff == filledAt && !runningAtFull && g.player.health == 100 &&
+                  !g.states[charger].running && loopedAfter == 0,
+              "held until they are full, it stops on the point that fills them");
+        // Filled on the very point its loop would start: no loop at all.
+        for (int n = 0; n < 30; ++n)
+            frame(g, charger, false);
+        g.player.health = 98;
+        Heard brief;
+        for (int n = 0; n < 60; ++n)
+        {
+            const Heard h = frame(g, charger, true);
+            brief.loopOn += h.loopOn;
+            brief.start += h.start;
+        }
+        check(brief.start == 1 && brief.loopOn == 0 && g.player.health == 100 && !g.states[charger].running,
+              "two points short, it is heard once and never loops");
+        // Let go on the point that fills them: off already, not a quarter
+        // of a second on.
+        for (int n = 0; n < 30; ++n)
+            frame(g, charger, false);
+        g.player.health = 99;
+        frame(g, charger, true);
+        check(g.player.health == 100 && !g.states[charger].running, "the last point turns it off at once");
         // Held by someone full: not a sound, and nothing spent.
         const int spent = static_cast<int>(g.states[charger].bits);
         Heard full;
