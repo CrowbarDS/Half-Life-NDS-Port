@@ -16,7 +16,8 @@
 // writing, a fade is nothing but their colours.
 //
 // Two messages at once at most (a title and a name, say), each in 64 rows:
-// as many lines as fit them, wrapped.
+// as many lines as fit them, wrapped. A lesson (kMessageLesson) is in the
+// game's console letters, and the keys it names are the DS's (HlKeyWords.hpp).
 
 #include <cstdint>
 
@@ -81,6 +82,11 @@ namespace hlrt
             std::uint32_t order = 0;
         };
         Slot slots_[kSlots];
+        /// What each slot shows of what the map wrote, its key words the
+        /// DS's (its lines point into it).
+#ifndef HLDS_CHILD
+        char words_[kSlots][320] = {};
+#endif
         int noticeSlot_ = -1; ///< the slot the notice is in, if it is up
         int font_ = -1;       ///< for the next layout: this face, not the largest that fits
         void layout(Slot &slot, int index, const hldata::MessageRecord &message, const char *text);

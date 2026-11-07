@@ -1618,6 +1618,9 @@ namespace hldata
     /// The title of the chapter this map is part of (every map has one such
     /// message, shown or not): what a save made in the map is listed under.
     inline constexpr std::uint8_t kMessageChapter = 4;
+    /// A lesson (the Hazard Course's: titles.txt's HZ...): written in the
+    /// game's console letters, as every lesson is, with the game's lines.
+    inline constexpr std::uint8_t kMessageLesson = 8;
 
     /// The size of one record of a section, which is how both the writer and
     /// the reader know that `size == count * recordSize`.

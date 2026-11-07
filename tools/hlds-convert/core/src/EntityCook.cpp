@@ -2721,7 +2721,10 @@ namespace hlds
                     record.kind = static_cast<std::uint8_t>(LogicKind::Message);
                     if (spawnflags & 1)
                         record.flags |= kLogicFireOnce;
-                    record.extra[0] = addMessage(wanted, 0);
+                    // (The Hazard Course's lessons are all named HZ...)
+                    const bool lesson = wanted.size() > 2 && (wanted[0] == 'H' || wanted[0] == 'h') &&
+                                        (wanted[1] == 'Z' || wanted[1] == 'z');
+                    record.extra[0] = addMessage(wanted, lesson ? kMessageLesson : 0);
                 }
             }
             else if (cls == "trigger_cdaudio" && model != nullptr)

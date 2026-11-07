@@ -43,8 +43,10 @@ namespace hldata
     inline constexpr int kFontSmall = 0;  ///< the game's 14-pixel letters
     inline constexpr int kFontMedium = 1; ///< ... its 16-pixel ones
     inline constexpr int kFontTitle = 2;  ///< ... and those of its credits
-    inline constexpr int kFontCount = 3;
-    inline constexpr const char *const kFontFiles[kFontCount] = {"ui/font0.hfn", "ui/font1.hfn", "ui/font2.hfn"};
+    inline constexpr int kFontConsole = 3; ///< ... and its console's, 12 rows: what the map writes, whole
+    inline constexpr int kFontCount = 4;
+    inline constexpr const char *const kFontFiles[kFontCount] = {"ui/font0.hfn", "ui/font1.hfn", "ui/font2.hfn",
+                                                                 "ui/font3.hfn"};
 
     /// What a character of 128..255 (Windows-1252, the game's text) is drawn
     /// as in a font that has not got it: its letter without the accent, the

@@ -13,10 +13,13 @@
 #include "HlFont.hpp"
 #include "HlLamp.hpp"
 #include "HlTopLayout.hpp"
+#include "HlKeyWords.hpp"
 #include "HlSettings.hpp"
 #include "HlTouchLayout.hpp"
 #include "TestBspBuilder.hpp"
 #include "hlds/UiCook.hpp"
+#include "hlds/AtomicWrite.hpp"
+#include "hlds/TitlesFile.hpp"
 
 using namespace hlds;
 using namespace hldata;
@@ -282,6 +285,25 @@ namespace
         block = topLayout(faces, 4, 2, move, 4, 6);
         check(block.face == 2 && block.lineCount == 4, "... and what it cannot hold is left out, not drawn over");
         check(topLayout(faces, 4, -1, "\n\n", -1, -1).lineCount == 0, "empty lines are no lines");
+
+        // A computer's keys, in the DS's: the layout's buttons, else the
+        // touch screen's.
+        ControlSettings set;
+        char said[160];
+        set.scheme = kControlsClassic;
+        topKeyWords("PRESS YOUR USE KEY TO PUSH A BUTTON", set, said, sizeof(said));
+        const bool classicUse = std::strcmp(said, "PRESS TOUCH USE TO PUSH A BUTTON") == 0;
+        topKeyWords("MOVE BACKWARD BY PRESSING BACKWARD KEY\nAIM WITH THE MOUSE", set, said, sizeof(said));
+        const bool classicPad = std::strcmp(said, "MOVE BACKWARD BY PRESSING DOWN\nAIM WITH THE STYLUS") == 0;
+        set.scheme = kControlsModern;
+        topKeyWords("PRESS RELOAD KEY TO RELOAD, THEN THE DUCK KEY", set, said, sizeof(said));
+        const bool modern = std::strcmp(said, "PRESS Y TO RELOAD, THEN B") == 0;
+        set.scheme = kControlsButtons;
+        topKeyWords("PRESS FORWARD + JUMP TOGETHER,\nTHEN PRESS JUMP", set, said, sizeof(said));
+        const bool buttons = std::strcmp(said, "PRESS X + R+UP TOGETHER,\nTHEN PRESS R+UP") == 0;
+        topKeyWords("NOTHING OF KEYS HERE", set, said, 8);
+        check(classicUse && classicPad && modern && buttons && std::strcmp(said, "NOTHING") == 0,
+              "a lesson names the DS's buttons of the player's layout, or the touch screen's; the rest is kept");
     }
 
     /// A settings file as v0.2.1 wrote it (version 20), with every setting
@@ -989,52 +1011,87 @@ namespace
                   "... and cooks: proportional, a light letter in a dark edge");
         }
         {
-            // The Hazard Course's writing, in the game's own faces: all of
-            // each on the screen.
-            std::vector<std::uint32_t> aligned[4];
-            FontView views[4];
-            const char *names[3] = {"creditsfont", "FONT1", "FONT0"};
+            // The Hazard Course's writing, in the game's own faces: each
+            // lesson in its console's, with the game's own lines, all on
+            // the screen -- its key words the DS's or not.
+            std::vector<std::uint32_t> aligned[5];
+            FontView views[5];
+            const char *names[4] = {"creditsfont", "FONT1", "FONT0", "CONCHARS"};
             bool read = true;
-            for (int f = 0; f < 3; ++f)
+            for (int f = 0; f < 4; ++f)
             {
                 std::vector<std::uint8_t> lump;
                 QFont font;
-                read = read && readWadLump(valve + (f == 0 ? "/gfx.wad" : "/fonts.wad"), names[f], lump, error) &&
+                read = read && readWadLump(valve + (f == 0 || f == 3 ? "/gfx.wad" : "/fonts.wad"), names[f], lump, error) &&
                        parseQFont(lump, font, error);
                 if (!read)
                     break;
-                const std::vector<std::uint8_t> cooked = cookFont(font, f != 0);
+                const std::vector<std::uint8_t> cooked = cookFont(font, f == 1 || f == 2);
                 aligned[f].resize((cooked.size() + 3) / 4);
                 std::memcpy(aligned[f].data(), cooked.data(), cooked.size());
                 views[f].open(reinterpret_cast<const std::uint8_t *>(aligned[f].data()), cooked.size());
             }
             std::uint8_t bits[96 * 8] = {};
-            aligned[3].resize(kPlainFontWords);
-            plainFont(bits, true, aligned[3].data());
-            views[3].open(reinterpret_cast<const std::uint8_t *>(aligned[3].data()), aligned[3].size() * 4);
-            const FontView *faces[4] = {&views[0], &views[1], &views[2], &views[3]};
-            const char *texts[] = {"MOVE FORWARD BY PRESSING FORWARD KEY\nMOVE BACKWARD BY PRESSING BACKWARD KEY\n"
-                                   "MOVE LEFT BY PRESSING MOVELEFT\nMOVE RIGHT BY PRESSING MOVERIGHT",
-                                   "PRESS YOUR USE KEY TO PUSH A BUTTON",
-                                   "PRESS FORWARD KEY TO RUN FORWARD\nPRESS JUMP KEY TO JUMP\nPRESS DUCK KEY TO DUCK\n"
-                                   "PRESS JUMP KEY TO JUMP"};
-            for (const char *text : texts)
+            aligned[4].resize(kPlainFontWords);
+            plainFont(bits, true, aligned[4].data());
+            views[4].open(reinterpret_cast<const std::uint8_t *>(aligned[4].data()), aligned[4].size() * 4);
+            const FontView *faces[5] = {&views[0], &views[1], &views[2], &views[3], &views[4]};
+            std::vector<std::uint8_t> titleBytes;
+            std::string why;
+            read = read && readFile(valve + "/titles.txt", titleBytes, why);
+            const TitlesBook book =
+                parseTitles(toCp1252(std::string(titleBytes.begin(), titleBytes.end())));
+            int lessons = 0, inConsole = 0, ownLines = 0, onScreen = 0, rewrittenFit = 0;
+            ControlSettings classic;
+            classic.scheme = kControlsClassic;
+            ControlSettings buttons;
+            buttons.scheme = kControlsButtons;
+            for (const auto &[name, title] : book.titles)
             {
-                if (!read)
-                    break;
-                const TopBlock block = topLayout(faces, 4, -1, text, -1, 166);
-                int letters = 0, all = 0;
-                for (int l = 0; l < block.lineCount; ++l)
-                    letters += block.lines[l].count;
-                for (const char *c = text; *c != '\0'; ++c)
-                    all += *c != '\n' && *c != ' ' ? 1 : 0;
-                int kept = 0;
-                for (int l = 0; l < block.lineCount; ++l)
-                    for (int k = 0; k < block.lines[l].count; ++k)
-                        kept += text[block.lines[l].start + k] != ' ' ? 1 : 0;
-                std::printf("test_ui: \"%.24s...\": face %d, %d lines\n", text, block.face, block.lineCount);
-                check(kept == all && block.top + block.lineCount * block.pitch <= 192,
-                      "the Hazard Course's writing is all on the screen");
+                if (!read || name.rfind("HZ", 0) != 0)
+                    continue;
+                ++lessons;
+                const int y = title.y < 0 ? -1 : static_cast<int>(title.y * 256);
+                // (As TopText has a lesson: in the console's face.)
+                const TopBlock block = topLayout(faces, 5, 3, title.text.c_str(), -1, y);
+                int whole = 0;
+                for (std::size_t c = 0; c < title.text.size(); ++c)
+                    whole += title.text[c] != '\n' && (c == 0 || title.text[c - 1] == '\n') ? 1 : 0;
+                if (block.face != 3 || block.lineCount != whole)
+                    std::printf("test_ui: %s: face %d, %d lines of %d\n", name.c_str(), block.face, block.lineCount, whole);
+                inConsole += block.face == 3;
+                ownLines += block.lineCount == whole;
+                onScreen += block.top + block.lineCount * block.pitch <= 192;
+                // Its keys the DS's, in either layout: still all of it, and
+                // still in a game face.
+                bool fits = true;
+                for (const ControlSettings *set : {&classic, &buttons})
+                {
+                    char said[320];
+                    topKeyWords(title.text.c_str(), *set, said, sizeof(said));
+                    const TopBlock again = topLayout(faces, 5, 3, said, -1, y);
+                    int kept = 0, all = 0;
+                    for (int l = 0; l < again.lineCount; ++l)
+                        for (int k = 0; k < again.lines[l].count; ++k)
+                            kept += said[again.lines[l].start + k] != ' ' ? 1 : 0;
+                    for (const char *c = said; *c != '\0'; ++c)
+                        all += *c != '\n' && *c != ' ' ? 1 : 0;
+                    fits = fits && kept == all &&
+                           again.top + again.lineCount * again.pitch <= 192;
+                    if (set == &classic && name == "HZMOVE")
+                        std::printf("test_ui: HZMOVE, classic: \"%s\"\n", said);
+                }
+                rewrittenFit += fits;
+            }
+            std::printf("test_ui: %d Hazard lessons: %d in the console's face, %d with the game's lines, %d on the "
+                        "screen, %d still whole with the DS's keys\n",
+                        lessons, inConsole, ownLines, onScreen, rewrittenFit);
+            if (read)
+            {
+                check(lessons >= 25 && inConsole == lessons && ownLines >= lessons - 1 && onScreen == lessons,
+                      "every Hazard lesson fits the game's console face, all but the widest with its own lines, on "
+                      "the screen");
+                check(rewrittenFit == lessons, "... and with the DS's keys named, all of it still fits");
             }
         }
         {

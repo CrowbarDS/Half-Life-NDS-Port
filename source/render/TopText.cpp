@@ -5,6 +5,10 @@
 #include "Global.hpp"
 #include "HlUi.hpp"
 #include "ui/TouchCanvas.hpp"
+#ifndef HLDS_CHILD
+#include "HlKeyWords.hpp"
+#include "Settings.hpp"
+#endif
 
 namespace hlrt
 {
@@ -199,6 +203,15 @@ namespace hlrt
             index = slots_[0].order < slots_[1].order ? 0 : 1;
         if (index == noticeSlot_)
             noticeSlot_ = -1; // (what the map writes comes first)
+#ifndef HLDS_CHILD
+        // (A computer's keys in the DS's: HlKeyWords.hpp. Not on a console
+        // sent the game: a match has no lessons.)
+        if (!logo)
+        {
+            hldata::topKeyWords(text, settings.controls(), words_[index], sizeof(words_[index]));
+            text = words_[index];
+        }
+#endif
         layout(slots_[index], index, message, text);
     }
 
@@ -227,13 +240,22 @@ namespace hlrt
             // Its lines, wrapped to the screen, all in the largest of the
             // game's faces they fit the slot in -- or, if none, in the
             // console's own letters (shared/HlTopLayout.hpp).
+            // (The console's face, the smallest of the game's, only on a
+            // card that has it: else the 8x8 letters come next.)
+            const FontView &console = touchCanvas.font(kFontConsole);
+            const bool hasConsole = &console != &touchCanvas.plain();
             const FontView *faces[] = {&touchCanvas.font(kFontTitle), &touchCanvas.font(kFontMedium),
-                                       &touchCanvas.font(kFontSmall), &touchCanvas.plain()};
-            constexpr int kFaceOf[] = {kFontTitle, kFontMedium, kFontSmall, -1};
+                                       &touchCanvas.font(kFontSmall), hasConsole ? &console : &touchCanvas.plain(),
+                                       &touchCanvas.plain()};
+            const int kFaceOf[] = {kFontTitle, kFontMedium, kFontSmall, hasConsole ? kFontConsole : -1, -1};
+            const int faceCount = hasConsole ? 5 : 4;
             int forced = -1;
-            for (int f = 0; f < 3 && font_ >= 0; ++f)
+            for (int f = 0; f < faceCount - 1 && font_ >= 0; ++f)
                 forced = kFaceOf[f] == font_ ? f : forced;
-            const TopBlock block = topLayout(faces, 4, forced, text, message.x, message.y, 252, kSlotRows);
+            // (A lesson in the console's letters, every one alike.)
+            if (forced < 0 && hasConsole && (message.flags & kMessageLesson))
+                forced = 3;
+            const TopBlock block = topLayout(faces, faceCount, forced, text, message.x, message.y, 252, kSlotRows);
             slot.font = kFaceOf[block.face];
             slot.top = block.top;
             slot.rows = block.pitch * block.lineCount;

@@ -1464,15 +1464,17 @@ namespace hlds
             return writeFileAtomic(file, bytes, why);
         };
 
-        // The fonts: the game's two smaller menu faces, and the one its
-        // credits are in for titles.
+        // The fonts: the game's two smaller menu faces, the one its credits
+        // are in for titles, and its console's, in which what a map writes
+        // fits the DS's screen with the game's own lines.
         struct Face
         {
             const char *wad, *lump;
             bool outlined;
         };
         const Face kFaces[hldata::kFontCount] = {
-            {"fonts.wad", "FONT0", true}, {"fonts.wad", "FONT1", true}, {"gfx.wad", "CREDITSFONT", false}};
+            {"fonts.wad", "FONT0", true}, {"fonts.wad", "FONT1", true}, {"gfx.wad", "CREDITSFONT", false},
+            {"gfx.wad", "CONCHARS", false}};
         for (int n = 0; n < hldata::kFontCount; ++n)
         {
             std::vector<std::uint8_t> lump;

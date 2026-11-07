@@ -78,9 +78,17 @@ namespace hldata
                               int width = 252, int rows = 64, int screenWidth = 256, int screenHeight = 192)
     {
         TopBlock block;
-        // (Each face's lines a pixel or two apart; the console's letters,
-        // which have no edge round them, one.)
-        auto pitchOf = [&](int face) { return faces[face]->height() + (face == faceCount - 1 && faceCount > 1 ? 1 : 2); };
+        // (Each face's lines a pixel or two apart; the console's 8x8
+        // letters, which have no edge round them, one; a game face with no
+        // edge -- its console's, its credits' -- none: its rows have the
+        // room between lines in them.)
+        auto pitchOf = [&](int face)
+        {
+            if (face == faceCount - 1 && faceCount > 1)
+                return faces[face]->height() + 1;
+            const bool edged = faces[face]->header == nullptr || faces[face]->header->outlined != 0;
+            return faces[face]->height() + (edged ? 2 : 0);
+        };
         // The largest face that has every line whole, if any; else the
         // smallest of the game's that fits it wrapped (the game writes it
         // small); else the last, cut short.
