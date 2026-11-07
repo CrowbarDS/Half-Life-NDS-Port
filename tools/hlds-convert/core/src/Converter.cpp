@@ -2119,6 +2119,10 @@ namespace hlds
     }
     std::string chapterOf(const std::string &map, const std::vector<std::pair<std::string, std::string>> &titled)
     {
+        // (Uplink's maps name no chapter, and the map sorted before them is
+        // the game's last chapter's: they are Uplink.)
+        if (map.rfind("hldemo", 0) == 0)
+            return "UPLINK";
         const std::string head = map.substr(0, 4);
         std::string like, likeFirst, before;
         for (const auto &[name, title] : titled)

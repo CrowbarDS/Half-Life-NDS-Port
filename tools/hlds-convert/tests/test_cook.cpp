@@ -299,6 +299,12 @@ static void testChapters()
           "the chapters of the far side of the game");
     check(chapterOf("c0a0", titled) == "C0A0TITLE" && chapterOf("c0a0e", titled) == "C0A0TITLE",
           "the game's first maps name none: they are the first chapter");
+    {
+        std::vector<std::pair<std::string, std::string>> withLast = titled;
+        withLast.emplace_back("c4a3", "C4A3TITLE");
+        check(chapterOf("hldemo1", withLast) == "UPLINK" && chapterOf("hldemo3", withLast) == "UPLINK",
+              "Uplink's maps are Uplink, not the chapter sorted before them");
+    }
     check(chapterOf("mymap", titled).empty() || !chapterOf("mymap", titled).empty(), "(a map of no campaign has what it has)");
     if (const char *dir = std::getenv("HLDS_VALVE_DIR"); dir != nullptr && dir[0] != '\0')
     {
