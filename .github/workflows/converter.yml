@@ -140,7 +140,6 @@ jobs:
           sh docker/fetch.sh "$PTEXCONV_REPO" "$PTEXCONV_COMMIT" ptexconv-src
           cc -O2 -static ptexconv-src/src/*.c -lm -o ptexconv.exe
           mkdir -p tools-bin && mv ptexconv.exe tools-bin/
-          echo "PATH=$(pwd)/tools-bin:$PATH" >> "$GITHUB_ENV"
 
       - name: Build the static command line
         run: |
@@ -157,6 +156,8 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
+          # (Here, not through GITHUB_ENV: an MSYS2 shell drops that PATH.)
+          export PATH="$(pwd)/tools-bin:$PATH"
           ctest --test-dir build/convert --output-on-failure
           mkdir -p check/shots check/card check/cache
           build/convert/gui/hlds-install-check.exe check/shots check/card check/cache
@@ -279,7 +280,6 @@ jobs:
           sh docker/fetch.sh "$PTEXCONV_REPO" "$PTEXCONV_COMMIT" ptexconv-src
           cc -O2 -static ptexconv-src/src/*.c -lm -o ptexconv.exe
           mkdir -p tools-bin && mv ptexconv.exe tools-bin/
-          echo "PATH=$(pwd)/tools-bin:$PATH" >> "$GITHUB_ENV"
 
       - name: Build the static command line
         run: |
@@ -297,7 +297,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          export PATH="$(cygpath -u "$QT5_DIR")/bin:$PATH"
+          export PATH="$(pwd)/tools-bin:$(cygpath -u "$QT5_DIR")/bin:$PATH"
           export QT_PLUGIN_PATH="$QT5_DIR/plugins"
           ctest --test-dir build/convert --output-on-failure
           mkdir -p check/shots check/card check/cache
