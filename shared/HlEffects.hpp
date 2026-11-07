@@ -520,7 +520,8 @@ namespace hldata
                 // before has only the one, in `move`.
                 if (w.heard != nullptr && record.extra[3] != 0)
                 {
-                    const std::uint32_t n = detail::effectChance(w) % record.extra[3];
+                    // (Always six of them: a constant, not a divide.)
+                    const std::uint32_t n = detail::effectChance(w) % 6u;
                     w.heard->add(static_cast<std::uint16_t>(record.extra[n / 2] >> (n % 2 * 16)), record.move,
                                  13 + static_cast<int>(detail::effectChance(w) % 26), kRadiusLarge);
                 }
