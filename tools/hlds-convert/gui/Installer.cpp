@@ -139,7 +139,7 @@ public:
         languageRow->addWidget(language_);
         languageRow->addStretch(1);
         layout->addLayout(languageRow);
-        connect(language_, &QComboBox::currentIndexChanged, this, [this](int)
+        connect(language_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int)
                 { owner_->language_ = language_->currentData().toString(); });
     }
 
