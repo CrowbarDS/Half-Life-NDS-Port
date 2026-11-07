@@ -2049,10 +2049,20 @@ namespace hlds
                 }
                 // (The rest by what they begin with: a hole is a hole, a
                 // ding a dent.)
+                std::uint16_t sign = kNoSprite;
                 if (which < 0 && (picture.rfind("{shot", 0) == 0 || picture.rfind("{bigshot", 0) == 0))
                     which = kDecalShot, half = 8;
                 else if (which < 0 && picture.rfind("{ding", 0) == 0)
                     which = kDecalWallDent, half = 32;
+                // Anything else -- a number, an arrow, a letter, a stain of
+                // the map's own -- is its own picture, as one of the map's
+                // sprites (its size is the sprite's).
+                else if (which < 0 && picture.size() > 1 && picture.size() < 16)
+                {
+                    sign = spriteIndex(std::string(kDecalSignPath) + picture + ".spr", false);
+                    if (sign != kNoSprite)
+                        which = kDecalSign, half = 0;
+                }
                 if (which >= 0 && !named)
                     record.flags |= kLogicStartOpen;
                 if (which >= 0)
@@ -2063,6 +2073,7 @@ namespace hlds
                         record.move[a] = fxFromDouble(origin[a]);
                     record.extra[0] = static_cast<std::uint32_t>(which);
                     record.extra[1] = static_cast<std::uint32_t>(half);
+                    record.extra[2] = sign;
                 }
             }
             else if (cls == "func_pendulum" && brushRecordOfEntity[e] >= 0)

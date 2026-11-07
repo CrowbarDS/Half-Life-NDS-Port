@@ -154,6 +154,47 @@ namespace
         }
         std::printf("test_sprite: the common sprites at their largest: %dK texels\n", texels / 1024);
     }
+    /// A map's sign (an infodecal of decals.wad's: here the Hazard
+    /// Course's number 1 and its large 4) made a sprite: its colour the
+    /// picture's, solid where the picture is, upright, its size the
+    /// picture's.
+    void testSigns(const char *dir)
+    {
+        WadFile wad;
+        std::string error;
+        if (!wad.open(std::string(dir) + "/decals.wad", error))
+        {
+            check(false, "decals.wad opens");
+            return;
+        }
+        for (const char *name : {"{med#s1", "{large#s4"})
+        {
+            IndexedImage picture;
+            SprFile spr;
+            CookedSprite cooked;
+            const bool ok = wad.read(name, picture, error) && signSprite(picture, spr) &&
+                            cookSprite(spr, 64, 1, false, cooked, error);
+            check(ok, "a sign of decals.wad cooks as a sprite");
+            if (!ok)
+                continue;
+            int solid = 0, clear = 0;
+            for (std::size_t i = 3; i < cooked.atlas.rgba.size(); i += 4)
+            {
+                solid += cooked.atlas.rgba[i] > 128;
+                clear += cooked.atlas.rgba[i] < 16;
+            }
+            std::printf("test_sprite: %s: %ux%u -> %dx%d in %dx%d, %d solid, %d clear\n", name, picture.width,
+                        picture.height, cooked.ref.cellWidth, cooked.ref.cellHeight, cooked.atlas.width,
+                        cooked.atlas.height, solid, clear);
+            check(cooked.ref.worldWidth == picture.width && cooked.ref.worldHeight == picture.height &&
+                      cooked.ref.frames == 1 && cooked.ref.kind == kSpriteOriented && solid > 20 && clear > 20 &&
+                      cooked.ref.cellHeight * picture.width == cooked.ref.cellWidth * picture.height,
+                  "... as large as its picture, its shape kept, part of it there and part not");
+        }
+        check(signSpriteName("decals/{med#s1.spr") == "d-meds1" && signSpriteName("sprites/flare1.spr") == "flare1",
+              "a sign's sprite is named for its picture");
+    }
+
     /// The engine's glow rule: the size kept on the screen (dist / 200 of
     /// itself), the brightness 19000 / dist^2, between 0.05 and all.
     void testFalloff()
@@ -214,6 +255,7 @@ int main()
     {
         testGame(dir);
         testMapGlows(dir);
+        testSigns(dir);
     }
     else
         std::printf("test_sprite: HLDS_VALVE_DIR not set, the game's sprites were not read\n");

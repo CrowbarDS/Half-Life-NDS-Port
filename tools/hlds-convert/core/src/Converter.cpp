@@ -1195,13 +1195,45 @@ namespace hlds
         {
             static const int kCommon[][2] = {{32, 8}, {32, 2}, {16, 6}, {32, 1}, {32, 1}, {32, 3}, {16, 4}, {32, 1}};
             int texels = 0;
+            // (The map's signs are pictures of decals.wad, made sprites.)
+            WadFile decalWad;
+            bool decalWadOpen = false, decalWadTried = false;
+            const std::string signPath = hldata::kDecalSignPath;
             for (std::size_t n = 0; n < level.spritePaths.size(); ++n)
             {
                 SpriteOut one;
                 one.index = n;
                 std::vector<std::uint8_t> source;
                 std::string why;
-                const fs::path file = findGameFile(options_, level.spritePaths[n]);
+                const std::string &path = level.spritePaths[n];
+                if (path.rfind(signPath, 0) == 0 && path.size() > signPath.size() + 4)
+                {
+                    if (!decalWadTried)
+                    {
+                        decalWadTried = true;
+                        const fs::path wad = findGameFile(options_, "decals.wad");
+                        decalWadOpen = !wad.empty() && decalWad.open(wad, why);
+                    }
+                    IndexedImage picture;
+                    const std::string name = path.substr(signPath.size(), path.size() - signPath.size() - 4);
+                    if (!decalWadOpen || !decalWad.read(name, picture, why) || !signSprite(picture, one.spr))
+                    {
+                        ++result.spritesMissing;
+                        continue;
+                    }
+                    // (Up to 64 texels its longer side: a number is read
+                    // from across a room.)
+                    one.cell = 64;
+                    one.frames = 1;
+                    one.sourceHash = hldata::crc32(picture.pixels.data(), static_cast<std::uint32_t>(picture.pixels.size())) ^
+                                     hldata::crc32(picture.palette.data(), static_cast<std::uint32_t>(picture.palette.size()));
+                    if (!cookSprite(one.spr, one.cell, one.frames, false, one.cooked, why))
+                        continue;
+                    texels += one.cooked.atlas.width * one.cooked.atlas.height;
+                    sprites.push_back(std::move(one));
+                    continue;
+                }
+                const fs::path file = findGameFile(options_, path);
                 if (file.empty() || !readFile(file, source, why) || !one.spr.parse(source, why))
                 {
                     ++result.spritesMissing;
@@ -1252,8 +1284,8 @@ namespace hlds
                 hldata::SpriteRef ref = one.cooked.ref;
                 // (Its name says whether it was cooked as light: the same
                 // file may be wanted both ways.)
-                const std::string name =
-                    spriteName(level.spritePaths[one.index]) + (level.spriteLights[one.index] ? "-l" : "");
+                const std::string name = signSpriteName(level.spritePaths[one.index]) +
+                                         (level.spriteLights[one.index] ? "-l" : "");
                 std::strncpy(ref.name, name.c_str(), sizeof(ref.name) - 1);
                 level.sprites[one.index] = ref;
             }

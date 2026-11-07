@@ -20,6 +20,7 @@
 #include "HlAnim.hpp"
 #include "HlFields.hpp"
 #include "HlMovers.hpp"
+#include "HlUi.hpp"
 
 namespace hldata
 {
@@ -1177,7 +1178,9 @@ namespace hldata
     {
         const int limit = a.decalLimit < 1 ? 1 : (a.decalLimit > kMaxDecals ? kMaxDecals : a.decalLimit);
         const std::int32_t life = decalLife(picture) / 100 * a.markLifePercent;
-        half = half < 1 ? 1 : (half > 64 ? 64 : half);
+        // (A sign may be larger: c2a5g's is 240 across.)
+        const int largest = picture == kDecalSign ? 127 : 64;
+        half = half < 1 ? 1 : (half > largest ? largest : half);
         const int family = decalFamily(picture);
         // (Holes, dents and a wall's damage: blows on one spot. Anything
         // else -- blood, soot, spit -- is a mark where it landed, and only

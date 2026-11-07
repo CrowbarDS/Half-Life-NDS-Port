@@ -263,6 +263,14 @@ namespace hldata
     inline constexpr std::uint8_t kDecalWallCrack = 21;
     inline constexpr std::uint8_t kDecalWallDent = 22;
     inline constexpr std::uint8_t kDecalCount = 23;
+    /// A sign the map put there (a number, an arrow, a letter, a stain of
+    /// its own: any of decals.wad's pictures but those above), as one of
+    /// the map's sprites: a Mark's extra[2] says which, and a Decal's
+    /// `colour` holds it (the picture has its own colour).
+    inline constexpr std::uint8_t kDecalSign = 0xFF;
+    /// Where the converter asks for a sign's picture, as a sprite's path:
+    /// this, then its name in decals.wad, then ".spr".
+    inline constexpr const char *kDecalSignPath = "decals/";
     /// Where a mark's picture is in the texture: sixteen cells of 32, the
     /// first shared out among the five small ones (three holes -- the
     /// fourth hole is the first again -- and the dent).

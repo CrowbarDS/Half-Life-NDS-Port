@@ -661,6 +661,7 @@ namespace hlrt
         const BrushState *brushes = game.brushStates();
         int drawn = 0, area = 0;
         bool bound = false;
+        NEA_Material *boundMaterial = nullptr;
         // The nearest first: when not all of them are drawn, it is the far
         // ones that are not.
         std::uint8_t order[kMaxDecals];
@@ -724,11 +725,21 @@ namespace hlrt
                                             static_cast<std::int16_t>(fxToInt(at[2] + decal.normal[2] * 2))};
             if (!worldDraw.ballVisible(centre, decal.half + 2))
                 continue;
+            // (A sign is a sprite of the map's: its own texture.)
+            const bool isSign = decal.picture == kDecalSign;
+            const SpriteRef *signRef = isSign ? spriteCache.ref(decal.colour) : nullptr;
+            if (isSign && signRef == nullptr)
+                continue;
             if (!bound)
             {
                 bound = true;
                 camera.apply();
-                NEA_MaterialUse(atlas);
+            }
+            NEA_Material *const wanted = isSign ? spriteCache.material(decal.colour) : atlas;
+            if (wanted != boundMaterial)
+            {
+                NEA_MaterialUse(wanted);
+                boundMaterial = wanted;
             }
             // (About how much of the screen it is: its width in pixels --
             // 128 pixels to a unit at a unit's distance -- by its height, which
@@ -757,6 +768,34 @@ namespace hlrt
             alpha = alpha < 1 ? 1 : (alpha > 31 ? 31 : alpha);
             NEA_PolyFormat(alpha, kIdMarksFirst + order[next] % kIdMarksCount, static_cast<NEA_LightEnum>(0), NEA_CULL_NONE,
                            static_cast<NEA_OtherFormatEnum>(static_cast<int>(worldDraw.polygonMode()) | kDepthEqual));
+            if (isSign)
+            {
+                // Upright on a wall, as the game puts one: its "up" the
+                // world's, its "right" the viewer's right as they face it.
+                // (On a floor or a ceiling, its top towards the world's X.)
+                const fx *n = decal.normal;
+                const bool wall = n[2] < kFxOne * 7 / 10 && n[2] > -kFxOne * 7 / 10;
+                const fx up[3] = {0, 0, kFxOne};
+                const fx along[3] = {kFxOne, 0, 0};
+                const fx *ref = wall ? up : along;
+                // right = ref x n (a wall), up = n x right.
+                fx right[3] = {(ref[1] * n[2] - ref[2] * n[1]) >> 12, (ref[2] * n[0] - ref[0] * n[2]) >> 12,
+                               (ref[0] * n[1] - ref[1] * n[0]) >> 12};
+                const fx length = fxLength(right);
+                if (length < 64)
+                    continue;
+                for (fx &c : right)
+                    c = static_cast<fx>((static_cast<std::int64_t>(c) << 12) / length);
+                const std::int32_t u[3] = {right[0], right[1], right[2]};
+                const std::int32_t v[3] = {(n[1] * right[2] - n[2] * right[1]) >> 12,
+                                           (n[2] * right[0] - n[0] * right[2]) >> 12,
+                                           (n[0] * right[1] - n[1] * right[0]) >> 12};
+                GFX_COLOR = 0x7FFF;
+                picture(*signRef, 0, at, u, v, (signRef->worldWidth + 1) / 2, (signRef->worldHeight + 1) / 2);
+                shown |= bit;
+                ++drawn;
+                continue;
+            }
             // Two directions across the wall.
             const fx *n = decal.normal;
             const fx size[3] = {n[0] < 0 ? -n[0] : n[0], n[1] < 0 ? -n[1] : n[1], n[2] < 0 ? -n[2] : n[2]};

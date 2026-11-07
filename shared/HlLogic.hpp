@@ -942,6 +942,18 @@ namespace hldata
                 if (!traceShotWall(*w.world, from, to, at, normal))
                     continue;
                 const auto picture = static_cast<std::uint8_t>(record.extra[0]);
+                if (picture == kDecalSign)
+                {
+                    // A sign: one of the map's sprites, as large as its
+                    // picture (a texel a unit), its colour its own.
+                    const std::uint32_t sprite = record.extra[2];
+                    if (w.level == nullptr || sprite >= w.level->spriteCount)
+                        return;
+                    const SpriteRef &ref = w.level->sprites[sprite];
+                    const int half = (ref.worldWidth > ref.worldHeight ? ref.worldWidth : ref.worldHeight) / 2;
+                    decalAdd(*w.actors, picture, at, normal, half, static_cast<std::uint16_t>(sprite), -1, true);
+                    return;
+                }
                 const int family = decalFamily(picture);
                 decalAdd(*w.actors, picture, at, normal, static_cast<int>(record.extra[1]),
                          family == 8 ? kMarkAlien

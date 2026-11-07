@@ -11,6 +11,7 @@
 
 #include "HlLevel.hpp"
 #include "hlds/TextureImage.hpp"
+#include "hlds/WadFile.hpp"
 
 namespace hlds
 {
@@ -61,4 +62,13 @@ namespace hlds
     /// extension, cut to what a SpriteRef holds ("sprites/Flare1.spr" ->
     /// "flare1").
     std::string spriteName(const std::string &path);
+
+    /// One of decals.wad's pictures as a sprite of one frame: its colour
+    /// the palette's last, as solid as each texel's index (the game's way
+    /// with a decal), lying as its wall does. False for an empty picture.
+    bool signSprite(const IndexedImage &picture, SprFile &out);
+    /// A sprite's name as spriteName has it -- or, for a sign
+    /// (hldata::kDecalSignPath), "d-" and the picture's name with only
+    /// letters, digits and '-' ("decals/{med#s1.spr" -> "d-meds1").
+    std::string signSpriteName(const std::string &path);
 } // namespace hlds

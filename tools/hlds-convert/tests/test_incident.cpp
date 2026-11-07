@@ -436,6 +436,47 @@ namespace
               "a shot meets a range target at its face, and misses one it passes beside");
     }
 
+    /// t0a0's numbers, arrows and the rest of its signs (infodecals of
+    /// decals.wad's own pictures): each a mark of one of the map's sprites.
+    void testSigns(const char *dir)
+    {
+        const std::unique_ptr<Game> game = load(dir, "t0a0");
+        if (game == nullptr)
+            return;
+        Game &g = *game;
+        int signs = 0, inRange = 0;
+        std::set<std::uint32_t> pictures;
+        for (std::uint32_t i = 0; i < g.view.logicCount; ++i)
+        {
+            const LogicRecord &r = g.view.logic[i];
+            if (r.kind != static_cast<std::uint8_t>(LogicKind::Mark) || r.extra[0] != kDecalSign)
+                continue;
+            ++signs;
+            inRange += r.extra[2] < g.view.spriteCount;
+            pictures.insert(r.extra[2]);
+        }
+        std::printf("test_incident: t0a0 has %d signs, of %zu pictures\n", signs, pictures.size());
+        // (Its large 1 to 4, its numbers 1 to 3, an arrow and a turn.)
+        check(signs >= 30 && inRange == signs && pictures.size() == 9, "t0a0's numbers and signs are the map's own sprites");
+        // Near the first large number: it is put on its wall.
+        g.player.origin[0] = fxFromInt(492);
+        g.player.origin[1] = fxFromInt(880);
+        g.player.origin[2] = fxFromInt(-43);
+        for (int n = 0; n < 5; ++n)
+            g.frame();
+        int placed = 0;
+        for (int i = 0; i < kMaxDecals; ++i)
+        {
+            const Decal &d = g.actors.decals[i];
+            if (!d.active || d.picture != kDecalSign)
+                continue;
+            ++placed;
+            std::printf("test_incident: a sign at %d %d %d facing %d %d %d, %d across\n", fxToInt(d.at[0]),
+                        fxToInt(d.at[1]), fxToInt(d.at[2]), d.normal[0], d.normal[1], d.normal[2], d.half * 2);
+        }
+        check(placed > 0, "... and those near the player are on their walls");
+    }
+
     /// c1a0d's suit, taken: it says its whole logon (!HEV_AAx), at once and
     /// at the suit's volume, with no pickup sound; and nothing more until
     /// that is said.
@@ -890,6 +931,7 @@ int main()
         testHazardLamps(dir);
         testWheelBridge(dir);
         testTargetFace(dir);
+        testSigns(dir);
         testScenes(dir);
         testTripmine(dir);
     }

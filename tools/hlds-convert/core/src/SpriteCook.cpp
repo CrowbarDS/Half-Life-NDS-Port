@@ -6,6 +6,7 @@
 #include <iterator>
 
 #include "HlSprite.hpp"
+#include "HlUi.hpp"
 
 namespace hlds
 {
@@ -341,6 +342,47 @@ namespace hlds
         }
         if (name.size() > 12)
             name.resize(12);
+        return name;
+    }
+
+    bool signSprite(const IndexedImage &picture, SprFile &out)
+    {
+        out = SprFile();
+        if (picture.width == 0 || picture.height == 0 || picture.width > 1024 || picture.height > 1024 ||
+            picture.pixels.size() != static_cast<std::size_t>(picture.width) * picture.height ||
+            picture.palette.size() < 256 * 3)
+            return false;
+        out.type = 3; // (oriented: it lies as its wall does)
+        out.format = kSprIndexAlpha;
+        out.width = static_cast<int>(picture.width);
+        out.height = static_cast<int>(picture.height);
+        out.palette.resize(256);
+        for (int c = 0; c < 256; ++c)
+            out.palette[c] = {picture.palette[c * 3], picture.palette[c * 3 + 1], picture.palette[c * 3 + 2]};
+        SprFrame frame;
+        frame.width = out.width;
+        frame.height = out.height;
+        frame.originX = -out.width / 2;
+        frame.originY = out.height / 2;
+        frame.pixels = picture.pixels;
+        out.frames.push_back(std::move(frame));
+        return true;
+    }
+
+    std::string signSpriteName(const std::string &path)
+    {
+        const std::string sign = hldata::kDecalSignPath;
+        if (path.rfind(sign, 0) != 0)
+            return spriteName(path);
+        std::string name = "d-";
+        for (std::size_t i = sign.size(); i < path.size() && path[i] != '.'; ++i)
+        {
+            const char c = static_cast<char>(std::tolower(static_cast<unsigned char>(path[i])));
+            if (std::isalnum(static_cast<unsigned char>(c)) || c == '-')
+                name += c;
+        }
+        if (name.size() > 20)
+            name.resize(20);
         return name;
     }
 } // namespace hlds
