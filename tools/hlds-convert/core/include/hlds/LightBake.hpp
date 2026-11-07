@@ -74,6 +74,9 @@ namespace hlds
         /// Which of a face's layers are of light that changes -- any style
         /// but 0 -- as bits (0: all of its light is steady).
         unsigned changingLayers(const BspFace &face) const;
+        /// Where a layer of a face is brightest: the texture coordinates
+        /// of its brightest sample. False if the face has no such layer.
+        bool brightest(const BspFace &face, int layer, double &s, double &t) const;
 
     private:
         const BspFile &bsp_;

@@ -31,6 +31,11 @@ namespace hlds
     namespace
     {
         constexpr int kNone = -1;
+        /// The first of the light styles a map switches (its named lights).
+        constexpr int kSwitchedStyleFirst = 32;
+        /// A face of no more light-map samples than this is a lamp's size:
+        /// what a switched light gives it is given to all of it.
+        constexpr int kLampSamples = 16;
 
         /// Hands out new, dense indices to the planes something actually uses.
         class PlaneTable
@@ -355,7 +360,7 @@ namespace hlds
             const bool fullBright = brush != nullptr && brush->fullBright();
 
             std::vector<MeshFace> meshFaces;
-            std::map<std::tuple<int, int, int, int, int>, int> keys; // (plane, side, mapping, texture, leaf) -> key
+            std::map<std::tuple<int, int, int, int, int, int>, int> keys; // (plane, side, mapping, texture, leaf, lamp) -> key
             std::vector<int> keyPlane, keySide, keyTexture;
             std::vector<char> keyAlpha;
             for (int f = src.firstFace; f < src.firstFace + src.faceCount; ++f)
@@ -379,10 +384,21 @@ namespace hlds
 
                 MeshFace mesh;
                 mesh.sources = {f};
+                // (A small face a switched light falls on -- a lamp, a lit
+                // board -- keeps to itself: merged into its neighbours, it
+                // would lose the corners its light is given at.)
+                bool lamp = false;
+                for (int layer = 0; layer < 4 && face.styles[layer] != 255; ++layer)
+                    lamp = lamp || (face.styles[layer] >= kSwitchedStyleFirst && face.styles[layer] < kLightStyles);
+                if (lamp)
+                {
+                    const LightExtents lx = light.extents(face);
+                    lamp = lx.width * lx.height <= kLampSamples;
+                }
                 const auto keyId = std::make_tuple(static_cast<int>(face.plane),
                                                    face.side != 0 ? 1 : 0,
                                                    mappingOf[face.texInfo], bspTexture,
-                                                   m == 0 && options.groupByLeaf ? faceLeaf[f] : 0);
+                                                   m == 0 && options.groupByLeaf ? faceLeaf[f] : 0, lamp ? f : -1);
                 auto found = keys.find(keyId);
                 if (found == keys.end())
                 {
@@ -562,11 +578,24 @@ namespace hlds
                                 {
                                     if (!(moving & (1u << layer)) || best->styles[layer] >= kLightStyles)
                                         continue;
-                                    const Rgb with = light.sampleLayers(*best, bestS, bestT, steady | (1u << layer));
+                                    // (A face of a few samples -- a lamp, a lit
+                                    // board -- whose light falls inside it and
+                                    // not on its corners: it is lit, all of it,
+                                    // as its brightest sample is. Corners alone
+                                    // would leave it dark.)
+                                    double ls = bestS, lt = bestT;
+                                    std::uint16_t from = baseColour;
+                                    const LightExtents lx = light.extents(*best);
+                                    if (lx.width * lx.height <= kLampSamples && light.brightest(*best, layer, ls, lt))
+                                    {
+                                        const Rgb under = light.sampleLayers(*best, ls, lt, steady);
+                                        from = rgb555Near(under.r, under.g, under.b);
+                                    }
+                                    const Rgb with = light.sampleLayers(*best, ls, lt, steady | (1u << layer));
                                     const std::uint16_t lit = rgb555Near(with.r, with.g, with.b);
-                                    const int more[3] = {std::max(0, (lit & 31) - (baseColour & 31)),
-                                                         std::max(0, ((lit >> 5) & 31) - ((baseColour >> 5) & 31)),
-                                                         std::max(0, ((lit >> 10) & 31) - ((baseColour >> 10) & 31))};
+                                    const int more[3] = {std::max(0, (lit & 31) - (from & 31)),
+                                                         std::max(0, ((lit >> 5) & 31) - ((from >> 5) & 31)),
+                                                         std::max(0, ((lit >> 10) & 31) - ((from >> 10) & 31))};
                                     if (more[0] == 0 && more[1] == 0 && more[2] == 0)
                                         continue;
                                     patches.push_back(LightPatch{static_cast<std::uint32_t>(order.size()),

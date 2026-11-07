@@ -97,6 +97,36 @@ namespace hlds
         return layers;
     }
 
+    bool LightBake::brightest(const BspFace &face, int layer, double &s, double &t) const
+    {
+        if (layer < 0 || layer >= 4 || face.lightOfs < 0 || bsp_.lighting.empty())
+            return false;
+        for (int l = 0; l <= layer; ++l)
+        {
+            if (face.styles[l] == 255)
+                return false;
+        }
+        const LightExtents e = extents(face);
+        const std::size_t layerBytes = static_cast<std::size_t>(e.width) * e.height * 3;
+        const std::size_t base = static_cast<std::size_t>(face.lightOfs) + layer * layerBytes;
+        if (layerBytes == 0 || base + layerBytes > bsp_.lighting.size())
+            return false;
+        const std::uint8_t *px = bsp_.lighting.data() + base;
+        int best = -1, at = 0;
+        for (int i = 0; i < e.width * e.height; ++i)
+        {
+            const int v = std::max({px[i * 3], px[i * 3 + 1], px[i * 3 + 2]});
+            if (v > best)
+            {
+                best = v;
+                at = i;
+            }
+        }
+        s = (e.minS + at % e.width) * static_cast<double>(kSampleSpacing);
+        t = (e.minT + at / e.width) * static_cast<double>(kSampleSpacing);
+        return true;
+    }
+
     Rgb LightBake::sample(const BspFace &face, double s, double t) const
     {
         // (As the map starts: every layer whose style is on.)

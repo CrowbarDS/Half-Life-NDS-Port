@@ -307,6 +307,35 @@ namespace
         check(differ == 0, "... and switched back, they are as they were");
     }
 
+    /// t0a0's jump lamps (jump1l..jump3l, styles 36..38): small boards whose
+    /// switched light falls inside them, not on their corners. Each is lit
+    /// by its light as its brightest sample is (not left near dark), and
+    /// the trigger that should switch it on does.
+    void testHazardLamps(const char *dir)
+    {
+        const std::unique_ptr<Game> game = load(dir, "t0a0");
+        if (game == nullptr)
+            return;
+        Game &g = *game;
+        const LevelView &v = g.view;
+        int most[3] = {0, 0, 0};
+        for (std::uint32_t i = 0; i < v.lightPatchCount; ++i)
+        {
+            const int style = v.lightPatches[i].style;
+            if (style < 36 || style > 38)
+                continue;
+            const int c = v.lightPatches[i].colour;
+            most[style - 36] = std::max({most[style - 36], c & 31, (c >> 5) & 31, (c >> 10) & 31});
+        }
+        std::printf("test_incident: t0a0's jump lamps add at most +%d +%d +%d\n", most[0], most[1], most[2]);
+        check(most[0] >= 14 && most[1] >= 14 && most[2] >= 14, "t0a0's jump lamps light up when switched on");
+        g.frame();
+        const bool offBefore = (g.logic.stylesOff >> 36) & 1;
+        logicFire(g.logic, g.player, static_cast<std::uint16_t>(nameOf(g, "jump1l")), -1, kUseToggle, 0);
+        g.frame();
+        check(offBefore && !((g.logic.stylesOff >> 36) & 1), "... and the first is off until its trigger fires it");
+    }
+
     /// t0a0a's valve: the wheel turns the bridge (a wheel too, flagged to be
     /// turned only with it); the bridge itself is not used by hand, even by
     /// someone standing on it.
@@ -858,6 +887,7 @@ int main()
         testLights(dir);
         testMicrowave(dir);
         testPlacedOnWhatIsUnder(dir);
+        testHazardLamps(dir);
         testWheelBridge(dir);
         testTargetFace(dir);
         testScenes(dir);
