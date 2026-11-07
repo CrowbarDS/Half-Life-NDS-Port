@@ -46,6 +46,23 @@ namespace hldata
     inline constexpr int kFontCount = 3;
     inline constexpr const char *const kFontFiles[kFontCount] = {"ui/font0.hfn", "ui/font1.hfn", "ui/font2.hfn"};
 
+    /// What a character of 128..255 (Windows-1252, the game's text) is drawn
+    /// as in a font that has not got it: its letter without the accent, the
+    /// nearest plain mark, or a space.
+    inline constexpr char kBaseLetters[129] =
+        "E ,f\".++^%S<O Z " // 80..8F
+        " ''\"\"*--~Ts>o zY" // 90..9F
+        " !cL*Y|S\"Ca\"--R-" // A0..AF
+        "o+23'uP.,1o\"   ?" // B0..BF
+        "AAAAAAACEEEEIIII" // C0..CF
+        "DNOOOOOxOUUUUYPs" // D0..DF
+        "aaaaaaaceeeeiiii" // E0..EF
+        "dnooooo/ouuuuypy"; // F0..FF
+    inline constexpr unsigned char baseLetter(unsigned char c)
+    {
+        return c < 128 ? c : static_cast<unsigned char>(kBaseLetters[c - 128]);
+    }
+
     struct FontView
     {
         const FontHeader *header = nullptr;
@@ -82,15 +99,30 @@ namespace hldata
         {
             return header != nullptr && c >= header->first && c < header->first + header->count;
         }
-        /// How far a character moves the pen (one it has not got: as a space).
+        /// The character drawn for `c`: itself, or one of 128..255 that the
+        /// font has no glyph for, its base letter (é as e).
+        unsigned char drawn(unsigned char c) const
+        {
+            if (c >= 128 && !(has(c) && widths[c - header->first] != 0))
+                return baseLetter(c);
+            return c;
+        }
+        /// How far a character moves the pen (one it has not got, nor its
+        /// base letter: as a space).
         int width(unsigned char c) const
         {
+            if (header == nullptr)
+                return 0;
+            c = drawn(c);
             if (!has(c))
                 return has(' ') ? widths[' ' - header->first] : 0;
             return widths[c - header->first];
         }
         const std::uint32_t *glyph(unsigned char c) const
         {
+            if (header == nullptr)
+                return nullptr;
+            c = drawn(c);
             return has(c) ? rows + static_cast<std::size_t>(c - header->first) * header->height : nullptr;
         }
     };

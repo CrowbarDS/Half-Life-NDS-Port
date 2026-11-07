@@ -83,8 +83,14 @@ namespace
               "cooked, it opens as the console opens it");
         check(view.glyph('A') != nullptr && view.glyph('A')[0] == (1u | 3u << 2 | 1u << 4) && view.glyph('A')[1] == (3u << 2),
               "a glyph's rows are its pixels: the edge 1, the letter 3, nothing 0");
-        check(view.width(200) == view.width(' ') && view.glyph(200) == nullptr,
-              "a character it has not got moves the pen as a space does");
+        check(view.width(0xBC) == view.width(' ') && view.glyph(0xBC) == view.glyph(' '),
+              "a character it has not got, nor a letter like it, moves the pen as a space does");
+        check(view.width(0xC0) == 3 && view.glyph(0xC0) == view.glyph('A') && view.glyph(0xC2) == view.glyph('A') &&
+                  view.width(0xA0) == view.width(' '),
+              "an accented letter it has not got is drawn as its letter (\xC0 and \xC2 as A)");
+        check(baseLetter(0xE9) == 'e' && baseLetter(0xE7) == 'c' && baseLetter(0xF1) == 'n' && baseLetter(0xC9) == 'E' &&
+                  baseLetter(0x9C) == 'o' && baseLetter(0xAB) == '"' && baseLetter(0xBF) == '?' && baseLetter('q') == 'q',
+              "the letters under the accents: e, c, n, E, o, and the marks");
         check(!view.open(reinterpret_cast<const std::uint8_t *>(aligned.data()), cooked.size() - 8),
               "a font file cut short is refused");
         view.open(reinterpret_cast<const std::uint8_t *>(aligned.data()), cooked.size());
