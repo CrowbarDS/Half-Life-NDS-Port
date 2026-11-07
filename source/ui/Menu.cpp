@@ -4115,12 +4115,10 @@ namespace hlrt
             recalled = earlierCount;
             const std::string line = typed;
             typed.clear();
+            keyboard.replaced();
             scrolled = 0;
             if (line.empty())
-            {
-                keyboard.drawPrompt();
                 return false;
-            }
             log.print(("] " + line).c_str());
             const ConsoleReply reply = run(line);
             if (!reply.text.empty())
@@ -4157,7 +4155,7 @@ namespace hlrt
                     recalled = recalled < 0 ? 0 : (recalled > earlierCount ? earlierCount : recalled);
                     typed = recalled < earlierCount ? earlier[recalled] : std::string();
                     sound.ui(kUiSoundTick);
-                    keyboard.drawPrompt();
+                    keyboard.replaced();
                 }
                 break;
             case Keyboard::Event::PageBack:
