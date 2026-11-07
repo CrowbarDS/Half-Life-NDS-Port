@@ -284,6 +284,65 @@ namespace
         check(topLayout(faces, 4, -1, "\n\n", -1, -1).lineCount == 0, "empty lines are no lines");
     }
 
+    /// A settings file as v0.2.1 wrote it (version 20), with every setting
+    /// it had moved off its default: written by that release's own
+    /// HlSettings.hpp, and kept here byte for byte.
+    const std::uint8_t kSettingsOfV021[] = {
+        0x48, 0x4c, 0x53, 0x54, 0x14, 0x00, 0xb0, 0x00, 0x4b, 0xeb, 0xb3, 0x7a, 0x00, 0x00, 0x03, 0x07,
+        0x09, 0x02, 0x01, 0x01, 0x01, 0x00, 0x03, 0x08, 0x02, 0x02, 0x00, 0x06, 0x01, 0x02, 0x01, 0x01,
+        0x0e, 0x06, 0x01, 0x01, 0x07, 0x02, 0x01, 0x00, 0x02, 0x00, 0x04, 0x00, 0x01, 0x00, 0x02, 0x00,
+        0x04, 0x00, 0x01, 0x00, 0x02, 0x00, 0x04, 0x00, 0x01, 0x00, 0x02, 0x00, 0x04, 0x00, 0x01, 0x00,
+        0x01, 0x00, 0x00, 0x01, 0x01, 0x46, 0x72, 0x65, 0x65, 0x6d, 0x61, 0x6e, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x02, 0x64, 0xc8, 0x03, 0x04, 0x01, 0x63, 0x72, 0x6f, 0x73, 0x73, 0x66, 0x69, 0x72, 0x65,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1e, 0x0f, 0x01, 0x01, 0x01, 0x01, 0x00, 0x06, 0x00,
+        0x14, 0x01, 0x02, 0x02, 0x44, 0x33, 0x22, 0x11, 0x88, 0x77, 0x66, 0x55, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x1e, 0x00, 0x01, 0x01, 0x02, 0x00, 0x00, 0x01,
+    };
+
+    /// A player's settings from v0.2.1 come through the upgrade: read as
+    /// they were, written again in this version, and read back the same,
+    /// with what v0.2.1 did not have at its default.
+    void testSettingsFromV021()
+    {
+        SettingsData read;
+        check(readSettings(kSettingsOfV021, sizeof(kSettingsOfV021), read), "v0.2.1's settings file is read");
+        auto same = [](const SettingsData &d)
+        {
+            bool keys = true;
+            for (int i = 0; i < kActionCount; ++i)
+                keys = keys && d.keys[i] == static_cast<std::uint16_t>(1u << (i % 3));
+            return d.volume[0] == 3 && d.volume[1] == 7 && d.volume[2] == 9 && d.volume[3] == 2 && d.debugReadout == 1 &&
+                   d.leftHanded == 1 && d.viewBob == 1 && d.graphics.fog == 0 && d.graphics.fogStrength == 3 &&
+                   d.graphics.fogDistance == 8 && d.graphics.fogColour == 2 && d.graphics.modelDetail == 2 &&
+                   d.graphics.worldDetail == 0 && d.graphics.modelLimit == 6 && d.graphics.drawDistance == 1 &&
+                   d.controlScheme == 2 && d.padTurns == 1 && d.padLooks == 1 && d.aimSpeed == 14 && d.pitchSpeed == 6 &&
+                   d.invertPitch == 1 && d.duckToggle == 1 && d.walkToggle == 1 && d.jumpWalks == 1 && d.tapJump == 0 &&
+                   d.tapUse == 1 && d.firmness == 7 && d.firmPress == 2 && keys && d.autoaim == 1 && d.autosave == 0 &&
+                   d.achievementPopups == 0 && d.roomEffects == kRoomOff && d.outputMode == kOutputHeadphones &&
+                   d.soundQuality == kQualityHigh && std::strcmp(d.name, "Freeman") == 0 && d.playerModel == 2 &&
+                   d.topColour == 100 && d.bottomColour == 200 && d.spray == 3 && d.sprayColour == 4 && d.hostMode == 1 &&
+                   std::strcmp(d.hostMap, "crossfire") == 0 && d.fragLimit == 30 && d.minuteLimit == 15 &&
+                   d.weaponsStay == 1 && d.fallDamage == 1 && d.friendlyFire == 1 && d.flashlight == 1 &&
+                   d.hostAutoaim == 0 && d.maxPlayers == 6 && d.allowGuests == 0 && d.chatSeconds == 20 &&
+                   d.sessionTotals == 1 && d.nextMode == 2 && d.rotationCount == 2 && d.rotation[0] == 0x11223344u &&
+                   d.rotation[1] == 0x55667788u && d.voteSeconds == 30;
+        };
+        check(same(read), "... with every setting the player had, the volumes among them, as they were");
+        check(read.cheats == 0 && read.keyboardLayout == kKeyboardQwerty && read.dialogueFocus == kFocusLight,
+              "... and what v0.2.1 had not, at its default (no cheats, QWERTY, dialogue focus light)");
+        const std::vector<std::uint8_t> upgraded = writeSettings(read);
+        SettingsHeader header;
+        std::memcpy(&header, upgraded.data(), sizeof(header));
+        SettingsData again;
+        check(header.version == kSettingsVersion && upgraded.size() <= kSettingsMostBytes &&
+                  readSettings(upgraded.data(), upgraded.size(), again) && same(again) &&
+                  again.dialogueFocus == kFocusLight,
+              "written again as this version, and read back the same");
+    }
+
     /// The settings the menu changes: there and back, and nothing out of
     /// range believed.
     void testSettings()
@@ -1189,6 +1248,7 @@ int main()
     testPlain();
     testTopLayout();
     testSettings();
+    testSettingsFromV021();
     testGraphics();
     testLayout();
     testLamp();
