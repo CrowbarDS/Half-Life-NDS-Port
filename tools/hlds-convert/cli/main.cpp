@@ -47,6 +47,9 @@ namespace
                      "      --stage <folder>   where the converter keeps its own files, which\n"
                      "                         the archives are made from and the next run\n"
                      "                         finds again (default: <card root>-stage)\n"
+                     "      --language <name>  a translation installed beside the game folder\n"
+                     "                         (valve_french: french), its text and voices\n"
+                     "                         over the game's (default: english, the game's own)\n"
                      "      --no-compress      archives with nothing in them compressed\n"
                      "      --no-textures      levels only; the DS draws them in light alone\n"
                      "      --ptexconv <path>  the texture encoder, if it is not found by\n"
@@ -268,6 +271,7 @@ namespace
     {
         ConvertOptions options;
         std::string mapName;
+        std::string language;
         for (std::size_t i = 0; i < args.size(); ++i)
         {
             if (args[i] == "-o" && i + 1 < args.size())
@@ -305,6 +309,8 @@ namespace
                 options.stageRoot = args[++i];
             else if (args[i] == "--no-compress")
                 options.compress = false;
+            else if (args[i] == "--language" && i + 1 < args.size())
+                language = args[++i];
             else if (options.gameDir.empty())
                 options.gameDir = args[i];
             else if (!all && mapName.empty())
@@ -315,6 +321,22 @@ namespace
         if (options.gameDir.empty() || options.cardRoot.empty() || options.lightScale <= 0 ||
             (!all && mapName.empty()))
             return usage();
+        for (char &c : language)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (!language.empty() && language != "english")
+        {
+            options.languageDir = languageFolder(options.gameDir, language);
+            if (options.languageDir.empty())
+            {
+                std::string found;
+                for (const std::string &one : gameLanguages(options.gameDir))
+                    found += " " + one;
+                std::fprintf(stderr, "error: no %s translation beside %s (there is: english%s)\n", language.c_str(),
+                             options.gameDir.string().c_str(), found.c_str());
+                return 1;
+            }
+            std::printf("language: %s, from %s\n", language.c_str(), options.languageDir.string().c_str());
+        }
 
         Converter converter(options);
         const std::string problem = converter.preflight();

@@ -31,6 +31,10 @@ namespace hlds
     struct ConvertOptions
     {
         std::filesystem::path gameDir;  ///< the game's "valve" folder
+        /// A translation's folder beside it (valve_french): each file it has
+        /// is taken in place of the game's -- text, voices, the credits'
+        /// letters. Empty: the game as it is (English).
+        std::filesystem::path languageDir;
         std::filesystem::path cardRoot; ///< the root of the SD card
         /// Where the converter keeps its own files -- levels, textures,
         /// models and sounds one by one, which the card's archives are then
@@ -218,6 +222,13 @@ namespace hlds
     std::string chapterOf(const std::string &map, const std::vector<std::pair<std::string, std::string>> &titled);
     /// Every map in the game's folder that names a chapter's title, and the
     /// title: read out of each map's own entities.
+    /// The translations installed beside `gameDir` (Steam's valve_french:
+    /// "french"), in order: folders named after it plus "_<language>" with a
+    /// titles.txt or a resource/<folder>.txt (valve_hd has neither).
+    std::vector<std::string> gameLanguages(const std::filesystem::path &gameDir);
+    /// Translation `language`'s folder beside `gameDir`; empty if there is none.
+    std::filesystem::path languageFolder(const std::filesystem::path &gameDir, const std::string &language);
+
     std::vector<std::pair<std::string, std::string>> chapterTitles(const std::filesystem::path &gameDir,
                                                                    const TitlesBook *titles);
 } // namespace hlds

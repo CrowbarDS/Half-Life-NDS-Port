@@ -6,11 +6,14 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "TestGame.hpp"
+#include "hlds/Converter.hpp"
 #include "hlds/TitlesFile.hpp"
 
 using namespace hlds;
@@ -283,15 +286,61 @@ namespace
     }
 } // namespace
 
+namespace
+{
+    void testLanguages()
+    {
+        namespace fs = std::filesystem;
+        const fs::path root = fs::temp_directory_path() / "hlds_test_languages";
+        fs::remove_all(root);
+        fs::create_directories(root / "valve");
+        fs::create_directories(root / "valve_french" / "sound");
+        fs::create_directories(root / "Valve_Spanish" / "resource");
+        fs::create_directories(root / "valve_hd" / "models");
+        fs::create_directories(root / "valve_downloads");
+        std::ofstream(root / "valve_french" / "titles.txt") << "T1\n{\nx\n}\n";
+        std::ofstream(root / "Valve_Spanish" / "resource" / "Valve_Spanish.txt") << "x";
+        const std::vector<std::string> found = gameLanguages(root / "valve");
+        check(found.size() == 2 && found[0] == "french" && found[1] == "spanish",
+              "the translations beside the game: french and spanish, not hd nor downloads");
+        check(languageFolder(root / "valve", "French") == root / "valve_french" &&
+                  languageFolder(root / "valve/", "spanish") == root / "Valve_Spanish" &&
+                  languageFolder(root / "valve", "german").empty() && languageFolder(root / "valve", "hd").empty(),
+              "... found by name, whatever case; one that is not there, not");
+        fs::remove_all(root);
+    }
+
+    void testFrench(const char *dir)
+    {
+        const std::filesystem::path french = languageFolder(dir, "french");
+        if (french.empty())
+        {
+            std::printf("test_titles: no valve_french beside the game, its titles were not read\n");
+            return;
+        }
+        std::ifstream in(french / "titles.txt", std::ios::binary);
+        const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        const TitlesBook book = parseTitles(bytes);
+        int accented = 0;
+        for (const auto &entry : book.titles)
+            accented += entry.second.text.find('\xE9') != std::string::npos;
+        std::printf("test_titles: valve_french: %d titles, %d with an \xC3\xA9\n", static_cast<int>(book.titles.size()),
+                    accented);
+        check(!book.titles.empty() && accented > 0, "the French game's titles keep their accents");
+    }
+} // namespace
+
 int main()
 {
     testParse();
     testRoom();
+    testLanguages();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir != nullptr && dir[0] != '\0')
     {
         testFirstMap(dir);
         testChapters(dir);
+        testFrench(dir);
     }
     else
     {

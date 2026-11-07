@@ -287,6 +287,19 @@ namespace hlds
             }
             return at;
         }
+
+        /// One of the game's files: the chosen language's, if its folder has
+        /// it (valve_french's voices and text over valve's), else the game's.
+        fs::path findGameFile(const ConvertOptions &options, const std::string &relative)
+        {
+            if (!options.languageDir.empty())
+            {
+                const fs::path translated = findNoCase(options.languageDir, relative);
+                if (!translated.empty())
+                    return translated;
+            }
+            return findNoCase(options.gameDir, relative);
+        }
     } // namespace
 
     MapResult Converter::cookMap(const std::string &name)
@@ -879,7 +892,7 @@ namespace hlds
         {
             std::vector<std::uint8_t> text;
             std::string ignored;
-            const fs::path file = findNoCase(options_.gameDir / "sound", "materials.txt");
+            const fs::path file = findGameFile(options_, "sound/materials.txt");
             if (!file.empty() && readFile(file, text, ignored))
                 materials = parseMaterials(std::string(text.begin(), text.end()));
         }
@@ -898,7 +911,7 @@ namespace hlds
         {
             std::vector<std::uint8_t> text;
             std::string ignored;
-            const fs::path file = findNoCase(options_.gameDir / "sound", "sentences.txt");
+            const fs::path file = findGameFile(options_, "sound/sentences.txt");
             if (!file.empty() && readFile(file, text, ignored))
                 book = parseSentences(std::string(text.begin(), text.end()));
         }
@@ -908,7 +921,7 @@ namespace hlds
         {
             std::vector<std::uint8_t> text;
             std::string ignored;
-            const fs::path file = findNoCase(options_.gameDir, "titles.txt");
+            const fs::path file = findGameFile(options_, "titles.txt");
             if (!file.empty() && readFile(file, text, ignored))
                 titles = parseTitles(std::string(text.begin(), text.end()));
         }
@@ -1022,7 +1035,7 @@ namespace hlds
                 one.index = n;
                 std::vector<std::uint8_t> source;
                 std::string why;
-                const fs::path file = findNoCase(options_.gameDir / "sound", level.soundPaths[n]);
+                const fs::path file = findGameFile(options_, "sound/" + std::string(level.soundPaths[n]));
                 if (file.empty() || !readFile(file, source, why) || !parseWav(source, one.wav, why))
                 {
                     // Not in the game folder: the map does without it.
@@ -1188,7 +1201,7 @@ namespace hlds
                 one.index = n;
                 std::vector<std::uint8_t> source;
                 std::string why;
-                const fs::path file = findNoCase(options_.gameDir, level.spritePaths[n]);
+                const fs::path file = findGameFile(options_, level.spritePaths[n]);
                 if (file.empty() || !readFile(file, source, why) || !one.spr.parse(source, why))
                 {
                     ++result.spritesMissing;
@@ -1464,7 +1477,7 @@ namespace hlds
         {
             std::vector<std::uint8_t> lump;
             QFont font;
-            const fs::path wad = findNoCase(options_.gameDir, kFaces[n].wad);
+            const fs::path wad = findGameFile(options_, kFaces[n].wad);
             if (wad.empty() || !readWadLump(wad, kFaces[n].lump, lump, why) || !parseQFont(lump, font, why) ||
                 !put(ui / hldata::kFontFiles[n], cookFont(font, kFaces[n].outlined)))
             {
@@ -1484,7 +1497,7 @@ namespace hlds
             const char *const to = word ? hldata::kMatchWarningFiles[k] : hldata::kUiSoundFiles[k];
             std::vector<std::uint8_t> source;
             WavData wav;
-            const fs::path file = findNoCase(options_.gameDir / "sound", from);
+            const fs::path file = findGameFile(options_, "sound/" + std::string(from));
             if (file.empty() || !readFile(file, source, why) || !parseWav(source, wav, why))
             {
                 result.warnings.push_back(std::string("the sound ") + from + " was not made");
@@ -1525,8 +1538,8 @@ namespace hlds
         };
         {
             SprFile hud, crosshairs;
-            const fs::path hudFile = findNoCase(options_.gameDir, "sprites/320hud2.spr");
-            const fs::path crossFile = findNoCase(options_.gameDir, "sprites/crosshairs.spr");
+            const fs::path hudFile = findGameFile(options_, "sprites/320hud2.spr");
+            const fs::path crossFile = findGameFile(options_, "sprites/crosshairs.spr");
             if (!hudFile.empty() && hud.load(hudFile, why) && !crossFile.empty() && crosshairs.load(crossFile, why) &&
                 texture(hudAtlas(hud, crosshairs), TextureFormat::A3I5, hldata::kA3I5Colours, hldata::kTextureA3I5,
                         hldata::kHudAtlasFile))
@@ -1541,7 +1554,7 @@ namespace hlds
             for (auto [sprite, name] : {std::pair{&hud7, "sprites/640hud7.spr"}, std::pair{&hud8, "sprites/640hud8.spr"},
                                         std::pair{&hud9, "sprites/640hud9.spr"}, std::pair{&pain, "sprites/640_pain.spr"}})
             {
-                const fs::path file = findNoCase(options_.gameDir, name);
+                const fs::path file = findGameFile(options_, name);
                 loaded = loaded && !file.empty() && sprite->load(file, why);
             }
             if (!loaded || !texture(hudAtlas640(hud7, hud8, hud9, pain, crosshairs), TextureFormat::A3I5,
@@ -1550,7 +1563,7 @@ namespace hlds
                                           (why.empty() ? std::string() : ": " + why));
             // ... and of a train at the player's controls (both sets show it).
             SprFile train;
-            const fs::path trainFile = findNoCase(options_.gameDir, "sprites/640_train.spr");
+            const fs::path trainFile = findGameFile(options_, "sprites/640_train.spr");
             if (trainFile.empty() || !train.load(trainFile, why) ||
                 !texture(hudTrainPictures(train), TextureFormat::A3I5, hldata::kA3I5Colours, hldata::kTextureA3I5,
                          hldata::kHudTrainFile))
@@ -1560,7 +1573,7 @@ namespace hlds
         {
             // The weapons' pictures for the touch screen's slots.
             SprFile sheet;
-            const fs::path file = findNoCase(options_.gameDir, "sprites/320hud1.spr");
+            const fs::path file = findGameFile(options_, "sprites/320hud1.spr");
             if (!file.empty() && sheet.load(file, why) && put(ui / hldata::kWeaponIconsFile, weaponIcons(sheet)))
                 result.icons = true;
             else
@@ -1571,7 +1584,7 @@ namespace hlds
             // The marks shots and blood leave.
             WadFile decals;
             int missing = 0;
-            const fs::path file = findNoCase(options_.gameDir, "decals.wad");
+            const fs::path file = findGameFile(options_, "decals.wad");
             if (!file.empty() && decals.open(file, why) &&
                 texture(decalAtlas(decals, missing), TextureFormat::A3I5, hldata::kA3I5Colours, hldata::kTextureA3I5,
                         hldata::kDecalAtlasFile) &&
@@ -1584,7 +1597,7 @@ namespace hlds
         {
             // The game's title, for the first map.
             SprFile sheet;
-            const fs::path file = findNoCase(options_.gameDir, "sprites/320hud3.spr");
+            const fs::path file = findGameFile(options_, "sprites/320hud3.spr");
             if (!file.empty() && sheet.load(file, why) && put(ui / hldata::kTitleFile, titlePicture(sheet)))
                 result.title = true;
             else
@@ -1628,7 +1641,7 @@ namespace hlds
                 }
             }
             WadFile paint;
-            const fs::path wad = findNoCase(options_.gameDir, "spraypaint.wad");
+            const fs::path wad = findGameFile(options_, "spraypaint.wad");
             if (!wad.empty() && paint.open(wad, why))
             {
                 for (const std::string &name : paint.names())
@@ -1653,7 +1666,7 @@ namespace hlds
         {
             std::vector<std::uint8_t> lump;
             IndexedImage picture;
-            const fs::path wad = findNoCase(options_.gameDir, "cached.wad");
+            const fs::path wad = findGameFile(options_, "cached.wad");
             if (!wad.empty() && readWadLump(wad, "LOADING", lump, why) && parseQPic(lump, picture, why) &&
                 texture(loadingTexture(picture), TextureFormat::Tex4x4, 1024, 0, hldata::kLoadingFile))
                 result.loading = true;
@@ -1667,7 +1680,7 @@ namespace hlds
         // music's track kIntroTrack).
         {
             RgbaImage background;
-            const auto find = [&](const std::string &relative) { return findNoCase(options_.gameDir, relative); };
+            const auto find = [&](const std::string &relative) { return findGameFile(options_, relative); };
             // Who else a player may be seen as (HlCharacters.hpp).
             std::vector<std::string> clips;
             {
@@ -1684,7 +1697,7 @@ namespace hlds
             auto cookPerson = [&](const std::string &file, const std::vector<std::string> &own, int skinTexels,
                                   const fs::path &modelOut, const fs::path &skinOut, bool finest = false)
             {
-                const fs::path found = findNoCase(options_.gameDir, file);
+                const fs::path found = findGameFile(options_, file);
                 MdlFile mdl;
                 CookedModel cooked;
                 ModelCookReport modelReport;
@@ -1732,7 +1745,7 @@ namespace hlds
         {
             std::vector<std::uint8_t> bytes;
             AviFile avi;
-            const fs::path file = findNoCase(options_.gameDir, "media/logo.avi");
+            const fs::path file = findGameFile(options_, "media/logo.avi");
             if (!file.empty() && readFile(file, bytes, why) && avi.load(bytes, why) &&
                 put(ui / hldata::kLogoFile, logoFile(avi.frames, avi.frameMicros)))
                 result.logo = true;
@@ -1742,7 +1755,7 @@ namespace hlds
         }
         {
             std::vector<std::uint8_t> bytes;
-            const fs::path file = findNoCase(options_.gameDir, "media/valve.avi");
+            const fs::path file = findGameFile(options_, "media/valve.avi");
             const fs::path out = dataDir(options_.cardRoot) / hldata::kIntroFile;
             if (!file.empty() && readFile(file, bytes, why))
             {
@@ -2129,6 +2142,41 @@ namespace hlds
         // (The game's first maps name none: their chapter's title is shown
         // by the ride itself.)
         return map.rfind("c0a0", 0) == 0 ? "C0A0TITLE" : std::string();
+    }
+
+    std::vector<std::string> gameLanguages(const std::filesystem::path &gameDir)
+    {
+        std::vector<std::string> out;
+        const fs::path dir = gameDir.has_filename() ? gameDir : gameDir.parent_path();
+        const std::string prefix = lower(dir.filename().string()) + "_";
+        std::error_code ec;
+        for (auto it = fs::directory_iterator(dir.parent_path(), ec); !ec && it != fs::directory_iterator();
+             it.increment(ec))
+        {
+            const std::string name = it->path().filename().string();
+            const std::string low = lower(name);
+            if (!it->is_directory(ec) || low.size() <= prefix.size() || low.compare(0, prefix.size(), prefix) != 0)
+                continue;
+            if (findNoCase(it->path(), "titles.txt").empty() && findNoCase(it->path(), "resource/" + name + ".txt").empty())
+                continue;
+            out.push_back(low.substr(prefix.size()));
+        }
+        std::sort(out.begin(), out.end());
+        return out;
+    }
+
+    std::filesystem::path languageFolder(const std::filesystem::path &gameDir, const std::string &language)
+    {
+        const std::string wanted = lower(language);
+        for (const std::string &found : gameLanguages(gameDir))
+        {
+            if (found == wanted)
+            {
+                const fs::path dir = gameDir.has_filename() ? gameDir : gameDir.parent_path();
+                return findNoCase(dir.parent_path(), dir.filename().string() + "_" + found);
+            }
+        }
+        return fs::path();
     }
 
     std::vector<std::pair<std::string, std::string>> chapterTitles(const std::filesystem::path &gameDir,
