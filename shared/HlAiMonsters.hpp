@@ -18,6 +18,12 @@ namespace hldata
         {
             monsterSound(c.w, c.me, sound);
         }
+        /// ... at `volume` of 127.
+        inline void aiSayAt(AiCtx &c, CommonSound sound, int volume)
+        {
+            if (c.w.heard != nullptr)
+                c.w.heard->add(sound, c.me.pos, volume, kRadiusLarge);
+        }
         /// ... heard only near by (ATTN_IDLE).
         inline void aiSayNear(AiCtx &c, CommonSound sound)
         {
@@ -1388,7 +1394,7 @@ namespace hldata
             {
             case kWarn:
             case kStartAttack:
-                detail::aiSay(c, CommonSound::HoundAttack);
+                detail::aiSayAt(c, CommonSound::HoundAttack, 89); // (0.7: WarmUpSound)
                 break;
             case kHopBack:
             {
@@ -1491,7 +1497,7 @@ namespace hldata
         {
             // (A warning, a fifth of the time, running into a fight.)
             if (c.m.state == kStateCombat && c.m.activity == kActRun && aiRandomLong(c.a, 0, 4) == 0)
-                detail::aiSay(c, CommonSound::HoundAttack);
+                detail::aiSayAt(c, CommonSound::HoundAttack, 89); // (0.7: WarmUpSound)
             // Its eye blinks, unless something has it shut.
             if (!c.m.flag2)
             {

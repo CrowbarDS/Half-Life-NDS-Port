@@ -1197,7 +1197,7 @@ namespace hldata
                 if (sounds.unlocked != kNoSound)
                     chargerSound(w, index, sounds.unlocked, 0);
                 else if (w.heard != nullptr) // (a map cooked before it had its own)
-                    w.heard->add(CommonSound::Charge, nullptr, 100);
+                    w.heard->add(CommonSound::Charge, nullptr, 127);
                 state.hurt = 560;
             }
             if (state.phase == 1 && state.hurt <= 0)
@@ -1639,7 +1639,7 @@ namespace hldata
                         shot.sprite = 1;
                         shot.leftMs = beamReach(w, player, shot.pos, end, -1);
                         if (w.heard != nullptr)
-                            w.heard->add(CommonSound::MineActivate, shot.pos, 127, kRadiusLarge);
+                            w.heard->add(CommonSound::MineActivate, shot.pos, 64, kRadiusLarge, 75);
                         continue;
                     }
                     // Armed: anything across its beam, and it goes.
@@ -1796,7 +1796,7 @@ namespace hldata
                                 const int which = static_cast<int>(chance(a) % 3);
                                 w.heard->add(which == 0 ? CommonSound::SnarkHunt1
                                                         : (which == 1 ? CommonSound::SnarkHunt2 : CommonSound::SnarkHunt3),
-                                             shot.pos, 100, kRadiusLarge, pitch);
+                                             shot.pos, 127, kRadiusLarge, pitch);
                             }
                         }
                         else
@@ -1843,7 +1843,7 @@ namespace hldata
                             {
                                 shot.sprite = 1;
                                 if (w.heard != nullptr)
-                                    w.heard->add(CommonSound::RocketFly, shot.pos, 110, 2000); // (attn 0.5)
+                                    w.heard->add(CommonSound::RocketFly, shot.pos, 127, 2000); // (attn 0.5)
                             }
                         }
                         else
@@ -1910,7 +1910,7 @@ namespace hldata
                         }
                         if (w.heard != nullptr && (chance(a) % 40) == 0)
                             w.heard->add(static_cast<CommonSound>(static_cast<int>(CommonSound::HornetBuzz1) + static_cast<int>(chance(a) % 3)),
-                                         shot.pos, 70, kRadiusLarge);
+                                         shot.pos, 102, kRadiusLarge); // (HORNET_BUZZ_VOLUME)
                     }
                     fx to[3];
                     for (int i = 0; i < 3; ++i)
@@ -1954,7 +1954,7 @@ namespace hldata
                         a.got |= kGotHurt;
                         if (w.heard != nullptr)
                             w.heard->add(static_cast<CommonSound>(static_cast<int>(CommonSound::HornetHit1) + static_cast<int>(chance(a) % 3)),
-                                         shot.pos, 100, kRadiusLarge);
+                                         shot.pos, 127, kRadiusLarge);
                         continue;
                     }
                     for (int i = 0; i < 3; ++i)
@@ -1974,7 +1974,7 @@ namespace hldata
                         monsterHurt(w, struck, foe ? skillOf(w).hornetDmg : 7, false); // (plrDmgHornet: 7 at every level)
                         if (w.heard != nullptr)
                             w.heard->add(static_cast<CommonSound>(static_cast<int>(CommonSound::HornetHit1) + static_cast<int>(chance(a) % 3)),
-                                         shot.pos, 100, kRadiusLarge);
+                                         shot.pos, 127, kRadiusLarge);
                         continue;
                     }
                     if (!rocket && (line.fraction < kFractionOne || shot.leftMs <= 0))
@@ -2185,14 +2185,14 @@ namespace hldata
                         tossOn(*w.world, t, shot.velocity, ms, to);
                         if (!gib && met == kTossBounced && w.heard != nullptr && fxLength(shot.velocity) > fxFromInt(60))
                         {
-                            // (One of its three knocks, and quiet: the
-                            // game's are a quarter of full.)
+                            // (One of its three knocks: a grenade's quiet, a
+                            // quarter of full; a satchel's at full.)
                             w.actors->seed = w.actors->seed * 1664525u + 1013904223u;
                             const int which = static_cast<int>((w.actors->seed >> 12) % 3);
                             w.heard->add(satchel      ? CommonSound::SatchelBounce
                                          : which == 0 ? CommonSound::GrenadeBounce
                                                       : (which == 1 ? CommonSound::GrenadeBounce2 : CommonSound::GrenadeBounce3),
-                                         shot.pos, 48, kRadiusLarge);
+                                         shot.pos, satchel ? 127 : 32, kRadiusLarge);
                         }
                     }
                     for (int i = 0; i < 3; ++i)
@@ -2293,7 +2293,7 @@ namespace hldata
                     shot.active = false;
                     effectAdd(a, kEffectSplat, end, nullptr, 12, 200);
                     if (w.heard != nullptr)
-                        w.heard->add(CommonSound::SpitHit, end, 110, kRadiusLarge);
+                        w.heard->add(CommonSound::SpitHit, end, 127, kRadiusLarge);
                     continue;
                 }
                 for (int i = 0; i < 3; ++i)
@@ -2949,7 +2949,9 @@ namespace hldata
                                                                    mine.reach) >> kFractionShift);
                 mine.ai = kMineArmed;
                 mine.thinkMs = 0;
-                monsterSound(w, mine, CommonSound::MineActivate);
+                // (At half of full, low: tripmine.cpp's PowerupThink.)
+                if (w.heard != nullptr)
+                    w.heard->add(CommonSound::MineActivate, mine.pos, 64, kRadiusLarge, 75);
                 return;
             }
             if ((mine.thinkMs += ms) < 100)
@@ -3928,7 +3930,7 @@ namespace hldata
                     at[i] = eye[i] + static_cast<fx>((static_cast<std::int64_t>(end[i] - eye[i]) * nearest) >>
                                                      kFractionShift);
                 if (bullet && w.heard != nullptr)
-                    w.heard->add(CommonSound::BulletFlesh, at, 90, 1000); // (attn 1)
+                    w.heard->add(CommonSound::BulletFlesh, at, 127, 1000); // (attn 1)
                 monsterHurt(w, struck, damage, bullet, bullet ? struckGroup : hitGroup(*a, a->states[struck], eye, end), kDmgUnset,
                             from >= 0 ? static_cast<std::int16_t>(from) : kAiPlayer,
                             from >= 0 ? a->states[from].pos : nullptr);
@@ -3987,7 +3989,7 @@ namespace hldata
             fx at[3];
             for (int i = 0; i < 3; ++i)
                 at[i] = eye[i] + static_cast<fx>((static_cast<std::int64_t>(end[i] - eye[i]) * shot.fraction) >> kFractionShift);
-            w.heard->add(detail::chance(*w.actors) & 1 ? CommonSound::Ricochet1 : CommonSound::Ricochet2, at, 100,
+            w.heard->add(detail::chance(*w.actors) & 1 ? CommonSound::Ricochet1 : CommonSound::Ricochet2, at, 127,
                          kRadiusLarge);
         }
         return false;
@@ -5530,7 +5532,7 @@ namespace hldata
                 if (!launch(kShotRocket, from, velocity, 30000))
                     return did;
                 ars->have = static_cast<std::uint16_t>(ars->have & ~kArsenalRpgLoaded);
-                say(CommonSound::RocketFire, 95 + static_cast<int>(chance() % 10));
+                say(CommonSound::RocketFire, 100, 114);
                 state.anim = "fire";
                 state.cooldownMs = 1500;
                 state.idleMs = 5000;
@@ -5612,7 +5614,8 @@ namespace hldata
                 // ... and the gun's kick, which the player feels.
                 for (int i = 0; i < 3; ++i)
                     player.velocity[i] -= forward[i] * damage * 5;
-                say(CommonSound::GaussFire, 85 + static_cast<int>(chance() % 30));
+                // (As loud as it was charged: 0.5 + damage / 400 of full.)
+                say(CommonSound::GaussFire, 85 + static_cast<int>(chance() % 30), 64 + damage * 127 / 400);
                 state.anim = "fire";
                 state.cooldownMs = 1000;
                 state.idleMs = 5000;
@@ -5664,7 +5667,7 @@ namespace hldata
                     damage = damage * (kFxOne + along) / kFxOne;
                     start = from;
                 }
-                say(CommonSound::GaussFire, 85 + static_cast<int>(chance() % 30), 100);
+                say(CommonSound::GaussFire, 85 + static_cast<int>(chance() % 30), 70); // (0.5 + 20 / 400)
                 state.anim = "fire2";
                 state.cooldownMs = 200;
                 state.idleMs = 5000;
@@ -5699,7 +5702,7 @@ namespace hldata
                 if (state.secondMs <= 0)
                 {
                     if (running)
-                        say(CommonSound::EgonRun, 100, 110);
+                        say(CommonSound::EgonRun, 125, 124);
                     state.secondMs = 1000;
                 }
                 if ((state.loadMs -= ms) <= 0)
@@ -5774,7 +5777,7 @@ namespace hldata
                 ars->hornets = static_cast<std::int16_t>(ars->hornets - 1);
                 state.loadMs = 500;
                 say(static_cast<CommonSound>(static_cast<int>(CommonSound::HornetFire1) + static_cast<int>(chance() % 3)),
-                    100, 110);
+                    100, 127);
                 state.anim = "shoot";
                 state.cooldownMs = fast ? 100 : 250;
                 state.idleMs = 3000;
@@ -5809,7 +5812,8 @@ namespace hldata
         auto fire = [&](int rounds, int pellets, int cone, int wait, CommonSound sound, int pitch, const char *anim)
         {
             *clip = static_cast<std::int16_t>(*clip - rounds);
-            say(sound, pitch);
+            // (The .357's shot is a little under full: 0.8 to 0.9.)
+            say(sound, pitch, inv.current == kWeaponPython ? 102 + static_cast<int>(chance() % 13) : 127);
             if (inv.current == kWeaponCrossbow)
             {
                 // A bolt, not a round: from a little under the eye, at 2000

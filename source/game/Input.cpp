@@ -102,9 +102,9 @@ namespace hlrt
         }
         // As the game's weapon menu sounds (cl_dll/ammo.cpp): along it, away.
         if (list.moved)
-            sound.ui(hldata::kUiSoundMove);
+            sound.ui(hldata::kUiSoundMove, 127);
         if (list.dismissed)
-            sound.ui(hldata::kUiSoundHudOff);
+            sound.ui(hldata::kUiSoundHudOff, 127);
         // A slot touched: its list up (or, with one weapon in it, that one),
         // and the menu's sound of coming up.
         if (weaponPick != 0)
@@ -112,7 +112,7 @@ namespace hlrt
             weaponChoose = hldata::weaponListOpen(weaponList_, weaponPick, bottomScreen.have(), bottomScreen.empty(), in.blank);
             weaponList_.owned = weaponList_.open();
             if (weaponList_.open() || weaponChoose != 0)
-                sound.ui(hldata::kUiSoundHudOn);
+                sound.ui(hldata::kUiSoundHudOn, 127);
             weaponPick = 0;
         }
         // (The one in hand, taken again, is no change.) A weapon asked for:
@@ -120,6 +120,6 @@ namespace hlrt
         if (weaponChoose == bottomScreen.weapon())
             weaponChoose = 0;
         if (weaponChoose != 0 || weaponStep != 0)
-            sound.ui(hldata::kUiSoundWeapon);
+            sound.ui(hldata::kUiSoundWeapon, 127);
     }
 } // namespace hlrt

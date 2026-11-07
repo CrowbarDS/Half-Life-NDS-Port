@@ -944,14 +944,14 @@ namespace hlrt
                 netGame.spray();
             if (input.lampPressed && player.state.health > 0 && lampToggle(lamp, suit))
             {
-                sound.ui(kUiSoundLamp);
+                sound.ui(kUiSoundLamp, 127);
                 // (A build that measures says how the textures stood at each
                 // switch of the lamp: the lamp has been seen to leave places
                 // flat on a console.)
                 textureStream.report(lamp.on ? "lamp on" : "lamp off");
             }
             if (lampTick(lamp, ms))
-                sound.ui(kUiSoundLamp);
+                sound.ui(kUiSoundLamp, 127);
             lampLit = false;
             if (lamp.on && !player.noclip)
             {
@@ -1217,7 +1217,7 @@ namespace hlrt
             const bool deep = player.state.waterLevel >= 2;
             if (deep != wasDeep_)
                 heard.add(static_cast<std::uint16_t>(static_cast<int>(CommonSound::Wade1) + (stepCount_++ & 3)),
-                          nullptr, 110, 0);
+                          nullptr, 127, 0);
             wasDeep_ = deep;
             if (player.state.health < lastHealth_ && player.state.health > 0)
                 heard.add(CommonSound::Pain, nullptr, 110);

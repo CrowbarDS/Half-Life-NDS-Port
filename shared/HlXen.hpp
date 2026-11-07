@@ -157,7 +157,7 @@ namespace hldata
             tree.attack = kXenDown;
             xenPlay(w, tree, kActMeleeAttack1, true, 256, 358);
             if (w.heard != nullptr)
-                w.heard->add(CommonSound::ClawMiss, tree.pos, 100, kRadiusLarge);
+                w.heard->add(CommonSound::ClawMiss, tree.pos, 127, kRadiusLarge);
         }
     } // namespace detail
 
@@ -214,7 +214,7 @@ namespace hldata
                 monsterHurt(w, i, kXenTreeDamage, false);
             }
             if (hit && w.heard != nullptr)
-                w.heard->add(CommonSound::ClawStrike, tree.pos, 110, kRadiusLarge);
+                w.heard->add(CommonSound::ClawStrike, tree.pos, 127, kRadiusLarge);
         }
     } // namespace detail
 } // namespace hldata

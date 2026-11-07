@@ -2750,7 +2750,7 @@ namespace hlrt
             return false;
         if (!netSpray(match_, game.logic, player.state, camera.pos, camera.forward))
             return false;
-        sound.ui(kUiSoundSpray);
+        sound.ui(kUiSoundSpray, 127);
         return true;
     }
 

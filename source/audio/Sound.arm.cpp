@@ -1162,7 +1162,8 @@ namespace hlrt
             if (!clips_[sample].loops() && played_ != nullptr &&
                 (played_[i >> 5] & (1u << (i & 31))))
                 continue;
-            int volume = ambient ? static_cast<int>(record.extra[2]) : 100, pan = 64;
+            // (A fan's or a train's engine at full, the game's default.)
+            int volume = ambient ? static_cast<int>(record.extra[2]) : 127, pan = 64;
             if (turning && record.brush != kNoBrush)
             {
                 const MoverHull &hull = game.logic.movers[record.brush];

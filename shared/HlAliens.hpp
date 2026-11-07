@@ -276,7 +276,11 @@ namespace hldata
         /// Killed: a squash, or now and then its cry; and gone.
         inline bool killed(AiCtx &c)
         {
-            detail::aiSay(c, aiRandomLong(c.a, 0, 4) == 1 ? CommonSound::RoachDie : CommonSound::RoachSmash);
+            // (Its cry at 0.8 of full, its squash at 0.7.)
+            const bool cries = aiRandomLong(c.a, 0, 4) == 1;
+            if (c.w.heard != nullptr)
+                c.w.heard->add(cries ? CommonSound::RoachDie : CommonSound::RoachSmash, c.me.pos, cries ? 102 : 89,
+                               kRadiusLarge);
             soundInsert(c.ai.sounds, c.ai.now, kSoundWorld, c.me.pos, 128, 1000);
             c.me.ai = kAiDead;
             c.m.deadflag = 2;
@@ -2867,7 +2871,7 @@ namespace hldata
                 return;
             const auto tag = static_cast<std::uint16_t>(kSoundTagActor | c.index);
             if (on && static_cast<std::uint16_t>(sound) < c.w.heard->commons)
-                c.w.heard->add(static_cast<std::uint16_t>(sound), c.me.pos, 110, kRadiusLarge, kSoundLoopOn, 100, tag);
+                c.w.heard->add(static_cast<std::uint16_t>(sound), c.me.pos, 127, kRadiusLarge, kSoundLoopOn, 100, tag);
             else if (!on)
                 c.w.heard->add(kNoSound, nullptr, 0, 0, kSoundLoopOff, 100, tag);
         }
@@ -4536,7 +4540,7 @@ namespace hldata
         inline void say(AiCtx &c)
         {
             if (c.w.heard != nullptr)
-                c.w.heard->add(c.m.time3 > c.ai.now ? CommonSound::BoidAlert : CommonSound::BoidIdle, c.me.pos, 90,
+                c.w.heard->add(c.m.time3 > c.ai.now ? CommonSound::BoidAlert : CommonSound::BoidIdle, c.me.pos, 127,
                                kRadiusLarge);
         }
 

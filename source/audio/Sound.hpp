@@ -66,7 +66,7 @@ namespace hlrt
         void matchWarning();
         /// One of the menu's own sounds (hldata::kUiSound*).
         /// `volume` of 127 (the menu's own: 110, a little under the game).
-        void ui(int which, int volume = 110);
+        void ui(int which, int volume = 110); ///< (110: the menu's; the game's own at full)
         /// The volume settings have changed.
         void applyVolumes();
         /// The game stands still (the menu): the world, the voice, the loops
