@@ -826,20 +826,16 @@ namespace hldata
         const fx dx = static_cast<fx>((static_cast<std::int64_t>(d[0]) * step) / distance);
         const fx dy = static_cast<fx>((static_cast<std::int64_t>(d[1]) * step) / distance);
         fx feet[3] = {actor.pos[0], actor.pos[1], actor.pos[2]};
-        // The whole step, or what of it one way or the other can be made
-        // (sliding along what is in the way).
+        // The whole step, or none: a walker does not slide along what is in
+        // its way (the game's monsters look ahead, stop, and go round it).
         bool moved = walkStep(world, &a, index, small, feet, dx, dy, half);
-        if (!moved && dx != 0)
-            moved = walkStep(world, &a, index, small, feet, dx, 0, half);
-        if (!moved && dy != 0)
-            moved = walkStep(world, &a, index, small, feet, 0, dy, half);
         // Not into the player: it stops in front of them.
         if (moved && player != nullptr && detail::boxInPlayer(*player, feet, half, height))
             moved = false;
         if (moved)
         {
-            // (Sliding along a wall, hardly getting on: held up all the same,
-            // and after a second it plans again from where it has got to.)
+            // (Hardly getting on -- a step that mostly climbs: held up all the
+            // same, and after a second it plans again from where it has got to.)
             const fx went[3] = {feet[0] - actor.pos[0], feet[1] - actor.pos[1], 0};
             for (int i = 0; i < 3; ++i)
                 actor.pos[i] = feet[i];
