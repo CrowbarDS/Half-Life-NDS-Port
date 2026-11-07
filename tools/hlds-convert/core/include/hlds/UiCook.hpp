@@ -40,7 +40,7 @@ namespace hlds
     /// for characters 32 to 127. `outlined`: the game's menu fonts, which are
     /// a light letter with a dark edge; otherwise how bright a pixel is is
     /// how solid.
-    std::vector<std::uint8_t> cookFont(const QFont &font, bool outlined);
+    std::vector<std::uint8_t> cookFont(const QFont &font, bool outlined, bool accented = true);
 
     /// A plain picture lump (the game's "qpic").
     bool parseQPic(const std::vector<std::uint8_t> &lump, IndexedImage &out, std::string &error);

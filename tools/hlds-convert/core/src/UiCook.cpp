@@ -166,13 +166,14 @@ namespace hlds
         return true;
     }
 
-    std::vector<std::uint8_t> cookFont(const QFont &font, bool outlined)
+    std::vector<std::uint8_t> cookFont(const QFont &font, bool outlined, bool accented)
     {
         // 32..127; and 128..255 too (accented letters, in Windows-1252, as a
-        // translated game has them) if it has any of those.
+        // translated game has them) if it has any of those -- and they are
+        // letters (a console's are its letters again, in other colours).
         const int first = 32;
         bool accents = false;
-        for (int c = 128; c < 256; ++c)
+        for (int c = 128; c < 256 && accented; ++c)
             accents = accents || font.glyphs[c].width != 0;
         const int count = accents ? 224 : 96;
         // What is behind the letters: whichever index most of the picture is.

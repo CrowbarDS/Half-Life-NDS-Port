@@ -1026,7 +1026,7 @@ namespace
                        parseQFont(lump, font, error);
                 if (!read)
                     break;
-                const std::vector<std::uint8_t> cooked = cookFont(font, f == 1 || f == 2);
+                const std::vector<std::uint8_t> cooked = cookFont(font, f == 1 || f == 2, f != 3);
                 aligned[f].resize((cooked.size() + 3) / 4);
                 std::memcpy(aligned[f].data(), cooked.data(), cooked.size());
                 views[f].open(reinterpret_cast<const std::uint8_t *>(aligned[f].data()), cooked.size());

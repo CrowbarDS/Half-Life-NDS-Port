@@ -227,6 +227,12 @@ namespace hlrt
         loaded_ = true;
         for (int n = 0; n < hldata::kFontCount; ++n)
         {
+            // (The console's letters, for the lessons, on a DSi only: a DS
+            // has not the room to keep them, its tightest maps a few KB
+            // from not loading -- t0a0b, 8 KB. There the lessons are in
+            // the game's other faces.)
+            if (n == hldata::kFontConsole && !isDSiMode())
+                continue;
             std::FILE *file = std::fopen(global.commonPath(hldata::kFontFiles[n]).c_str(), "rb");
             if (file == nullptr)
                 continue;

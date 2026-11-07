@@ -1471,17 +1471,18 @@ namespace hlds
         {
             const char *wad, *lump;
             bool outlined;
+            bool accented; ///< its 128..255 are letters (not a console's coloured copies)
         };
         const Face kFaces[hldata::kFontCount] = {
-            {"fonts.wad", "FONT0", true}, {"fonts.wad", "FONT1", true}, {"gfx.wad", "CREDITSFONT", false},
-            {"gfx.wad", "CONCHARS", false}};
+            {"fonts.wad", "FONT0", true, true}, {"fonts.wad", "FONT1", true, true}, {"gfx.wad", "CREDITSFONT", false, true},
+            {"gfx.wad", "CONCHARS", false, false}};
         for (int n = 0; n < hldata::kFontCount; ++n)
         {
             std::vector<std::uint8_t> lump;
             QFont font;
             const fs::path wad = findGameFile(options_, kFaces[n].wad);
             if (wad.empty() || !readWadLump(wad, kFaces[n].lump, lump, why) || !parseQFont(lump, font, why) ||
-                !put(ui / hldata::kFontFiles[n], cookFont(font, kFaces[n].outlined)))
+                !put(ui / hldata::kFontFiles[n], cookFont(font, kFaces[n].outlined, kFaces[n].accented)))
             {
                 result.warnings.push_back(std::string("the font ") + kFaces[n].lump + " was not made" +
                                           (why.empty() ? "" : ": " + why));
