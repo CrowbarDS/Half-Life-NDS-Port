@@ -258,6 +258,12 @@ namespace
             }
         }
         check(started, "pushed into the beam, the cart starts the cascade");
+        // ... when the cart itself is in the trigger, not a box round it a
+        // hundred units larger (its front is 12 ahead of its origin).
+        const int front = fxToInt(fxFromInt(g.view.brushes[cartBrush].maxs[0]) + g.brushStates[cartBrush].pos[0] -
+                                  g.view.brushes[cartBrush].origin[0]);
+        std::printf("test_cascade: the cart's front at %d when it starts it\n", front);
+        check(front >= 1522 && front <= 1600, "... with its front in the trigger");
     }
 
     /// What is glimpsed in the cascade -- four slaves, two bullsquids -- is

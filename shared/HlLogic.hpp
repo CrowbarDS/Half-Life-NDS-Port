@@ -4941,10 +4941,20 @@ namespace hldata
                         other.brush == kNoBrush || w.states[b].dead ||
                         !w.brushStates[other.brush].active)
                         continue;
-                    const MoverHull &box = w.movers[other.brush];
-                    touched = box.mins[0] <= maxs[0] && box.maxs[0] >= mins[0] &&
-                              box.mins[1] <= maxs[1] && box.maxs[1] >= mins[1] &&
-                              box.mins[2] <= maxs[2] && box.maxs[2] >= mins[2];
+                    // (Its own box where it now is -- not the one round its
+                    // origin that holds it at any angle: c1a0e's cart, built
+                    // round one, would set the cascade off a hundred units
+                    // early.)
+                    const Brush &brush = w.brushes[other.brush];
+                    const BrushState &at = w.brushStates[other.brush];
+                    fx lo[3], hi[3];
+                    for (int k = 0; k < 3; ++k)
+                    {
+                        lo[k] = fxFromInt(brush.mins[k]) + at.pos[k] - brush.origin[k];
+                        hi[k] = fxFromInt(brush.maxs[k]) + at.pos[k] - brush.origin[k];
+                    }
+                    touched = lo[0] <= maxs[0] && hi[0] >= mins[0] && lo[1] <= maxs[1] && hi[1] >= mins[1] &&
+                              lo[2] <= maxs[2] && hi[2] >= mins[2];
                 }
                 if (touched && logicMasterAllows(w, i))
                 {
