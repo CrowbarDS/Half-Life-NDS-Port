@@ -92,10 +92,9 @@ namespace
             return;
         const LogicRecord &record = game->view.logic[door];
         const BrushState &brush = game->brushStates[record.brush];
-        check(record.extra[1] == 49152 && brush.angles[1] == 49152 && brush.angles[0] == 0 && brush.angles[2] == 0 &&
+        check(record.extra[1] == 16384 && brush.angles[1] == 16384 && brush.angles[0] == 0 && brush.angles[2] == 0 &&
                   game->movers[record.brush].turned,
-              "... and is a quarter turn round from how it was built (the way the game turns it, which is not the "
-              "way its \"angle\" says): drawn so, and solid so");
+              "... and is a quarter turn round from how it was built, as the map says: drawn so, and solid so");
     }
 
     /// A door on hinges starts turned as its map turns it (the game's

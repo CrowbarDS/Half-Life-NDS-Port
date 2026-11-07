@@ -866,7 +866,7 @@ namespace
         check(guard >= 0 && door >= 0, "... with its guard, and the tram's door");
         if (guard < 0 || door < 0)
             return;
-        check(n.brushStates[n.logic.records[door].brush].angles[1] == 49152, "... which is turned as the map has it");
+        check(n.brushStates[n.logic.records[door].brush].angles[1] == 16384, "... which is turned as the map has it");
         const ActorState &me = n.actors.states[guard];
         const ModelView *model = actorModel(n.actors, me);
         const int push = model != nullptr ? model->findClip(nameHash("intropush")) : -1;
