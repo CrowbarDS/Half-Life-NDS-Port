@@ -20,6 +20,7 @@
 
 #include "HlControls.hpp"
 #include "HlFog.hpp"
+#include "HlLineEdit.hpp"
 
 namespace hldata
 {
@@ -93,6 +94,9 @@ namespace hldata
         std::uint8_t tapUse = 0;
         /// The COMMAND line's cheats let through (version 21). Off: refused.
         std::uint8_t cheats = 0;
+        /// Where the touch keyboard's letters are (kKeyboard*, HlLineEdit.hpp;
+        /// version 21).
+        std::uint8_t keyboardLayout = kKeyboardQwerty;
         /// How strict the stylus is about light touches (0..10), and what a
         /// firm press on the aim pad does (kFirm*): HlControls.hpp. Only
         /// where the console can say how hard it is pressed.
@@ -208,9 +212,10 @@ namespace hldata
         void serialize(Ar &ar)
         {
             serializeTwenty(ar);
-            ar &cheats;
+            ar &cheats &keyboardLayout;
         }
-        /// ... and of version 20: no Cheats switch (every cheat let through).
+        /// ... and of version 20: no Cheats switch (every cheat let through), and
+        /// the keyboard QWERTY.
         template <class Ar>
         void serializeTwenty(Ar &ar)
         {
@@ -418,6 +423,7 @@ namespace hldata
         }
         if (read.dspAudio > 1 || read.autoaim > 1 || read.autosave > 1 || read.achievementPopups > 1 ||
             read.debugReadout > 1 || read.leftHanded > 1 || read.viewBob > 1 || read.cheats > 1 ||
+            read.keyboardLayout >= kKeyboardLayouts ||
             !read.graphics.valid())
             return false;
         for (std::uint8_t level : read.volume)

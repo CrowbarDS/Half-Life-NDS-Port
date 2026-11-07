@@ -55,6 +55,8 @@ public:
     /// The COMMAND line's cheats are let through. While it is on, Cheater
     /// is earned and no other achievement is.
     bool cheats = false;
+    /// Where the touch keyboard's letters are (hldata::kKeyboard*).
+    std::uint8_t keyboardLayout = hldata::kKeyboardQwerty;
     /// All of it, for whoever reads the buttons.
     hldata::ControlSettings controls() const
     {

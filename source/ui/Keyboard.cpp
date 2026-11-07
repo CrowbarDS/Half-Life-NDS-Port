@@ -4,6 +4,7 @@
 
 #include "HlFont.hpp"
 #include "HlUi.hpp"
+#include "Settings.hpp"
 #include "audio/Sound.hpp"
 #include "ui/TouchCanvas.hpp"
 
@@ -29,7 +30,7 @@ namespace hlrt
     } // namespace
 
     Keyboard::Keyboard(std::string &text, std::size_t most, int promptTop)
-        : edit_(text, most), layout_(kKeyboardQwerty),
+        : edit_(text, most), layout_(settings.keyboardLayout < kKeyboardLayouts ? settings.keyboardLayout : 0),
           promptTop_(promptTop), keysTop_(promptTop + 18)
     {
     }

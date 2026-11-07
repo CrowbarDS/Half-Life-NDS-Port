@@ -895,6 +895,7 @@ namespace
             twenty.autosave = 0;
             twenty.aimSpeed = 7;
             twenty.cheats = 1; // (not in the file)
+            twenty.keyboardLayout = kKeyboardAzerty; // (nor this)
             yas::mem_ostream os20;
             yas::binary_oarchive<yas::mem_ostream, flags> oa20(os20);
             twenty.serializeTwenty(oa20);
@@ -909,8 +910,9 @@ namespace
             std::memcpy(file20.data() + sizeof(h20), buf20.data, buf20.size);
             SettingsData from20;
             check(readSettings(file20.data(), file20.size(), from20) && from20.tapUse == 1 && from20.autosave == 0 &&
-                      from20.aimSpeed == 7 && from20.cheats == 0,
-                  "settings of version 20 are read, every one kept, with cheats off");
+                      from20.aimSpeed == 7 && from20.cheats == 0 &&
+                      from20.keyboardLayout == kKeyboardQwerty,
+                  "settings of version 20 are read, every one kept, with cheats off and the keyboard QWERTY");
             SettingsData cheating;
             cheating.cheats = 1;
             written = writeSettings(cheating);
@@ -922,6 +924,18 @@ namespace
             cheating.cheats = 2;
             written = writeSettings(cheating);
             check(!readSettings(written.data(), written.size(), read21), "... and nonsense is not believed");
+
+            // The keyboard's layout (version 21 too).
+            SettingsData azerty;
+            azerty.keyboardLayout = kKeyboardAzerty;
+            written = writeSettings(azerty);
+            check(readSettings(written.data(), written.size(), read21) && read21.keyboardLayout == kKeyboardAzerty &&
+                      written.size() <= kSettingsMostBytes,
+                  "an AZERTY keyboard is kept, and the file still fits");
+            check(SettingsData().keyboardLayout == kKeyboardQwerty, "... QWERTY until asked otherwise");
+            azerty.keyboardLayout = kKeyboardLayouts;
+            written = writeSettings(azerty);
+            check(!readSettings(written.data(), written.size(), read21), "... and a layout there is not, not believed");
         }
     }
 

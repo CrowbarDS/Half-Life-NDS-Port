@@ -52,6 +52,7 @@ void Settings::load()
         autosave = data.autosave != 0;
         achievementPopups = data.achievementPopups != 0;
         cheats = data.cheats != 0;
+        keyboardLayout = data.keyboardLayout;
         std::memcpy(name, data.name, sizeof(name));
         playerModel = data.playerModel;
         topColour = data.topColour;
@@ -148,6 +149,7 @@ void Settings::reset(int category)
         if (cheats && !first.cheats)
             achievements.cheatsSwitched(false);
         cheats = first.cheats;
+        keyboardLayout = first.keyboardLayout;
         break;
     }
 }
@@ -187,6 +189,7 @@ bool Settings::save() const
     data.autosave = autosave ? 1 : 0;
     data.achievementPopups = achievementPopups ? 1 : 0;
     data.cheats = cheats ? 1 : 0;
+    data.keyboardLayout = keyboardLayout;
     std::memcpy(data.name, name, sizeof(name));
     data.playerModel = playerModel;
     data.topColour = topColour;
