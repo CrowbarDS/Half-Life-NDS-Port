@@ -3,6 +3,7 @@
 // A cooked map set up the way the DS sets it up, for the tests that play one:
 // its collision, its logic, its models and its actors.
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -75,7 +76,11 @@ namespace hldstest
         /// it since the game began. drain() moves one to the other.
         SoundQueue heard;
         std::vector<int> timesHeard;
-        int sentencesHeard = 0;
+        /// ... the loudest each has been put in (0..127), and of the lines
+        /// said by someone somewhere: heard less the further off (not the
+        /// suit's, at the player, nor a speaker's, heard everywhere).
+        std::vector<int> loudestHeard;
+        int sentencesHeard = 0, loudestSentence = 0;
         /// Every line said (its index in the level's Sentences), in order.
         std::vector<std::uint16_t> said;
         void drain()
@@ -87,9 +92,14 @@ namespace hldstest
                 {
                     ++sentencesHeard;
                     said.push_back(event.sound);
+                    if (!(event.flags & kSoundHere) && event.radius != kRadiusEverywhere)
+                        loudestSentence = std::max(loudestSentence, static_cast<int>(event.volume));
                 }
                 else if (event.sound < timesHeard.size())
+                {
                     ++timesHeard[event.sound];
+                    loudestHeard[event.sound] = std::max(loudestHeard[event.sound], static_cast<int>(event.volume));
+                }
             }
             heard.count = 0;
         }
@@ -304,6 +314,7 @@ namespace hldstest
         g.logic.modelSounds = v.modelSoundCount != 0 ? v.modelSounds : nullptr;
         g.logic.modelSoundCount = static_cast<int>(v.modelSoundCount);
         g.timesHeard.assign(v.soundCount + 1, 0);
+        g.loudestHeard.assign(v.soundCount + 1, 0);
         g.logic.cornerState = g.cornerState.data();
         g.logic.cornerCount = static_cast<int>(v.cornerCount);
         g.actorStates.assign(v.actorCount + spareActorsOf(v), ActorState());

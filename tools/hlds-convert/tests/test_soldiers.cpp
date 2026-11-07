@@ -654,6 +654,7 @@ namespace
         check(covers > 0 && badCover == 0, "whoever runs for cover runs to somewhere the player cannot see");
         check(badToss == 0, "grenades keep to the rules: not from close to, not twice in six seconds");
         check(g.sentencesHeard > 0, "they call out");
+        check(g.loudestSentence == 44, "... at the game's 0.35 of full (HGRUNT_SENTENCE_VOLUME)");
     }
 
     /// A hand grenade, by the game's rules (CheckRangeAttack2): thrown in an

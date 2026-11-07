@@ -41,6 +41,9 @@ namespace hldata
 
     namespace grunt
     {
+        /// How loud a grunt's lines are, of 127: the game's 0.35.
+        inline constexpr int kGruntLineVolume = 44;
+
         inline constexpr int kReload = 2, kKick = 3, kBurst1 = 4, kBurst2 = 5, kBurst3 = 6, kGrenToss = 7,
                              kGrenLaunch = 8, kGrenDrop = 9, kCaughtEnemy = 10, kDropGun = 11;
 
@@ -296,7 +299,8 @@ namespace hldata
         }
 
         /// A line of `group`, and then nobody speaks for a second and a half
-        /// or two (SENTENCEG_PlayRndSz, JustSpoke).
+        /// or two (SENTENCEG_PlayRndSz, JustSpoke). At the game's 0.35 of
+        /// full (HGRUNT_SENTENCE_VOLUME): heard, not over the fight.
         inline void say(AiCtx &c, int group)
         {
             ActorWorld &a = c.a;
@@ -309,7 +313,7 @@ namespace hldata
             while (count < kSpeechLines && lines[count] != 0xFFFF)
                 ++count;
             if (count != 0)
-                c.w.heard->add(lines[aiRandomLong(a, 0, count - 1)], c.me.pos, 127, kRadiusLarge, kSoundSentence);
+                c.w.heard->add(lines[aiRandomLong(a, 0, count - 1)], c.me.pos, kGruntLineVolume, kRadiusLarge, kSoundSentence);
         }
 
         /// SpeakSentence: what he was to say, if he may.
