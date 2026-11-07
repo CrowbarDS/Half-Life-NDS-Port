@@ -58,8 +58,9 @@ namespace hldata
         std::uint8_t dspAudio = 0;
         /// How loud each layer of the sound is, 0 (off) to 10: the music,
         /// the effects (the player's and the world's), the voices, and the
-        /// ambience of a place.
-        std::uint8_t volume[4] = {8, 10, 10, 8};
+        /// ambience of a place. (A file has always had them: these are a
+        /// new one's. Before, 8, 10, 10, 8.)
+        std::uint8_t volume[4] = {6, 10, 10, 7};
         /// The debug readout along the top of the touch screen.
         std::uint8_t debugReadout = 0;
         /// The stylus is in the left hand: the touch screen's buttons are

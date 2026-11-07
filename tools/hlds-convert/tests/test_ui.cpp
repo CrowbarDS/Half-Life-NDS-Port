@@ -289,8 +289,9 @@ namespace
     void testSettings()
     {
         SettingsData data;
-        check(data.volume[kVolumeMusic] == 8 && data.volume[kVolumeEffects] == 10 && data.debugReadout == 0,
-              "settings start with the music a little under the rest, and no readout");
+        check(data.volume[kVolumeMusic] == 6 && data.volume[kVolumeEffects] == 10 && data.volume[kVolumeVoices] == 10 &&
+                  data.volume[kVolumeAmbience] == 7 && data.debugReadout == 0,
+              "settings start with the music and the ambience under the rest, and no readout");
         data.volume[kVolumeVoices] = 3;
         data.volume[kVolumeAmbience] = 0;
         data.debugReadout = 1;
@@ -298,13 +299,13 @@ namespace
         std::vector<std::uint8_t> bytes = writeSettings(data);
         SettingsData back;
         check(bytes.size() <= kSettingsMostBytes && readSettings(bytes.data(), bytes.size(), back) && back.volume[kVolumeVoices] == 3 &&
-                  back.volume[kVolumeAmbience] == 0 && back.volume[kVolumeMusic] == 8 && back.debugReadout == 1 &&
+                  back.volume[kVolumeAmbience] == 0 && back.volume[kVolumeMusic] == 6 && back.debugReadout == 1 &&
                   back.renderMode == 3,
               "settings read back as they were written, the volumes and the readout among them");
         data.volume[kVolumeMusic] = 11;
         bytes = writeSettings(data);
         SettingsData untouched;
-        check(!readSettings(bytes.data(), bytes.size(), untouched) && untouched.volume[kVolumeMusic] == 8,
+        check(!readSettings(bytes.data(), bytes.size(), untouched) && untouched.volume[kVolumeMusic] == 6,
               "a volume out of range is not believed");
         bytes = writeSettings(SettingsData());
         bytes[4] = 7; // (the version before this one)
@@ -394,7 +395,8 @@ namespace
             bytes = writeSettings(focused);
             check(!readSettings(bytes.data(), bytes.size(), back), "a dialogue focus there is not: not read");
             SettingsData older;
-            older.volume[kVolumeAmbience] = 3;
+            older.volume[kVolumeMusic] = 8; // (the defaults before)
+            older.volume[kVolumeAmbience] = 8;
             older.dialogueFocus = kFocusOff;
             constexpr std::size_t flags = yas::mem | yas::binary | yas::no_header;
             yas::mem_ostream os;
@@ -410,9 +412,9 @@ namespace
             std::memcpy(file.data(), &header, sizeof(header));
             std::memcpy(file.data() + sizeof(header), buf.data, buf.size);
             SettingsData read;
-            check(readSettings(file.data(), file.size(), read) && read.volume[kVolumeAmbience] == 3 &&
-                      read.dialogueFocus == kFocusLight,
-                  "a file of version 21 keeps its volumes, and its dialogue focus is light");
+            check(readSettings(file.data(), file.size(), read) && read.volume[kVolumeMusic] == 8 &&
+                      read.volume[kVolumeAmbience] == 8 && read.dialogueFocus == kFocusLight,
+                  "a file of version 21 keeps its volumes as they were, and its dialogue focus is light");
         }
         // A file of version 13 keeps all it had; the profile and the match
         // hosted are as they are at first.

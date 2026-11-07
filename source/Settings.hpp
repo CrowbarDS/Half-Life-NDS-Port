@@ -16,7 +16,7 @@ public:
     std::uint8_t outputMode = hldata::kOutputSpeakers;
     std::uint8_t soundQuality = hldata::kQualityStandard;
     /// How loud each layer of the sound is, 0 to 10 (hldata::kVolume*).
-    std::uint8_t volume[4] = {8, 10, 10, 8};
+    std::uint8_t volume[4] = {6, 10, 10, 7};
     /// How far the music and the ambience are let down while someone
     /// speaks (hldata::kFocus*).
     std::uint8_t dialogueFocus = hldata::kFocusLight;
