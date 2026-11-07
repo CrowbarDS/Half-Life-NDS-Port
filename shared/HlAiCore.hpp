@@ -2819,7 +2819,8 @@ namespace hldata
             const fx from[3] = {c.me.pos[0], c.me.pos[1], c.me.pos[2] + lift + fxFromInt(1)};
             const fx to[3] = {c.me.pos[0], c.me.pos[1], c.me.pos[2] + lift - fxFromInt(2)};
             const Trace under = traceAll(*c.w.world, small, from, to);
-            if (!under.startSolid && under.fraction >= kFractionOne)
+            // (Nothing, or only someone, under it: someone is no floor.)
+            if (!under.startSolid && (under.fraction >= kFractionOne || under.box >= 0))
             {
                 c.m.inAir = true;
                 c.me.velocity[0] = c.me.velocity[1] = c.me.velocity[2] = 0;
@@ -2997,6 +2998,34 @@ namespace hldata
                     c.me.velocity[2] = 0;
             }
         }
+#ifndef HLDS_CHILD
+        if (!t.startSolid && t.fraction < kFractionOne && t.box >= 0 && t.normal[2] > kFloorNormalZ &&
+            t.box < c.w.world->boxCount)
+        {
+            // On someone's head: not a floor (the game's SV_CheckBottom asks
+            // the world alone). Off it, outwards from their middle, and on
+            // down.
+            const SolidBox &under = c.w.world->boxes[t.box];
+            fx out[3] = {c.me.pos[0] - (under.mins[0] + under.maxs[0]) / 2,
+                         c.me.pos[1] - (under.mins[1] + under.maxs[1]) / 2, 0};
+            const fx length = fxLength(out);
+            if (length < fxFromInt(1))
+            {
+                out[0] = kFxOne;
+                out[1] = 0;
+            }
+            else
+            {
+                out[0] = static_cast<fx>((static_cast<std::int64_t>(out[0]) << kFxShift) / length);
+                out[1] = static_cast<fx>((static_cast<std::int64_t>(out[1]) << kFxShift) / length);
+            }
+            c.me.velocity[0] = out[0] * 120;
+            c.me.velocity[1] = out[1] * 120;
+            if (c.me.velocity[2] < 0)
+                c.me.velocity[2] = 0;
+        }
+        else
+#endif
         if (t.startSolid || t.fraction < kFractionOne)
         {
             if (t.startSolid || t.normal[2] > kFloorNormalZ)

@@ -264,12 +264,21 @@ namespace
 
         // The player in the way: once he has looked again (a second and a
         // half), he holds his fire. Out of it: he fires.
-        const fx between[3] = {(s.here[0] + s.there[0]) / 2, (s.here[1] + s.there[1]) / 2, s.here[2] + fxFromInt(36)};
+        // (Between him and it wherever he is: he may step towards it -- he
+        // would, in the game, to see it past them.)
+        auto between = [&]()
+        {
+            static fx at[3];
+            at[0] = (guard.pos[0] + s.there[0]) / 2;
+            at[1] = (guard.pos[1] + s.there[1]) / 2;
+            at[2] = guard.pos[2] + fxFromInt(36);
+            return at;
+        };
         for (int t = 0; t < 2000; t += 33)
-            tick(s, between, s.there);
+            tick(s, between(), s.there);
         shots0 = shots(g);
         for (int t = 0; t < 2000; t += 33)
-            tick(s, between, s.there);
+            tick(s, between(), s.there);
         check(shots(g) == shots0 && enemyOf(g, s.guard) == s.monster,
               "with the player in the line of fire he does not fire");
         for (int t = 0; t < 2500; t += 33)
@@ -417,6 +426,103 @@ namespace
     }
 } // namespace
 
+namespace
+{
+    /// A monster that goes for one of the people: it comes to them and
+    /// hits them (the game counts a step into what it goes for as a step
+    /// made), rather than stopping at the node nearest them; and a second
+    /// that goes for them too is beside it, neither in nor on the other.
+    void testComesToPeople(const char *dir)
+    {
+        Scene s = scene(dir);
+        check(s.ok, "c1a1 has a guard, a zombie and somewhere to stage them");
+        if (!s.ok)
+            return;
+        Game &g = *s.game;
+        stage(s, 0);
+        ActorWorld &a = g.actors;
+        ActorState &guard = a.states[s.guard];
+        ActorState &zombie = a.states[s.monster];
+        // (He does not fight back: this is about the zombie. And he stands
+        // between the nodes, not on one: walking to the node nearest him
+        // would be no test.)
+        guard.gun = 0;
+        fx spot[3];
+        for (int k = 0; k < 3; ++k)
+            spot[k] = s.here[k] + (s.there[k] - s.here[k]) * 7 / 10;
+        spot[2] = s.here[2];
+        put(guard, spot);
+        Cheats cheats;
+        cheats.notarget = true;
+        g.player.cheats = &cheats;
+        int closest = 1 << 30, hitAt = -1;
+        int guardHealth = 0;
+        for (int t = 0; t < 20000 && hitAt < 0; t += 33)
+        {
+            if (t == 66)
+                guardHealth = guard.health; // (once his first tick has given it him)
+            for (int k = 0; k < 3; ++k)
+                g.player.origin[k] = s.away[k];
+            // (He stays where he is.)
+            put(guard, spot);
+            logicTick(g.logic, g.player, 33);
+            monstersTick(g.logic, g.player, 33);
+            g.drain();
+            const fx d[3] = {zombie.pos[0] - guard.pos[0], zombie.pos[1] - guard.pos[1], 0};
+            closest = std::min(closest, fxToInt(fxLength(d)));
+            if (t > 66 && guard.health != guardHealth)
+                hitAt = t;
+        }
+        std::printf("test_people: a zombie going for the guard: came within %d units, hit him at %d ms\n", closest, hitAt);
+        check(closest <= 72 && hitAt >= 0, "a monster going for one of the people comes to them and hits them");
+
+        // A second at him too, from beside the first: they end side by
+        // side, not one in or on the other.
+        std::printf("test_people: the second for the guard: actor %d\n", s.other);
+        if (s.other < 0)
+            return;
+        ActorState &second = a.states[s.other];
+        second.active = true;
+        fx beside[3] = {s.there[0], s.there[1], s.there[2]};
+        beside[0] += fxFromInt(48);
+        put(second, beside);
+        second.ai = kAiIdle;
+        second.health = 1000;
+        aiForget(a, s.other);
+        put(zombie, s.there);
+        aiForget(a, s.monster);
+        actorPlaceBox(a, s.other);
+        actorPlaceBox(a, s.monster);
+        int worstOverlap = 0, worstStack = 0;
+        for (int t = 0; t < 12000; t += 33)
+        {
+            for (int k = 0; k < 3; ++k)
+                g.player.origin[k] = s.away[k];
+            put(guard, spot);
+            logicTick(g.logic, g.player, 33);
+            monstersTick(g.logic, g.player, 33);
+            g.drain();
+            if (!second.active || !zombie.active)
+                break;
+            const SolidBox &p = a.boxes[s.monster];
+            const SolidBox &q = a.boxes[s.other];
+            if (!p.active || !q.active)
+                continue;
+            int overlap = 1 << 30;
+            for (int k = 0; k < 2; ++k)
+                overlap = std::min(overlap, fxToInt(std::min(p.maxs[k], q.maxs[k]) - std::max(p.mins[k], q.mins[k])));
+            worstOverlap = std::max(worstOverlap, overlap);
+            const int stack = std::abs(fxToInt(zombie.pos[2] - second.pos[2]));
+            if (overlap > 0)
+                worstStack = std::max(worstStack, stack);
+        }
+        g.player.cheats = nullptr;
+        std::printf("test_people: two going for him: overlapped by %d units at most, one %d above the other at most\n",
+                    worstOverlap, worstStack);
+        check(worstOverlap <= 12 && worstStack <= 8, "two going for the same one are side by side, not in or on each other");
+    }
+} // namespace
+
 int main()
 {
     const char *dir = std::getenv("HLDS_VALVE_DIR");
@@ -426,7 +532,10 @@ int main()
         return 0;
     }
     if (dir != nullptr && dir[0] != '\0')
+    {
         testFight(dir);
+        testComesToPeople(dir);
+    }
     else
     {
         std::printf("test_people: HLDS_VALVE_DIR not set, the game's maps were not read\n");

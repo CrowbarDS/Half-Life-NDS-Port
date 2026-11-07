@@ -313,9 +313,13 @@ namespace hldata
     /// which goes as a standing person does, but only to where something 64
     /// units across has room in the world (the game's large hull). `half`
     /// is half its width for what it stands on (0: the hull's own).
+    /// `blockedBy`, if given: which actor's box stopped the step (-1 if
+    /// none did).
     HL_HOT bool walkStep(const MoveWorld &world, const ActorWorld *a, int index, int hull,
-                         fx *feet, fx dx, fx dy, fx half = 0)
+                         fx *feet, fx dx, fx dy, fx half = 0, int *blockedBy = nullptr)
     {
+        if (blockedBy != nullptr)
+            *blockedBy = -1;
         const bool small = hull == kWalkCrouched;
         const fx lift = small ? kCrouchedFeet : kStandingFeet;
         const fx start[3] = {feet[0], feet[1], feet[2] + lift};
@@ -326,11 +330,55 @@ namespace hldata
         const fx along[3] = {raised.endPos[0] + dx, raised.endPos[1] + dy, raised.endPos[2]};
         const Trace across = detail::walkerTrace(world, a, index, small, raised.endPos, along);
         if (across.startSolid || across.fraction < kFractionOne)
+        {
+            if (blockedBy != nullptr)
+                *blockedBy = across.box;
             return false;
+        }
+        // Not deeper into someone it is already inside of (a move out of
+        // them is let through, as the trace lets it: nobody is held fast
+        // in another) -- two that go for one spot do not merge into one.
+        // (Not on a console sent the game: a match has no monsters.)
+#ifndef HLDS_CHILD
+        if (index >= 0)
+        {
+            for (int n = 0; n < world.boxCount; ++n)
+            {
+                const SolidBox &box = world.boxes[n];
+                if (n == index || !box.active || start[2] - lift > box.maxs[2] || start[2] - lift + fxFromInt(64) < box.mins[2])
+                    continue;
+                const fx cx = (box.mins[0] + box.maxs[0]) / 2, cy = (box.mins[1] + box.maxs[1]) / 2;
+                // (Its body in theirs by more than a hand's breadth: a
+                // touch is the look ahead's to see to -- it waits, or goes
+                // round.)
+                const fx rx = (box.maxs[0] - box.mins[0]) / 2 + fxFromInt(8), ry = (box.maxs[1] - box.mins[1]) / 2 + fxFromInt(8);
+                const fx ox = start[0] - cx, oy = start[1] - cy;
+                if (ox <= -rx || ox >= rx || oy <= -ry || oy >= ry)
+                    continue;
+                // (Inside it: towards its middle is deeper.)
+                if (static_cast<std::int64_t>(ox) * dx + static_cast<std::int64_t>(oy) * dy < 0)
+                {
+                    if (blockedBy != nullptr)
+                        *blockedBy = n;
+                    return false;
+                }
+            }
+        }
+#endif
         const fx down[3] = {along[0], along[1], start[2] - kStepSize};
         const Trace drop = detail::walkerTrace(world, a, index, small, along, down);
         if (drop.startSolid || drop.fraction >= kFractionOne)
             return false; // nothing to stand on: it does not walk off edges
+        // Nor onto someone: no one stands on another's head (the game's
+        // SV_CheckBottom asks the world alone).
+#ifndef HLDS_CHILD
+        if (drop.box >= 0)
+        {
+            if (blockedBy != nullptr)
+                *blockedBy = drop.box;
+            return false;
+        }
+#endif
         // Nor over them (SV_CheckBottom) -- unless it is over one already:
         // then, as the engine's FL_PARTIALGROUND lets it, it may move, and
         // so get off it.
@@ -374,8 +422,24 @@ namespace hldata
             }
             const fx dx = static_cast<fx>((static_cast<std::int64_t>(d[0]) * kWalkStep) / distance);
             const fx dy = static_cast<fx>((static_cast<std::int64_t>(d[1]) * kWalkStep) / distance);
-            if (!walkStep(world, a, index, small, at, dx, dy))
+            int by = -1;
+            if (!walkStep(world, a, index, small, at, dx, dy, 0, &by))
+            {
+                // Stopped by whoever stands where it is going -- the place
+                // it walks to is in their very body: they are what it goes
+                // for -- as good as there (CheckLocalMove: a step into the
+                // target is legal).
+#ifndef HLDS_CHILD
+                if (by >= 0 && by < world.boxCount)
+                {
+                    const SolidBox &box = world.boxes[by];
+                    return to[0] >= box.mins[0] && to[0] <= box.maxs[0] && to[1] >= box.mins[1] &&
+                           to[1] <= box.maxs[1] && to[2] >= box.mins[2] - fxFromInt(40) &&
+                           to[2] <= box.maxs[2] + fxFromInt(40);
+                }
+#endif
                 return false;
+            }
         }
         return false;
     }

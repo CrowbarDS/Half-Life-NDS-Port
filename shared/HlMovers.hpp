@@ -506,6 +506,7 @@ namespace hldata
                 best.dist = d > 0 ? -(box.mins[axis] - grow) : box.maxs[axis] + grow;
             }
             best.mover = -1;
+            best.box = static_cast<std::int16_t>(n);
             best.hit = true;
         }
         return best;

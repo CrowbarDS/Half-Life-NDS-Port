@@ -917,6 +917,83 @@ namespace
         return held;
     }
 
+    /// Two that stand in one another (a leap, a spawn, a push put them so)
+    /// do not merge: a step deeper into the other is not taken, a step out
+    /// of them is. And no one steps up onto another's head.
+    void testNoMerging(const char *dir)
+    {
+        auto game = load(dir, "c1a2a");
+        if (!game)
+            return;
+        Game &g = *game;
+        const int sci = findKind(g, ActorKind::Scientist);
+        const int other = findKind(g, ActorKind::Scientist, 1);
+        if (sci < 0 || other < 0)
+            return;
+        alone(g, {sci, other});
+        g.player.origin[2] += fxFromInt(4096);
+        for (int i = 0; i < 10; ++i)
+            tickStill(g);
+        ActorState &a = g.actors.states[sci];
+        ActorState &b = g.actors.states[other];
+        fx to[3];
+        if (!walkAhead(g, sci, 160, to))
+        {
+            check(false, "a straight walk from the scientist");
+            return;
+        }
+        const fx d[3] = {to[0] - a.pos[0], to[1] - a.pos[1], 0};
+        const fx length = fxLength(d);
+        // The other 20 units ahead: in him.
+        for (int k = 0; k < 2; ++k)
+            b.pos[k] = a.pos[k] + static_cast<fx>((static_cast<std::int64_t>(d[k]) * fxFromInt(20)) / length);
+        b.pos[2] = a.pos[2];
+        actorPlaceBox(g.actors, other);
+        AiMonster &bm = mind(g, other);
+        bm.movementGoal = kMoveGoalNone;
+        AiMonster &m = mind(g, sci);
+        AiCtx c = aiCtx(g.logic, g.player, sci, m, *aiKindOf(a.kind));
+        m.moveWaitFinished = 0;
+        aiRouteClear(c);
+        aiMoveToLocation(c, kActWalk, 0, to);
+        fx nearest = fxFromInt(1000);
+        for (int t = 0; t < 1500; t += 33)
+        {
+            moveFrame(g, sci);
+            const fx gap[3] = {b.pos[0] - a.pos[0], b.pos[1] - a.pos[1], 0};
+            nearest = std::min(nearest, fxLength(gap));
+        }
+        std::printf("test_ai: in another, sent through him: nearest %.1f units (from 20)\n", nearest / 4096.0);
+        check(nearest >= fxFromInt(19), "one in another does not walk deeper into him");
+        {
+            // (The step itself: deeper is refused, out is let through.)
+            const fx dx = static_cast<fx>((static_cast<std::int64_t>(d[0]) * kWalkStep) / length);
+            const fx dy = static_cast<fx>((static_cast<std::int64_t>(d[1]) * kWalkStep) / length);
+            fx in[3] = {b.pos[0] - (b.pos[0] - a.pos[0]) / 2, b.pos[1] - (b.pos[1] - a.pos[1]) / 2, a.pos[2]};
+            fx deeper[3] = {in[0], in[1], in[2]}, out[3] = {in[0], in[1], in[2]};
+            const bool wentIn = walkStep(g.move, &g.actors, sci, monsterHull(a.kind), deeper, dx / 4, dy / 4);
+            const bool wentOut = walkStep(g.move, &g.actors, sci, monsterHull(a.kind), out, -dx, -dy);
+            check(!wentIn && wentOut, "... the step deeper is refused, the step out is taken");
+        }
+        // The other a crab's height, under the way: not stepped onto.
+        b.pos[0] = a.pos[0] + d[0] / 4;
+        b.pos[1] = a.pos[1] + d[1] / 4;
+        actorPlaceBox(g.actors, other);
+        SolidBox &box = g.actors.boxes[other];
+        box.maxs[2] = box.mins[2] + fxFromInt(12);
+        fx feet[3] = {a.pos[0], a.pos[1], a.pos[2]};
+        fx highest = feet[2];
+        for (int n = 0; n < 12; ++n)
+        {
+            if (!walkStep(g.move, &g.actors, sci, monsterHull(a.kind), feet,
+                          static_cast<fx>((static_cast<std::int64_t>(d[0]) * kWalkStep) / length),
+                          static_cast<fx>((static_cast<std::int64_t>(d[1]) * kWalkStep) / length)))
+                break;
+            highest = std::max(highest, feet[2]);
+        }
+        check(highest - a.pos[2] < fxFromInt(4), "... nor steps up onto someone low in its way");
+    }
+
     /// Held up by another (Move): stopped, not walking on the spot; waits
     /// for one that is on its way somewhere; goes round one that stands
     /// where there is room to; and where there is none (a corridor), stops
@@ -957,6 +1034,8 @@ namespace
 
         putAt(home);
         h = blockedWalk(g, sci, other, 160, 40, true, 1500);
+        std::printf("test_ai: on its way: blocked at %d, reacted at %d, waited %d, detoured %d, arrived %d\n", h.blockedAt,
+                    h.reactedAt, h.waitedFor, h.detoured, h.arrived);
         check(h.waitedFor > 1900 && h.waitedFor <= 2000, "one in the way that is on its way: a wait of 2 s");
         check(h.walkingStill == 0, "waited for standing, not walking");
 
@@ -1276,6 +1355,7 @@ int main()
         testBarnacle(dir);
         testMoveEndsShort(dir);
         testBlockedWalk(dir);
+        testNoMerging(dir);
         testShotBetweenLegs(dir);
         testC1a1fScripts(dir);
         testC1a1cMakers(dir);

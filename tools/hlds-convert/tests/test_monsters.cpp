@@ -1333,7 +1333,11 @@ namespace
         for (int i = 0; i < g.actors.count; ++i)
         {
             if (i != crab && isMonster(g.actors.states[i].kind))
+            {
+                // (Gone, their boxes with them: no one is climbed over.)
                 g.actors.states[i].active = false;
+                actorPlaceBox(g.actors, i);
+            }
         }
         for (int a = 0; a < 3; ++a)
             g.player.origin[a] = g.actors.nodes[node].pos[a];

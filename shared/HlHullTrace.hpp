@@ -53,6 +53,8 @@ namespace hldata
         /// Which brush entity stopped it, as an index into the mover list; -1 for
         /// the world (or nothing). Filled in by traceAll.
         std::int16_t mover = -1;
+        /// Which actor's box stopped it (its index in the box list), or -1.
+        std::int16_t box = -1;
     };
 
     /// What `p` is inside of: a kContents* value.
