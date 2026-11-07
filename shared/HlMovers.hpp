@@ -115,6 +115,10 @@ namespace hldata
         /// The actors' boxes.
         const SolidBox *boxes = nullptr;
         int boxCount = 0;
+        /// The level's brushes (one per mover, in order) and models: what a
+        /// shot meets of a mover is its model's own box. None: its hull.
+        const Brush *brushes = nullptr;
+        const Model *models = nullptr;
     };
 
     /// The leaf of the world's tree `p` is in; 0 (the solid leaf) on a world
@@ -636,6 +640,36 @@ namespace hldata
                               : start[i] + static_cast<fx>((static_cast<std::int64_t>(end[i] - start[i]) * fraction) >>
                                                            kFractionShift);
         }
+        /// Where the line from `a` to `b` comes into the box `mins`..`maxs`
+        /// (a fraction of it, kFractionOne the whole), or -1 if it misses
+        /// it.
+        inline std::int64_t lineIntoBox(const fx *a, const fx *b, const fx *mins, const fx *maxs)
+        {
+            std::int64_t enter = 0, leave = kFractionOne;
+            for (int k = 0; k < 3; ++k)
+            {
+                const fx d = b[k] - a[k];
+                if (d == 0)
+                {
+                    if (a[k] < mins[k] || a[k] > maxs[k])
+                        return -1;
+                    continue;
+                }
+                std::int64_t t0 = (static_cast<std::int64_t>(mins[k] - a[k]) << kFractionShift) / d;
+                std::int64_t t1 = (static_cast<std::int64_t>(maxs[k] - a[k]) << kFractionShift) / d;
+                if (t0 > t1)
+                {
+                    const std::int64_t swap = t0;
+                    t0 = t1;
+                    t1 = swap;
+                }
+                enter = t0 > enter ? t0 : enter;
+                leave = t1 < leave ? t1 : leave;
+                if (enter > leave)
+                    return -1;
+            }
+            return enter;
+        }
     } // namespace detail
 
     inline Shot traceShot(const MoveWorld &world, const fx *start, const fx *end)
@@ -669,9 +703,34 @@ namespace hldata
             detail::toMoverSpace(mover, start, a);
             detail::toMoverSpace(mover, end, b);
             const Trace t = traceHull(mover.crouched, a, b);
-            if (t.startSolid || t.allSolid || t.fraction >= shot.fraction)
+            const bool boxed = world.brushes != nullptr && world.models != nullptr;
+            // (That hull is the brush grown by a crouched person's size: a
+            // shot is a point. Where it comes into the model's own box, in
+            // the brush's space, is nearer the truth -- exactly so for a
+            // box, a target, a door -- and a line that passes beside it
+            // misses it. So is one that starts within that size of it,
+            // which the hull would have it start inside, and let through.)
+            if (t.fraction >= shot.fraction || (!boxed && (t.startSolid || t.allSolid)))
                 continue;
-            shot.fraction = t.fraction;
+            std::int32_t at = t.startSolid || t.allSolid ? 0 : t.fraction;
+            if (boxed)
+            {
+                const Model &model = world.models[world.brushes[m].model];
+                const fx mins[3] = {fxFromInt(model.mins[0]), fxFromInt(model.mins[1]), fxFromInt(model.mins[2])};
+                const fx maxs[3] = {fxFromInt(model.maxs[0]), fxFromInt(model.maxs[1]), fxFromInt(model.maxs[2])};
+                // (One that starts inside it, or on it -- a gun's own shot -- leaves
+                // it: not stopped by it, as the hull never did.)
+                bool inside = true;
+                for (int k = 0; k < 3; ++k)
+                    inside = inside && a[k] >= mins[k] && a[k] <= maxs[k];
+                const std::int64_t into = inside ? -1 : detail::lineIntoBox(a, b, mins, maxs);
+                if (into < 0)
+                    continue;
+                at = into > at ? static_cast<std::int32_t>(into) : at;
+            }
+            if (at >= shot.fraction)
+                continue;
+            shot.fraction = at;
             shot.mover = static_cast<std::int16_t>(m);
         }
         return shot;

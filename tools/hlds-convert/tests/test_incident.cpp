@@ -353,6 +353,60 @@ namespace
               "... and the wheel, turned to its end, has turned the bridge as far round");
     }
 
+    /// t0a0b's range: a shot (an MP5's grenade's line too) meets a target
+    /// at its face, not a crouched person's size out from it, and one that
+    /// passes beside it does not meet it.
+    void testTargetFace(const char *dir)
+    {
+        const std::unique_ptr<Game> game = load(dir, "t0a0b");
+        if (game == nullptr)
+            return;
+        Game &g = *game;
+        int tested = 0, onFace = 0, missed = 0;
+        for (int i = 0; i < g.logic.recordCount; ++i)
+        {
+            const LogicRecord &r = g.logic.records[i];
+            if (r.kind != static_cast<std::uint8_t>(LogicKind::GunTarget) || r.brush == kNoBrush)
+                continue;
+            const MoverHull &hull = g.movers[r.brush];
+            if (!hull.solid || hull.turned)
+                continue;
+            // Its panel as it is: its model's box, where the brush is.
+            const Model &model = g.view.models[g.view.brushes[r.brush].model];
+            fx mins[3], maxs[3];
+            for (int k = 0; k < 3; ++k)
+            {
+                mins[k] = fxFromInt(model.mins[k]) + hull.origin[k];
+                maxs[k] = fxFromInt(model.maxs[k]) + hull.origin[k];
+            }
+            // Across its thin way, from 12 out to its middle.
+            const int thin = (maxs[1] - mins[1]) < (maxs[0] - mins[0]) ? 1 : 0;
+            const int wide = 1 - thin;
+            fx mid[3], from[3];
+            for (int k = 0; k < 3; ++k)
+                mid[k] = from[k] = (mins[k] + maxs[k]) / 2;
+            from[thin] = mins[thin] - fxFromInt(12);
+            const Shot hit = traceShot(g.move, from, mid);
+            const fx stop = from[thin] + static_cast<fx>((static_cast<std::int64_t>(mid[thin] - from[thin]) * hit.fraction) >>
+                                                         kFractionShift);
+            ++tested;
+            onFace += hit.mover == static_cast<int>(r.brush) && stop >= mins[thin] - fxFromInt(1) &&
+                      stop <= mins[thin] + fxFromInt(1);
+            // The same, 10 beside its edge.
+            fx besideFrom[3], besideTo[3];
+            for (int k = 0; k < 3; ++k)
+            {
+                besideFrom[k] = from[k];
+                besideTo[k] = mid[k];
+            }
+            besideFrom[wide] = besideTo[wide] = maxs[wide] + fxFromInt(10);
+            missed += traceShot(g.move, besideFrom, besideTo).mover != static_cast<int>(r.brush);
+        }
+        std::printf("test_incident: t0a0b's targets: %d, met at the face %d, missed beside %d\n", tested, onFace, missed);
+        check(tested >= 7 && onFace == tested && missed == tested,
+              "a shot meets a range target at its face, and misses one it passes beside");
+    }
+
     /// c1a0d's suit, taken: it says its whole logon (!HEV_AAx), at once and
     /// at the suit's volume, with no pickup sound; and nothing more until
     /// that is said.
@@ -805,6 +859,7 @@ int main()
         testMicrowave(dir);
         testPlacedOnWhatIsUnder(dir);
         testWheelBridge(dir);
+        testTargetFace(dir);
         testScenes(dir);
         testTripmine(dir);
     }

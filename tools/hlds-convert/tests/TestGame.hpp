@@ -278,6 +278,8 @@ namespace hldstest
             g.movers[i].crouched = Hull{v.clipNodes, v.planes, v.planeTypes, model.clipCrouched};
         }
         g.move.nodes = v.nodes;
+        g.move.brushes = v.brushes;
+        g.move.models = v.models;
         g.move.leaves = v.leaves;
         g.move.headNode = v.models[0].headNode;
         g.move.vis = v.vis;

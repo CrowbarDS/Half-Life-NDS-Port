@@ -193,6 +193,10 @@ namespace hlrt
             Hull{view.clipNodes, view.planes, view.planeTypes, view.models[0].clipCrouched};
         world.large = Hull{view.clipNodes, view.planes, view.planeTypes, view.models[0].clipLarge};
         world.movers = movers_;
+        world.brushes = view.brushes;
+        world.models = view.models;
+        world.brushes = view.brushes;
+        world.models = view.models;
         world.reach = reach_;
         world.moverCount = static_cast<int>(view.brushCount);
         world.nodes = view.nodes;
