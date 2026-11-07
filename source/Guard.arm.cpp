@@ -321,9 +321,27 @@ namespace hlrt::guard
         // they are (nothing added to them), counted. What is checked is the
         // allocator's chain itself (allocatorBroken, below).
 
+        /// Kept back, and let go only when a block cannot be had otherwise:
+        /// the last room on a map that fills the heap. (The full guard has
+        /// its held blocks for that; without it, maps that start with them
+        /// stopped short for want of a few kilobytes.)
+        constexpr std::size_t kReserve = 32 * 1024;
+        void *reserve = nullptr;
+        /// When it was let go: in the load, or in play (perf.txt).
+        bool inPlay = false;
+        std::uint32_t letGoLoad = 0, letGoPlay = 0, letGoAsked = 0;
+
         void *take(std::size_t align, std::size_t size, std::uint32_t)
         {
             void *p = align <= 8 ? __real_malloc(size) : __real_memalign(align, size);
+            if (p == nullptr && reserve != nullptr)
+            {
+                __real_free(reserve);
+                reserve = nullptr;
+                ++(inPlay ? letGoPlay : letGoLoad);
+                letGoAsked = static_cast<std::uint32_t>(size);
+                p = align <= 8 ? __real_malloc(size) : __real_memalign(align, size);
+            }
             if (p != nullptr)
                 counted(p, 1);
             return p;
@@ -640,8 +658,33 @@ namespace hlrt::guard
     std::uint32_t liveBlocks() { return blocks; }
     std::uint32_t liveBytes() { return bytes; }
 
+    void renewReserve()
+    {
+#ifndef HLDS_GUARD_FULL
+        if (reserve == nullptr)
+            reserve = __real_malloc(kReserve);
+        inPlay = false;
+        letGoLoad = letGoPlay = letGoAsked = 0;
+#endif
+    }
+
+    ReserveState reserveState()
+    {
+        ReserveState state;
+#ifndef HLDS_GUARD_FULL
+        state.held = reserve != nullptr;
+        state.letGoLoad = letGoLoad;
+        state.letGoPlay = letGoPlay;
+        state.lastAsked = letGoAsked;
+#endif
+        return state;
+    }
+
     void markPlay()
     {
+#ifndef HLDS_GUARD_FULL
+        inPlay = true;
+#endif
         const int saved = enterCriticalSection();
         playBase = playPeak = bytes;
         leaveCriticalSection(saved);

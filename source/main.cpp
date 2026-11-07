@@ -337,15 +337,18 @@ namespace
         const hlrt::guard::HeapRoom room = hlrt::guard::heapRoom();
         const hlrt::StreamStats st = hlrt::textureStream.stats();
         const hlrt::Sound::LoadStats &snd = hlrt::sound.loadStats();
+        // (Before the file is opened: opening it may itself take the room.)
+        const hlrt::guard::ReserveState reserve = hlrt::guard::reserveState();
         std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a");
         if (log == nullptr)
             return;
         std::fprintf(log, "room: %s top %lu, largest hole %lu, %lu in holes; copies %d (%d KB); sounds %s%d of %d, "
-                          "%d not tried for room, %d failed\n",
+                          "%d not tried for room, %d failed; reserve %s\n",
                      map, static_cast<unsigned long>(room.top), static_cast<unsigned long>(room.largestHole),
                      static_cast<unsigned long>(room.inHoles), st.copies, st.copiesKb,
                      snd.tableFailed ? "NONE (no room for their list), " : "", snd.loaded, snd.kept,
-                     snd.skippedRoom, snd.failed);
+                     snd.skippedRoom, snd.failed,
+                     reserve.letGoLoad > 0 ? "LET GO in the load" : (reserve.held ? "held" : "none"));
         std::fclose(log);
     }
 
@@ -636,6 +639,7 @@ namespace
         leavingAbandoned = false;
         hlrt::gpuStats.beginMap();
         dropMap();
+        hlrt::guard::renewReserve();
         // With no picture kept: the game's loading picture, on the screen
         // and left there while the map is read (video memory is empty just
         // now: there is room). That is the first load, and little else.

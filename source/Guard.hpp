@@ -52,6 +52,20 @@ namespace hlrt::guard
     /// From now on, how far the heap's live bytes rise above what they are
     /// now (playRise): what play takes on top of what a map's load left.
     void markPlay();
+    /// At the start of a map's load, the old one gone: a release build's
+    /// last room taken back, if it was used (Guard.arm.cpp).
+    void renewReserve();
+    /// That room, since the map's load began: held still, and how many times
+    /// it was let go (in the load, in play) and for how big a block, the last
+    /// time. (A debug build has none: all zero.)
+    struct ReserveState
+    {
+        bool held = false;
+        std::uint32_t letGoLoad = 0;
+        std::uint32_t letGoPlay = 0;
+        std::uint32_t lastAsked = 0;
+    };
+    ReserveState reserveState();
     std::uint32_t playRise();
 
     /// Room in the heap: above its top, and in the holes inside it (the
