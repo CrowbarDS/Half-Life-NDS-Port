@@ -65,6 +65,32 @@ namespace
         p = fresh(60, 0);
         playerTakeDamage(p, 10, kDmgFall);
         check(p.suit.value.queue[0] == kSuitDmg4, "... a fall of 10, a minor one");
+        {
+            // Said at the game's suitvolume, a quarter of full, from the
+            // player; half the time a little higher (EMIT_SOUND_SUIT).
+            LogicWorld w;
+            SoundQueue heard;
+            w.heard = &heard;
+            int quietest = 127, loudest = 0, higher = 0, said = 0;
+            for (int n = 0; n < 40; ++n)
+            {
+                p.suit.value.queue[0] = kSuitDmg4;
+                p.suit.value.waitMs = 0;
+                w.effectSeed = static_cast<std::uint32_t>(n) * 7919u; // (as the effects move it between lines)
+                heard.count = 0;
+                hldata::detail::suitTick(w, p, 33);
+                for (int i = 0; i < heard.count; ++i)
+                {
+                    const SoundEvent &e = heard.events[i];
+                    quietest = std::min(quietest, static_cast<int>(e.volume));
+                    loudest = std::max(loudest, static_cast<int>(e.volume));
+                    higher += e.pitch >= 98 && e.pitch <= 104 && e.pitch != 100;
+                    said += (e.flags & kSoundSentence) && (e.flags & kSoundHere) && (e.pitch == 100 || (e.pitch >= 98 && e.pitch <= 104));
+                }
+            }
+            check(said == 40 && quietest == 32 && loudest == 32, "the suit speaks at a quarter of full, at the player");
+            check(higher > 5 && higher < 35, "... and about half the time a little higher");
+        }
         p = fresh(100, 0);
         playerTakeDamage(p, 10, kDmgCrush);
         check(p.suit.value.queue[0] < 0, "... and nothing is said of a hurt with health still over 75");

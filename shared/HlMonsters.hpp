@@ -3358,9 +3358,16 @@ namespace hldata
                 suit.waitMs -= ms;
             if (suit.waitMs > 0 || suit.queue[0] < 0 || player.health <= 0)
                 return;
+            // (At the game's suitvolume, a quarter of full; half the time a
+            // little higher, 98 to 104: EMIT_SOUND_SUIT. The chance is the
+            // logic's, looked at and not drawn: what the logic does next
+            // stays as it would have been.)
             if (w.heard != nullptr)
-                w.heard->add(static_cast<std::uint16_t>(suit.queue[0]), nullptr, 64, kRadiusEverywhere,
-                             kSoundSentence);
+            {
+                const std::uint32_t roll = (w.effectSeed + static_cast<std::uint32_t>(suit.queue[0])) * 2654435761u >> 8;
+                w.heard->add(static_cast<std::uint16_t>(suit.queue[0]), nullptr, 32, kRadiusEverywhere,
+                             kSoundSentence, (roll & 1) ? 98 + static_cast<int>((roll >> 1) % 7) : 100);
+            }
             for (int i = 0; i < 3; ++i)
                 suit.queue[i] = suit.queue[i + 1];
             suit.queue[3] = -1;
