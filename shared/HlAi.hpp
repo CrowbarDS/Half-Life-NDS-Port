@@ -428,6 +428,21 @@ namespace hldata
         std::int32_t healTime = 0;   ///< ... and m_healTime
     };
 
+    /// How a monster gets past what is in its way (Move): how long it waits
+    /// for something that moves (m_moveWaitTime, set by each MoveTo), and
+    /// the way round it, while it has one (a detour waypoint). Saved, so
+    /// that a game loaded goes on as it would have (the game itself does not
+    /// keep m_moveWaitTime).
+    struct AiMoveRound
+    {
+        std::int32_t waitMs = 0;
+        fx apex[3] = {0, 0, 0};
+        bool detouring = false; ///< walking to `apex` first
+        bool asking = false;    ///< a way round is being worked out
+        std::int32_t lookMs = 0; ///< until it next looks along its way for others in it
+        fx checked = 0;          ///< how far on its way was clear when it was held up (flDist)
+    };
+
     /// What one monster thinks (the CBaseMonster fields that are not its
     /// entity's). Not saved.
     struct AiMonster
@@ -466,6 +481,7 @@ namespace hldata
         std::int32_t moveBlockedMs = 0;
         std::int32_t moveWaitFinished = 0;
         bool moveAsked = false; ///< the first plan of this move has been asked for
+        AiMoveRound round;
         fx groundSpeed = 0;
         // Turning.
         std::uint16_t idealYaw = 0;

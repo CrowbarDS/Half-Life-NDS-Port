@@ -421,6 +421,7 @@ namespace hldata
     // loaded from a save simply asks again.
 
     inline constexpr std::uint8_t kThinkPlan = 1;  ///< walkPlan: where to make for next
+    inline constexpr std::uint8_t kThinkDetour = 2; ///< walkTriangulate: a way round what is in the way
 
     inline constexpr std::uint8_t kThinkFree = 0;
     inline constexpr std::uint8_t kThinkAsked = 1;

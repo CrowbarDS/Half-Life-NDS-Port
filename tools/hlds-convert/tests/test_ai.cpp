@@ -794,6 +794,203 @@ namespace
               "a move that ended within reach of its target, if not its range, is over");
     }
 
+    /// Monster `index`'s Move, a frame of it, with nothing else of it
+    /// thinking (its schedule left alone).
+    void moveFrame(Game &g, int index, int ms = 33)
+    {
+        AiMonster &m = mind(g, index);
+        AiCtx c = aiCtx(g.logic, g.player, index, m, *aiKindOf(g.actors.states[index].kind));
+        g.actors.ai->now += ms;
+        aiMoveTick(c, ms);
+        aiTurnTick(c, ms);
+        actorPlaceBox(g.actors, index);
+    }
+
+    /// A straight walk of `length` from actor `index` along one of the
+    /// axes, into `to` (feet). (Along an axis, a step that is blocked is
+    /// blocked: there is no sliding sideways along what is in the way.)
+    bool walkAhead(Game &g, int index, int length, fx *to)
+    {
+        ActorState &a = g.actors.states[index];
+        for (int turn = 0; turn < 4; ++turn)
+        {
+            const auto yaw = static_cast<std::uint16_t>(turn * 16384);
+            fx sine, cosine;
+            fxSinCos(yaw, sine, cosine);
+            ActorState probe;
+            probe.pos[0] = a.pos[0] + cosine * length;
+            probe.pos[1] = a.pos[1] + sine * length;
+            probe.pos[2] = a.pos[2] + fxFromInt(8);
+            if (!actorToFloor(g.move, probe, fxFromInt(8), fxFromInt(64)) ||
+                !walkClear(g.move, &g.actors, index, monsterHull(a.kind), a.pos, probe.pos, length / 16 + 4))
+                continue;
+            for (int k = 0; k < 3; ++k)
+                to[k] = probe.pos[k];
+            a.yaw = yaw;
+            return true;
+        }
+        return false;
+    }
+
+    struct Held
+    {
+        int stillFrames = 0;   ///< frames it did not move with a route
+        int walkingStill = 0;  ///< ... of them, more than one in a row in a clip of going
+        int blockedAt = -1;    ///< ms: the first frame it did not move
+        int reactedAt = -1;    ///< ms: the first frame it waited, or went round
+        bool detoured = false;
+        bool arrived = false;
+        int waitedFor = 0;     ///< the longest wait it was given, ms
+    };
+
+    /// Scientist `walker` sent `length` units on along an axis; the other
+    /// (`blocker`) steps into its way `gap` units along it, after it has
+    /// planned its walk, as one that comes round a corner does. `ms` of
+    /// Move.
+    Held blockedWalk(Game &g, int walker, int blocker, int length, int gap, bool blockerMoving, int ms)
+    {
+        Held held;
+        ActorState &a = g.actors.states[walker];
+        ActorState &b = g.actors.states[blocker];
+        b.pos[2] = a.pos[2] + fxFromInt(4096);
+        actorPlaceBox(g.actors, blocker);
+        fx to[3];
+        if (!walkAhead(g, walker, length, to))
+        {
+            check(false, "a straight walk from the scientist");
+            return held;
+        }
+        const fx d[3] = {to[0] - a.pos[0], to[1] - a.pos[1], 0};
+        fx in[3];
+        for (int k = 0; k < 2; ++k)
+            in[k] = a.pos[k] + static_cast<fx>((static_cast<std::int64_t>(d[k]) * gap) / length);
+        in[2] = a.pos[2];
+        AiMonster &other = mind(g, blocker);
+        other.movementGoal = blockerMoving ? kMoveGoalLocation : kMoveGoalNone;
+        other.moveWaitFinished = g.actors.ai->now + 1000000; // (where it is, all the same)
+        AiMonster &m = mind(g, walker);
+        AiCtx c = aiCtx(g.logic, g.player, walker, m, *aiKindOf(a.kind));
+        m.moveWaitFinished = 0;
+        aiRouteClear(c);
+        aiClear(c, kCondTaskFailed);
+        aiMoveToLocation(c, kActWalk, 2000, to);
+        int inRow = 0;
+        for (int t = 0; t < ms; t += 33)
+        {
+            if (t == 66)
+            {
+                for (int k = 0; k < 3; ++k)
+                    b.pos[k] = in[k];
+                actorPlaceBox(g.actors, blocker);
+            }
+            const fx was[2] = {a.pos[0], a.pos[1]};
+            const bool routed = m.movementGoal != kMoveGoalNone;
+            moveFrame(g, walker);
+            trace(g, walker, t);
+            const int wait = m.moveWaitFinished - g.actors.ai->now;
+            if (wait > held.waitedFor)
+                held.waitedFor = wait;
+            held.detoured = held.detoured || m.round.detouring;
+            if (held.reactedAt < 0 && (wait > 0 || m.round.detouring))
+                held.reactedAt = t;
+            const bool still = a.pos[0] == was[0] && a.pos[1] == was[1];
+            const bool going = m.activity == kActWalk || m.activity == kActRun;
+            if (routed && still && m.movementGoal != kMoveGoalNone)
+            {
+                if (held.blockedAt < 0)
+                    held.blockedAt = t;
+                ++held.stillFrames;
+                inRow = going ? inRow + 1 : 0;
+                if (inRow > 1)
+                    ++held.walkingStill;
+            }
+            else
+            {
+                inRow = 0;
+            }
+            if (m.movementGoal == kMoveGoalNone)
+            {
+                held.arrived = !aiHas(c, kCondTaskFailed) && aiDist2D(a.pos, to) < fxFromInt(40);
+                break;
+            }
+        }
+        return held;
+    }
+
+    /// Held up by another (Move): stopped, not walking on the spot; waits
+    /// for one that is on its way somewhere; goes round one that stands
+    /// where there is room to; and where there is none (a corridor), stops
+    /// and makes its route again at once, not after seconds of it.
+    void testBlockedWalk(const char *dir)
+    {
+        auto game = load(dir, "c1a2a");
+        if (!game)
+            return;
+        Game &g = *game;
+        const int sci = findKind(g, ActorKind::Scientist);
+        const int other = findKind(g, ActorKind::Scientist, 1);
+        check(sci >= 0 && other >= 0, "c1a2a has two scientists");
+        if (sci < 0 || other < 0)
+            return;
+        alone(g, {sci, other});
+        g.player.origin[2] += fxFromInt(4096); // (out of everyone's way)
+        for (int i = 0; i < 10; ++i)
+            tickStill(g);
+        ActorState &a = g.actors.states[sci];
+        const fx home[3] = {a.pos[0], a.pos[1], a.pos[2]};
+        auto putAt = [&](const fx *p)
+        {
+            for (int k = 0; k < 3; ++k)
+                a.pos[k] = p[k];
+            actorPlaceBox(g.actors, sci);
+        };
+
+        // Its own place is in a corridor some 150 across: no way round
+        // another in it (the game's first try is three times its width out).
+        Held h = blockedWalk(g, sci, other, 160, 40, false, 2000);
+        std::printf("test_ai: corridor: blocked at %d ms, reacted at %d, still %d frames, walking still %d\n",
+                    h.blockedAt, h.reactedAt, h.stillFrames, h.walkingStill);
+        check(h.blockedAt >= 0, "a scientist walking at another in a corridor is held up");
+        check(h.walkingStill == 0, "and stands while held up: no walk on the spot");
+        check(h.reactedAt >= 0 && h.reactedAt - h.blockedAt <= 66,
+              "with no way round, it stops and makes its route again at once");
+
+        putAt(home);
+        h = blockedWalk(g, sci, other, 160, 40, true, 1500);
+        check(h.waitedFor > 1900 && h.waitedFor <= 2000, "one in the way that is on its way: a wait of 2 s");
+        check(h.walkingStill == 0, "waited for standing, not walking");
+
+        // Somewhere with room: a node with the walk and the way round clear.
+        bool open = false;
+        for (int n = 0; n < g.actors.nodeCount && !open; ++n)
+        {
+            if (g.actors.nodes[n].flags & kPathNodeAir)
+                continue;
+            fx at[3] = {g.actors.nodes[n].pos[0], g.actors.nodes[n].pos[1], g.actors.nodes[n].pos[2]};
+            putAt(at);
+            if (!actorToFloor(g.move, a, fxFromInt(8), fxFromInt(64)))
+                continue;
+            actorPlaceBox(g.actors, sci);
+            fx to[3], apex[3];
+            if (!walkAhead(g, sci, 160, to))
+                continue;
+            const fx past[3] = {a.pos[0] + (to[0] - a.pos[0]) / 4, a.pos[1] + (to[1] - a.pos[1]) / 4, a.pos[2]};
+            ActorState &b = g.actors.states[other];
+            for (int k = 0; k < 3; ++k)
+                b.pos[k] = past[k];
+            actorPlaceBox(g.actors, other);
+            open = walkTriangulate(g.move, &g.actors, sci, monsterHull(a.kind), a.pos, to, fxFromInt(32), 0, apex);
+            // (walkAhead takes the first axis with a clear walk: the same again.)
+        }
+        check(open, "c1a2a has room somewhere to go round another");
+        if (!open)
+            return;
+        h = blockedWalk(g, sci, other, 160, 40, false, 8000);
+        check(h.blockedAt >= 0 && h.walkingStill == 0, "in the open, held up, it stands");
+        check(h.detoured, "and goes round the one that stands in its way");
+        check(h.arrived, "and gets where it was going");
+    }
+
     int actorNamed(const Game &g, const char *name)
     {
         const std::uint16_t id = nameIdOfHash(g.view.nameHashes, g.view.nameCount, nameHash(name));
@@ -977,6 +1174,7 @@ int main()
         testHoundeyes(dir);
         testBarnacle(dir);
         testMoveEndsShort(dir);
+        testBlockedWalk(dir);
         testC1a1fScripts(dir);
         testC1a1cMakers(dir);
     }

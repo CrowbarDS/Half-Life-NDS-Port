@@ -437,7 +437,8 @@ namespace hldata
                     return true;
                 }
                 c.m.movementActivity = kActWalkScared;
-                if (!aiBuildRoute(c, kMoveGoalTarget, feet))
+                // (MoveToTarget(ACT_WALK_SCARED, 0.5))
+                if (!aiBuildRoute(c, kMoveGoalTarget, feet, 500))
                     aiTaskFail(c);
                 return true;
             }

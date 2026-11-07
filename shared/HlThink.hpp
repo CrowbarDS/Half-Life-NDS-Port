@@ -54,6 +54,14 @@ namespace hldata
                 answer.out[k] = walker.goal[k];
             break;
         }
+        case kThinkDetour:
+        {
+            // (From where it stands: it waits, stopped, for the answer.)
+            const ActorState &walker = a.states[index];
+            answer.found = walkTriangulate(*w.world, &a, index, asked.small, walker.pos, asked.at,
+                                           fxFromInt(asked.reach), fxFromInt(asked.least), answer.out);
+            break;
+        }
         default:
             answer.found = false;
             break;

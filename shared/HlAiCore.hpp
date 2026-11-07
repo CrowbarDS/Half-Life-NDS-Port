@@ -458,6 +458,7 @@ namespace hldata
     {
         c.m.movementGoal = kMoveGoalNone;
         c.m.movementActivity = kActIdle;
+        c.m.round.detouring = c.m.round.asking = false;
         aiForgetMemory(c, kMemoryMoveFailed);
     }
     inline bool aiRouteClearNow(const AiCtx &c) { return c.m.movementGoal == kMoveGoalNone; }
@@ -473,6 +474,7 @@ namespace hldata
         }
         c.m.moveBlockedMs = 0;
         c.m.moveAsked = false;
+        c.m.round.detouring = c.m.round.asking = false;
         c.me.thinkMs = 0;
         c.me.hasGoal = false;
         c.me.goalNode = c.me.fromNode = -1;
@@ -543,7 +545,7 @@ namespace hldata
     /// Stop: no more walking; the clip of standing.
     inline void aiStop(AiCtx &c)
     {
-        c.m.idealActivity = kActIdle; // GetStoppedActivity
+        c.m.idealActivity = c.kind.stoppedActivity != nullptr ? c.kind.stoppedActivity(c) : kActIdle;
     }
 
     inline bool aiMoveFrom(AiCtx &c, std::uint8_t activity, const fx *goal)
@@ -555,7 +557,7 @@ namespace hldata
     /// MoveToLocation
     inline bool aiMoveToLocation(AiCtx &c, std::uint8_t activity, int waitMs, const fx *goal)
     {
-        (void)waitMs;
+        c.m.round.waitMs = waitMs;
         return aiMoveFrom(c, activity, goal);
     }
 
@@ -1265,8 +1267,10 @@ namespace hldata
     }
 
     /// A route to a place: straight if that is a walk, else by the nodes
-    /// (BuildRoute). False if there is no way at all.
-    inline bool aiBuildRoute(AiCtx &c, std::uint8_t goal, const fx *to)
+    /// (BuildRoute). False if there is no way at all. `waitMs`: for a
+    /// MoveTo of the game's, how long it is to wait for something that
+    /// moves out of its way (-1: BuildRoute, which leaves that as it was).
+    inline bool aiBuildRoute(AiCtx &c, std::uint8_t goal, const fx *to, int waitMs = -1)
     {
         const fx d[3] = {to[0] - c.me.pos[0], to[1] - c.me.pos[1], 0};
         const fx far = fxLength(d);
@@ -1289,6 +1293,8 @@ namespace hldata
         const bool ok = far < fxFromInt(256) ? (straight() || byNodes()) : (byNodes() || straight());
         if (!ok)
             return false;
+        if (waitMs >= 0)
+            c.m.round.waitMs = waitMs;
         aiRouteNew(c, goal, to);
         return true;
     }
@@ -1994,7 +2000,7 @@ namespace hldata
             }
             // MoveToTarget(ACT_WALK, 2)
             c.m.movementActivity = kActWalk;
-            if (!aiBuildRoute(c, kMoveGoalTarget, feet))
+            if (!aiBuildRoute(c, kMoveGoalTarget, feet, 2000))
                 aiTaskFail(c);
             break;
         }
@@ -2004,7 +2010,8 @@ namespace hldata
             fx feet[3];
             if (aiTargetOf(c.w, c.player, c.m.targetEnt, t))
                 aiFeetOf(t, feet);
-            if (t.valid && aiBuildRoute(c, kMoveGoalTarget, feet))
+            // (MoveToTarget(m_movementActivity, 1))
+            if (t.valid && aiBuildRoute(c, kMoveGoalTarget, feet, 1000))
                 aiTaskComplete(c);
             else
                 aiTaskFail(c);
@@ -2135,7 +2142,7 @@ namespace hldata
         case kTaskGetPathToBestSound:
         {
             const AiSound *sound = aiBestSound(c);
-            if (sound != nullptr && aiBuildRoute(c, kMoveGoalLocation, sound->origin))
+            if (sound != nullptr && aiBuildRoute(c, kMoveGoalLocation, sound->origin, 2000))
                 aiTaskComplete(c);
             else
                 aiTaskFail(c);
@@ -2144,7 +2151,7 @@ namespace hldata
         case kTaskGetPathToBestScent:
         {
             const AiSound *scent = aiBestScent(c);
-            if (scent != nullptr && aiBuildRoute(c, kMoveGoalLocation, scent->origin))
+            if (scent != nullptr && aiBuildRoute(c, kMoveGoalLocation, scent->origin, 2000))
                 aiTaskComplete(c);
             else
                 aiTaskFail(c);
@@ -3027,6 +3034,237 @@ namespace hldata
 
     inline void aiFlyTick(AiCtx &c, int ms); // (HlAliens.hpp: what flies)
 
+    /// What a walker held up is held up by: the actor whose box its own
+    /// would be in a step on along the way it faces, or the player
+    /// (kAiPlayer); kAiNone for the world (the game's trace_ent).
+    inline std::int16_t aiBlocker(const AiCtx &c)
+    {
+        const MonsterKind &kind = monsterKind(c.me.kind);
+        fx sine, cosine;
+        fxSinCos(c.m.idealYaw, sine, cosine);
+        const fx at[3] = {c.me.pos[0] + fxMul(cosine, kWalkStep), c.me.pos[1] + fxMul(sine, kWalkStep), c.me.pos[2]};
+        std::int16_t found = kAiNone;
+        fx nearest = 0;
+        if (c.player.health > 0 && detail::boxInPlayer(c.player, at, kind.half, kind.height))
+        {
+            found = kAiPlayer;
+            nearest = aiDist2D(c.player.origin, c.me.pos);
+        }
+        for (int i = 0; i < c.a.count; ++i)
+        {
+            const ActorState &other = c.a.states[i];
+            if (i == c.index || !other.active || !(other.flags & kActorSolid))
+                continue;
+            fx lo[3], hi[3];
+            targetBox(other, lo, hi);
+            if (lo[0] >= at[0] + kind.half || hi[0] <= at[0] - kind.half || lo[1] >= at[1] + kind.half ||
+                hi[1] <= at[1] - kind.half || lo[2] >= at[2] + kind.height || hi[2] <= at[2])
+                continue;
+            const fx far = aiDist2D(other.pos, c.me.pos);
+            if (found == kAiNone || far < nearest)
+            {
+                found = static_cast<std::int16_t>(i);
+                nearest = far;
+            }
+        }
+        return found;
+    }
+
+    /// IsMoving, of what is in the way: a monster on a route, or an actor
+    /// walking to a script's mark.
+    inline bool aiBlockerMoving(const AiCtx &c, std::int16_t id)
+    {
+        if (id < 0 || id >= c.a.count)
+            return false;
+        const AiMonster *other = aiFind(c.a, id);
+        return (other != nullptr && other->movementGoal != kMoveGoalNone) ||
+               c.a.states[id].scriptPhase == kActorMoving;
+    }
+
+    /// FRefreshRoute, as the walker has it: its way planned afresh from
+    /// where it stands (no way at all fails the move: kWalkNoWay).
+    inline void aiReplan(AiCtx &c)
+    {
+        c.m.moveAsked = false;
+        c.me.thinkMs = 0;
+        c.me.hasGoal = false;
+        c.me.goalNode = c.me.fromNode = -1;
+        c.me.stuckMs = 0;
+    }
+
+    /// No way round what is in the way (Move, FTriangulate failed): stopped,
+    /// and the route made again once, a tenth of a second on -- twice in a
+    /// row and that is remembered; then the task fails.
+    inline void aiMoveNoWayRound(AiCtx &c)
+    {
+        aiStop(c);
+        if (c.m.round.waitMs > 0 && !aiHasMemory(c, kMemoryMoveFailed))
+        {
+            aiReplan(c);
+            if (c.ai.now - c.m.moveWaitFinished < 200)
+                aiRemember(c, kMemoryMoveFailed);
+            c.m.moveWaitFinished = c.ai.now + 100;
+            return;
+        }
+        aiTaskFail(c);
+        aiRouteClear(c);
+    }
+
+    /// A way round asked for (FTriangulate), towards `far`: worked out
+    /// outside the frame where there is a worker to do it, here otherwise.
+    /// True once it is answered (into round.apex; `found`).
+    inline bool aiTriangulate(AiCtx &c, const fx *far, bool &found)
+    {
+        AiMoveRound &round = c.m.round;
+        const MonsterKind &kind = monsterKind(c.me.kind);
+        ThinkQueue *q = c.a.think;
+        ThinkSlot *slot = q != nullptr && q->deferred && c.index < q->count ? &q->slots[c.index] : nullptr;
+        if (slot == nullptr)
+        {
+            round.asking = false;
+            found = walkTriangulate(*c.w.world, &c.a, c.index, aiHull(c), c.me.pos, far, kind.half * 2,
+                                    round.checked, round.apex);
+            return true;
+        }
+        // (Asked before a game was saved: the question was not kept with
+        // it, and is asked again.)
+        if (round.asking && slot->state == kThinkFree)
+            round.asking = false;
+        if (round.asking)
+        {
+            if (slot->kind != kThinkDetour || slot->state != kThinkDone)
+                return false;
+            slot->state = kThinkFree;
+            round.asking = false;
+            found = slot->found;
+            for (int k = 0; k < 3; ++k)
+                round.apex[k] = slot->out[k];
+            return true;
+        }
+        // (Asked when the slot is not busy with a plan of the walker's own.)
+        if (slot->state == kThinkAsked || slot->state == kThinkWorking)
+            return false;
+        slot->kind = kThinkDetour;
+        slot->state = kThinkAsked;
+        for (int k = 0; k < 3; ++k)
+            slot->at[k] = far[k];
+        slot->small = static_cast<std::int16_t>(aiHull(c));
+        slot->reach = static_cast<std::int16_t>(fxToInt(kind.half * 2));
+        slot->least = static_cast<std::int16_t>(fxToInt(round.checked));
+        slot->basis = -1;
+        round.asking = true;
+        return false;
+    }
+
+    /// CheckLocalMove, for the others: the first actor whose box the
+    /// walker's own would meet on the next `look` units towards `aim`, and
+    /// how far on that is (`checked`). Not the one it is going for (a move
+    /// into it is the move it means). Not the world, which its way is
+    /// planned round; nor the player, whom it walks up to and stops in front
+    /// of (walkTick). kAiNone if none.
+    inline std::int16_t aiLookAhead(const AiCtx &c, const fx *aim, fx look, fx &checked)
+    {
+        const fx d[3] = {aim[0] - c.me.pos[0], aim[1] - c.me.pos[1], 0};
+        const fx length = fxLength(d);
+        if (length <= 0)
+            return kAiNone;
+        if (look > length)
+            look = length;
+        const MonsterKind &kind = monsterKind(c.me.kind);
+        const fx middle = kind.height / 2;
+        const fx from[3] = {c.me.pos[0], c.me.pos[1], c.me.pos[2] + middle};
+        const fx to[3] = {from[0] + static_cast<fx>((static_cast<std::int64_t>(d[0]) * look) / length),
+                          from[1] + static_cast<fx>((static_cast<std::int64_t>(d[1]) * look) / length), from[2]};
+        const std::int16_t target = c.m.movementGoal == kMoveGoalEnemy    ? c.m.enemy
+                                    : c.m.movementGoal == kMoveGoalTarget ? c.m.targetEnt
+                                                                          : kAiNone;
+        std::int16_t found = kAiNone;
+        std::int64_t best = kFractionOne + 1;
+        auto tryBox = [&](std::int16_t id, const fx *lo, const fx *hi)
+        {
+            // (Grown by the walker's own size: its middle against that.)
+            const fx bl[3] = {lo[0] - kind.half, lo[1] - kind.half, lo[2] - middle};
+            const fx bh[3] = {hi[0] + kind.half, hi[1] + kind.half, hi[2] + middle};
+            std::int64_t enter = 0;
+            if (lineEntersBox(from, to, bl, bh, enter) && enter < best)
+            {
+                best = enter;
+                found = id;
+            }
+        };
+        for (int i = 0; i < c.a.count; ++i)
+        {
+            const ActorState &other = c.a.states[i];
+            if (i == c.index || i == target || !other.active || !(other.flags & kActorSolid))
+                continue;
+            fx lo[3], hi[3];
+            targetBox(other, lo, hi);
+            tryBox(static_cast<std::int16_t>(i), lo, hi);
+        }
+        if (found != kAiNone)
+            checked = static_cast<fx>((static_cast<std::int64_t>(look) * best) >> kFractionShift);
+        return found;
+    }
+
+    /// Move, its way blocked by `blocker` `checked` units on: it stops;
+    /// waits for one that is on its way somewhere (not twice within three
+    /// seconds); otherwise goes round it to `aim` (FTriangulate), or if
+    /// there is no way round, makes its route again. False while it waits
+    /// or works out the way round: no step this frame.
+    inline bool aiHeldUp(AiCtx &c, std::int16_t blocker, fx checked, const fx *aim)
+    {
+        AiMoveRound &round = c.m.round;
+        aiStop(c);
+        if (c.m.activity != c.m.idealActivity)
+            aiSetActivity(c, c.m.idealActivity);
+        if (blocker != kAiPlayer && round.waitMs > 0 && aiBlockerMoving(c, blocker) &&
+            c.ai.now - c.m.moveWaitFinished > 3000)
+        {
+            c.m.moveWaitFinished = c.ai.now + round.waitMs;
+            return false;
+        }
+        // (Held up at its nose by the world or the player: a way round is
+        // looked for as it stops, not every frame it stands there.)
+        if (blocker < 0 && c.m.moveBlockedMs > kAiThinkMs)
+        {
+            if (c.m.moveBlockedMs > 2000)
+            {
+                aiRemember(c, kMemoryMoveFailed);
+                aiTaskFail(c);
+                aiRouteClear(c);
+            }
+            return false;
+        }
+        for (int k = 0; k < 3; ++k)
+            round.apex[k] = aim[k];
+        round.checked = checked;
+        bool found = false;
+        if (!aiTriangulate(c, aim, found))
+            return false;
+        if (!found)
+        {
+            // (The game's look ahead finds walls far off and plans round
+            // them; what the port's walker meets at its nose is its own
+            // planning's to mend -- walkTick plans again after a second of
+            // getting nowhere -- and the player steps aside. Only another
+            // in the way fails the move at once.)
+            if (blocker >= 0)
+            {
+                aiMoveNoWayRound(c);
+            }
+            else if (c.m.moveBlockedMs > 2000)
+            {
+                aiRemember(c, kMemoryMoveFailed);
+                aiTaskFail(c);
+                aiRouteClear(c);
+            }
+            return false;
+        }
+        round.detouring = true;
+        aiReplan(c);
+        return true;
+    }
+
     /// Its route walked, a frame of it (Move).
     inline void aiMoveTick(AiCtx &c, int ms)
     {
@@ -3037,11 +3275,7 @@ namespace hldata
         }
         if (c.m.movementGoal == kMoveGoalNone || c.m.moveWaitFinished > c.ai.now || c.m.inAir)
             return;
-        // (MoveExecute: the clip of going.)
-        if (c.m.idealActivity != c.m.movementActivity)
-            c.m.idealActivity = c.m.movementActivity;
-        if (c.m.activity != c.m.idealActivity)
-            aiSetActivity(c, c.m.idealActivity);
+        AiMoveRound &round = c.m.round;
         fx dest[3];
         aiMoveDest(c, dest);
         fx speed = c.m.groundSpeed > 0 ? c.m.groundSpeed : fxFromInt(100);
@@ -3056,16 +3290,63 @@ namespace hldata
             aiMovementComplete(c);
             return;
         }
+        // A way round being worked out: it stands, stopped, until it is.
+        if (round.asking)
+        {
+            bool found = false;
+            if (!aiTriangulate(c, round.apex, found))
+                return;
+            if (!found)
+            {
+                aiMoveNoWayRound(c);
+                return;
+            }
+            round.detouring = true;
+            aiReplan(c);
+        }
+        // On a detour: its waypoint first (MONSTER_CUT_CORNER_DIST), then
+        // on with the route from there.
+        if (round.detouring)
+        {
+            if (aiDist2D(round.apex, c.me.pos) <= fxFromInt(8))
+            {
+                round.detouring = false;
+                aiReplan(c);
+            }
+            else
+            {
+                for (int k = 0; k < 3; ++k)
+                    dest[k] = round.apex[k];
+            }
+        }
+        // Ten times a second, as the game moves it: a look along its way
+        // for anyone in it (DIST_TO_CHECK).
+        round.lookMs -= ms;
+        if (round.lookMs <= 0)
+        {
+            round.lookMs = kAiThinkMs;
+            const fx *aim = c.me.hasGoal ? c.me.goal : dest;
+            fx checked = 0;
+            const std::int16_t blocker = aiLookAhead(c, aim, fxFromInt(200), checked);
+            if (blocker != kAiNone && !aiHeldUp(c, blocker, checked, aim))
+                return;
+        }
         const MonsterKind &kind = monsterKind(c.me.kind);
         // (Move: MakeIdealYaw to the way it is going, and ChangeYaw at its
         // own yaw speed -- aiTurnTick, after this.)
         const int went = walkTick(c.a, *c.w.world, c.index, aiHull(c), dest, speed, ms, &c.player, kind.half,
-                                  kind.height, c.m.movementGoal == kMoveGoalLocation, &c.m.idealYaw);
+                                  kind.height, round.detouring || c.m.movementGoal == kMoveGoalLocation,
+                                  &c.m.idealYaw);
         if (went != kWalkNoWay)
             aiChangeYaw(c);
         if (went == kWalkMoved)
         {
+            // (MoveExecute: the clip of going, once it goes.)
             c.m.moveBlockedMs = 0;
+            if (c.m.idealActivity != c.m.movementActivity)
+                c.m.idealActivity = c.m.movementActivity;
+            if (c.m.activity != c.m.idealActivity)
+                aiSetActivity(c, c.m.idealActivity);
             return;
         }
         if (went == kWalkNoWay)
@@ -3084,25 +3365,21 @@ namespace hldata
             aiRouteClear(c);
             return;
         }
-        // Held up: by what it is going for, which is as good as there; or by
-        // something else for long enough, and it gives up.
+        // Held up where it stands (what it ran into stepped into its way).
         c.m.moveBlockedMs += ms;
+        const std::int16_t blocker = aiBlocker(c);
+        // By what it is going for, which is as good as there.
         if (c.m.movementGoal == kMoveGoalEnemy || c.m.movementGoal == kMoveGoalTarget)
         {
+            const std::int16_t goal = c.m.movementGoal == kMoveGoalEnemy ? c.m.enemy : c.m.targetEnt;
             AiTarget t;
-            if (aiTargetOf(c.w, c.player, c.m.movementGoal == kMoveGoalEnemy ? c.m.enemy : c.m.targetEnt, t) &&
-                aiTargetInReach(c, t))
+            if (aiTargetOf(c.w, c.player, goal, t) && (blocker == goal || aiTargetInReach(c, t)))
             {
                 aiMovementComplete(c);
                 return;
             }
         }
-        if (c.m.moveBlockedMs > 2000)
-        {
-            aiRemember(c, kMemoryMoveFailed);
-            aiTaskFail(c);
-            aiRouteClear(c);
-        }
+        aiHeldUp(c, blocker, 0, c.me.hasGoal ? c.me.goal : dest);
     }
 
     /// MonsterThink: ten times a second.

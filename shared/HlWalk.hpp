@@ -380,6 +380,55 @@ namespace hldata
         return false;
     }
 
+    /// FTriangulate: a place beside what is in the way of a walker going
+    /// from `from` to `far` (feet, both) that it can walk to, and from there
+    /// on to `far`. Tried to the right of the way and then to the left,
+    /// past the obstacle by the walker's size and out by three times it,
+    /// then twice its size further out each time, eight times. `size` is
+    /// its width (held to 24..48, as the game holds it); `checked` how far
+    /// ahead the way was clear. Into `apex`; false if there is none.
+    inline bool walkTriangulate(const MoveWorld &world, const ActorWorld *a, int index, int small, const fx *from,
+                                const fx *far, fx size, fx checked, fx *apex)
+    {
+        if (size < fxFromInt(24))
+            size = fxFromInt(24);
+        else if (size > fxFromInt(48))
+            size = fxFromInt(48);
+        const fx d[3] = {far[0] - from[0], far[1] - from[1], 0};
+        const fx length = fxLength(d);
+        if (length <= 0)
+            return false;
+        const fx forward[2] = {static_cast<fx>((static_cast<std::int64_t>(d[0]) << kFxShift) / length),
+                               static_cast<fx>((static_cast<std::int64_t>(d[1]) << kFxShift) / length)};
+        // (The way, crossed with up: to its right.)
+        const fx right[2] = {forward[1], -forward[0]};
+        const fx ahead = checked + size;
+        fx out = size * 3;
+        auto legs = [&](const fx *p)
+        {
+            const fx e[3] = {p[0] - from[0], p[1] - from[1], 0};
+            const fx g[3] = {far[0] - p[0], far[1] - p[1], 0};
+            return walkClear(world, a, index, small, from, p, (fxLength(e) >> (kFxShift + 4)) + 2) &&
+                   walkClear(world, a, index, small, p, far, (fxLength(g) >> (kFxShift + 4)) + 2);
+        };
+        for (int round = 0; round < 8; ++round, out += size * 2)
+        {
+            for (int side = 0; side < 2; ++side)
+            {
+                const fx across = side == 0 ? out : -out;
+                const fx p[3] = {from[0] + fxMul(forward[0], ahead) + fxMul(right[0], across),
+                                 from[1] + fxMul(forward[1], ahead) + fxMul(right[1], across), from[2]};
+                if (legs(p))
+                {
+                    for (int k = 0; k < 3; ++k)
+                        apex[k] = p[k];
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     /// The path node to make for from `feet`: the nearest that can be seen
     /// from there, of the three nearest; -1 if there is none.
     inline int pathNearest(const ActorWorld &a, const MoveWorld &world, const fx *feet, int hull = -1,
