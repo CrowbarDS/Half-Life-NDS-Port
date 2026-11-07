@@ -66,6 +66,13 @@ namespace
                   itemWordOk(static_cast<std::uint32_t>(ItemKind::Rpg), 0) &&
                   !itemWordOk(static_cast<std::uint32_t>(ItemKind::Count), 10),
               "an item's word: a weaponbox points into the strings, nothing else does");
+        // (The suit's: the line it says, among the map's.)
+        const std::uint32_t suit = static_cast<std::uint32_t>(ItemKind::Suit);
+        check(itemWordOk(suit, 0, 0) && itemSuitLine(suit) == -1 &&
+                  itemWordOk(suit | (20u << kItemSuitLineShift) | kItemSuitShort, 0, 20) &&
+                  itemSuitLine(suit | (20u << kItemSuitLineShift) | kItemSuitShort) == 19 &&
+                  !itemWordOk(suit | (21u << kItemSuitLineShift), 0, 20) && !itemWordOk(suit | (1u << 25), 0, 20),
+              "... and the suit's, the line it says, one there is");
         check(parseCommand("frobnicate").command == Command::Unknown && parseCommand("").command == Command::Unknown,
               "what is not a command is not one");
         line = parseCommand("a b c d e");

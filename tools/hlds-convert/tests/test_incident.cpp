@@ -307,6 +307,47 @@ namespace
         check(differ == 0, "... and switched back, they are as they were");
     }
 
+    /// c1a0d's suit, taken: it says its whole logon (!HEV_AAx), at once and
+    /// at the suit's volume, with no pickup sound; and nothing more until
+    /// that is said.
+    void testSuitLogon(Game &g)
+    {
+        int suit = -1;
+        for (int i = 0; i < g.actors.count && suit < 0; ++i)
+        {
+            if (g.actors.states[i].kind == static_cast<std::uint8_t>(ActorKind::Item) &&
+                g.actors.states[i].item == static_cast<std::uint8_t>(ItemKind::Suit))
+                suit = i;
+        }
+        check(suit >= 0, "c1a0d has the suit");
+        if (suit < 0)
+            return;
+        const std::uint32_t word = g.actors.records[suit].item;
+        const int line = itemSuitLine(word);
+        int words = -1;
+        if (line >= 0 && line < static_cast<int>(g.view.sentenceCount))
+            words = g.view.sentences[line].wordCount;
+        std::printf("test_incident: c1a0d's suit says line %d (%d words)\n", line, words);
+        check(line >= kSuitLines && !(word & kItemSuitShort) && words == 19,
+              "... cooked with its whole logon: !HEV_AAx's ten words, and a pause at each comma");
+        g.drain();
+        g.player.inv.have &= ~kHaveSuit;
+        const bool taken = itemPickUp(g.logic, g.player, suit);
+        int said = 0, others = 0;
+        for (int i = 0; i < g.heard.count; ++i)
+        {
+            const SoundEvent &e = g.heard.events[i];
+            if ((e.flags & kSoundSentence) && e.sound == line && e.volume == 32)
+                ++said;
+            else if (e.sound == static_cast<std::uint16_t>(CommonSound::GunPickup))
+                ++others;
+        }
+        check(taken && (g.player.inv.have & kHaveSuit) && said == 1 && others == 0,
+              "taken, it says its logon at the suit's volume, and nothing is picked up to be heard");
+        check(g.player.suit.value.waitMs >= 30000, "... and the suit says nothing else until that is said");
+        g.drain();
+    }
+
     /// c1a0d: those sitting are on their seats (func_walls, at -252), not on
     /// the floor under them (-288) with their legs through it; and the suit
     /// is down on the floor of its case (-280), too low a place for the
@@ -338,6 +379,7 @@ namespace
         }
         check(sitters == 2 && seated == 2, "c1a0d's two who sit are on their seats");
         check(suit, "... and the suit is on the floor of its case");
+        testSuitLogon(g);
         // The scientist at the cart walks to it across a floor of grates
         // (func_walls over a pit): he stays on them, not in the pit under
         // them with his head at the player's feet.

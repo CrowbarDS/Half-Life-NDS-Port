@@ -3436,6 +3436,16 @@ namespace hlds
                 actor.item = static_cast<std::uint32_t>(ItemKind::Weaponbox) |
                              (stringOffset(contents) << kItemStringShift);
             }
+            if (info.item == ItemKind::Suit)
+            {
+                // What it says as it is taken (items.cpp's CItemSuit): the
+                // whole of its logon, or with flag 1 only its first words.
+                const bool shortLogon = (static_cast<int>(numberKey(entity, "spawnflags")) & 1) != 0;
+                const int line = sentenceIndex(shortLogon ? "HEV_A0" : "HEV_AAx");
+                if (line >= 0 && line < 0xFFFF)
+                    actor.item |= (static_cast<std::uint32_t>(line + 1) << kItemSuitLineShift) |
+                                  (shortLogon ? kItemSuitShort : 0u);
+            }
             if (info.item != ItemKind::None && !entity.value("target").empty())
             {
                 // What it fires when taken goes through a relay of its own:

@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 55;
+    inline constexpr std::uint16_t kLevelVersion = 56;
     /// The oldest level format this build reads. (49: a map's textures are
     /// stored in its archive as they are, never compressed, so that one that
     /// streams is read straight in during play. 50: each texture's record
@@ -86,8 +86,9 @@ namespace hldata
     /// which a build before plays at full. 54: four common sounds of
     /// swimming, a track train's start and a grenade's debris, after those a
     /// build before knows: it reads them as the map's own. 55: an air
-    /// tank's own sound among them, the same.)
-    inline constexpr std::uint16_t kLevelMinReader = 50;
+    /// tank's own sound among them, the same. 56: what the suit says when
+    /// it is taken, in its item word, which a build before refuses.)
+    inline constexpr std::uint16_t kLevelMinReader = 56;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,
     /// 28 -> 29 a func_train's global name (extra[3], 0 before: read as
@@ -1283,16 +1284,31 @@ namespace hldata
     /// save of a map of version 30 points at the same actors it did).
     inline constexpr ItemKind kItemFirstLast = ItemKind::Rpg;
     inline constexpr int kItemStringShift = 8; ///< a weaponbox's Strings offset, in ActorRecord::item
+    /// The suit's: the line it says as it is taken (the game's !HEV_AAx, or
+    /// !HEV_A0 for one flagged to be short), as its Sentences index plus
+    /// one (0: none, as in a map from before level version 56), in bits
+    /// 8..23 of ActorRecord::item ...
+    inline constexpr int kItemSuitLineShift = 8;
+    /// ... and in bit 24, that it is the short one.
+    inline constexpr std::uint32_t kItemSuitShort = 1u << 24;
+    /// The suit's line (kItemSuitLineShift): a Sentences index, or -1.
+    inline int itemSuitLine(std::uint32_t item)
+    {
+        return static_cast<int>((item >> kItemSuitLineShift) & 0xFFFFu) - 1;
+    }
     /// Whether an item actor's ActorRecord::item makes sense: a kind there is,
     /// and for a weaponbox where its contents are in the level's Strings
-    /// (`stringsSize` bytes); for anything else nothing above the kind.
-    inline bool itemWordOk(std::uint32_t item, std::uint32_t stringsSize)
+    /// (`stringsSize` bytes); for the suit, a line there is of the
+    /// `sentenceCount`; for anything else nothing above the kind.
+    inline bool itemWordOk(std::uint32_t item, std::uint32_t stringsSize, std::uint32_t sentenceCount = 0)
     {
         const std::uint32_t kind = item & 0xFFu;
         if (kind >= static_cast<std::uint32_t>(ItemKind::Count))
             return false;
         if (kind == static_cast<std::uint32_t>(ItemKind::Weaponbox))
             return (item >> kItemStringShift) < stringsSize;
+        if (kind == static_cast<std::uint32_t>(ItemKind::Suit))
+            return (item >> 25) == 0 && itemSuitLine(item) < static_cast<int>(sentenceCount);
         return (item >> kItemStringShift) == 0;
     }
 

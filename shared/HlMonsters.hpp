@@ -3340,7 +3340,22 @@ namespace hldata
         a.got |= kGotItem;
         if (w.achievements != nullptr)
             w.achievements->push(AchEventType::Picked, 0, actor.item);
-        if (w.heard != nullptr)
+        if (actor.item == static_cast<std::uint8_t>(ItemKind::Suit))
+        {
+            // Not a sound of its own: the suit says it is on (CItemSuit's
+            // EMIT_SOUND_SUIT, at the suit's volume), and has nothing else
+            // to say until that is done (a hurt said now would cut it off).
+            const std::uint32_t word = a.records != nullptr && index < a.recordCount ? a.records[index].item : 0;
+            const int line = itemSuitLine(word);
+            SuitVoice &suit = player.suit.value;
+            if (line >= 0 && !suit.silent && w.heard != nullptr)
+            {
+                w.heard->add(static_cast<std::uint16_t>(line), nullptr, 32, kRadiusEverywhere, kSoundSentence, 100);
+                // (Its length, as the game's words say it: about 11 s, or 40.)
+                suit.waitMs = (word & kItemSuitShort) ? 11000 : 40000;
+            }
+        }
+        else if (w.heard != nullptr)
         {
             const auto item = static_cast<ItemKind>(actor.item);
             w.heard->add(item == ItemKind::HealthKit ? CommonSound::MedKit

@@ -353,7 +353,7 @@ namespace hldata
             if (actors[i].model >= modelRefCount || actors[i].name >= nameCount ||
                 actors[i].kind >= static_cast<std::uint8_t>(ActorKind::Count) ||
                 (actors[i].kind == static_cast<std::uint8_t>(ActorKind::Item)
-                     ? !itemWordOk(actors[i].item, stringsSize)
+                     ? !itemWordOk(actors[i].item, stringsSize, sentenceCount)
                      : actors[i].kind == static_cast<std::uint8_t>(ActorKind::Xen)
                            ? (actors[i].item & 0xFFu) >= static_cast<std::uint32_t>(XenPlant::Count)
                            : (actors[i].item >> kActorSquadShift) >= nameCount) ||
