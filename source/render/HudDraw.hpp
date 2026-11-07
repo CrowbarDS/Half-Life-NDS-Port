@@ -65,6 +65,17 @@ namespace hlrt
         void draw();
         /// Nothing of the display shown (no game: the title).
         void clear();
+        /// What the last game said is forgotten (no suit, nothing in hand,
+        /// no lamp): a new game's first frames show nothing of it.
+        void forgetStatus()
+        {
+            suit_ = false;
+            health_ = 100;
+            armor_ = weapon_ = clip_ = spare_ = 0;
+            extra_ = -1;
+            lampOn_ = lampSuit_ = false;
+            lampPercent_ = 100;
+        }
         /// From the vertical blank interrupt: what draw() said, to the
         /// sprites' table.
         void onVblank();

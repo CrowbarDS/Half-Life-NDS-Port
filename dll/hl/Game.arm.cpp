@@ -118,6 +118,10 @@ namespace hlrt
         renew(world);
         renew(logic);
         topText.clear();
+        // (No camera's view, nor a train ridden in on, outlives its map: the
+        // next one's start is its own.)
+        cameraWas_ = -1;
+        trainCarried_ = false;
         // (The lamp comes along as it is, as in the game: alight or out,
         // with what is left in it.)
     }
@@ -655,7 +659,9 @@ namespace hlrt
 
     void Game::adoptProgress(const SaveData &save)
     {
-        globals = Globals();
+        // (Nothing of the game played before: the save's own time, company,
+        // chapter and lamp are laid over these when it has them.)
+        resetProgress();
         for (std::size_t i = 0; i < save.globalHash.size(); ++i)
             globals.set(save.globalHash[i], save.globalState[i] > kGlobalDead && save.globalHash[i] != kGlobalPlayerGravity &&
                                                     save.globalHash[i] != kGlobalSkill

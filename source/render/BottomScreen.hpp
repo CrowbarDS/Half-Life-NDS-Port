@@ -34,6 +34,14 @@ namespace hlrt
         /// which is whether RELOAD is lit. Redrawn only when something
         /// changes. (Health and the suit's charge are the top screen's.)
         void setStatus(int weapon, int clip, int spare, unsigned have, unsigned empty, bool canReload);
+        /// What setStatus was last told is forgotten (nothing in hand or
+        /// carried), for a new game: drawn so when the pad is next shown.
+        void forgetStatus()
+        {
+            weapon_ = clip_ = spare_ = 0;
+            have_ = empty_ = 0;
+            canReload_ = false;
+        }
         /// What setStatus was told: in hand, carried, carried with nothing to
         /// fire (a bit per kWeapon*).
         int weapon() const { return weapon_; }

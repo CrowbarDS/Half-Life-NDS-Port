@@ -990,6 +990,8 @@ namespace hlrt
         }
         netlink::powerDown();
         effectDraw.dropSprays();
+        // (A vote left part-way: its pictures and the screen's tint go.)
+        voteLetGo();
         hldata::renew(match_);
         phase_ = Phase::Off;
         startPending_ = false;
@@ -1102,6 +1104,7 @@ namespace hlrt
 #endif
         netlink::powerDown();
         effectDraw.dropSprays();
+        voteLetGo();
         hldata::renew(match_);
         phase_ = Phase::Off;
         startPending_ = false;

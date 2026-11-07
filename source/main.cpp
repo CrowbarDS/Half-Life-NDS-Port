@@ -1081,6 +1081,20 @@ namespace
     hldata::DeathLoop deathLoop;
     std::uint32_t wentBack = 0;
 
+    /// A game begun afresh (NEW GAME, a match, a demo): nothing of the last
+    /// one's session comes along -- the COMMAND line's cheats and flight,
+    /// the deaths counted, what the screens last said was held.
+    void freshSession()
+    {
+        hlrt::game.cheats = hldata::Cheats();
+        hlrt::game.crosshair = true;
+        hlrt::player.noclip = false;
+        deathLoop = hldata::DeathLoop();
+        wentBack = 0;
+        hlrt::hudDraw.forgetStatus();
+        hlrt::bottomScreen.forgetStatus();
+    }
+
     /// Go to where the save in `slot` says: its map begun, and the whole of
     /// its state laid over it. False -- with nothing changed -- if there is
     /// none, or its map is not on the card.
@@ -1647,8 +1661,7 @@ int main(int argc, char *argv[])
                         hlrt::game.globals.set(hldata::kGlobalSkill, hldata::kSkillMedium);
                         hlrt::SaveGame::newRun(Global::vblanks() * 2654435761u + 1u);
                         leavingAbandoned = true;
-                        hlrt::game.cheats = hldata::Cheats();
-                        hlrt::game.crosshair = true;
+                        freshSession();
                         guestMapName = first;
                         hlrt::guest::onMapProgress(guestMapProgress);
                         holdLoad = true;
@@ -1711,6 +1724,7 @@ int main(int argc, char *argv[])
                     hlrt::game.globals.set(hldata::kGlobalSkill, air.skill);
                     hlrt::SaveGame::newRun(Global::vblanks() * 2654435761u + 1u);
                     leavingAbandoned = true;
+                    freshSession();
                     hlrt::guest::offerAir(air.name);
                     guestMapName = air.name;
                     hlrt::guest::onMapProgress(guestMapProgress);
@@ -1821,6 +1835,9 @@ int main(int argc, char *argv[])
                 hlrt::game.globals.set(hldata::kGlobalSkill, static_cast<std::uint8_t>(skill));
                 hlrt::SaveGame::newRun(Global::vblanks() * 2654435761u + 1u);
                 leavingAbandoned = true;
+                // (A match is played straight too: nothing of the COMMAND
+                // line's comes into it.)
+                freshSession();
                 holdLoad = true;
                 const LoadResult loaded = loadLevel(map, nullptr, error);
                 holdLoad = false;
@@ -1858,8 +1875,7 @@ int main(int argc, char *argv[])
         hlrt::SaveGame::newRun(Global::vblanks() * 2654435761u + 1u);
         leavingAbandoned = true;
         // (A new game is played straight: the COMMAND line's cheats are off.)
-        hlrt::game.cheats = hldata::Cheats();
-        hlrt::game.crosshair = true;
+        freshSession();
         // Where: the game's own start, or the Hazard Course's, or Uplink's
         // (NEW GAME's choice).
         const std::string first = chosen && !hlrt::menu.map().empty() ? hlrt::menu.map() : startMap;
