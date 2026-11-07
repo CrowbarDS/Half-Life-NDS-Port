@@ -28,6 +28,17 @@ namespace hlds
             return text.empty() ? fallback : std::atof(text.c_str());
         }
 
+        /// How loud a mover's sounds are, of 127 (LogicRecord::pad; never 0,
+        /// which is a map cooked before): `volume` of full, held to 0..1 as
+        /// the engine holds it, and `fallback` for none or 0 (the game's
+        /// Spawn and Precache).
+        std::uint16_t moverVolumeOf(double volume, double fallback)
+        {
+            if (volume == 0)
+                volume = fallback;
+            return static_cast<std::uint16_t>(std::clamp(std::lround(std::clamp(volume, 0.0, 1.0) * 127), 1L, 127L));
+        }
+
         /// Seconds to milliseconds; a negative time is "never" and stays -1.
         std::int32_t millis(double seconds)
         {
@@ -1875,6 +1886,8 @@ namespace hlds
             {
                 make = true;
                 record.kind = static_cast<std::uint8_t>(LogicKind::Train);
+                // ("volume", as it is; 0.85 for none: CFuncTrain::Spawn.)
+                record.pad = moverVolumeOf(numberKey(entity, "volume"), 0.85);
                 record.speed = fxFromDouble(numberKey(entity, "speed", 100));
                 if (record.speed <= 0)
                     record.speed = fxFromInt(100);
@@ -1951,6 +1964,8 @@ namespace hlds
                 // (its own height, less a step, if it says none), turning
                 // on the way if it is the kind that does.
                 make = true;
+                // ("volume", as it is; 0.85 for none: CFuncPlat::Setup.)
+                record.pad = moverVolumeOf(numberKey(entity, "volume"), 0.85);
                 record.kind = static_cast<std::uint8_t>(LogicKind::PlatRot);
                 double height = numberKey(entity, "height");
                 if (height == 0)
@@ -2083,6 +2098,8 @@ namespace hlds
             {
                 make = true;
                 record.kind = static_cast<std::uint8_t>(LogicKind::TrackTrain);
+                // ("volume", a whole number of tenths; full for none.)
+                record.pad = moverVolumeOf(std::trunc(numberKey(entity, "volume")) * 0.1, 1.0);
                 double speed = numberKey(entity, "speed");
                 if (speed == 0)
                     speed = 100;
@@ -2121,6 +2138,10 @@ namespace hlds
             {
                 make = true;
                 record.kind = static_cast<std::uint8_t>(LogicKind::Rotating);
+                // ("Volume", in tenths; full for none. The game asks for it
+                // with a capital: the maps' own "volume" is not read, and
+                // their fans play at full.)
+                record.pad = moverVolumeOf(numberKey(entity, "Volume") / 10.0, 1.0);
                 // As for a door: flag 4 ("Z axis") is roll, 8 ("X axis") is
                 // pitch, neither is a turn about the vertical.
                 record.extra[0] = (spawnflags & 4) ? kRoll : ((spawnflags & 8) ? kPitch : kYaw);

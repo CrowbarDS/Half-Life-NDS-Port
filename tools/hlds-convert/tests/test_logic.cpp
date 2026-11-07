@@ -326,6 +326,61 @@ namespace
         check(heard.count == 1 && heard.events[0].volume == 127, "a locked door with no line: its sound at full");
     }
 
+    // The movers' "volume" keys, read as the game reads each: a plat's and
+    // a train's as they are (0.85 for none), a track train's in tenths, a
+    // fan's "Volume" in tenths and only with its capital (full for none).
+    void testMoverVolumes()
+    {
+        BoxRoom room;
+        room.brushes = {
+            brush("func_plat", "\"targetname\" \"p1\"\n\"volume\" \"0.4\"\n", -100, -100, 0, -60, -60, 8),
+            brush("func_train", "\"targetname\" \"t1\"\n", -40, -100, 0, -20, -60, 8),
+            brush("func_tracktrain", "\"targetname\" \"tt1\"\n\"volume\" \"4\"\n", 0, -100, 0, 20, -60, 8),
+            brush("func_rotating", "\"Volume\" \"5\"\n", 40, -100, 40, 60, -80, 60),
+            brush("func_rotating", "\"volume\" \"5\"\n", 70, -100, 40, 90, -80, 60),
+            brush("func_door", "\"targetname\" \"d1\"\n\"volume\" \"0.2\"\n", 40, 40, 0, 48, 80, 64),
+        };
+        Game g;
+        build(g, room);
+        check(g.ok, "the movers room cooks");
+        if (!g.ok)
+            return;
+        const int plat = g.recordOfModel(1), train = g.recordOfModel(2), track = g.recordOfModel(3),
+                  fan = g.recordOfModel(4), lowerFan = g.recordOfModel(5), door = g.recordOfModel(6);
+        check(plat >= 0 && train >= 0 && track >= 0 && fan >= 0 && lowerFan >= 0 && door >= 0, "... with all six");
+        if (plat < 0 || train < 0 || track < 0 || fan < 0 || lowerFan < 0 || door < 0)
+            return;
+        const LogicRecord *r = g.view.logic;
+        std::printf("test_logic: mover volumes: plat %d, train %d, track train %d, fan %d, fan with a small v %d, door %d\n",
+                    moverVolume(r[plat]), moverVolume(r[train]), moverVolume(r[track]), moverVolume(r[fan]),
+                    moverVolume(r[lowerFan]), moverVolume(r[door]));
+        check(moverVolume(r[plat]) == 51 && moverVolume(r[train]) == 108,
+              "a plat's volume as it is (0.4), a train's 0.85 when it says none");
+        check(moverVolume(r[track]) == 51, "a track train's in tenths (4: 0.4)");
+        check(moverVolume(r[fan]) == 64 && moverVolume(r[lowerFan]) == 127,
+              "a fan's \"Volume\" in tenths; its \"volume\" unread, as the game's, so full");
+        check(moverVolume(r[door]) == 127, "a door has no volume of its own: full");
+
+        // The plat, used: its moving sound at its volume.
+        std::vector<LogicSound> sounds(g.view.logicCount,
+                                       LogicSound{kNoSound, kNoSound, kNoSound, kNoSound, kNoSound, kNoSound});
+        sounds[plat].move = 1;
+        sounds[plat].stop = 2;
+        SoundQueue heard;
+        g.logic.heard = &heard;
+        g.logic.sounds = sounds.data();
+        g.use(plat);
+        int loud = -1;
+        for (int n = 0; n < 30 && loud < 0; ++n)
+        {
+            g.tick(33);
+            for (int i = 0; i < heard.count; ++i)
+                loud = heard.events[i].sound == 1 ? heard.events[i].volume : loud;
+            heard.count = 0;
+        }
+        check(loud == 51, "the plat is heard moving at its volume");
+    }
+
     void testCookRules()
     {
         std::vector<Entity> e;
@@ -2688,6 +2743,7 @@ int main()
     testCookedRecords();
     testSparks();
     testLockedLines();
+    testMoverVolumes();
     testButtonManagerDoor();
     testMoverLoopFullQueue();
     testMoverSounding();

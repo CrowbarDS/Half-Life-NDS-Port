@@ -917,10 +917,11 @@ namespace hldata
             }
             if (!stopping && travels)
             {
-                w.heard->add(sound, at, 127, kRadiusLarge, kSoundLoopOn, 100, static_cast<std::uint16_t>(index));
+                w.heard->add(sound, at, moverVolume(record), kRadiusLarge, kSoundLoopOn, 100,
+                             static_cast<std::uint16_t>(index));
                 return;
             }
-            w.heard->add(sound, at, 127, kRadiusLarge);
+            w.heard->add(sound, at, moverVolume(record), kRadiusLarge);
         }
 
         /// A map's mark (LogicKind::Mark), on whatever is within a hand's
@@ -2831,7 +2832,7 @@ namespace hldata
             const MoverHull &hull = w.movers[record.brush];
             const fx at[3] = {(hull.mins[0] + hull.maxs[0]) / 2, (hull.mins[1] + hull.maxs[1]) / 2,
                               (hull.mins[2] + hull.maxs[2]) / 2};
-            w.heard->add(w.sounds[index].stop, at, 127, kRadiusLarge);
+            w.heard->add(w.sounds[index].stop, at, moverVolume(record), kRadiusLarge);
         }
 
         /// CFuncTrackTrain::Blocked: one who rides it is lifted (as much as

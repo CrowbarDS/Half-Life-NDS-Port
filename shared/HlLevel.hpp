@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 52;
+    inline constexpr std::uint16_t kLevelVersion = 53;
     /// The oldest level format this build reads. (49: a map's textures are
     /// stored in its archive as they are, never compressed, so that one that
     /// streams is read straight in during play. 50: each texture's record
@@ -82,7 +82,8 @@ namespace hldata
     /// (its palette's colours), which a build before cannot read. (51: a
     /// spark that is switched says so, which a build of 50 reads as one it
     /// may switch anyway. 52: a spark's six sounds, in extra, which a build
-    /// before leaves alone.)
+    /// before leaves alone. 53: how loud a mover's sounds are, in its pad,
+    /// which a build before plays at full.)
     inline constexpr std::uint16_t kLevelMinReader = 50;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,
@@ -876,6 +877,8 @@ namespace hldata
         /// TriggerPush, TriggerTeleport, TriggerGravity, Friction) whose
         /// brush is not a plain box: its model, into Models, whose hull the
         /// player's origin has to be in as well (0: the box is all of it).
+        /// For a PlatRot (any func_plat), Train, TrackTrain or Rotating: how loud its
+        /// sounds are, of 127 (moverVolume; 0 on a map cooked before: full).
         std::uint16_t pad;
         /// For a trigger_auto or a multisource: the hash of a global state
         /// that has to be ON for it to work; 0 = none.
@@ -883,6 +886,16 @@ namespace hldata
         std::uint32_t extra[4];   ///< what its kind says (LogicKind)
     };
     inline constexpr std::uint16_t kNoBrush = 0xFFFF;
+
+    /// How loud a mover's own sounds are, of 127: what its map said (the
+    /// game's "volume" keys), full for anything else.
+    inline int moverVolume(const LogicRecord &record)
+    {
+        const auto kind = static_cast<LogicKind>(record.kind);
+        const bool keyed = kind == LogicKind::PlatRot || kind == LogicKind::Train ||
+                           kind == LogicKind::TrackTrain || kind == LogicKind::Rotating;
+        return keyed && record.pad != 0 ? record.pad : 127;
+    }
     inline constexpr std::uint16_t kBeamRandom = 1; ///< LogicKind::Beam, in maxs[1]
     inline constexpr std::uint16_t kBeamRing = 2;   ///< ... a circle between its two ends
     inline constexpr std::uint16_t kBeamSparkStart = 4; ///< ... sparks fly at its start
