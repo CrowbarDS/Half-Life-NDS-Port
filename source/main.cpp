@@ -547,6 +547,10 @@ namespace
     /// loaded, the map begun again): the next loadLevel does not remember
     /// that map in the game's progress -- which is by then another game's.
     bool leavingAbandoned = false;
+    /// The next loadLevel is the console's changelevel: what the player
+    /// carries comes along (its Arrival), but it is no way out of the map --
+    /// no achievement's journey, nothing stored to come back to, no save.
+    bool consoleJump = false;
 
     /// Everything of the map being played let go: its sounds, its game, and
     /// what it has in video memory.
@@ -617,7 +621,8 @@ namespace
         // And by a way out of it, all of it is kept, as it is, to come back
         // to (HlMapStore.hpp) -- not in a game between consoles, whose maps
         // begin afresh.
-        const bool changing = hlrt::level.loaded() && !leavingAbandoned && arrival != nullptr;
+        const bool changing = hlrt::level.loaded() && !leavingAbandoned && arrival != nullptr && !consoleJump;
+        consoleJump = false;
         const std::string left = currentMap;
         bool stored = false;
         if (hlrt::level.loaded())
@@ -1177,10 +1182,12 @@ namespace
             return std::string("usage: ") + info->usage + "\n  " + info->about;
         }
         case Command::Map:
+        case Command::ChangeLevel:
         {
+            const bool keep = line.command == Command::ChangeLevel;
             const std::string name = line.args[0];
             if (name.empty())
-                return "map <name>";
+                return keep ? "changelevel <name>" : "map <name>";
             // A map's name becomes a file's: letters, digits and underscores.
             for (const char ch : name)
             {
@@ -1188,7 +1195,13 @@ namespace
                     return "not a map's name";
             }
             std::string error;
-            switch (loadLevel(name, nullptr, error))
+            // changelevel: what the player carries, to the map's own start.
+            // (map: the map anew, as it has always been here.)
+            const hldata::Arrival carried = hldata::consoleArrival(hlrt::player.state);
+            consoleJump = keep;
+            const LoadResult result = loadLevel(name, keep ? &carried : nullptr, error);
+            consoleJump = false;
+            switch (result)
             {
             case LoadResult::Ok:
                 return "";
@@ -1378,7 +1391,8 @@ namespace
         hlrt::Menu::ConsoleReply reply;
         reply.text = runCommand(typed);
         const Command command = hldata::parseCommand(typed.c_str()).command;
-        reply.close = reply.text.empty() && (command == Command::Map || command == Command::Restart ||
+        reply.close = reply.text.empty() && (command == Command::Map || command == Command::ChangeLevel ||
+                                             command == Command::Restart ||
                                              command == Command::Load || command == Command::Kill);
         return reply;
     }

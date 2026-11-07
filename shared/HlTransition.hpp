@@ -184,6 +184,20 @@ namespace hldata
         return nearest == kNoCorner ? kNoCorner : w.corners[nearest].next;
     }
 
+    /// What the console's changelevel carries to the map it goes to: what a
+    /// level change carries of the player (health, the suit, weapons, ammo
+    /// and clips, armour), with no landmark -- the player starts at the
+    /// map's own start -- and no one with them, nothing fired, no train.
+    inline Arrival consoleArrival(const PlayerState &player)
+    {
+        Arrival arrival;
+        arrival.valid = true;
+        arrival.landmark = 0;
+        arrival.health = player.health;
+        arrival.inv = player.inv;
+        return arrival;
+    }
+
     /// Pack what crosses, for the ChangeLevel record `index` of the map being
     /// left. The view angles are the caller's to fill in: they are not part of
     /// the movement state.

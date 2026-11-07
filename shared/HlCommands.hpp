@@ -2,8 +2,8 @@
 
 // The COMMAND line: what is typed on the pause menu's keyboard, read as the
 // game's own console reads it -- a word, then what it is given, with the
-// game's names and aliases ("impulse 101" is everything; "changelevel" is
-// "map"). This only reads the line; source/main.cpp does what it says.
+// game's names and aliases ("impulse 101" is everything). This only reads
+// the line; source/main.cpp does what it says.
 //
 // std-only and inline: the host tests run it (test_commands).
 
@@ -18,7 +18,8 @@ namespace hldata
     {
         Unknown,
         Help,
-        Map,         ///< map / changelevel <name>
+        Map,         ///< map <name>: the map anew, what the player had gone
+        ChangeLevel, ///< changelevel <name>: the map, with what the player carries
         GiveAll,     ///< give (alone), impulse 101
         Give,        ///< give <item>
         Heal,
@@ -62,8 +63,8 @@ namespace hldata
         {"kill", Command::Kill, "kill", "you die"},
         {"killall", Command::KillAll, "killall <monster>", "kills a kind, or all: monsters"},
         {"barnaclekill", Command::BarnacleKill, "barnaclekill", "a barnacle that grabs you dies"},
-        {"map", Command::Map, "map <name>", "goes to a map (c1a0, c2a5...)"},
-        {"changelevel", Command::Map, "changelevel <name>", "the same as map"},
+        {"map", Command::Map, "map <name>", "starts a map anew (c1a0...)"},
+        {"changelevel", Command::ChangeLevel, "changelevel <name>", "a map, keeping what you carry"},
         {"restart", Command::Restart, "restart", "this map again from its start"},
         {"save", Command::Save, "save", "quick save"},
         {"load", Command::Load, "load", "loads the quick save"},

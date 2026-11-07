@@ -2193,6 +2193,41 @@ namespace
         check(gc.ok && !applyArrival(gc.logic, gc.view.landmarks, gc.view.landmarkCount,
                                      gc.view.nameHashes, gc.view.nameCount, gc.player, lost),
               "without the landmark the player is left for the map's own start");
+
+        // The console's changelevel: what the player carries comes along,
+        // with no landmark, even into a map that has the old one's.
+        PlayerState carrying = ga.player;
+        carrying.health = 57;
+        carrying.inv.have = 0x2F;
+        carrying.inv.current = 3;
+        carrying.inv.clipGlock = 11;
+        carrying.inv.clipShotgun = 5;
+        carrying.inv.ammo9mm = 120;
+        carrying.inv.ammoBuck = 24;
+        carrying.inv.armor = 66;
+        carrying.inv.grenades = 4;
+        carrying.inv.clipMp5 = 30;
+        carrying.inv.clipPython = 6;
+        carrying.inv.ammo357 = 12;
+        carrying.inv.ammoAr = 2;
+        const Arrival jump = consoleArrival(carrying);
+        check(jump.valid && jump.landmark == 0 && jump.changeTarget == 0 && jump.train == 0 &&
+                  jump.visitors[0].model == 0,
+              "changelevel: no landmark, nothing fired, no train, no one along");
+        Game gd;
+        gd.logic.globals = &globals;
+        build(gd, b);
+        fx start[3] = {gd.player.origin[0], gd.player.origin[1], gd.player.origin[2]};
+        const bool byLandmark = applyArrival(gd.logic, gd.view.landmarks, gd.view.landmarkCount, gd.view.nameHashes,
+                                             gd.view.nameCount, gd.player, jump);
+        const Inventory &got = gd.player.inv;
+        check(gd.ok && !byLandmark && gd.player.health == 57 && got.have == 0x2F && got.current == 3 &&
+                  got.clipGlock == 11 && got.clipShotgun == 5 && got.ammo9mm == 120 && got.ammoBuck == 24 &&
+                  got.armor == 66 && got.grenades == 4 && got.clipMp5 == 30 && got.clipPython == 6 &&
+                  got.ammo357 == 12 && got.ammoAr == 2,
+              "... the player's health, suit, weapons, clips, ammo and armour are carried");
+        check(gd.player.origin[0] == start[0] && gd.player.origin[1] == start[1] && gd.player.origin[2] == start[2],
+              "... and the player is left where the map starts them");
     }
     void testTransitionVolume()
     {

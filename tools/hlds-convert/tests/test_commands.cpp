@@ -25,7 +25,10 @@ namespace
         line = parseCommand("map c1a0");
         check(line.command == Command::Map && line.argc == 1 && std::strcmp(line.args[0], "c1a0") == 0,
               "a word and what it is given");
-        check(parseCommand("changelevel c1a1").command == Command::Map, "changelevel is map");
+        check(parseCommand("changelevel c1a1").command == Command::ChangeLevel, "changelevel is its own");
+        line = parseCommand("ChangeLevel C1A1");
+        check(line.command == Command::ChangeLevel && std::strcmp(line.args[0], "c1a1") == 0,
+              "... in capitals too, and the map's name in small letters");
         check(parseCommand("impulse 101").command == Command::GiveAll, "impulse 101 is everything");
         check(parseCommand("impulse 100").command == Command::Flashlight, "impulse 100 the flashlight");
         check(parseCommand("impulse 7").command == Command::Unknown, "... and no other impulse is anything");
