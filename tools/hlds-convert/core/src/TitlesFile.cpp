@@ -1,6 +1,8 @@
 #include "hlds/TitlesFile.hpp"
 
 #include <algorithm>
+#include <cstdint>
+#include <vector>
 #include <cctype>
 #include <sstream>
 
@@ -109,5 +111,69 @@ namespace hlds
             name = line;
         }
         return book;
+    }
+
+    std::string toCp1252(const std::string &bytes)
+    {
+        std::string text = bytes;
+        if (text.size() >= 3 && text.compare(0, 3, "\xEF\xBB\xBF") == 0)
+            text.erase(0, 3);
+        // Is it UTF-8, with at least one letter beyond ASCII? (Windows-1252
+        // text with an accent is almost never also UTF-8.)
+        std::vector<std::uint32_t> points;
+        bool wide = false;
+        for (std::size_t i = 0; i < text.size();)
+        {
+            const auto c = static_cast<unsigned char>(text[i]);
+            int more = 0;
+            std::uint32_t point = c;
+            if (c < 0x80)
+                more = 0;
+            else if ((c & 0xE0) == 0xC0 && c >= 0xC2)
+                more = 1, point = c & 0x1Fu;
+            else if ((c & 0xF0) == 0xE0)
+                more = 2, point = c & 0x0Fu;
+            else if ((c & 0xF8) == 0xF0 && c <= 0xF4)
+                more = 3, point = c & 0x07u;
+            else
+                return text;
+            if (more > 0 && i + static_cast<std::size_t>(more) >= text.size())
+                return text;
+            for (int k = 1; k <= more; ++k)
+            {
+                const auto next = static_cast<unsigned char>(text[i + k]);
+                if ((next & 0xC0) != 0x80)
+                    return text;
+                point = point << 6 | (next & 0x3Fu);
+            }
+            // (Too long a way of writing a small one, or a surrogate: not UTF-8.)
+            if ((more == 2 && (point < 0x800 || (point >= 0xD800 && point < 0xE000))) ||
+                (more == 3 && (point < 0x10000 || point > 0x10FFFF)))
+                return text;
+            wide = wide || more > 0;
+            points.push_back(point);
+            i += static_cast<std::size_t>(more) + 1;
+        }
+        if (!wide)
+            return text;
+        // Windows-1252's 128..159, which are not Latin-1's.
+        static const std::uint16_t kHigh[32] = {
+            0x20AC, 0, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021, 0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0, 0x017D, 0,
+            0, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014, 0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0, 0x017E, 0x0178};
+        std::string out;
+        out.reserve(points.size());
+        for (std::uint32_t point : points)
+        {
+            char c = '?';
+            if (point < 0x80 || (point >= 0xA0 && point <= 0xFF))
+                c = static_cast<char>(point);
+            for (int k = 0; k < 32 && c == '?' && point >= 0x100; ++k)
+            {
+                if (kHigh[k] == point)
+                    c = static_cast<char>(0x80 + k);
+            }
+            out.push_back(c);
+        }
+        return out;
     }
 } // namespace hlds

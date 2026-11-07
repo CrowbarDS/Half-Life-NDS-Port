@@ -34,4 +34,11 @@ namespace hlds
     };
 
     TitlesBook parseTitles(const std::string &text);
+
+    /// A text file's bytes as the game keeps its text, in Windows-1252 (as a
+    /// translated game's titles.txt is): UTF-8 -- a file saved by a modern
+    /// editor -- turned into it letter by letter, '?' for one it has not
+    /// got; anything that is not UTF-8 taken as Windows-1252 already. A
+    /// UTF-8 mark at the start is dropped.
+    std::string toCp1252(const std::string &bytes);
 } // namespace hlds

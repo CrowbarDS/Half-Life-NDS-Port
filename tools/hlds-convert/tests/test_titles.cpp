@@ -288,6 +288,21 @@ namespace
 
 namespace
 {
+    void testEncoding()
+    {
+        // "Anomalía é ñ Œ €" saved as UTF-8, and its Windows-1252.
+        const std::string utf8 = "Anomal\xC3\xAD" "a \xC3\xA9 \xC3\xB1 \xC5\x92 \xE2\x82\xAC";
+        check(toCp1252(utf8) == "Anomal\xED" "a \xE9 \xF1 \x8C \x80", "UTF-8 text is turned into Windows-1252");
+        check(toCp1252("\xEF\xBB\xBFJ\xC3\xA9") == "J\xE9", "... its mark at the start dropped");
+        check(toCp1252("fl\xC3\xA8" "che \xE2\x86\x92") == "fl\xE8" "che ?", "... a letter it has not got: ?");
+        const std::string cp1252 = "Dipl\xF4m\xE9 en Physique Th\xE9orique";
+        check(toCp1252(cp1252) == cp1252, "Windows-1252 text (a translated game's) is kept as it is");
+        check(toCp1252("plain") == "plain" && toCp1252("caf\xC3") == "caf\xC3", "... and plain text, and a cut-off one");
+        const TitlesBook book = parseTitles(toCp1252("T1\n{\nAnomal\xC3\xAD" "a\n}\n"));
+        check(book.titles.count("T1") == 1 && book.titles.at("T1").text == "Anomal\xED" "a",
+              "a titles.txt saved as UTF-8 reads as the game's own would");
+    }
+
     void testLanguages()
     {
         namespace fs = std::filesystem;
@@ -320,7 +335,7 @@ namespace
         }
         std::ifstream in(french / "titles.txt", std::ios::binary);
         const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        const TitlesBook book = parseTitles(bytes);
+        const TitlesBook book = parseTitles(toCp1252(bytes));
         int accented = 0;
         for (const auto &entry : book.titles)
             accented += entry.second.text.find('\xE9') != std::string::npos;
@@ -334,6 +349,7 @@ int main()
 {
     testParse();
     testRoom();
+    testEncoding();
     testLanguages();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir != nullptr && dir[0] != '\0')

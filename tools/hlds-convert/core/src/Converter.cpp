@@ -923,7 +923,7 @@ namespace hlds
             std::string ignored;
             const fs::path file = findGameFile(options_, "titles.txt");
             if (!file.empty() && readFile(file, text, ignored))
-                titles = parseTitles(std::string(text.begin(), text.end()));
+                titles = parseTitles(toCp1252(std::string(text.begin(), text.end())));
         }
         cookOptions.titles = &titles;
         // The chapter this map is part of (asked of all the game's maps,
