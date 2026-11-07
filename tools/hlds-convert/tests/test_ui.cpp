@@ -94,6 +94,23 @@ namespace
         check(!view.open(reinterpret_cast<const std::uint8_t *>(aligned.data()), cooked.size() - 8),
               "a font file cut short is refused");
         view.open(reinterpret_cast<const std::uint8_t *>(aligned.data()), cooked.size());
+        {
+            // A font with accented letters of its own (a translated game's):
+            // they are kept, and drawn as they are.
+            std::vector<std::uint8_t> lump = madeFont();
+            lump[16 + 4 * 0xC9] = 16; // (É: drawn as B is)
+            lump[18 + 4 * 0xC9] = 2;
+            QFont accented;
+            parseQFont(lump, accented, error);
+            const std::vector<std::uint8_t> withAccents = cookFont(accented, true);
+            std::vector<std::uint32_t> words((withAccents.size() + 3) / 4);
+            std::memcpy(words.data(), withAccents.data(), withAccents.size());
+            FontView wide;
+            check(wide.open(reinterpret_cast<const std::uint8_t *>(words.data()), withAccents.size()) &&
+                      wide.header->count == 224 && wide.width(0xC9) == 2 && wide.glyph(0xC9) != wide.glyph('E') &&
+                      wide.glyph(0xC9)[0] == wide.glyph('B')[0] && wide.width(0xC0) == 3 && view.header->count == 96,
+                  "a font with letters of 128..255 keeps them; one without stays at 32..127");
+        }
 
         // Measuring, and fitting to a line.
         check(textWidth(view, "AB") == 5 && textWidth(view, "AB A") == 10 && textWidth(view, "ABAB", 2) == 5,
