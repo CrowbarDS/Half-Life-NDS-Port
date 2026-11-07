@@ -917,6 +917,28 @@ namespace
         return held;
     }
 
+    /// What the monsters hear of the player beyond their steps and guns, as
+    /// the game has it: a jump held (a hundred, in the air too), a landing
+    /// (as loud as the fall, a fifth of a second), an MP5 grenade (their
+    /// sound is danger a moment).
+    void testPlayerNoises()
+    {
+        SoundEnt s;
+        soundEntInit(s);
+        const fx at[3] = {0, 0, 0};
+        playerSoundTick(s, at, -1, true, false, 33);
+        const int jumping = playerSound(s).volume;
+        s.extraTypes = kSoundDanger;
+        s.extraMs = 200;
+        playerSoundTick(s, at, 0, false, false, 33);
+        const bool danger = (playerSound(s).type & kSoundDanger) != 0;
+        for (int t = 0; t < 300; t += 33)
+            playerSoundTick(s, at, 0, false, false, 33);
+        const bool over = (playerSound(s).type & kSoundDanger) == 0;
+        check(jumping == 100 && danger && over,
+              "the player heard jumping in the air (100), and as danger a moment after an MP5 grenade");
+    }
+
     /// Two that stand in one another (a leap, a spawn, a push put them so)
     /// do not merge: a step deeper into the other is not taken, a step out
     /// of them is. And no one steps up onto another's head.
@@ -1356,6 +1378,7 @@ int main()
         testMoveEndsShort(dir);
         testBlockedWalk(dir);
         testNoMerging(dir);
+        testPlayerNoises();
         testShotBetweenLegs(dir);
         testC1a1fScripts(dir);
         testC1a1cMakers(dir);

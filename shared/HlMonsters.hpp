@@ -1689,6 +1689,7 @@ namespace hldata
                             w.heard->add(CommonSound::BodySplat, shot.pos, 95, kRadiusLarge, 200);
                         }
                         radiusDamage(w, player, shot.pos, damage, damage * 5 / 2, -1);
+                        aiSound(w, kSoundCombat, shot.pos, kSmallExplosionVolume, 3000);
                         continue;
                     }
                     // (Its wait between bites, in hundredths of a second.)
@@ -1808,7 +1809,11 @@ namespace hldata
                                                    unit * 300;
                             }
                             shot.velocity[2] += fxFromInt(120);
-                            if (w.heard != nullptr && (chance(a) & 3) == 0)
+                            // (Heard by the monsters as it hunts: louder with
+                            // its squeak, else its scrabbling.)
+                            const bool squeaks = (chance(a) & 3) == 0;
+                            aiSound(w, kSoundCombat, to, squeaks ? 256 : 100, squeaks ? 250 : 100);
+                            if (w.heard != nullptr && squeaks)
                             {
                                 // (Higher the nearer its end.)
                                 const int pitch = 155 - shot.leftMs * 75 / 15000;
@@ -5745,6 +5750,8 @@ namespace hldata
                 if (second && ars->uranium > 0)
                 {
                     state.anim = state.loadMs < 500 ? nullptr : "spin";
+                    // (Charging is heard: GAUSS_PRIMARY_CHARGE_VOLUME.)
+                    aiWeaponVolume(w, kGaussChargeVolume);
                     return did;
                 }
                 // Let go (or nothing left to charge with): the beam.
@@ -5767,7 +5774,11 @@ namespace hldata
                         if (pointContents(*w.world, at) == kContentsSolid)
                             continue;
                         if (w.actors != nullptr)
+                        {
                             radiusDamage(w, player, at, damage - depth, (damage - depth) * 5 / 2, -1);
+                            // (Heard where the gun is, as the game has it.)
+                            aiSound(w, kSoundCombat, eye, kNormalExplosionVolume, 3000);
+                        }
                         break;
                     }
                 }
@@ -6070,6 +6081,8 @@ namespace hldata
                 }
                 if (!projectileAdd(*w.actors, kShotContact, from, velocity, 10000))
                     return did;
+                // (The monsters hear it as danger a moment: m_iExtraSoundTypes.)
+                aiPlayerExtraSound(w, kSoundDanger, 200);
                 inv.ammoAr = static_cast<std::int16_t>(inv.ammoAr - 1);
                 state.secondMs = 1000;
                 state.cooldownMs = state.cooldownMs > 1000 ? state.cooldownMs : 1000;

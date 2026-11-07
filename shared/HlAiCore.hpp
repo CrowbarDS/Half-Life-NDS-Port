@@ -3549,7 +3549,13 @@ namespace hldata
                                                       : 0);
         soundEntTick(ai.sounds, ai.now, ms);
         const fx flat[3] = {player.velocity[0], player.velocity[1], 0};
-        playerSoundTick(ai.sounds, player.origin, player.onGround ? fxToInt(fxLength(flat)) : -1,
-                        player.jumpHeld && player.onGround, player.health <= 0 || unseen(player), ms);
+        // (Jump held: a hundred more, on the ground or not -- the game's
+        // IN_JUMP.)
+        playerSoundTick(ai.sounds, player.origin, player.onGround ? fxToInt(fxLength(flat)) : -1, player.jumpHeld,
+                        player.health <= 0 || unseen(player), ms);
+        // A landing from a fall is heard as loud as the fall was fast, for a
+        // fifth of a second (CBasePlayer::PostThink).
+        if (player.landed > fxFromInt(64) && player.health > 0 && !unseen(player))
+            soundInsert(ai.sounds, ai.now, kSoundPlayer, player.origin, fxToInt(player.landed), 200);
     }
 } // namespace hldata

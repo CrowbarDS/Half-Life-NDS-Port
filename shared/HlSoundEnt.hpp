@@ -66,6 +66,10 @@ namespace hldata
         /// what that is coming down to, and what is heard of them now.
         std::int32_t weaponVolume = 0;
         std::int32_t targetVolume = 0;
+        /// What more their sound is for a moment (m_iExtraSoundTypes, until
+        /// m_flStopExtraSoundTime): an MP5's grenade makes it danger.
+        std::uint8_t extraTypes = 0;
+        std::int32_t extraMs = 0;
     };
 
     namespace detail
@@ -193,6 +197,15 @@ namespace hldata
         for (int k = 0; k < 3; ++k)
             sound.origin[k] = origin[k];
         sound.type |= kSoundPlayer;
+        if (s.extraMs > 0)
+        {
+            sound.type |= s.extraTypes;
+            s.extraMs -= ms;
+        }
+        else
+        {
+            s.extraTypes = 0;
+        }
         sound.volume = static_cast<std::int16_t>(volume);
     }
 

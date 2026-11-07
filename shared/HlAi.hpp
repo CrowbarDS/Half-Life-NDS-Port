@@ -795,15 +795,33 @@ namespace hldata
 
     /// A sound into the monsters' world (CSoundEnt::InsertSound); nothing if
     /// there is no side table.
+    /// (Not on a console sent the game: a match has no monsters to hear
+    /// anything, and it has no room to spare.)
     inline void aiSound(ActorWorld &a, std::uint8_t type, const fx *origin, int volume, int durationMs)
     {
+#ifndef HLDS_CHILD
         if (a.ai != nullptr)
             soundInsert(a.ai->sounds, a.ai->now, type, origin, volume, durationMs);
+#else
+        (void)a, (void)type, (void)origin, (void)volume, (void)durationMs;
+#endif
     }
     inline void aiSound(LogicWorld &w, std::uint8_t type, const fx *origin, int volume, int durationMs)
     {
         if (w.actors != nullptr)
             aiSound(*w.actors, type, origin, volume, durationMs);
+    }
+    /// The player's sound is also `types` for `ms` (m_iExtraSoundTypes).
+    inline void aiPlayerExtraSound(LogicWorld &w, std::uint8_t types, int ms)
+    {
+#ifdef HLDS_CHILD
+        return;
+#endif
+        if (w.actors != nullptr && w.actors->ai != nullptr)
+        {
+            w.actors->ai->sounds.extraTypes = types;
+            w.actors->ai->sounds.extraMs = ms;
+        }
     }
     /// The player's gun was this loud (m_pPlayer->m_iWeaponVolume = ...).
     inline void aiWeaponVolume(LogicWorld &w, int volume)
