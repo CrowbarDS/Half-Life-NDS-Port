@@ -3923,6 +3923,21 @@ namespace hldata
             }
         }
 
+        /// A wheel where it is round to (`phase`, 0..65536 of its distance).
+        inline void momentaryPlace(LogicWorld &w, int index)
+        {
+            const LogicRecord &record = w.records[index];
+            const LogicState &state = w.states[index];
+            if (record.brush == kNoBrush)
+                return;
+            std::uint16_t angles[3];
+            hingeRest(record, angles);
+            const int axis = static_cast<int>(record.extra[0] % 3);
+            angles[axis] = static_cast<std::uint16_t>(
+                angles[axis] + ((static_cast<std::int64_t>(record.move[0]) * state.phase) >> 16));
+            logicPlaceBrushTurned(w, record.brush, state.base, angles);
+        }
+
         /// A wheel turned by hand, a frame on: round at its speed, to its end;
         /// what it targets (a momentary_door) is told how far round it is.
         inline void momentaryTick(LogicWorld &w, int index, int ms)
@@ -3945,16 +3960,21 @@ namespace hldata
                 state.running = false;
             }
             state.phase = static_cast<std::int32_t>(at);
-            std::uint16_t angles[3];
-            hingeRest(record, angles);
-            const int axis = static_cast<int>(record.extra[0] % 3);
-            angles[axis] = static_cast<std::uint16_t>(angles[axis] + ((static_cast<std::int64_t>(record.move[0]) * at) >> 16));
-            logicPlaceBrushTurned(w, record.brush, state.base, angles);
+            momentaryPlace(w, index);
             for (int r = 0; r < w.recordCount && record.target != 0; ++r)
             {
-                if (w.records[r].name == record.target &&
-                    w.records[r].kind == static_cast<std::uint8_t>(LogicKind::MomentaryDoor))
+                const LogicRecord &other = w.records[r];
+                if (other.name == record.target && other.kind == static_cast<std::uint8_t>(LogicKind::MomentaryDoor))
                     w.states[r].timer = state.phase;
+                // (Every wheel that moves the same thing goes round with
+                // it, as far round as it is: UpdateAllButtons. A bridge
+                // built as a wheel turns so.)
+                if (r != index && other.target == record.target &&
+                    other.kind == static_cast<std::uint8_t>(LogicKind::MomentaryButton))
+                {
+                    w.states[r].phase = state.phase;
+                    momentaryPlace(w, r);
+                }
             }
         }
 
@@ -5344,7 +5364,7 @@ namespace hldata
                 toStrike ? (detail::isBreakable(record) && !(record.flags & kLogicTriggerOnly) &&
                             record.extra[1] != 7)
                          : ((kind == LogicKind::Button && !(record.flags & kLogicTouch)) ||
-                            kind == LogicKind::MomentaryButton ||
+                            (kind == LogicKind::MomentaryButton && !(record.flags & kLogicTriggerOnly)) ||
                             kind == LogicKind::HealthCharger || kind == LogicKind::SuitCharger ||
                             kind == LogicKind::Pushable ||
                             ((kind == LogicKind::Door || kind == LogicKind::DoorRotating) &&

@@ -1834,6 +1834,10 @@ namespace hlds
                 // (CMomentaryRotButton), and what it targets goes with it.
                 make = true;
                 record.kind = static_cast<std::uint8_t>(LogicKind::MomentaryButton);
+                // (Flag 1: not to be used, only turned with the wheel that
+                // moves the same thing: t0a0a's bridge.)
+                if (spawnflags & 1)
+                    record.flags |= kLogicTriggerOnly;
                 record.extra[0] = (spawnflags & 64) ? kRoll : ((spawnflags & 128) ? kPitch : kYaw);
                 turnedFrom(entity, record);
                 double distance = numberKey(entity, "distance", 90);

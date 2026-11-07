@@ -307,6 +307,52 @@ namespace
         check(differ == 0, "... and switched back, they are as they were");
     }
 
+    /// t0a0a's valve: the wheel turns the bridge (a wheel too, flagged to be
+    /// turned only with it); the bridge itself is not used by hand, even by
+    /// someone standing on it.
+    void testWheelBridge(const char *dir)
+    {
+        const std::unique_ptr<Game> game = load(dir, "t0a0a");
+        if (game == nullptr)
+            return;
+        Game &g = *game;
+        int wheel = -1, bridge = -1;
+        for (int i = 0; i < g.logic.recordCount; ++i)
+        {
+            const LogicRecord &r = g.logic.records[i];
+            if (r.kind != static_cast<std::uint8_t>(LogicKind::MomentaryButton) || r.target == 0)
+                continue;
+            if (r.flags & kLogicTriggerOnly)
+                bridge = i;
+            else
+                wheel = i;
+        }
+        check(wheel >= 0 && bridge >= 0 && g.logic.records[wheel].target == g.logic.records[bridge].target,
+              "t0a0a has the valve's wheel, and the bridge it turns");
+        if (wheel < 0 || bridge < 0)
+            return;
+        // From the middle of the bridge, looking anywhere: not the bridge.
+        const MoverHull &hull = g.movers[g.logic.records[bridge].brush];
+        const fx eye[3] = {(hull.mins[0] + hull.maxs[0]) / 2, (hull.mins[1] + hull.maxs[1]) / 2, hull.mins[2] + fxFromInt(100)};
+        bool usedBridge = false;
+        const fx ways[4][3] = {{kFxOne, 0, 0}, {-kFxOne, 0, 0}, {0, kFxOne, 0}, {0, 0, -kFxOne}};
+        for (const auto &way : ways)
+            usedBridge = usedBridge || logicFindUsable(g.logic, eye, way) == bridge;
+        check(!usedBridge, "... which is not used by hand, even standing on it");
+        // The wheel, used: it goes round, and the bridge with it.
+        const BrushState &turned = g.brushStates[g.logic.records[bridge].brush];
+        const std::uint16_t before[3] = {turned.angles[0], turned.angles[1], turned.angles[2]};
+        logicUse(g.logic, g.player, wheel, -1, kUseSet);
+        for (int n = 0; n < 30 * 20 && g.states[wheel].running; ++n)
+            g.frame();
+        std::printf("test_incident: t0a0a's wheel at %d, the bridge at %d, turned %d %d %d -> %d %d %d\n",
+                    static_cast<int>(g.states[wheel].phase), static_cast<int>(g.states[bridge].phase), before[0],
+                    before[1], before[2], turned.angles[0], turned.angles[1], turned.angles[2]);
+        check(!g.states[wheel].running && g.states[wheel].phase == 65536 && g.states[bridge].phase == 65536 &&
+                  turned.angles[1] != before[1],
+              "... and the wheel, turned to its end, has turned the bridge as far round");
+    }
+
     /// c1a0d's suit, taken: it says its whole logon (!HEV_AAx), at once and
     /// at the suit's volume, with no pickup sound; and nothing more until
     /// that is said.
@@ -758,6 +804,7 @@ int main()
         testLights(dir);
         testMicrowave(dir);
         testPlacedOnWhatIsUnder(dir);
+        testWheelBridge(dir);
         testScenes(dir);
         testTripmine(dir);
     }
