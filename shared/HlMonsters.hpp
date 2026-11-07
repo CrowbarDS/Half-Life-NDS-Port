@@ -332,6 +332,13 @@ namespace hldata
             if (w.heard != nullptr)
                 w.heard->add(sound, actor.pos, 127, kRadiusLarge);
         }
+        /// A turret's machinery -- spinning up and down, the alarm, opening
+        /// and closing -- at the game's half of full (TURRET_MACHINE_VOLUME).
+        inline void turretMachineSound(LogicWorld &w, const ActorState &actor, CommonSound sound, int pitch = 100)
+        {
+            if (w.heard != nullptr)
+                w.heard->add(sound, actor.pos, 64, kRadiusLarge, pitch);
+        }
         /// ... the one that belongs to its kind: `which` is 0 for being
         /// roused, 1 for being hurt, 2 for dying.
         inline void monsterVoice(LogicWorld &w, const ActorState &actor, int which)
@@ -2480,7 +2487,7 @@ namespace hldata
             }
             if (actor.speed == 0)
             {
-                monsterSound(w, actor, CommonSound::TurretSpinUp);
+                turretMachineSound(w, actor, CommonSound::TurretSpinUp);
                 actor.speed = kFxOne / 10;
                 actor.thinkMs -= 900; // (it waits a second over the first of it)
                 return;
@@ -2503,7 +2510,7 @@ namespace hldata
                 return;
             }
             if (actor.speed >= kFxOne)
-                monsterSound(w, actor, CommonSound::TurretSpinDown);
+                turretMachineSound(w, actor, CommonSound::TurretSpinDown);
             actor.speed -= kFxOne / 50;
             if (actor.speed <= 0)
             {
@@ -2557,8 +2564,8 @@ namespace hldata
             actor.ai = kTurretDeploy;
             monsterClip(a, actor, "deploy", true);
             if (alarmed)
-                monsterSound(w, actor, CommonSound::TurretAlert);
-            monsterSound(w, actor, CommonSound::TurretDeploy);
+                turretMachineSound(w, actor, CommonSound::TurretAlert);
+            turretMachineSound(w, actor, CommonSound::TurretDeploy);
             // What it sets off as it comes out (a tripped sentry wakes the
             // others of its name this way).
             if (actor.fires != 0)
@@ -2748,7 +2755,7 @@ namespace hldata
                     actor.frozen = true;
                     actor.once = true;
                     actor.finished = false;
-                    monsterSound(w, actor, CommonSound::TurretDeploy);
+                    turretMachineSound(w, actor, CommonSound::TurretDeploy, 120); // (closing: higher)
                     if (actor.fires != 0)
                         logicFire(w, player, actor.fires, -1, kUseOff, 0);
                 }

@@ -924,6 +924,9 @@ namespace
                   g.times(CommonSound::TurretDeploy) == 1,
               "it sees the player, comes out, turns to them and hurts them");
         check(along > 0.99, "... its gun on them when it does");
+        check(g.loudestHeard[static_cast<std::size_t>(CommonSound::TurretAlert)] == 64 &&
+                  g.loudestHeard[static_cast<std::size_t>(CommonSound::TurretDeploy)] == 64,
+              "... its alarm and its opening at half of full, as the game's TURRET_MACHINE_VOLUME");
         bool tracer = false;
         for (const Effect &e : g.actors.effects)
             tracer = tracer || e.kind == kEffectTracer;
