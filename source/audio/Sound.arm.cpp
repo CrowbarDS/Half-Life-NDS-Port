@@ -365,8 +365,7 @@ namespace hlrt
         musicTrack_ = -1;
         // From the pair of the moment (the track's rate: what its stereo
         // file says).
-        musicSkipped_ = static_cast<std::uint32_t>((static_cast<std::uint64_t>(musicHeldMs_) * kStereoRate) / 1000);
-        startMusic(track);
+        startMusic(track, static_cast<std::uint32_t>((static_cast<std::uint64_t>(musicHeldMs_) * kStereoRate) / 1000));
     }
 
     bool Sound::setDsp(bool on)
@@ -1514,12 +1513,10 @@ namespace hlrt
         resumeMusic();
     }
 
-    void Sound::startMusic(int track)
+    void Sound::startMusic(int track, std::uint32_t skip)
     {
         if (track == musicTrack_ && music_ != nullptr)
             return;
-        const std::uint32_t skip = musicSkipped_;
-        musicSkipped_ = 0;
         stopMusic();
         if (!up_)
             return;
@@ -1592,6 +1589,7 @@ namespace hlrt
         std::fclose(music_);
         music_ = nullptr;
         musicTrack_ = -1;
+        musicSkipped_ = 0;
     }
 
     void Sound::musicTick()

@@ -228,7 +228,9 @@ namespace hlrt
         void speechTick(int ms);
         void loopsTick();
         void follow();
-        void startMusic(int track);
+        /// Track `track` begun, `skip` stereo pairs in (only music taken up
+        /// again where it was put down starts anywhere but its beginning).
+        void startMusic(int track, std::uint32_t skip = 0);
         void stopMusic();
         void musicTick();
 
