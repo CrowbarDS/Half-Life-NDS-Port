@@ -3321,8 +3321,9 @@ namespace hldata
                 return false;
             player.underMs = 0;
             actor.cooldownMs = kAirtankRechargeMs;
+            // (Its own sound, from where it is: airtank.cpp's TankTouch.)
             if (w.heard != nullptr)
-                w.heard->add(CommonSound::GunPickup, nullptr);
+                w.heard->add(CommonSound::AirTank, actor.pos, 127, kRadiusLarge);
             if (actor.fires != 0)
                 logicFire(w, player, actor.fires, -1, kUseToggle, 0);
             return true;

@@ -4016,6 +4016,13 @@ namespace hlds
         }
         if (blasts)
             use(CommonSound::Debris1, CommonSound::Debris3);
+        // (An air tank's, where there is one.)
+        for (const ActorRecord &actor : out.actors)
+        {
+            if (actor.kind == static_cast<std::uint8_t>(ActorKind::Item) &&
+                (actor.item & 0xFF) == static_cast<std::uint32_t>(ItemKind::Airtank))
+                use(CommonSound::AirTank, CommonSound::AirTank);
+        }
         lazy = true;
         gunSounds(lazyModels);
         lazy = false;

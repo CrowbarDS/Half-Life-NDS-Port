@@ -354,6 +354,8 @@ namespace hldata
         Debris1,
         Debris2,
         Debris3,
+        // ... and an air tank giving its air (from version 55: kCommonSoundsBefore55).
+        AirTank,
         Count
     };
     /// How many of these a map of level version 29 or before has.
@@ -429,6 +431,7 @@ namespace hldata
     /// ... and of versions 37 to 42.
     inline constexpr std::uint16_t kCommonSoundsBefore43 = static_cast<std::uint16_t>(CommonSound::BodyDrop3);
     inline constexpr std::uint16_t kCommonSoundsBefore54 = static_cast<std::uint16_t>(CommonSound::Swim1);
+    inline constexpr std::uint16_t kCommonSoundsBefore55 = static_cast<std::uint16_t>(CommonSound::AirTank);
     /// How many of them a map of level version `version` has (its sounds
     /// after those are its own).
     inline constexpr std::uint16_t commonsOf(std::uint16_t version)
@@ -442,6 +445,7 @@ namespace hldata
                : version < 37 ? kCommonSoundsBefore37
                : version < 43 ? kCommonSoundsBefore43
                : version < 54 ? kCommonSoundsBefore54
+               : version < 55 ? kCommonSoundsBefore55
                               : static_cast<std::uint16_t>(CommonSound::Count);
     }
     inline constexpr std::uint16_t kNoSound = 0xFFFF;
@@ -534,7 +538,7 @@ namespace hldata
             "weapons/sshell1.wav",      "common/bodydrop3.wav",    "common/bodydrop4.wav",
             "player/pl_swim1.wav",      "player/pl_swim2.wav",     "player/pl_swim3.wav",
             "player/pl_swim4.wav",      "plats/ttrain_start1.wav", "weapons/debris1.wav",
-            "weapons/debris2.wav",      "weapons/debris3.wav"};
+            "weapons/debris2.wav",      "weapons/debris3.wav",     "doors/aliendoor3.wav"};
         static_assert(sizeof(kPaths) / sizeof(kPaths[0]) == static_cast<std::size_t>(CommonSound::Count));
         return kPaths[static_cast<int>(sound)];
     }

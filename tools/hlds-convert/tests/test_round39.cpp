@@ -510,8 +510,16 @@ namespace
                 if (tank >= 0 && antidote >= 0)
                 {
                     g.player.underMs = 9000;
+                    g.heard.count = 0;
                     check(itemPickUp(g.logic, g.player, tank) && g.player.underMs == 0 && g.actors.states[tank].active,
                           "the air tank gives all the air there is, and stays");
+                    bool own = false;
+                    for (int i = 0; i < g.heard.count; ++i)
+                        own = own || (g.heard.events[i].sound == static_cast<std::uint16_t>(CommonSound::AirTank) &&
+                                      g.heard.events[i].volume == 127 && !(g.heard.events[i].flags & kSoundHere) &&
+                                      g.heard.events[i].pos[0] == g.actors.states[tank].pos[0]);
+                    check(own && g.view.sounds[static_cast<int>(CommonSound::AirTank)].name[0] != 0,
+                          "... with its own sound, from where it is (doors/aliendoor3)");
                     g.player.underMs = 5000;
                     check(!itemPickUp(g.logic, g.player, tank), "... not again at once");
                     standAt(g, -100, 0); // (off it: walked over, it is taken again)
