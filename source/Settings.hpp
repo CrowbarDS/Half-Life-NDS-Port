@@ -55,6 +55,8 @@ public:
     bool autosave = true;
     /// An achievement earned is shown as it is (else only listed).
     bool achievementPopups = true;
+    /// The map's name left off the loading screen (a match's always shows).
+    bool hideMapName = true;
     /// The COMMAND line's cheats are let through. While it is on, Cheater
     /// is earned and no other achievement is.
     bool cheats = false;

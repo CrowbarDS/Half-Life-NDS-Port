@@ -114,6 +114,7 @@ namespace hlrt
             kAchievementsOpen,
             kPopups,       ///< the achievements' pop-ups (a setting)
             kAutosave,     ///< the game's own save (a setting)
+            kHideMapName,  ///< the map's name left off the loading screen (a setting)
             kCheats,       ///< the COMMAND line's cheats let through (a setting)
             kKeyboard,     ///< where the touch keyboard's letters are (a setting)
             kGameHalfLife, ///< NEW GAME's: the game itself
@@ -893,6 +894,7 @@ namespace hlrt
                                   {Kind::Value, kReadout, "Debug readout"},
                                   {Kind::Value, kPopups, "Achievement pop-ups"},
                                   {Kind::Value, kAutosave, "Auto save"},
+                                  {Kind::Value, kHideMapName, "Hide map name"},
                                   {Kind::Value, kCheats, "Cheats"},
                                   {Kind::Value, kKeyboard, "Keyboard"}};
         /// Category `chapter`'s rows (BUTTONS: one an action, made here).
@@ -1293,6 +1295,7 @@ namespace hlrt
             case kAutoaim: std::snprintf(out, size, "%s", settings.autoaim ? "on" : "off"); break;
             case kPopups: std::snprintf(out, size, "%s", settings.achievementPopups ? "on" : "off"); break;
             case kAutosave: std::snprintf(out, size, "%s", settings.autosave ? "on" : "off"); break;
+            case kHideMapName: std::snprintf(out, size, "%s", settings.hideMapName ? "on" : "off"); break;
             case kCheats: std::snprintf(out, size, "%s", settings.cheats ? "on" : "off"); break;
             case kKeyboard:
                 std::snprintf(out, size, "%s", settings.keyboardLayout == hldata::kKeyboardAzerty ? "AZERTY" : "QWERTY");
@@ -1398,6 +1401,7 @@ namespace hlrt
             case kReadout: return "Numbers along the top of the touch screen: how fast, where, how much.";
             case kPopups: return "An achievement earned is shown on the top screen as it is. Off, it is still earned.";
             case kAutosave: return "The game saves at a map's save points and on arriving in a map. Off, only your own saves are made.";
+            case kHideMapName: return "The loading screen does not say which map is coming. A match's always says it.";
             case kCheats: return "Lets the COMMAND line's cheats work. On, Cheater is earned and no other achievement is until it is off.";
             case kKeyboard: return "Where the letters are on the touch keyboard: QWERTY or AZERTY.";
             case kKey: return "Touch an action, then press its button. START: leave it as it was.";
@@ -1493,6 +1497,7 @@ namespace hlrt
             case kAutoaim: settings.autoaim = !settings.autoaim; return true;
             case kPopups: settings.achievementPopups = !settings.achievementPopups; return true;
             case kAutosave: settings.autosave = !settings.autosave; return true;
+            case kHideMapName: settings.hideMapName = !settings.hideMapName; return true;
             case kCheats:
                 settings.cheats = !settings.cheats;
                 achievements.cheatsSwitched(settings.cheats);

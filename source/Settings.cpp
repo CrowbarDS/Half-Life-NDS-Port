@@ -52,6 +52,7 @@ void Settings::load()
         autoaim = data.autoaim != 0;
         autosave = data.autosave != 0;
         achievementPopups = data.achievementPopups != 0;
+        hideMapName = data.hideMapName != 0;
         cheats = data.cheats != 0;
         keyboardLayout = data.keyboardLayout;
         std::memcpy(name, data.name, sizeof(name));
@@ -148,6 +149,7 @@ void Settings::reset(int category)
         debugReadout = first.debugReadout;
         achievementPopups = first.achievementPopups;
         autosave = first.autosave;
+        hideMapName = first.hideMapName;
         if (cheats && !first.cheats)
             achievements.cheatsSwitched(false);
         cheats = first.cheats;
@@ -191,6 +193,7 @@ bool Settings::save() const
     data.autoaim = autoaim ? 1 : 0;
     data.autosave = autosave ? 1 : 0;
     data.achievementPopups = achievementPopups ? 1 : 0;
+    data.hideMapName = hideMapName ? 1 : 0;
     data.cheats = cheats ? 1 : 0;
     data.keyboardLayout = keyboardLayout;
     std::memcpy(data.name, name, sizeof(name));

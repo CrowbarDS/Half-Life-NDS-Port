@@ -331,8 +331,9 @@ namespace
                    d.rotation[1] == 0x55667788u && d.voteSeconds == 30;
         };
         check(same(read), "... with every setting the player had, the volumes among them, as they were");
-        check(read.cheats == 0 && read.keyboardLayout == kKeyboardQwerty && read.dialogueFocus == kFocusLight,
-              "... and what v0.2.1 had not, at its default (no cheats, QWERTY, dialogue focus light)");
+        check(read.cheats == 0 && read.keyboardLayout == kKeyboardQwerty && read.dialogueFocus == kFocusLight &&
+                  read.hideMapName == 1,
+              "... and what v0.2.1 had not, at its default (no cheats, QWERTY, dialogue focus light, map name hidden)");
         const std::vector<std::uint8_t> upgraded = writeSettings(read);
         SettingsHeader header;
         std::memcpy(&header, upgraded.data(), sizeof(header));
@@ -474,6 +475,40 @@ namespace
             check(readSettings(file.data(), file.size(), read) && read.volume[kVolumeMusic] == 8 &&
                       read.volume[kVolumeAmbience] == 8 && read.dialogueFocus == kFocusLight,
                   "a file of version 21 keeps its volumes as they were, and its dialogue focus is light");
+        }
+        // The map's name on the loading screen: hidden unless asked; kept;
+        // nothing out of range; a file of version 22, from before it, read
+        // with it hidden.
+        {
+            SettingsData shown;
+            shown.hideMapName = 0;
+            bytes = writeSettings(shown);
+            check(SettingsData().hideMapName == 1 && readSettings(bytes.data(), bytes.size(), back) &&
+                      back.hideMapName == 0,
+                  "the map's name is hidden unless asked otherwise, and what is asked is kept");
+            shown.hideMapName = 2;
+            bytes = writeSettings(shown);
+            check(!readSettings(bytes.data(), bytes.size(), back), "a map's name neither hidden nor shown: not read");
+            SettingsData older;
+            older.dialogueFocus = kFocusStrong;
+            older.hideMapName = 0;
+            constexpr std::size_t flags = yas::mem | yas::binary | yas::no_header;
+            yas::mem_ostream os;
+            yas::binary_oarchive<yas::mem_ostream, flags> oa(os);
+            older.serializeTwentyTwo(oa);
+            const auto buf = os.get_intrusive_buffer();
+            SettingsHeader header{};
+            std::memcpy(header.magic, kSettingsMagic, sizeof(header.magic));
+            header.version = kSettingsVersionTwentyTwo;
+            header.payloadBytes = static_cast<std::uint16_t>(buf.size);
+            header.crc32 = crc32(reinterpret_cast<const std::uint8_t *>(buf.data), static_cast<std::uint32_t>(buf.size));
+            std::vector<std::uint8_t> file(sizeof(header) + buf.size);
+            std::memcpy(file.data(), &header, sizeof(header));
+            std::memcpy(file.data() + sizeof(header), buf.data, buf.size);
+            SettingsData read;
+            check(readSettings(file.data(), file.size(), read) && read.dialogueFocus == kFocusStrong &&
+                      read.hideMapName == 1,
+                  "a file of version 22 keeps its dialogue focus, and the map's name is hidden");
         }
         // A file of version 13 keeps all it had; the profile and the match
         // hosted are as they are at first.

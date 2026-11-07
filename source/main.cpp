@@ -608,8 +608,11 @@ namespace
         // (Sent the game: the map comes as it is read -- how far, as it does.)
         guestMapProgress(0);
 #else
+        // (The map's name, unless the player would rather not know it: a
+        // match's always, everyone has to know where they are.)
         if (!quietLoad)
-            hlrt::bottomScreen.showMessage("LOADING", name.c_str());
+            hlrt::bottomScreen.showMessage("LOADING",
+                                           settings.hideMapName && !hlrt::netGame.on() ? "" : name.c_str());
 #endif
         // The last picture of the map being left stays on the screen while
         // this one loads, if there is one (FrameFreeze). Otherwise nothing of

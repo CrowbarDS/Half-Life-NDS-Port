@@ -97,6 +97,9 @@ namespace hldata
         /// How far the music and the ambience are let down while someone
         /// speaks (kFocus*, HlMixer.hpp).
         std::uint8_t dialogueFocus = kFocusLight;
+        /// The map's name left off the loading screen, out of a match
+        /// (version 23). On unless asked off.
+        std::uint8_t hideMapName = 1;
         /// The COMMAND line's cheats let through (version 21). Off: refused.
         std::uint8_t cheats = 0;
         /// Where the touch keyboard's letters are (kKeyboard*, HlLineEdit.hpp;
@@ -216,6 +219,14 @@ namespace hldata
         template <class Ar>
         void serialize(Ar &ar)
         {
+            serializeTwentyTwo(ar);
+            ar &hideMapName;
+        }
+        /// ... and of version 22: the map's name always shown while it
+        /// loads (read as hidden, the default).
+        template <class Ar>
+        void serializeTwentyTwo(Ar &ar)
+        {
             serializeTwentyOne(ar);
             ar &dialogueFocus;
         }
@@ -293,8 +304,9 @@ namespace hldata
     inline constexpr std::uint8_t kQualityStandard = 0, kQualityHigh = 1, kQualityChoices = 2;
 
     inline constexpr char kSettingsMagic[4] = {'H', 'L', 'S', 'T'};
-    inline constexpr std::uint16_t kSettingsVersion = 22;
-    /// The versions before, which are still read: 21 had no dialogue focus
+    inline constexpr std::uint16_t kSettingsVersion = 23;
+    /// The versions before, which are still read: 22 always showed the map's
+    /// name while it loaded (read as hidden, the default); 21 had no dialogue focus
     /// (read as light, the default); 19 had taps always USE in
     /// the modern layout (read as off, the default now); 18 had no choice
     /// about the double tap (it jumped); 17 had no walk; 16 had no autosave to turn
@@ -304,6 +316,7 @@ namespace hldata
     /// 11 had no achievements' pop-ups to turn off; 10 had no autoaim; 9 had
     /// the layouts but no aim speed, custom buttons or stylus pressure; 8 no
     /// controls to choose.
+    inline constexpr std::uint16_t kSettingsVersionTwentyTwo = 22;
     inline constexpr std::uint16_t kSettingsVersionTwentyOne = 21;
     inline constexpr std::uint16_t kSettingsVersionTwenty = 20;
     inline constexpr std::uint16_t kSettingsVersionNineteen = 19;
@@ -389,6 +402,8 @@ namespace hldata
             data.serializeTwenty(ar);
         else if (version == kSettingsVersionTwentyOne)
             data.serializeTwentyOne(ar);
+        else if (version == kSettingsVersionTwentyTwo)
+            data.serializeTwentyTwo(ar);
         else
             ar &data;
     }
@@ -414,7 +429,8 @@ namespace hldata
             return false;
         std::memcpy(&header, bytes, sizeof(header));
         if (std::memcmp(header.magic, kSettingsMagic, sizeof(header.magic)) != 0 ||
-            (header.version != kSettingsVersion && header.version != kSettingsVersionTwentyOne &&
+            (header.version != kSettingsVersion && header.version != kSettingsVersionTwentyTwo &&
+             header.version != kSettingsVersionTwentyOne &&
              header.version != kSettingsVersionTwenty &&
              header.version != kSettingsVersionNineteen &&
              header.version != kSettingsVersionEighteen &&
@@ -462,6 +478,7 @@ namespace hldata
         }
         if (read.dspAudio > 1 || read.autoaim > 1 || read.autosave > 1 || read.achievementPopups > 1 ||
             read.debugReadout > 1 || read.leftHanded > 1 || read.viewBob > 1 || read.cheats > 1 ||
+            read.hideMapName > 1 ||
             read.keyboardLayout >= kKeyboardLayouts ||
             !read.graphics.valid())
             return false;
