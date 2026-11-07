@@ -283,6 +283,49 @@ namespace
         check(n[4] == 0, "... and using it again turns it off, even when told on");
     }
 
+    // A door that will not open says so as the game's PlayLockSounds: its
+    // line from the door at 0.85 of full, its sound at a quarter with the
+    // line and full without.
+    void testLockedLines()
+    {
+        BoxRoom room;
+        room.brushes = {
+            brush("func_door", "\"targetname\" \"d1\"\n\"angle\" \"-1\"\n", 40, -32, 0, 48, 32, 64),
+            brush("func_door", "\"targetname\" \"d2\"\n\"angle\" \"-1\"\n", -48, -32, 0, -40, 32, 64),
+        };
+        Game g;
+        build(g, room);
+        check(g.ok, "the locked-doors room cooks");
+        if (!g.ok)
+            return;
+        const int withLine = g.recordOfModel(1), alone = g.recordOfModel(2);
+        std::vector<LogicSound> sounds(g.view.logicCount,
+                                       LogicSound{kNoSound, kNoSound, kNoSound, kNoSound, kNoSound, kNoSound});
+        sounds[withLine].locked = 5;
+        sounds[withLine].lockedLine = 6;
+        sounds[alone].locked = 7;
+        SoundQueue heard;
+        g.logic.heard = &heard;
+        g.logic.sounds = sounds.data();
+
+        hldata::detail::lockedSound(g.logic, withLine);
+        const SoundEvent *sound = nullptr, *line = nullptr;
+        for (int i = 0; i < heard.count; ++i)
+            (heard.events[i].sound == 5 ? sound : line) = &heard.events[i];
+        check(heard.count == 2 && sound != nullptr && line != nullptr, "a locked door with a line: both are heard");
+        if (sound == nullptr || line == nullptr)
+            return;
+        check(line->volume == 108 && (line->flags & kSoundSentence) && !(line->flags & kSoundHere) &&
+                  line->radius == kRadiusLarge && line->pos[0] == fxFromInt(44),
+              "... the line at 0.85 of full, from the door, carrying as ATTN_NORM");
+        check(sound->volume == 32 && sound->pos[0] == line->pos[0], "... and the sound at a quarter, so the line is heard");
+
+        heard.count = 0;
+        g.logic.lockSaidMs = 0;
+        hldata::detail::lockedSound(g.logic, alone);
+        check(heard.count == 1 && heard.events[0].volume == 127, "a locked door with no line: its sound at full");
+    }
+
     void testCookRules()
     {
         std::vector<Entity> e;
@@ -2644,6 +2687,7 @@ int main()
     testCookRules();
     testCookedRecords();
     testSparks();
+    testLockedLines();
     testButtonManagerDoor();
     testMoverLoopFullQueue();
     testMoverSounding();

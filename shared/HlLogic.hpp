@@ -1063,6 +1063,26 @@ namespace hldata
             }
         }
 
+        /// A door's or a button's locked (or unlocked) sound and line, from
+        /// the middle of it, as the game's PlayLockSounds: the line at 0.85
+        /// of full, and the sound at a quarter when the line comes with it
+        /// (so the line is heard), full when alone.
+        inline void lockSay(LogicWorld &w, int index, std::uint16_t sound, std::uint16_t line)
+        {
+            const LogicRecord &record = w.records[index];
+            fx at[3] = {record.move[0], record.move[1], record.move[2]};
+            if (record.brush != kNoBrush)
+            {
+                const MoverHull &hull = w.movers[record.brush];
+                for (int a = 0; a < 3; ++a)
+                    at[a] = (hull.mins[a] + hull.maxs[a]) / 2;
+            }
+            const bool both = sound != kNoSound && line != kNoSound;
+            w.heard->add(sound, at, both ? 32 : 127, kRadiusLarge);
+            if (line != kNoSound)
+                w.heard->add(line, at, 108, kRadiusLarge, kSoundSentence);
+        }
+
         /// What a door or a button that will not work for the player says
         /// for itself: its locked sound and its line, and not again for a
         /// couple of seconds however often it is tried.
@@ -1073,17 +1093,7 @@ namespace hldata
             const LogicSound &sound = w.sounds[index];
             if (sound.locked == kNoSound && sound.lockedLine == kNoSound)
                 return;
-            const LogicRecord &record = w.records[index];
-            fx at[3] = {record.move[0], record.move[1], record.move[2]};
-            if (record.brush != kNoBrush)
-            {
-                const MoverHull &hull = w.movers[record.brush];
-                for (int a = 0; a < 3; ++a)
-                    at[a] = (hull.mins[a] + hull.maxs[a]) / 2;
-            }
-            w.heard->add(sound.locked, at, 127, kRadiusLarge);
-            if (sound.lockedLine != kNoSound)
-                w.heard->add(sound.lockedLine, nullptr, 127, kRadiusEverywhere, kSoundSentence);
+            lockSay(w, index, sound.locked, sound.lockedLine);
             w.lockSaidMs = 2000;
         }
 
@@ -1115,17 +1125,7 @@ namespace hldata
             if (!had || w.heard == nullptr || w.sounds == nullptr)
                 return;
             const LogicSound &sound = w.sounds[index];
-            const LogicRecord &record = w.records[index];
-            fx at[3] = {record.move[0], record.move[1], record.move[2]};
-            if (record.brush != kNoBrush)
-            {
-                const MoverHull &hull = w.movers[record.brush];
-                for (int a = 0; a < 3; ++a)
-                    at[a] = (hull.mins[a] + hull.maxs[a]) / 2;
-            }
-            w.heard->add(sound.unlocked, at, 127, kRadiusLarge);
-            if (sound.unlockedLine != kNoSound)
-                w.heard->add(sound.unlockedLine, nullptr, 127, kRadiusEverywhere, kSoundSentence);
+            lockSay(w, index, sound.unlocked, sound.unlockedLine);
         }
 
         inline void moverStart(LogicWorld &w, int index, MoveState direction)
