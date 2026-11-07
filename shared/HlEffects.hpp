@@ -109,6 +109,12 @@ namespace hldata
 
     namespace detail
     {
+        inline std::uint32_t effectChance(LogicWorld &w)
+        {
+            w.effectSeed = w.effectSeed * 1664525u + 1013904223u;
+            return w.effectSeed >> 8;
+        }
+
         /// Where a Beam record's two ends are aimed: fixed, following
         /// something, or (its end) wherever its present strike was sent.
         inline void beamAimedEnds(const LogicWorld &w, int index, fx *from, fx *to)
@@ -245,8 +251,14 @@ namespace hldata
             break;
         }
         case LogicKind::Spark:
-            state.running = on;
-            state.phase = 0;
+            // Only one that is switched (kLogicToggle) heeds being used, and
+            // every use turns it the other way, whatever it is told. The
+            // first spark comes a moment later, as the next would.
+            if (!(record.flags & kLogicToggle))
+                break;
+            state.running = !state.running;
+            state.phase = 100 + static_cast<std::int32_t>(detail::effectChance(w) %
+                                                         static_cast<std::uint32_t>(record.waitMs > 100 ? record.waitMs : 100));
             break;
         case LogicKind::Shooter:
             state.running = true;
@@ -285,15 +297,6 @@ namespace hldata
             break;
         }
     }
-
-    namespace detail
-    {
-        inline std::uint32_t effectChance(LogicWorld &w)
-        {
-            w.effectSeed = w.effectSeed * 1664525u + 1013904223u;
-            return w.effectSeed >> 8;
-        }
-    } // namespace detail
 
     namespace detail
     {

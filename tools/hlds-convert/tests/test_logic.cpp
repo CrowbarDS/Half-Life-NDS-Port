@@ -168,6 +168,88 @@ namespace
 
     // ---- the converter's arithmetic ---------------------------------------
 
+    // env_spark as the game's CEnvSpark::Spawn has it: flag 32 (switched)
+    // without 64 (starts on) waits to be used, whether or not anything can;
+    // without 32 it sparks from the start and being used does nothing; a
+    // switched one is turned the other way by every use.
+    void testSparks()
+    {
+        BoxRoom room;
+        auto spark = [](int x, const char *keys)
+        {
+            return std::string("{\n\"classname\" \"env_spark\"\n\"origin\" \"") + std::to_string(x) +
+                   " 0 32\"\n" + keys + "}\n";
+        };
+        room.extraEntities = spark(-60, "\"spawnflags\" \"32\"\n") +
+                             spark(-30, "\"spawnflags\" \"96\"\n") +
+                             spark(0, "") +
+                             spark(30, "\"targetname\" \"s1\"\n") +
+                             spark(60, "\"targetname\" \"s2\"\n\"spawnflags\" \"32\"\n\"MaxDelay\" \"0\"\n");
+        Game g;
+        build(g, room);
+        check(g.ok, "the sparks room cooks");
+        if (!g.ok)
+            return;
+        int at[5] = {-1, -1, -1, -1, -1};
+        for (std::uint32_t i = 0; i < g.view.logicCount; ++i)
+        {
+            const LogicRecord &r = g.view.logic[i];
+            if (r.kind == static_cast<std::uint8_t>(LogicKind::Spark))
+                at[(r.move[0] / fxFromInt(30)) + 2] = static_cast<int>(i);
+        }
+        check(at[0] >= 0 && at[1] >= 0 && at[2] >= 0 && at[3] >= 0 && at[4] >= 0, "all five sparks are cooked");
+        if (at[0] < 0 || at[1] < 0 || at[2] < 0 || at[3] < 0 || at[4] < 0)
+            return;
+        const LogicRecord *r[5];
+        for (int k = 0; k < 5; ++k)
+            r[k] = &g.view.logic[at[k]];
+        check(!(r[0]->flags & kLogicStartOpen) && (r[0]->flags & kLogicToggle),
+              "a switched spark with no name starts off");
+        check((r[1]->flags & kLogicStartOpen) && (r[1]->flags & kLogicToggle), "one that starts on starts on");
+        check((r[2]->flags & kLogicStartOpen) && !(r[2]->flags & kLogicToggle) &&
+                  (r[3]->flags & kLogicStartOpen),
+              "one that is not switched sparks from the start, named or not");
+        check(r[2]->waitMs == 1500 && r[4]->waitMs == 1500, "no MaxDelay, or 0, is the game's 1.5 s");
+
+        std::vector<LogicSound> sounds(g.view.logicCount,
+                                       LogicSound{kNoSound, kNoSound, kNoSound, kNoSound, kNoSound, kNoSound});
+        for (int k = 0; k < 5; ++k)
+            sounds[at[k]].move = 1;
+        SoundQueue heard;
+        g.logic.heard = &heard;
+        g.logic.sounds = sounds.data();
+        // How many times each sparked in `ms`.
+        auto run = [&](int ms, int *n)
+        {
+            for (int k = 0; k < 5; ++k)
+                n[k] = 0;
+            for (int t = 0; t < ms; t += 33)
+            {
+                heard.count = 0;
+                effectsTick(g.logic, g.player, 33);
+                for (int i = 0; i < heard.count; ++i)
+                {
+                    for (int k = 0; k < 5; ++k)
+                        n[k] += heard.events[i].pos[0] == r[k]->move[0];
+                }
+            }
+        };
+        int n[5];
+        run(5000, n);
+        check(n[0] == 0, "the unnamed switched spark never sparks");
+        check(n[1] > 0 && n[2] > 0 && n[3] > 0, "the others do");
+        check(n[4] == 0, "nor does the named switched one before it is used");
+
+        g.use(at[3]);
+        logicUse(g.logic, g.player, at[4], -1, kUseOn);
+        run(5000, n);
+        check(n[3] > 0, "using a spark that is not switched does nothing");
+        check(n[4] > 0, "using a switched one turns it on");
+        logicUse(g.logic, g.player, at[4], -1, kUseOn);
+        run(5000, n);
+        check(n[4] == 0, "... and using it again turns it off, even when told on");
+    }
+
     void testCookRules()
     {
         std::vector<Entity> e;
@@ -2528,6 +2610,7 @@ int main()
 {
     testCookRules();
     testCookedRecords();
+    testSparks();
     testButtonManagerDoor();
     testMoverLoopFullQueue();
     testMoverSounding();

@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 50;
+    inline constexpr std::uint16_t kLevelVersion = 51;
     /// The oldest level format this build reads. (49: a map's textures are
     /// stored in its archive as they are, never compressed, so that one that
     /// streams is read straight in during play. 50: each texture's record
@@ -79,7 +79,9 @@ namespace hldata
     /// build before would refuse. (46, how a box floats, 47, a tank's
     /// sprites, and 48, how a monster_generic is drawn, are in fields 45's
     /// builds leave alone: they read them.) 50: a texture's record is longer
-    /// (its palette's colours), which a build before cannot read.
+    /// (its palette's colours), which a build before cannot read. (51: a
+    /// spark that is switched says so, which a build of 50 reads as one it
+    /// may switch anyway.)
     inline constexpr std::uint16_t kLevelMinReader = 50;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,
@@ -588,8 +590,8 @@ namespace hldata
         /// everywhere).
         Shake,
         /// Sparks at `move`, at random moments no more than `waitMs` apart,
-        /// while it is on (kLogicStartOpen: from the start; used, on and
-        /// off).
+        /// while it is on (kLogicStartOpen: from the start). kLogicToggle:
+        /// each use switches it; without it, using it does nothing.
         Spark,
         /// Throws things out from `move`: extra[0] is how many, extra[1]
         /// the time between two (ms), extra[2] how fast (units a second),

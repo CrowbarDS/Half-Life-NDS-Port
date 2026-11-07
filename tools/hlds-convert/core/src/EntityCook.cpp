@@ -2974,11 +2974,16 @@ namespace hlds
                 record.kind = static_cast<std::uint8_t>(LogicKind::Spark);
                 for (int a = 0; a < 3; ++a)
                     record.move[a] = fxFromDouble(origin[a]);
+                // (No delay, or none above 0: the game's 1.5 s.)
+                const double maxDelay = numberKey(entity, "MaxDelay", 0);
                 record.waitMs = static_cast<std::int32_t>(
-                    std::clamp(std::lround(numberKey(entity, "MaxDelay", 1) * 1000), 100L, 60000L));
-                // Flags: 32 is switched on and off, 64 starts on. One that
-                // nothing can switch sparks from the start.
-                if ((spawnflags & 64) || !(spawnflags & 32) || !named)
+                    std::clamp(std::lround((maxDelay > 0 ? maxDelay : 1.5) * 1000), 100L, 60000L));
+                // Flags: 32 is switched on and off, 64 starts on. Without 32
+                // it sparks from the start and using it does nothing; with
+                // 32 and not 64 it waits to be used, even if nothing can.
+                if (spawnflags & 32)
+                    record.flags |= kLogicToggle;
+                if ((spawnflags & 64) || !(spawnflags & 32))
                     record.flags |= kLogicStartOpen;
                 heardSpark = soundIndex("buttons/spark5.wav", false);
             }
