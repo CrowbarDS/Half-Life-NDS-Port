@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 58;
+    inline constexpr std::uint16_t kLevelVersion = 59;
     /// The oldest level format this build reads. (49: a map's textures are
     /// stored in its archive as they are, never compressed, so that one that
     /// streams is read straight in during play. 50: each texture's record
@@ -90,7 +90,9 @@ namespace hldata
     /// it is taken, in its item word, which a build before refuses. 57: a
     /// wheel only turned by another, which a build before lets be used. 58:
     /// a map's signs, marks of a picture of its own (kDecalSign), which a
-    /// build before draws as a speck.)
+    /// build before draws as a speck. 59: triggers the monsters set off,
+    /// some of them not the player's, which a build before lets the
+    /// player set off.)
     inline constexpr std::uint16_t kLevelMinReader = 56;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,
@@ -830,6 +832,9 @@ namespace hldata
     /// A rotating door that always opens the same way. Without it, it opens
     /// away from whoever opens it.
     inline constexpr std::uint16_t kLogicOneWay = 64;
+    /// (The same bit on a trigger_once, trigger_multiple or teleport: the
+    /// monsters set it off too -- the game's SF_TRIGGER_ALLOWMONSTERS.)
+    inline constexpr std::uint16_t kLogicMonsters = 64;
     /// A track train nobody drives: the track's nodes set its speed.
     inline constexpr std::uint16_t kLogicSelfDriven = 128;
     // A Breakable's: nothing but its name breaks it. (A MomentaryButton's:

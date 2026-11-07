@@ -332,6 +332,104 @@ namespace
             left += g.actors.states[i].active;
         check(left == 0, "and they are gone when it fires");
     }
+
+    /// The four slaves that come through in the cascade (each from a maker
+    /// high in the chamber) fall through a monsters' trigger -- a flash and
+    /// a sound -- and a monsters' teleport, which sends them into a place
+    /// that hurts, far away: seen for a moment, then gone, as in the game.
+    void testReinforcements(const char *dir)
+    {
+        auto game = std::make_unique<Game>();
+        std::string error;
+        if (!game->bsp.load(std::string(dir) + "/maps/c1a0e.bsp", error))
+        {
+            check(false, "c1a0e is read");
+            return;
+        }
+        finish(*game, nullptr, dir);
+        if (!game->ok)
+            return;
+        Game &g = *game;
+        int monsterTeleports = 0, monsterTriggers = 0;
+        for (std::uint32_t i = 0; i < g.view.logicCount; ++i)
+        {
+            const LogicRecord &r = g.view.logic[i];
+            if (!(r.flags & kLogicMonsters))
+                continue;
+            monsterTeleports += r.kind == static_cast<std::uint8_t>(LogicKind::TriggerTeleport);
+            monsterTriggers += r.kind == static_cast<std::uint8_t>(LogicKind::TriggerOnce);
+        }
+        check(monsterTeleports >= 4 && monsterTriggers >= 4, "c1a0e keeps the monsters' teleports and triggers");
+        // The player in the chamber, kept alive: this is about the slaves.
+        const int first = recordNamed(g, "killtele1", LogicKind::TriggerTeleport);
+        const int reinforcements = recordNamed(g, "reinforcements", LogicKind::MultiManager);
+        check(first >= 0 && reinforcements >= 0, "the chamber and its reinforcements are there");
+        if (first < 0 || reinforcements < 0)
+            return;
+        const LogicRecord &room = g.view.logic[first];
+        ActorState probe;
+        probe.pos[0] = fxFromInt((room.mins[0] + room.maxs[0]) / 2);
+        probe.pos[1] = fxFromInt((room.mins[1] + room.maxs[1]) / 2);
+        probe.pos[2] = fxFromInt(room.mins[2] + 40);
+        actorToFloor(g.move, probe, fxFromInt(8), fxFromInt(256));
+        for (int k = 0; k < 3; ++k)
+            g.player.origin[k] = probe.pos[k] + (k == 2 ? kStandingFeet : 0);
+        Cheats cheats;
+        cheats.notarget = true;
+        g.player.cheats = &cheats;
+        // (The cart comes up first, as it does in play: the wall that
+        // kept it in goes, and the fence opens.)
+        const int lift = recordNamed(g, "sample_cart_liftmm", LogicKind::MultiManager);
+        if (lift >= 0)
+            logicUse(g.logic, g.player, lift, -1, kUseToggle);
+        for (int frame = 0; frame < 30 * 6; ++frame)
+        {
+            logicTick(g.logic, g.player, 33);
+            monstersTick(g.logic, g.player, 33);
+            g.drain();
+        }
+        const int before = g.actors.count;
+        logicUse(g.logic, g.player, reinforcements, -1, kUseToggle);
+        int made = 0, aliveInRoom = 0;
+        std::vector<char> seenInRoom(512, 0);
+        for (int frame = 0; frame < 30 * 12; ++frame)
+        {
+            g.player.health = 100;
+            logicTick(g.logic, g.player, 33);
+            monstersTick(g.logic, g.player, 33);
+            g.drain();
+            for (int i = 0; i < g.actors.count && i < 512; ++i)
+            {
+                const ActorState &a = g.actors.states[i];
+                if (!a.active || a.kind != static_cast<std::uint8_t>(ActorKind::Slave) || (a.flags & kActorPrisoner))
+                    continue;
+                const int x = fxToInt(a.pos[0]), y = fxToInt(a.pos[1]), z = fxToInt(a.pos[2]);
+                if (x >= room.mins[0] && x <= room.maxs[0] && y >= room.mins[1] && y <= room.maxs[1] &&
+                    z >= room.mins[2] && z <= room.maxs[2] + 400)
+                    seenInRoom[i] = 1;
+            }
+        }
+        for (int i = 0; i < g.actors.count && i < 512; ++i)
+        {
+            const ActorState &a = g.actors.states[i];
+            made += seenInRoom[i];
+            const int x = fxToInt(a.pos[0]), y = fxToInt(a.pos[1]), z = fxToInt(a.pos[2]);
+            if (seenInRoom[i])
+                std::printf("test_cascade:   slave %d at %d %d %d, active %d ai %d air %d\n", i, x, y, z, a.active, a.ai,
+                            aiFind(g.actors, i) != nullptr ? aiFind(g.actors, i)->inAir : -1);
+            aliveInRoom += a.active && a.ai < kAiDying && a.kind == static_cast<std::uint8_t>(ActorKind::Slave) &&
+                           !(a.flags & kActorPrisoner) && x >= room.mins[0] && x <= room.maxs[0] &&
+                           y >= room.mins[1] && y <= room.maxs[1] && z >= room.mins[2] && z <= room.maxs[2];
+        }
+        g.player.cheats = nullptr;
+        std::printf("test_cascade: reinforcements: %d slaves seen in the chamber (actors %d -> %d), %d still alive there\n",
+                    made, before, g.actors.count, aliveInRoom);
+        int alive = 0;
+        for (int i = 0; i < g.actors.count && i < 512; ++i)
+            alive += seenInRoom[i] && g.actors.states[i].active && g.actors.states[i].ai < kAiDying;
+        check(made >= 4 && aliveInRoom == 0 && alive == 0,
+              "the cascade's slaves come through the chamber, and are sent away to die, as in the game");
+    }
 } // namespace
 
 int main()
@@ -343,6 +441,7 @@ int main()
         testMachine(dir);
         testCart(dir);
         testPrisoners(dir);
+        testReinforcements(dir);
     }
     else
     {

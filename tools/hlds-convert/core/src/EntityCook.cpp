@@ -2233,11 +2233,20 @@ namespace hlds
             else if ((cls == "trigger_hurt" || cls == "trigger_push" || cls == "trigger_teleport" ||
                       cls == "trigger_gravity") &&
                      model != nullptr &&
-                     !(spawnflags & (cls == "trigger_hurt" ? 8 : (cls == "trigger_teleport" ? 2 : 0))))
+                     (!(spawnflags & (cls == "trigger_hurt" ? 8 : (cls == "trigger_teleport" ? 2 : 0))) ||
+                      (cls == "trigger_teleport" && (spawnflags & 1))))
             {
                 // (Flag 8 on a trigger_hurt and 2 on a teleport: not for the
                 // player. On a trigger_push 2 is something else: it starts
-                // switched off.)
+                // switched off. A teleport with flag 1 is for the monsters
+                // too: c1a0e's sends the slaves of the cascade away.)
+                if (cls == "trigger_teleport")
+                {
+                    if (spawnflags & 1)
+                        record.flags |= kLogicMonsters;
+                    if (spawnflags & 2)
+                        record.flags |= kLogicNoPlayer;
+                }
                 record.pad = shapedVolume(bsp, model);
                 for (int a = 0; a < 3; ++a)
                 {
@@ -2317,13 +2326,14 @@ namespace hlds
             else if (cls == "trigger_once" || cls == "trigger_multiple")
             {
                 // A trigger that ignores the player is for a box that is
-                // pushed into it (flag 4), or for monsters, which do not set
-                // triggers off yet.
-                if (model != nullptr && (!(spawnflags & kTriggerNoClients) || (spawnflags & 4)))
+                // pushed into it (flag 4), or for the monsters (flag 1).
+                if (model != nullptr && (!(spawnflags & kTriggerNoClients) || (spawnflags & 5)))
                 {
                     make = true;
                     if (spawnflags & 4)
                         record.flags |= kLogicPushables;
+                    if (spawnflags & 1)
+                        record.flags |= kLogicMonsters;
                     if (spawnflags & kTriggerNoClients)
                         record.flags |= kLogicNoPlayer;
                     const bool once = cls == "trigger_once";

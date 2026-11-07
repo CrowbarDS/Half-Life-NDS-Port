@@ -5211,7 +5211,7 @@ namespace hldata
                     if (w.globals != nullptr)
                         w.globals->set(kGlobalPlayerGravity, percent);
                 }
-                else if (kind == LogicKind::TriggerTeleport && inside)
+                else if (kind == LogicKind::TriggerTeleport && inside && !(record.flags & kLogicNoPlayer))
                 {
                     for (int a = 0; a < 3; ++a)
                     {

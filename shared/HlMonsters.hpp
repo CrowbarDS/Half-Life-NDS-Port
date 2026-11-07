@@ -3211,6 +3211,101 @@ namespace hldata
 
         /// The places that hurt (trigger_hurt) hurt whoever is in them, not
         /// the player alone: half a second's worth every half second.
+        /// The most trigger volumes the monsters set off that a map may
+        /// have looked at in a frame (c1a0e has eight).
+        inline constexpr int kMonsterVolumes = 32;
+
+        /// The triggers the monsters set off (kLogicMonsters): a teleport,
+        /// a trigger_once or trigger_multiple, as they are now.
+        inline int monsterVolumesOf(const LogicWorld &w, std::int16_t *out)
+        {
+            int count = 0;
+            for (int r = 0; r < w.recordCount && count < kMonsterVolumes; ++r)
+            {
+                const LogicRecord &record = w.records[r];
+                const auto kind = static_cast<LogicKind>(record.kind);
+                if (!(record.flags & kLogicMonsters) || w.states[r].dead ||
+                    (kind != LogicKind::TriggerTeleport && kind != LogicKind::TriggerOnce &&
+                     kind != LogicKind::TriggerMultiple))
+                    continue;
+                out[count++] = static_cast<std::int16_t>(r);
+            }
+            return count;
+        }
+
+        /// A monster that has moved from `from` to where it is now, through
+        /// any of `volumes` (CBaseTrigger's touches, for a monster): a
+        /// teleport sends it on, a trigger fires. Its box is a person's;
+        /// the whole way it went is looked at, as one that falls is fast.
+        inline void monsterVolumes(LogicWorld &w, PlayerState &player, const std::int16_t *volumes, int count,
+                                   int index, const fx *from)
+        {
+            ActorState &actor = w.actors->states[index];
+            if (!actor.active || actor.ai >= kAiDying)
+                return;
+            int lo[3], hi[3];
+            for (int k = 0; k < 3; ++k)
+            {
+                const int a = fxToInt(from[k]), b = fxToInt(actor.pos[k]);
+                lo[k] = a < b ? a : b;
+                hi[k] = a < b ? b : a;
+            }
+            lo[0] -= 16, lo[1] -= 16, hi[0] += 16, hi[1] += 16, hi[2] += 72;
+            for (int n = 0; n < count; ++n)
+            {
+                const int r = volumes[n];
+                const LogicRecord &record = w.records[r];
+                LogicState &state = w.states[r];
+                if (state.dead || hi[0] < record.mins[0] || lo[0] > record.maxs[0] || hi[1] < record.mins[1] ||
+                    lo[1] > record.maxs[1] || hi[2] < record.mins[2] || lo[2] > record.maxs[2] ||
+                    !logicMasterAllows(w, r))
+                    continue;
+                if (record.kind == static_cast<std::uint8_t>(LogicKind::TriggerTeleport))
+                {
+                    // (Its feet where the player's would be: the record has
+                    // a standing player's middle.)
+                    actor.pos[0] = record.move[0];
+                    actor.pos[1] = record.move[1];
+                    actor.pos[2] = record.move[2] - fxFromInt(36) + fxFromInt(1);
+                    // (Where its box is free -- c1a0e's point is under a
+                    // ledge -- a little lower if need be: the game's falls
+                    // out of such a start, ours would not.)
+                    {
+                        const bool small = monsterKind(actor.kind).small;
+                        const fx lift = small ? kCrouchedFeet : kStandingFeet;
+                        for (int down = 0; down <= 64; down += 4)
+                        {
+                            // (Free there and a little above: what the next
+                            // step and the ground check start from.)
+                            const fx at[3] = {actor.pos[0], actor.pos[1], actor.pos[2] + lift - fxFromInt(down)};
+                            const fx above[3] = {at[0], at[1], at[2] + fxFromInt(2)};
+                            if (!traceAll(*w.world, small, at, at).startSolid &&
+                                !traceAll(*w.world, small, above, above).startSolid)
+                            {
+                                actor.pos[2] -= fxFromInt(down);
+                                break;
+                            }
+                        }
+                    }
+                    for (fx &v : actor.velocity)
+                        v = 0;
+                    actor.yaw = static_cast<std::uint16_t>(record.extra[0]);
+                    // (Off the ground, as the game's teleport leaves it: it
+                    // falls from there to whatever is under it.)
+                    if (AiMonster *mind = aiFind(*w.actors, index))
+                        mind->inAir = true;
+                    return;
+                }
+                if (state.timer >= 0)
+                    continue;
+                logicUseTargets(w, player, r, kUseToggle, 0);
+                if (record.kind == static_cast<std::uint8_t>(LogicKind::TriggerOnce) || record.waitMs < 0)
+                    state.dead = true;
+                else
+                    state.timer = record.waitMs;
+            }
+        }
+
         inline void hurtPlaces(LogicWorld &w)
         {
             ActorWorld &a = *w.actors;
@@ -3558,6 +3653,13 @@ namespace hldata
             else if (kind == LogicKind::Repel)
                 detail::repelTick(w, player, i, ms);
         }
+        // (The triggers the monsters set off, as they are this frame. Not on
+        // a console sent the game: a match has no monsters, and it has no
+        // room to spare.)
+#ifndef HLDS_CHILD
+        std::int16_t volumes[detail::kMonsterVolumes];
+        const int volumeCount = w.records != nullptr && w.states != nullptr ? detail::monsterVolumesOf(w, volumes) : 0;
+#endif
         for (int i = 0; i < a.count; ++i)
         {
             ActorState &actor = a.states[i];
@@ -3629,7 +3731,14 @@ namespace hldata
             }
             if (!actorThinks(actor.kind))
                 continue;
+#ifndef HLDS_CHILD
+            const fx was[3] = {actor.pos[0], actor.pos[1], actor.pos[2]};
             aiTick(w, player, i, ms);
+            if (volumeCount > 0)
+                detail::monsterVolumes(w, player, volumes, volumeCount, i, was);
+#else
+            aiTick(w, player, i, ms);
+#endif
             actor.lastFrame = actor.frame;
             actorPlaceBox(a, i);
         }
