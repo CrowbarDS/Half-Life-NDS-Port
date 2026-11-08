@@ -30,16 +30,23 @@ namespace hlrt
         std::uint32_t iconWords[(sizeof(IconsHeader) + kWeaponIcons * kIconMaxHeight * iconRowWords(kIconMaxWidth) * 4) / 4];
         IconsView icons;
 
-        /// The pad's tiles (it is whole tiles: 208 by 132 from 0 or 48, 24)
-        /// copied from `from` to `to`, both laid out as the screen's.
-        void copyPad(std::uint32_t *to, const std::uint32_t *from, bool mirrored)
+        /// The play area -- the pad and the column beside it, all the
+        /// screen's width, from the bar's foot to the pad's -- copied from
+        /// `from` to `to`, both laid out as the screen's: whole tiles, but of
+        /// the last row of them only the pixel rows above the slots (which
+        /// are drawn on the screen itself, in between).
+        void copyPlay(std::uint32_t *to, const std::uint32_t *from)
         {
-            const TouchRect r = touchLayout(mirrored, netGame.playing(), settings.jumpWalks).pad;
-            const int left = r.x / 8, right = (r.x + r.w + 7) / 8, top = r.y / 8, bottom = (r.y + r.h + 7) / 8;
-            for (int ty = top; ty < bottom; ++ty)
+            const int top = kTouchPadTop / 8, bottom = kTouchPadTop + kTouchPadHeight; // (24: a tile's edge)
+            const int whole = bottom / 8;
+            std::memcpy(to + top * 32 * 8, from + top * 32 * 8, static_cast<std::size_t>(whole - top) * 32 * 32);
+            if (const int rows = bottom - whole * 8)
             {
-                const int at = (ty * 32 + left) * 8;
-                std::memcpy(to + at, from + at, static_cast<std::size_t>(right - left) * 32);
+                for (int tx = 0; tx < 32; ++tx)
+                {
+                    const int at = (whole * 32 + tx) * 8;
+                    std::memcpy(to + at, from + at, static_cast<std::size_t>(rows) * 4);
+                }
             }
         }
 
@@ -243,7 +250,7 @@ namespace hlrt
         lampOn_ = on;
         lampBar_ = bar;
         if (shown_ == Shown::Pad)
-            drawColumn();
+            columnChanged();
     }
 
     HL_ARM void BottomScreen::drawSlots()
@@ -256,6 +263,9 @@ namespace hlrt
         const TouchLayout at = touchLayout(mirrored_, netGame.playing(), settings.jumpWalks, longJump_);
         const FontView &font = touchCanvas.font(kFontSmall);
         loadIcons();
+        // (Lit, besides the one in hand: the slot touched, and the one whose
+        // list is up.)
+        const int touched = held_ - kTouchSlot, listed = list_.open() && !list_.closing ? list_.category - 1 : -1;
         for (int n = 0; n < kTouchSlots; ++n)
         {
             // The game's slot n + 1, a kind of weapon: shown as the one of
@@ -275,7 +285,9 @@ namespace hlrt
                     weapon = list[k];
             }
             const bool carried = weapon != kWeaponNone, inHand = carried && weapon == weapon_;
-            plate(r, inHand, !carried);
+            // Lit in hand; and while it is touched, or its list is up.
+            const bool lit = inHand || (carried && (n == touched || n == listed));
+            plate(r, lit, !carried);
             if (!carried)
                 continue;
             const int cx = r.x + r.w / 2;
@@ -284,8 +296,8 @@ namespace hlrt
             if (icon < icons.count())
             {
                 // The game's picture: dim while it waits, bright in hand.
-                const int inks[4] = {0, inHand ? kUiOrange + 1 : kUiOrange, inHand ? kUiOrange + 2 : kUiOrange + 1,
-                                     inHand ? kUiWhite + 2 : kUiOrange + 1};
+                const int inks[4] = {0, lit ? kUiOrange + 1 : kUiOrange, lit ? kUiOrange + 2 : kUiOrange + 1,
+                                     lit ? kUiWhite + 2 : kUiOrange + 1};
                 const int left = cx - icons.width() / 2;
                 for (int y = 0; y < icons.height(); ++y)
                 {
@@ -299,7 +311,7 @@ namespace hlrt
             else
             {
                 drawTextCentred(canvas, font, cx, r.y + (inHand && weapon != kWeaponCrowbar ? 3 : (r.h - font.height()) / 2),
-                                kNames[weapon], inkFor(font, inHand ? kUiWhite : kUiOrange));
+                                kNames[weapon], inkFor(font, lit ? kUiWhite : kUiOrange));
             }
             if (!inHand || weapon == kWeaponCrowbar)
                 continue;
@@ -323,20 +335,39 @@ namespace hlrt
         if (list.category == list_.category && list.slide == list_.slide && hover == listHover_ &&
             list.count == list_.count)
             return;
+        const bool slot = list.category != list_.category || list.closing != list_.closing;
         list_ = list;
         listHover_ = hover;
         if (shown_ != Shown::Pad)
             return;
-        // What was under it (it is all inside the pad's frame), then it where
-        // it is now -- off the screen, from the pad as it is on it: put on
-        // it whole, in the next vertical blank (present).
-        copyPad(touchCanvas.copyTiles(), touchCanvas.screenTiles(), mirrored_);
+        drawPlayArea();
+        // (Its slot is lit while it is up.)
+        if (slot)
+            drawSlots();
+    }
+
+    void BottomScreen::drawPlayArea()
+    {
+        // What was under it, then it where it is now -- off the screen, from
+        // the screen as it is: put on it whole, in the next vertical blank
+        // (present). (It covers the column too, for a slot at the side.)
+        copyPlay(touchCanvas.copyTiles(), touchCanvas.screenTiles());
         touchCanvas.offScreen(touchCanvas.copyTiles());
+        touchCanvas.canvas().fill(0, kTouchPadTop, kTouchWidth, kTouchPadHeight, kUiBack);
         drawPad();
+        drawColumn();
         if (list_.open())
             drawWeaponList();
         touchCanvas.onScreen();
         padPending_ = true;
+    }
+
+    [[gnu::noinline]] void BottomScreen::columnChanged()
+    {
+        if (list_.open() || padPending_)
+            drawPlayArea();
+        else
+            drawColumn();
     }
 
     void BottomScreen::present()
@@ -345,7 +376,7 @@ namespace hlrt
             return;
         padPending_ = false;
         if (shown_ == Shown::Pad)
-            copyPad(touchCanvas.screenTiles(), touchCanvas.copyTiles(), mirrored_);
+            copyPlay(touchCanvas.screenTiles(), touchCanvas.copyTiles());
     }
 
     /// The list of a slot's weapons: each its picture and its name, the one
@@ -360,8 +391,8 @@ namespace hlrt
         const TouchRect r = weaponListRect(list_, at);
         const int drop = (256 - list_.slide) * (r.h + 4) / 256;
         // (Drawn into the screen's rows down to the pad's bottom edge, and no
-        // further -- what is still below it is not seen, and nothing outside
-        // the pad is ever touched: the pad drawn again puts all of it right.)
+        // further -- what is still below it is not seen, and the slots are
+        // never touched: the play area drawn again puts all of it right.)
         Canvas band = touchCanvas.canvas();
         band.height = weaponListFloor(at) / 8 * 8;
         const FontView &font = touchCanvas.font(kFontSmall);
@@ -443,7 +474,7 @@ namespace hlrt
         if (touchLayout(mirrored_, netGame.playing(), settings.jumpWalks, longJump_).walk.y == 0)
             drawBar();
         else
-            drawColumn();
+            columnChanged();
     }
 
     void BottomScreen::setLongJump(bool has)
@@ -457,7 +488,7 @@ namespace hlrt
         // cleared, not drawn over.)
         const TouchRect lamp = touchLayout(mirrored_, netGame.playing(), settings.jumpWalks, longJump_).lamp;
         touchCanvas.canvas().fill(lamp.x, kTouchBarHeight, lamp.w, lamp.y - kTouchBarHeight, kUiBack);
-        drawColumn();
+        columnChanged();
     }
 
     void BottomScreen::setPressed(int held)
@@ -468,14 +499,17 @@ namespace hlrt
         held_ = held;
         if (shown_ != Shown::Pad)
             return;
-        // (A slot shows what is in hand, not what is touched.)
         auto onBar = [](int on)
         { return on == kTouchMenu || on == kTouchUse || on == kTouchReload || on == kTouchSpray || on == kTouchWalk; };
         if (onBar(was) || onBar(held))
             drawBar();
         auto onColumn = [](int on) { return on == kTouchJump || on == kTouchDuck || on == kTouchLamp || on == kTouchWalk || on == kTouchLongJump; };
         if (onColumn(was) || onColumn(held))
-            drawColumn();
+            columnChanged();
+        // (A slot is lit while the stylus is on it, as well as in hand.)
+        auto onSlot = [](int on) { return on >= kTouchSlot && on < kTouchSlot + kTouchSlots; };
+        if (onSlot(was) || onSlot(held))
+            drawSlots();
     }
 
     void BottomScreen::showMessage(const char *line1, const char *line2)

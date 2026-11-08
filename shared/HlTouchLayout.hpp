@@ -71,6 +71,9 @@ namespace hldata
     inline constexpr int kTouchWidth = 256;
     inline constexpr int kTouchBarHeight = 22;
     inline constexpr int kTouchSlotTop = 158;
+    /// The aim pad's top and height: the same in every layout.
+    inline constexpr int kTouchPadTop = 24;
+    inline constexpr int kTouchPadHeight = 132;
 
     inline constexpr TouchLayout touchLayout(bool mirrored, bool match = false, bool jumpWalks = false,
                                               bool longJump = false)
@@ -97,7 +100,7 @@ namespace hldata
             at.walk = {134, 0, 54, kTouchBarHeight};
         }
         at.reload = {192, 0, 64, kTouchBarHeight};
-        at.pad = {0, 24, 208, 132};
+        at.pad = {0, kTouchPadTop, 208, kTouchPadHeight};
         at.jump = {212, 24, 44, 48};
         at.lamp = {212, 74, 44, 32};
         at.duck = {212, 108, 44, 48};

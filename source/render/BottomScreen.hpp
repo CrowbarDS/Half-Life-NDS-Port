@@ -153,6 +153,13 @@ namespace hlrt
         void drawBar();
         void drawPad();
         void drawColumn();
+        /// The pad and the column beside it, and the weapons' list over them
+        /// if it is up: drawn off the screen, put on it in the next vertical
+        /// blank (present).
+        void drawPlayArea();
+        /// The column, changed: onto the screen; or, while the list is up or
+        /// a play area waits to go on, with the rest of it (drawPlayArea).
+        void columnChanged();
         void drawSlots();
         void drawWeaponList();
         hldata::WeaponList list_; ///< as last drawn
@@ -170,7 +177,7 @@ namespace hlrt
         int held_ = 0;
         bool mirrored_ = false; ///< as the pad was last drawn
         bool matchBar_ = false; ///< the bar was drawn with a match's buttons (SPRAY)
-        bool padPending_ = false; ///< the pad drawn off the screen, not yet on it
+        bool padPending_ = false; ///< the play area drawn off the screen, not yet on it
         bool iconsTried_ = false;
     };
 

@@ -272,19 +272,33 @@ namespace
                   "slot 3: its three weapons carried, in the game's order");
             settle(list);
             const TouchRect r = weaponListRect(list, at);
-            check(list.slide == 256 && r.x >= at.pad.x + 1 && r.x + r.w <= at.pad.x + at.pad.w - 1 &&
-                      r.y >= at.pad.y + 1 && r.y + r.h <= at.pad.y + at.pad.h - 3,
-                  left ? "... up, inside the pad's frame, left-handed" : "... up, inside the pad's frame and nothing else");
-            // (Every slot's list, of as many as a slot has, inside it.)
+            check(list.slide == 256 && r.x >= 0 && r.x + r.w <= kTouchWidth && r.y >= at.pad.y + 1 &&
+                      r.y + r.h <= at.pad.y + at.pad.h - 3,
+                  left ? "... up, over the pad, left-handed" : "... up, over the pad");
+            // (Every slot's list, of as many as a slot has: on the screen,
+            // above the slots, and over its own slot -- centred on it as far
+            // as the screen allows.)
             for (int category = 1; category <= kTouchSlots; ++category)
             {
                 WeaponList each;
                 each.category = category;
                 each.count = kWeaponListMost;
                 const TouchRect e = weaponListRect(each, at);
-                check(e.x >= at.pad.x + kWeaponListInset && e.x + e.w <= at.pad.x + at.pad.w - kWeaponListInset &&
+                const TouchRect &slot = at.slot[category - 1];
+                const int centre = slot.x + slot.w / 2, middle = e.x + e.w / 2;
+                check(e.x >= kWeaponListInset && e.x + e.w <= kTouchWidth - kWeaponListInset &&
                           e.y >= at.pad.y + 1 && e.y + e.h <= at.pad.y + at.pad.h - 3,
-                      "every slot's list, at its longest, is inside the pad's frame, clear of its cut corners");
+                      "every slot's list, at its longest, is on the screen and above the slots");
+                check(e.x <= slot.x && e.x + e.w >= slot.x + slot.w, "... over all of its own slot");
+                check(middle == centre || e.x == kWeaponListInset || e.x + e.w == kTouchWidth - kWeaponListInset,
+                      "... centred on it, unless the screen's edge is in the way");
+            }
+            {
+                WeaponList five;
+                five.category = 5;
+                five.count = 4;
+                const TouchRect e = weaponListRect(five, at);
+                check(e.x + e.w == kTouchWidth - kWeaponListInset, "slot 5's list stands at the screen's right edge");
             }
             // A weapon touched: taken.
             const int x = r.x + r.w / 2, rowY = r.y + 2 + kWeaponListRow + kWeaponListRow / 2;
