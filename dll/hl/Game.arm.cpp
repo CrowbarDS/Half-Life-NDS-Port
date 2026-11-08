@@ -902,7 +902,11 @@ namespace hlrt
                 const fx eye[3] = {player.state.origin[0], player.state.origin[1],
                                    player.state.origin[2] + player.state.viewHeight};
                 const int target = logicFindUsable(logic, eye, camera.forward);
-                if (target >= 0 && logicContinuousUse(logic.records[target]))
+                // (And a wheel, turned while it is held -- only where USE
+                // is known to be held: not in a match.)
+                const bool wheel = target >= 0 && logic.useHeld.value &&
+                                   logic.records[target].kind == static_cast<std::uint8_t>(LogicKind::MomentaryButton);
+                if (target >= 0 && (logicContinuousUse(logic.records[target]) || wheel))
                     logicUse(logic, player.state, target, -1, kUseSet);
                 else if (target >= 0 && logic.useHeld.value && logic.records[target].kind == static_cast<std::uint8_t>(LogicKind::Pushable))
                     logicPull(logic, player.state, target, ms);

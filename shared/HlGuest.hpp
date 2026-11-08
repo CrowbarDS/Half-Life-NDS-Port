@@ -86,8 +86,10 @@ namespace hldata
     // Lowered when the child stopped carrying the saves (0x02168D24, 30 Oct
     // 2026: phase 6's second round). Raised 2 KB for the long jump, pulled
     // and floating boxes and the tanks' sprites (3 Nov 2026): subtransit,
-    // the map nearest the limit, is then 3 KB under it.
-    inline constexpr std::uint32_t kGuestImageBytes = 0x165B6C + 66 * 1024;
+    // the map nearest the limit, is then 3 KB under it. Raised 1 KB for
+    // wheels turned while USE is held (8 Nov 2026): subtransit was over by
+    // then already; crossfire, the nearest that fits, is about 32 KB under.
+    inline constexpr std::uint32_t kGuestImageBytes = 0x165B6C + 67 * 1024;
     /// The heap's end: the end of main RAM less what the start-up code keeps.
     inline constexpr std::uint32_t kGuestRamBytes = 0x3F4000;
     /// What the engine holds beside a map's data -- its tables, the world's

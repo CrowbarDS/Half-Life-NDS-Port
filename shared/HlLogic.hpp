@@ -3987,6 +3987,14 @@ namespace hldata
         {
             const LogicRecord &record = w.records[index];
             LogicState &state = w.states[index];
+            // (Held: let go of when no USE has come for a tenth of a second.)
+            if (state.running && state.hurt > 0 && (state.hurt -= ms) <= 0)
+            {
+                state.hurt = 0;
+                state.running = false;
+                if (record.move[1] > 0 && state.phase > 0)
+                    state.bits = 1;
+            }
             const bool returning = state.bits == 1;
             if (record.brush == kNoBrush || (!state.running && !returning))
                 return;
@@ -4002,8 +4010,11 @@ namespace hldata
             std::int64_t at = state.phase + (returning || state.speed < 0 ? -step : step);
             if (at <= 0 || at >= 65536)
             {
+                // (At its end, one that is held stays held: let go of there,
+                // it may still go back.)
                 at = at <= 0 ? 0 : 65536;
-                state.running = false;
+                if (state.hurt <= 0 || returning)
+                    state.running = false;
                 state.bits = 0;
             }
             state.phase = static_cast<std::int32_t>(at);
@@ -4407,10 +4418,34 @@ namespace hldata
             break;
 
         case LogicKind::MomentaryButton:
-            // Turned while it is held in the game; here, from one USE to the
-            // next -- or to its end, and back from there the next time. Let
-            // go of, one that goes back by itself does (CMomentaryRotButton::
-            // Off), and taken hold of again, it turns on from there.
+            // Held (the player's USE, each frame it is: useHeld), as the game
+            // has it: taken hold of again, it turns the other way, from its
+            // start forwards and from its end back; it turns while the USE
+            // goes on coming in, and is let go of a tenth of a second after
+            // the last (`hurt`, the ms left). Then one that goes back by itself
+            // does (CMomentaryRotButton::Off).
+            if (w.useHeld.value)
+            {
+                if (state.hurt <= 0)
+                {
+                    if (state.bits == 1 || state.phase <= 0)
+                        state.speed = 1;
+                    else if (state.phase >= 65536)
+                        state.speed = -1;
+                    else
+                        state.speed = -state.speed;
+                    state.bits = 0;
+                    detail::recordSound(w, index, false);
+                }
+                state.running = true;
+                state.hurt = 100;
+                break;
+            }
+            // Where USE is not known to be held (a guest's, in a match), from
+            // one USE to the next -- or to its end, and back from there the
+            // next time. Let go of, one that goes back by itself does, and
+            // taken hold of again, it turns on from there.
+            state.hurt = 0;
             if (state.running)
             {
                 state.running = false;

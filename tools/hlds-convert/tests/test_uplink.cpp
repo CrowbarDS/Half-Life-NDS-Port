@@ -11,7 +11,8 @@
 // A wheel tells everything it targets how far round it is while it turns;
 // what is not a momentary_door is simply used, and a door opens (c3a1's
 // sewer lid). One that goes back by itself when let go does so, and what it
-// moves with it (c2a3a's cage), heard as it moves and stops.
+// moves with it (c2a3a's cage), heard as it moves and stops. And a wheel
+// turns while USE is held on it, as in the game.
 //
 // Needs HLDS_VALVE_DIR.
 
@@ -253,6 +254,62 @@ namespace
         std::printf("test_uplink: the cage door was heard to move %d times and stop %d\n", moved, stopped);
         check(moved >= 1 && moved <= 3 && stopped >= 1 && stopped <= 3, "the cage door sounds as it moves, and as it stops");
     }
+
+    /// A wheel held as the game holds it: turned while USE comes in each
+    /// frame, let go of when it stops, and turned the other way when taken
+    /// hold of again (hldemo3's, which does not go back by itself).
+    void testHeld(const char *dir)
+    {
+        auto game = std::make_unique<Game>();
+        std::string error;
+        if (!game->bsp.load(std::string(dir) + "/maps/hldemo3.bsp", error))
+        {
+            check(false, "hldemo3 is read");
+            return;
+        }
+        finish(*game, nullptr, dir);
+        if (!game->ok)
+            return;
+        Game &g = *game;
+        int wheel = -1;
+        for (std::uint32_t i = 0; i < g.view.logicCount; ++i)
+        {
+            const LogicRecord &r = g.view.logic[i];
+            if (r.kind == static_cast<std::uint8_t>(LogicKind::MomentaryButton) && !(r.flags & kLogicTriggerOnly))
+                wheel = static_cast<int>(i);
+        }
+        if (wheel < 0)
+        {
+            check(false, "the wheel is there");
+            return;
+        }
+        g.player.origin[2] += fxFromInt(4000);
+        // (A frame: the logic, then the USE of whoever holds it.)
+        auto frames = [&](int n, bool holding)
+        {
+            for (int k = 0; k < n; ++k)
+            {
+                g.logic.useHeld.value = holding;
+                logicTick(g.logic, g.player, 33);
+                if (holding)
+                    logicUse(g.logic, g.player, wheel, -1, kUseSet);
+                g.drain();
+            }
+        };
+        const int &phase = g.logic.states[wheel].phase;
+        frames(30 * 4, true);
+        const int held = phase;
+        frames(30, false);
+        const int let = phase;
+        frames(30 * 2, true);
+        const int again = phase;
+        frames(30, false);
+        std::printf("test_uplink: held 4 s, %d%% round; let go, %d%%; held 2 s more, %d%%\n", held * 100 / 65536,
+                    let * 100 / 65536, again * 100 / 65536);
+        check(held > 65536 / 3 && held < 65536 / 2, "held, it turns at its speed (35 a second, of 360)");
+        check(let - held < 65536 / 50, "let go of, it stops within a tenth of a second, and stays");
+        check(again < let && again > 0, "taken hold of again, it turns back");
+    }
 } // namespace
 
 int main()
@@ -266,6 +323,7 @@ int main()
     testDish(dir);
     testSewerLid(dir);
     testCageReturns(dir);
+    testHeld(dir);
     if (g_failures == 0)
         std::printf("test_uplink: ok\n");
     return g_failures == 0 ? 0 : 1;
