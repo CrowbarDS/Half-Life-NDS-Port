@@ -125,6 +125,12 @@ hl = Arm9DynamicLibrary(
     cxxflags='-Wall -Werror=stack-usage=4096 -O2 -std=gnu++26 -D_LITTLE_ENDIAN -include yas/detail/config/endian.hpp',
     # (By these names it finds the program's: without them, the library's.)
     ldflags=' '.join(['-Wl,--wrap=' + f for f in HW_MATH_WRAPS]),
+    # What dsltool writes (build/hl/hl.full.dsl) has a name for every symbol
+    # and every branch within the library among its relocations; the loader
+    # keeps the names and 8 bytes per relocation on the heap for good. Only
+    # what it acts on is kept, and the build stops unless the library then
+    # loads to the same bytes with the same code sum (tools/dsl_strip.py).
+    post_tool=('python3 tools/dsl_strip.py', ['tools/dsl_strip.py']),
 )
 hl.generate_dsl()
 

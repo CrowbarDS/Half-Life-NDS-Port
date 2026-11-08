@@ -221,6 +221,14 @@ if(HLDS_BUILD_TESTS)
     add_test(NAME dspsim COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../dspsim/run.sh)
     set_tests_properties(dspsim PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "DSPSIM_BUDGET=25")
 
+    # The game library as the ROM carries it, held to loading as dsltool's
+    # does (tools/dsl_strip.py): a made-up library always, the built one when
+    # there is a build.
+    add_test(NAME dsl_strip_self COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/../dsl_strip.py --self-test)
+    add_test(NAME dsl_strip_built COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/../dsl_strip.py --check
+             ${CMAKE_CURRENT_SOURCE_DIR}/../../build/hl/hl.full.dsl ${CMAKE_CURRENT_SOURCE_DIR}/../../build/hl/hl.dsl)
+    set_tests_properties(dsl_strip_built PROPERTIES SKIP_RETURN_CODE 77)
+
     # Not a test: writes a synthetic map with one brush of each kind in front
     # of the player, for looking at on the console (tests/make_test_map.cpp).
     add_executable(hlds-testmap tests/make_test_map.cpp)

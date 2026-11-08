@@ -406,6 +406,9 @@ class GenericBinary():
             'rule dsltool\n'
             '  command = ${DSLTOOL} -i ${elf_path} -o $out ${args}\n'
             '\n'
+            'rule dsl_post\n'
+            '  command = ${post} $in $out\n'
+            '\n'
             'rule ndstool\n'
             '  command = ${NDSTOOL} -c $out -7 ${arm7elf} -9 ${arm9elf} -b ${game_icon} ${game_full_title} ${ndstool_nitrofs_flags} ${ndstool_title_id} ${ndstool_unit_code} ${ndstool_game_info}\n'
             '\n'
@@ -1350,7 +1353,8 @@ class Arm9DynamicLibrary(GenericArmBinary):
                  asflags='',
                  cflags='-Wall -O2',
                  cxxflags='-Wall -O2',
-                 ldflags=''):
+                 ldflags='',
+                 post_tool=None):
         '''
         Constructor of ARM9 dynamic libraries.
 
@@ -1372,8 +1376,13 @@ class Arm9DynamicLibrary(GenericArmBinary):
         - 'cflags': Optional flags to be passed to the C compiler.
         - 'cxxflags': Optional flags to be passed to the C++ compiler.
         - 'ldflags': Optional flags to be passed to the linker.
+        - 'post_tool': Optional (command, [files it depends on]): run as
+          `command <dsltool's output> <the DSL>` to write the final DSL from
+          what dsltool made (kept as <name>.full.dsl).
         '''
         super().__init__(self.ASSETS_BARRIER_ARM9_DYNAMIC_LIBRARY + str(name))
+
+        self.post_tool = post_tool
 
         if main_binary is not None:
             assert type(main_binary).__name__ == 'Arm9Binary'
@@ -1461,6 +1470,17 @@ class Arm9DynamicLibrary(GenericArmBinary):
             '\n'
         )
 
+        dsl_path = self.dsl_path
+        if self.post_tool is not None:
+            command, deps = self.post_tool
+            full_path = os.path.splitext(self.dsl_path)[0] + '.full.dsl'
+            self.print(
+                f'build {self.dsl_path}: dsl_post {full_path} | {" ".join(deps)} || {self.out_dir}\n'
+                f'  post = {command}\n'
+                '\n'
+            )
+            self.dsl_path = full_path
+
         if self.main_binary is None:
             self.print(
                 f'build {self.dsl_path}: dsltool {self.elf_path} || {self.out_dir}\n'
@@ -1475,6 +1495,8 @@ class Arm9DynamicLibrary(GenericArmBinary):
                 f'  args = -m {self.main_binary.elf_path}\n'
                 '\n'
             )
+
+        self.dsl_path = dsl_path
 
     def generate_dsl_standalone(self):
         '''

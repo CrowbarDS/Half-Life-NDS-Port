@@ -1069,12 +1069,18 @@ build. Saves are as they were: a save written before the split loads.
 
 What it costs and what it took:
 
-- About 125 KB of heap on the DS: the library is 432 KB of code and data, its
-  5,260 relocations keep 8 bytes each for the loader's veneers, and there is
-  its symbol table; the program is 404 KB smaller for it (c2a5w's first load
-  leaves 300 KB of headroom on a DS, where it left 428). Frames take what
-  they took (c1a1 with a zombie: DS 52-56% of the frame, before 55-60%; DSi
-  36%, as before).
+- Heap on the DS beyond the code itself: the loader keeps 8 bytes per
+  relocation for branch veneers (none is ever used: no jump goes to Thumb
+  code) and the whole symbol table, for as long as the library is loaded.
+  dsltool's file (`build/hl/hl.full.dsl`) names every symbol a relocation
+  points at and lists every branch within the library, which the loader
+  leaves alone; `tools/dsl_strip.py` keeps only what the loader acts on --
+  the words it moves, the 23 symbols of the program and the 6 public ones --
+  and the build stops unless the result loads to the same bytes, with the
+  same sum for the guard, as dsltool's (2026-11-08: 6,701 relocations to
+  3,303, 1,109 symbols to 30, 88 KB more heap, measured on c0a0 in DS mode).
+  Frames take what they took (c1a1 with a zombie: DS 52-56% of the frame,
+  before 55-60%; DSi 36%, as before).
 - The library is ARM throughout. An ARM-to-Thumb tail call inside it goes
   through a stub the linker writes with an absolute address and no
   relocation: the loader cannot move it, and the call lands where the library
