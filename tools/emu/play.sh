@@ -73,8 +73,18 @@ fi
 # Thirty seconds at most: a DSi's card takes longer than ten.)
 # (EMU_ROM: another ROM than the game's -- child/out/hl-child-twl.nds, the
 # Download Play child.)
+# (What melonDS is given: a copy marked as homebrew, or it gives the game no
+# card; and the recent list set to it and the child -- tools/emu/emurom.py.)
+ROM="$(python3 tools/emu/emurom.py "${EMU_ROM:-half-life-nds-port.nds}" "$CFG")" || exit 1
 env -u WAYLAND_DISPLAY QT_QPA_PLATFORM=xcb XDG_CONFIG_HOME="$CFG" EMU_SCRIPT="$SCRIPT" \
-    EMU_ROM="${EMU_ROM:-half-life-nds-port.nds}" \
+    EMU_ROM="$ROM" \
     xvfb-run -a -s "-screen 0 ${EMU_SCREEN:-300x450}x24" bash -c \
     '"${MELONDS:-melonDS}" "$EMU_ROM" >"'"$CFG"'/melonDS.log" 2>&1 &
      python3 tools/emu/xin.py "$EMU_SCRIPT"; kill %1; for i in $(seq 120); do kill -0 %1 2>/dev/null || break; sleep 0.25; done; sleep 2' 2>/dev/null || true
+# (melonDS writes what it booted into the card's root: the ROM itself goes
+# back there, not the copy marked as homebrew, which TWiLight Menu++ would
+# not offer the wide screen to.)
+ORIGINAL="${EMU_ROM:-half-life-nds-port.nds}"
+if [ "$ROM" != "$(realpath "$ORIGINAL")" ] && [ -f "$ROOT/sdroot/$(basename "$ROM")" ]; then
+    cp "$ORIGINAL" "$ROOT/sdroot/$(basename "$ROM")"
+fi

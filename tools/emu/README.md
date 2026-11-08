@@ -17,7 +17,10 @@ copies' SD card at this repository's `sdroot/`, with card images of their own.
 Your own configuration and card images are never written to.
 
 `play.sh <ds|dsi> "<script>"` runs the ROM and feeds it a script of commands
-separated by `;`:
+separated by `;`. melonDS is given a copy of the ROM marked as homebrew
+(`build/emu/<name>`, game code `####`): the game's own code, WHLD, gets no
+card from it. `tools/emu/emurom.py` makes the copy and sets the recent list
+to it and the child.
 
 | command | |
 |---|---|
