@@ -11,7 +11,7 @@
 // A wheel tells everything it targets how far round it is while it turns;
 // what is not a momentary_door is simply used, and a door opens (c3a1's
 // sewer lid). One that goes back by itself when let go does so, and what it
-// moves with it (c2a3a's cage).
+// moves with it (c2a3a's cage), heard as it moves and stops.
 //
 // Needs HLDS_VALVE_DIR.
 
@@ -237,6 +237,21 @@ namespace
                     g.logic.states[door].phase * 100 / 65536);
         check(g.logic.states[wheel].phase == 0 && g.logic.states[door].phase == 0,
               "let go of, it goes back by itself, and the cage shuts");
+        // Its sounds (movesnd 6, stopsnd 2): set off once on the way out and
+        // once on the way back, and stopped at each end -- not once a frame.
+        auto heard = [&](const char *name)
+        {
+            int n = 0;
+            for (std::uint32_t i = 0; i < g.view.soundCount; ++i)
+            {
+                if (std::string(g.view.sounds[i].name).find(name) != std::string::npos)
+                    n += g.timesHeard[i];
+            }
+            return n;
+        };
+        const int moved = heard("doormove6"), stopped = heard("doorstop2");
+        std::printf("test_uplink: the cage door was heard to move %d times and stop %d\n", moved, stopped);
+        check(moved >= 1 && moved <= 3 && stopped >= 1 && stopped <= 3, "the cage door sounds as it moves, and as it stops");
     }
 } // namespace
 

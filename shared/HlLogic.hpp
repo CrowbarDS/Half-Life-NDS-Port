@@ -883,7 +883,7 @@ namespace hldata
     inline bool moverLoops(LogicKind kind)
     {
         return kind == LogicKind::Door || kind == LogicKind::DoorRotating || kind == LogicKind::Train ||
-               kind == LogicKind::PlatRot;
+               kind == LogicKind::PlatRot || kind == LogicKind::MomentaryDoor;
     }
 
     /// Whether such a mover is moving, and so is still to be heard: what the
@@ -894,6 +894,8 @@ namespace hldata
     {
         if (state.dead)
             return false;
+        if (record.kind == static_cast<std::uint8_t>(LogicKind::MomentaryDoor))
+            return state.running;
         const bool moving = state.move == MoveState::GoingUp || state.move == MoveState::GoingDown;
         if (record.kind == static_cast<std::uint8_t>(LogicKind::Train))
             return state.running && (moving || state.timer == 0);
@@ -4034,13 +4036,32 @@ namespace hldata
         /// What a wheel moves, a frame on: towards as far along as the wheel
         /// is round (`timer`), at its speed -- pushing the player and the
         /// boxes as a door does, and carrying what stands on it. Blocked, it
-        /// stays where it is until the way is clear.
+        /// stays where it is until the way is clear. Its move sound is heard
+        /// from when it sets off (`running`), and its stop once it has been
+        /// still a tenth of a second -- the game's door is moved again by
+        /// each USE_SET, and stops when none has come for that long.
         inline void momentaryDoorTick(LogicWorld &w, PlayerState &player, int index, int ms)
         {
             const LogicRecord &record = w.records[index];
             LogicState &state = w.states[index];
-            if (record.brush == kNoBrush || state.phase == state.timer)
+            if (record.brush == kNoBrush)
                 return;
+            if (state.phase == state.timer)
+            {
+                // (`hurt`: how long it has been still.)
+                if (state.running && (state.hurt += ms) >= 100)
+                {
+                    state.running = false;
+                    recordSound(w, index, true);
+                }
+                return;
+            }
+            state.hurt = 0;
+            if (!state.running)
+            {
+                state.running = true;
+                recordSound(w, index, false);
+            }
             const fx length = fxLength(record.move);
             const std::int64_t step =
                 length > 0 ? (static_cast<std::int64_t>(record.speed) * ms * 65536) / (static_cast<std::int64_t>(length) * 1000) : 65536;

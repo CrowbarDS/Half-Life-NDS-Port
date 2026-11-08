@@ -3273,7 +3273,7 @@ namespace hlds
                         sound.unlockedLine = static_cast<std::uint16_t>(index);
                 }
             }
-            if (cls == "func_door" || cls == "func_door_rotating" || cls == "func_water")
+            if (cls == "func_door" || cls == "func_door_rotating" || cls == "func_water" || cls == "momentary_door")
             {
                 // (Asked for as sounds that may go round: those that do are
                 // heard for as long as the door moves.)
