@@ -159,3 +159,54 @@ On a console, 2026-11-03: PASS, 0 wrong, and in cycles an item:
 
 So the game uses them: about a tenth off a time step's product and a sixteenth
 off a bone's rotation.
+
+## rtcom/ — can the game reach the 3DS's side? (3DS only)
+
+On a 3DS, DS(i) mode is shown by TwlBg, the 3DS's own program. TWPatch makes
+one from the console's own firmware; its builds keep **rtcom** on by default:
+a byte channel from the DS's ARM7 to the 3DS's ARM11, through the clock's
+serial port, that can upload a small ARM11 program and call it. This probe
+asks what the 3DS features need (circle pad, gyroscope, widescreen):
+
+1. Is it a 3DS (TWiLight's MCU test, DSi mode only), and does TwlBg answer
+   rtcom? (`ping` must read `82`. Nothing is tried on a DSi or a DS: there the
+   clock is a real chip.)
+2. Does our ARM11 program (`arm11/payload.c`) upload and run, and do the
+   three extra bytes in the clock's second alarm go both ways? How long does
+   one exchange take, with the long and the short bit delay?
+3. The top screen's scaler and window registers, read on the ARM11's side:
+   once with the plain TwlBg, once with `Widescreen.cxi` (the probe's header
+   is marked wide-capable, so TWiLight offers it 16:10 like the game). What
+   differs tells the game which one is loaded.
+4. The gyroscope on the ARM11's third I2C bus: which address (`D0`, `D2`)
+   answers, its kind (ITG: WHO_AM_I at 0x00, MPU: at 0x75), its registers
+   (R), its rates while the console turns (L).
+5. The circle pad from the ARM7 itself, through the codec: the 3DS's stream
+   (page 0xFB, register 0x01, 0x34 bytes, as Linux for the 3DS reads it; pad
+   Y at 0x14, X at 0x24, 12 bits, 2048 the middle), as found (Up) and after
+   setting page 0x67's sampling bits (Right; touch may stop until restart).
+   If X and Y follow the pad, the game reads it with no rtcom at all.
+
+Build it like the others (the ARM11 program is built and embedded first).
+Buttons: A all of 1-4, L gyroscope live, R the bus check and the gyroscope's
+registers (the infrared bridge's scratch register written and read back,
+then 0xD0's registers), Up and Right the circle pad, Left every address of
+I2C bus 3, Down the 3DS's own buttons live, B stop, SELECT next page.
+Photograph each page.
+
+First run on an Old 3DS, 2026-11-08 (TWPatch TwlBg, plain, not wide):
+
+| Question | Answer |
+|---|---|
+| 3DS, rtcom | yes; ping `82` in 6 ms (one TwlBg frame at most) |
+| Upload, echo | 1120 B in 714 ms; echo and the alarm's three bytes right both ways |
+| One exchange | 0.85 ms with the long bit delay, 0.15 ms with the short |
+| ARM11 reads | right (both paths agree); `0x1EC46000` gives the 3DS's buttons |
+| Display, plain | window `0x28`..`0x167` (320 wide, centred in 400); scaler +4 `0x00C700FF` |
+| Bus 3 | `0x9A` (infrared) and `0xD0` answer; `0xD2` does not |
+| Gyroscope at `0xD0` | answers, but reads `00` at 0x00 and 0x75 (with SCL `1<<8`) |
+| Codec, read register by register | nothing moved (that read the stream one byte, not 0x34) |
+
+Still to run: the wide TwlBg, the bus check and dump with SCL `5<<8`, the
+codec stream. melonDS (no 3DS) only checks the DSi path: `3DS: no`, the
+MCU's 0x71 keeps `D2`, nothing sent to the clock.
