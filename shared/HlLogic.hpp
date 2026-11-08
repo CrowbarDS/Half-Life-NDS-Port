@@ -530,6 +530,7 @@ namespace hldata
             }
         }
         inline bool boxInMover(const LogicWorld &w, int record, int mover);
+        inline bool boxStandsOn(LogicWorld &w, int record, int mover);
         inline void crushPlayer(LogicWorld &w, PlayerState &player, int index, int ms);
 
         /// Move a brush to `pos`, carrying the player if they stand on it and
@@ -561,9 +562,18 @@ namespace hldata
                 if (box == index || !other.solid || !w.brushStates[box].active)
                     continue;
                 const fx gap = other.mins[2] - before.maxs[2];
-                if (gap >= -fxFromInt(1) && gap <= fxFromInt(2) && other.maxs[0] > before.mins[0] + fxFromInt(1) &&
-                    other.mins[0] < before.maxs[0] - fxFromInt(1) && other.maxs[1] > before.mins[1] + fxFromInt(1) &&
-                    other.mins[1] < before.maxs[1] - fxFromInt(1))
+                if (gap < -fxFromInt(1) || gap > fxFromInt(2))
+                    continue;
+                const bool over = other.maxs[0] > before.mins[0] + fxFromInt(1) &&
+                                  other.mins[0] < before.maxs[0] - fxFromInt(1) &&
+                                  other.maxs[1] > before.mins[1] + fxFromInt(1) &&
+                                  other.mins[1] < before.maxs[1] - fxFromInt(1);
+                // (One that only meets it at an edge stands on it if that is
+                // the floor its own shape finds, as the game's ground entity:
+                // hldemo3's crate on the rails that carry it.)
+                const bool edge = !over && other.maxs[0] >= before.mins[0] && other.mins[0] <= before.maxs[0] &&
+                                  other.maxs[1] >= before.mins[1] && other.mins[1] <= before.maxs[1];
+                if (over || (edge && boxStandsOn(w, w.pushables[n], index)))
                     riding |= std::uint64_t(1) << n;
             }
             logicMoveBrushTo(w, index, pos);
@@ -2171,6 +2181,21 @@ namespace hldata
                     best.endPos[k] = from[k];
             }
             return best;
+        }
+
+        /// Whether the floor a box (by its record) finds under itself is
+        /// brush `mover`: looked for as the box looks for its floor.
+        inline bool boxStandsOn(LogicWorld &w, int record, int mover)
+        {
+            const int brush = w.records[record].brush;
+            const bool crouched = w.records[record].extra[3] != 0;
+            fx middle[3];
+            boxMiddle(w, brush, crouched, middle);
+            const fx under[3] = {middle[0], middle[1], middle[2] - fxFromInt(2)};
+            const fx above[3] = {middle[0], middle[1], middle[2] + fxFromInt(8)};
+            const Trace floor = boxTrace(w, brush, crouched, above, under, true);
+            return !floor.startSolid && floor.fraction < kFractionOne && floor.normal[2] >= kFloorNormalZ &&
+                   floor.mover == mover;
         }
 
         /// A box's scrape along the floor, no oftener than the game has it.
@@ -3991,8 +4016,10 @@ namespace hldata
         }
 
         /// What a wheel moves, a frame on: towards as far along as the wheel
-        /// is round (`timer`), at its speed.
-        inline void momentaryDoorTick(LogicWorld &w, int index, int ms)
+        /// is round (`timer`), at its speed -- pushing the player and the
+        /// boxes as a door does, and carrying what stands on it. Blocked, it
+        /// stays where it is until the way is clear.
+        inline void momentaryDoorTick(LogicWorld &w, PlayerState &player, int index, int ms)
         {
             const LogicRecord &record = w.records[index];
             LogicState &state = w.states[index];
@@ -4002,11 +4029,13 @@ namespace hldata
             const std::int64_t step =
                 length > 0 ? (static_cast<std::int64_t>(record.speed) * ms * 65536) / (static_cast<std::int64_t>(length) * 1000) : 65536;
             const std::int64_t d = static_cast<std::int64_t>(state.timer) - state.phase;
-            state.phase = static_cast<std::int32_t>(d > step ? state.phase + step : (d < -step ? state.phase - step : state.timer));
+            const std::int32_t to =
+                static_cast<std::int32_t>(d > step ? state.phase + step : (d < -step ? state.phase - step : state.timer));
             fx pos[3];
             for (int a = 0; a < 3; ++a)
-                pos[a] = state.base[a] + static_cast<fx>((static_cast<std::int64_t>(record.move[a]) * state.phase) >> 16);
-            logicMoveBrushTo(w, record.brush, pos);
+                pos[a] = state.base[a] + static_cast<fx>((static_cast<std::int64_t>(record.move[a]) * to) >> 16);
+            if (moveBrush(w, player, record.brush, pos))
+                state.phase = to;
         }
 
         inline void rotatingTick(LogicWorld &w, PlayerState &player, int index, int ms)
@@ -5117,7 +5146,7 @@ namespace hldata
             else if (kind == LogicKind::MomentaryButton)
                 detail::momentaryTick(w, i, ms);
             else if (kind == LogicKind::MomentaryDoor)
-                detail::momentaryDoorTick(w, i, ms);
+                detail::momentaryDoorTick(w, player, i, ms);
 
             // 4. The player walking into things.
             if (kind == LogicKind::Breakable && record.brush != kNoBrush && !state.dead)

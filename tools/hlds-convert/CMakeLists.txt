@@ -175,6 +175,7 @@ if(HLDS_BUILD_TESTS)
             test_stereomusic
             test_dsproom
             test_cascade
+            test_uplink
             test_actors
             test_sound
             test_sprite
