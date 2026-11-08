@@ -4,6 +4,7 @@
 
 #include "Global.hpp"
 #include "HlUi.hpp"
+#include "render/ScreenFade.hpp"
 #include "ui/TouchCanvas.hpp"
 #ifndef HLDS_CHILD
 #include "HlKeyWords.hpp"
@@ -69,9 +70,13 @@ namespace hlrt
         std::uint16_t *sprite = oam();
         for (int n = 0; n < 128; ++n)
             sprite[n * 4] = 0x0200;
-        // Added to what is behind them, whatever that is.
-        REG_BLDCNT = 0x3F00;
-        REG_BLDALPHA = 16 | (16 << 8);
+        // Added to what is behind them, whatever that is. (A fade's layer
+        // up: its blend, set again by ScreenFade.)
+        if (!screenFade.layered())
+        {
+            REG_BLDCNT = 0x3F00;
+            REG_BLDALPHA = 16 | (16 << 8);
+        }
         REG_DISPCNT = (REG_DISPCNT & ~(DISPLAY_SPR_1D | DISPLAY_SPR_1D_BMP)) | DISPLAY_SPR_ACTIVE;
         for (int s = 0; s < kSlots; ++s)
         {
@@ -103,10 +108,12 @@ namespace hlrt
                     entry[0] = 0x0200;
                     continue;
                 }
-                // (Wide, 64 by 32; drawn added to what is behind.)
+                // (Wide, 64 by 32; drawn added to what is behind. In front
+                // of a fade's layer -- read on the black, as the game shows
+                // its writing over a fade: ScreenFade.)
                 entry[0] = static_cast<std::uint16_t>(((slot.top + b * kBandHeight) & 0xFF) | 0x0400 | 0x4000);
                 entry[1] = static_cast<std::uint16_t>((k * 64) | 0xC000);
-                entry[2] = static_cast<std::uint16_t>((band * 128 + k * 8) | ATTR2_PRIORITY(1));
+                entry[2] = static_cast<std::uint16_t>((band * 128 + k * 8) | ATTR2_PRIORITY(0));
             }
         }
     }

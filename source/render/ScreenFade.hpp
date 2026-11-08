@@ -9,11 +9,13 @@
 // over). One owner, so that none of them undoes another: the darkest wins.
 //
 // A fade is the game's env_fade: a colour over the picture, by how much of
-// 255. Into black or white it is the hardware's brightness, over everything
-// on the screen; into any other colour, a layer of that one colour (BG1, out
+// 255. Into any colour but white it is a layer of that one colour (BG1, out
 // of Bank D, which is otherwise only the frozen picture's) blended over the
-// 3D picture and the sprites -- the HUD and the writing, which are put
-// behind it for that (sprites and BG0 at priority 1, BG1 at 0). The hardware
+// 3D picture and the HUD, which are behind it (BG0 and the HUD's sprites at
+// priority 1, BG1 at 0); the writing the map shows (TopText, priority 0) is
+// in front of it, read on the black as the game shows it. Into white -- or
+// black, with no layer to be had (a frozen picture; a DS sent the game) --
+// it is the hardware's brightness, over everything on the screen. The hardware
 // has 16 steps of either; the steps between them are made by showing the one
 // below and the one above in turn, frame by frame, as often as each is
 // nearer.
@@ -39,6 +41,10 @@ namespace hlrt
         /// Once for each picture handed to the hardware.
         void tick();
         bool curtained() const { return curtain_; }
+        /// The fade's layer is up: the blend is its own (whoever sets the
+        /// sprites' blend leaves it be -- set in the middle of a picture,
+        /// the layer would show whole down to where it is set back).
+        bool layered() const { return layer_; }
         /// Bank D has been taken (FrameFreeze): the colour's layer is gone,
         /// and is set up again by the next tick() that wants it.
         void layerLost();
@@ -56,6 +62,8 @@ namespace hlrt
         /// Show it all; `advance`: a new picture, so the steps between two
         /// move on.
         void apply(bool advance);
+        /// Whether the colour's layer can be had now.
+        bool layerUsable() const;
         void showLayer(int eva);
         void hideLayer();
     };

@@ -29,6 +29,18 @@ namespace hlrt
 
     namespace
     {
+        /// The sprites on, in the tiles' 2D layout, added to the picture (but
+        /// while a fade's layer is up the blend is its own: ScreenFade).
+        [[gnu::noinline]] void spritesOn()
+        {
+            REG_DISPCNT = (REG_DISPCNT & ~(DISPLAY_SPR_1D | DISPLAY_SPR_1D_BMP)) | DISPLAY_SPR_ACTIVE;
+            if (!screenFade.layered())
+            {
+                REG_BLDCNT = 0x3F00;
+                REG_BLDALPHA = 16 | (16 << 8);
+            }
+        }
+
         using namespace hldata;
 
         /// Where the crosshair is put, in pixels from the middle, for the
@@ -596,9 +608,7 @@ namespace hlrt
             vramSetBankF(VRAM_F_MAIN_SPRITE_0x06404000);
             sheetMade = false;
         }
-        REG_DISPCNT = (REG_DISPCNT & ~(DISPLAY_SPR_1D | DISPLAY_SPR_1D_BMP)) | DISPLAY_SPR_ACTIVE;
-        REG_BLDCNT = 0x3F00;
-        REG_BLDALPHA = 16 | (16 << 8);
+        spritesOn();
         if (!sheetMade)
         {
             sheet.tiles = sheetRam;
@@ -789,9 +799,7 @@ namespace hlrt
             vramSetBankF(VRAM_F_MAIN_SPRITE_0x06404000);
             sheetMade = false;
         }
-        REG_DISPCNT = (REG_DISPCNT & ~(DISPLAY_SPR_1D | DISPLAY_SPR_1D_BMP)) | DISPLAY_SPR_ACTIVE;
-        REG_BLDCNT = 0x3F00;
-        REG_BLDALPHA = 16 | (16 << 8);
+        spritesOn();
         if (!sheetMade)
         {
             sheet.tiles = sheetRam;

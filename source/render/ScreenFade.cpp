@@ -21,14 +21,20 @@ namespace hlrt
         constexpr std::uint16_t kPlainBlend = 0x3F00, kPlainAlpha = 16 | (16 << 8);
     } // namespace
 
-    void ScreenFade::showLayer(int eva)
+    bool ScreenFade::layerUsable() const
     {
 #ifdef HLDS_CHILD
-        // (Sent the game, on a DS, a coloured fade is not shown. In DSi mode, as
-        // on a card.)
+        // (Sent the game, on a DS, there is no layer: a coloured fade is not
+        // shown, a black one is the brightness. In DSi mode, as on a card.)
         if (!global.twlChild)
-            return;
+            return false;
 #endif
+        // (Bank D is the frozen picture's while there is one.)
+        return !frameFreeze.frozen();
+    }
+
+    void ScreenFade::showLayer(int eva)
+    {
         if (!layer_)
         {
             vramSetBankD(VRAM_D_MAIN_BG_0x06000000);
@@ -100,17 +106,21 @@ namespace hlrt
             carried_ = 0;
 
         const int dim = dim_ ? 7 : 0;
+        // Into any colour but white, the layer -- black too, so that the
+        // writing over it is still read (TopText: above it); without the
+        // layer, black is the brightness, and the writing goes with it.
+        const bool layer = !curtain_ && colour_ != kWhite && fade_ > 0 && layerUsable();
         int level; // the hardware's brightness: -16 black .. 16 white
         if (curtain_)
             level = -16;
         else if (colour_ == kWhite && step > 0)
             level = step;
-        else if (colour_ == kBlack)
+        else if (colour_ == kBlack && !layer)
             level = -(step > dim ? step : dim);
         else
             level = -dim;
 
-        if (!curtain_ && colour_ != kBlack && colour_ != kWhite && fade_ > 0 && !frameFreeze.frozen())
+        if (layer)
             showLayer(step);
         else
             hideLayer();
