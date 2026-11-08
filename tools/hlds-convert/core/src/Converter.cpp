@@ -342,8 +342,27 @@ namespace hlds
             skyName = std::string(entities[0].value("skyname"));
             for (char &c : skyName)
                 c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            if (skyName.size() > 12 || !skyExists(options_.gameDir, skyName))
+            // A map that names no sky but has open sky in it gets the
+            // game's own, as the game gives it (crossfire, datacore...).
+            if (skyName.empty())
+            {
+                for (const auto &face : bsp.faces)
+                {
+                    std::string name = bsp.textures[bsp.texInfos[face.texInfo].miptex].name;
+                    for (char &c : name)
+                        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                    if (name == "sky")
+                    {
+                        skyName = "desert";
+                        break;
+                    }
+                }
+            }
+            if (!skyName.empty() && (skyName.size() > 12 || !skyExists(options_.gameDir, skyName)))
+            {
+                result.warnings.push_back("its sky '" + skyName + "' was not found: drawn without one");
                 skyName.clear();
+            }
         }
         // The models its actors are made of, with the clips this map plays.
         // Before the textures are planned: their skins come out of the same

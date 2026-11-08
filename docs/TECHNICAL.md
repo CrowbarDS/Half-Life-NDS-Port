@@ -209,7 +209,8 @@ Milestone 11, "levels of detail".
   along the view, about 450 on the flat with the legs tucked.
 - Water: swimming, sinking, jumping out onto a ledge, drowning, slime and
   lava; liquid surfaces sway. The sky, as a box of six pictures behind the
-  world.
+  world: the game's `desert` for a map with open sky that names none
+  (crossfire), as the game gives it.
   Water need not stand still, nor be a `func_water`: anything made of
   brushes that can be walked through and whose `skin` says water, slime or
   lava is that, wherever it is -- a map floods a tunnel by sliding a train
