@@ -2389,6 +2389,10 @@ namespace hlds
             {
                 make = true;
                 record.kind = static_cast<std::uint8_t>(LogicKind::Ladder);
+                // (One that is not a box -- leaning, or turned -- keeps its
+                // model: whether the player is on it is its hull's to say,
+                // and which way it faces its own faces'.)
+                record.pad = shapedVolume(bsp, model);
                 for (int a = 0; a < 3; ++a)
                 {
                     record.mins[a] = static_cast<std::int16_t>(

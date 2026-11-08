@@ -41,6 +41,7 @@ namespace hldstest
         std::vector<BrushState> brushStates;
         std::vector<LogicState> states;
         std::vector<LadderVolume> ladders;
+        std::vector<std::uint16_t> ladderModels;
         std::vector<std::uint8_t> cornerState;
         // The map's models, cooked as the converter cooks them, and its actors.
         std::vector<std::vector<std::uint32_t>> modelBlocks;
@@ -294,6 +295,10 @@ namespace hldstest
         g.ladders.resize(ladderCount + 1);
         g.move.ladders = g.ladders.data();
         g.move.ladderCount = ladderCount;
+        g.ladderModels.assign(ladderCount + 1, 0);
+        hldata::detail::ladderModelsOf(v.logic, static_cast<int>(v.logicCount), static_cast<int>(v.modelCount),
+                               g.ladderModels.data());
+        g.move.ladderModels = g.ladderModels.data();
 
         g.logic.records = v.logic;
         g.logic.strings.value = v.strings;

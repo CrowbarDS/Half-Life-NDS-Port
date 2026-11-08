@@ -171,6 +171,7 @@ if(HLDS_BUILD_TESTS)
             test_geometry
             test_level
             test_logic
+            test_ladders
             test_track
             test_monsters
             test_ai

@@ -45,8 +45,8 @@ namespace hlrt
         /// takes: sizes from the level alone, each on eight.
         struct ArrayPlan
         {
-            std::uint32_t brushStates, movers, reach, states, ladders, corners, actorStates, actorBoxes, linkShut,
-                aiSlots, aiHeld, total;
+            std::uint32_t brushStates, movers, reach, states, ladders, ladderModels, corners, actorStates, actorBoxes,
+                linkShut, aiSlots, aiHeld, total;
             int ladderCount, actorCount;
         };
 
@@ -70,6 +70,7 @@ namespace hlrt
             take(plan.reach, (view.brushCount + 1) * sizeof(MoverReach));
             take(plan.states, (view.logicCount + 1) * sizeof(LogicState));
             take(plan.ladders, (plan.ladderCount + 1) * sizeof(LadderVolume));
+            take(plan.ladderModels, (plan.ladderCount + 1) * sizeof(std::uint16_t));
             take(plan.corners, view.cornerCount + 1);
             take(plan.actorStates, actors * sizeof(ActorState));
             take(plan.actorBoxes, actors * sizeof(SolidBox));
@@ -207,6 +208,10 @@ namespace hlrt
         world.visLeafCount = view.header->visLeafCount;
         world.ladders = ladders_;
         world.ladderCount = ladderCount;
+        // (Which of them are not boxes: their models.)
+        auto *ladderModels = reinterpret_cast<std::uint16_t *>(arrays_ + plan.ladderModels);
+        detail::ladderModelsOf(view.logic, static_cast<int>(view.logicCount), static_cast<int>(view.modelCount), ladderModels);
+        world.ladderModels = ladderModels;
 
         logic.records = view.logic;
         logic.strings.value = view.strings;

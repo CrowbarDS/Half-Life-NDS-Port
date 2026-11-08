@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 61;
+    inline constexpr std::uint16_t kLevelVersion = 62;
     /// The oldest level format this build reads. (49: a map's textures are
     /// stored in its archive as they are, never compressed, so that one that
     /// streams is read straight in during play. 50: each texture's record
@@ -95,7 +95,9 @@ namespace hldata
     /// player set off. 60: a wheel's return speed, in move[1], which a
     /// build before leaves alone: its wheels stay where they are let go.
     /// 61: the egon's two sprites among the common ones, before the map's
-    /// own, which a build before never draws: commonSpritesOf.)
+    /// own, which a build before never draws: commonSpritesOf. 62: a ladder
+    /// that is not a box names its model in `pad`, which a build before
+    /// leaves alone: it climbs its bounds, as it did.)
     inline constexpr std::uint16_t kLevelMinReader = 56;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,
@@ -468,7 +470,8 @@ namespace hldata
         Train,
         /// Not something that acts: a volume (mins/maxs) inside which the
         /// player climbs. It is a logic record so that it can be removed by
-        /// name like anything else.
+        /// name like anything else. `pad`: for one that is not a box (a
+        /// leaning or turned ladder), its model -- 0 for a box.
         Ladder,
         /// A door that turns about an axis through its origin: extra[0] says
         /// which angle it is (0 pitch, 1 yaw -- the ordinary hinge -- 2 roll).

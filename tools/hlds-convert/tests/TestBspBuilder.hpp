@@ -22,6 +22,7 @@
 
 #include <cstdio>
 #include <cmath>
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -42,6 +43,10 @@ namespace hldstest
         /// Empty: the room's texture. A name starting with '{' gets pixels of
         /// index 255 in a checker, as a grate has.
         std::string textureName;
+        /// More planes the brush is inside of besides its box's six -- for one
+        /// that leans, or is turned: each {nx, ny, nz, d}, the brush where
+        /// n . p <= d (n unit). In its trees, not drawn: no faces of their own.
+        std::vector<std::array<float, 4>> cuts;
     };
 
     struct BoxRoom
@@ -417,15 +422,16 @@ namespace hldstest
                 }
             }
 
-            // Render tree: inside all six planes is solid (leaf 0), outside
-            // any of them is the brush's own empty leaf.
+            // Render tree: inside all six planes (and its cuts) is solid (leaf
+            // 0), outside any of them is the brush's own empty leaf.
             const auto outside = static_cast<std::int16_t>(-(outsideLeaf + 1));
+            const int chain = 6 + static_cast<int>(box.cuts.size());
             for (int i = 0; i < 6; ++i)
             {
                 const bool minSide = (i % 2) == 0;
                 const std::int16_t inside =
-                    i == 5 ? static_cast<std::int16_t>(-1)
-                           : static_cast<std::int16_t>(model.headNode[0] + i + 1);
+                    i == chain - 1 ? static_cast<std::int16_t>(-1)
+                                   : static_cast<std::int16_t>(model.headNode[0] + i + 1);
                 BspNode node{};
                 node.plane = firstPlane + i;
                 node.children[0] = minSide ? inside : outside;
@@ -437,6 +443,34 @@ namespace hldstest
                 }
                 node.firstFace = static_cast<std::uint16_t>(model.firstFace + i);
                 node.faceCount = 1;
+                nodes.push_back(node);
+            }
+            // (A cut's plane faces out of the brush: in front is outside.)
+            auto cutType = [](const std::array<float, 4> &c)
+            {
+                const float ax = std::fabs(c[0]), ay = std::fabs(c[1]), az = std::fabs(c[2]);
+                return ax >= ay && ax >= az ? 3 : (ay >= az ? 4 : 5);
+            };
+            for (std::size_t k = 0; k < box.cuts.size(); ++k)
+            {
+                const std::array<float, 4> &c = box.cuts[k];
+                BspPlane plane{};
+                plane.normal[0] = c[0], plane.normal[1] = c[1], plane.normal[2] = c[2];
+                plane.dist = c[3];
+                plane.type = cutType(c);
+                const auto planeIndex = static_cast<std::int32_t>(planes.size());
+                planes.push_back(plane);
+                const int i = 6 + static_cast<int>(k);
+                BspNode node{};
+                node.plane = planeIndex;
+                node.children[0] = outside;
+                node.children[1] = i == chain - 1 ? static_cast<std::int16_t>(-1)
+                                                  : static_cast<std::int16_t>(model.headNode[0] + i + 1);
+                for (int a = 0; a < 3; ++a)
+                {
+                    node.mins[a] = static_cast<std::int16_t>(box.mins[a]);
+                    node.maxs[a] = static_cast<std::int16_t>(box.maxs[a]);
+                }
                 nodes.push_back(node);
             }
             BspLeaf leaf{};
@@ -463,13 +497,33 @@ namespace hldstest
                     const auto planeIndex = static_cast<std::int32_t>(planes.size());
                     planes.push_back(plane);
                     const std::int16_t inside =
-                        i == 5 ? static_cast<std::int16_t>(kContentsSolid)
-                               : static_cast<std::int16_t>(model.headNode[hull] + i + 1);
+                        i == chain - 1 ? static_cast<std::int16_t>(kContentsSolid)
+                                       : static_cast<std::int16_t>(model.headNode[hull] + i + 1);
                     const auto empty = static_cast<std::int16_t>(kContentsEmpty);
                     BspClipNode clip{};
                     clip.plane = planeIndex;
                     clip.children[0] = minSide ? inside : empty;
                     clip.children[1] = minSide ? empty : inside;
+                    clipNodes.push_back(clip);
+                }
+                // Its cuts, grown by as much of the hull as reaches along
+                // each (no bevels: a little more than the game's at an edge).
+                for (std::size_t k = 0; k < box.cuts.size(); ++k)
+                {
+                    const std::array<float, 4> &c = box.cuts[k];
+                    BspPlane plane{};
+                    plane.normal[0] = c[0], plane.normal[1] = c[1], plane.normal[2] = c[2];
+                    plane.dist = c[3] + std::fabs(c[0]) * hullHalf[hull][0] + std::fabs(c[1]) * hullHalf[hull][1] +
+                                 std::fabs(c[2]) * hullHalf[hull][2];
+                    plane.type = cutType(c);
+                    const auto planeIndex = static_cast<std::int32_t>(planes.size());
+                    planes.push_back(plane);
+                    const int i = 6 + static_cast<int>(k);
+                    BspClipNode clip{};
+                    clip.plane = planeIndex;
+                    clip.children[0] = static_cast<std::int16_t>(kContentsEmpty);
+                    clip.children[1] = i == chain - 1 ? static_cast<std::int16_t>(kContentsSolid)
+                                                      : static_cast<std::int16_t>(model.headNode[hull] + i + 1);
                     clipNodes.push_back(clip);
                 }
             }

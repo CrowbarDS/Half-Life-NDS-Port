@@ -673,6 +673,20 @@ namespace hldata
             return hullPointContents(shape, shape.root, player.origin) == kContentsSolid;
         }
 
+        /// The ladders' models, in the order of their records (the order the
+        /// ladders are made in, logicInit): MoveWorld::ladderModels. One the
+        /// level has no such model of is a box.
+        inline void ladderModelsOf(const LogicRecord *records, int recordCount, int modelCount, std::uint16_t *out)
+        {
+            int slot = 0;
+            for (int i = 0; i < recordCount; ++i)
+            {
+                if (records[i].kind != static_cast<std::uint8_t>(LogicKind::Ladder))
+                    continue;
+                out[slot++] = records[i].pad < modelCount ? records[i].pad : std::uint16_t(0);
+            }
+        }
+
         /// Whether the player is in one of the volumes of the landmark
         /// `landmark` (its nameHash) -- or the map has none of them, and so
         /// the player is everywhere they could need to be.

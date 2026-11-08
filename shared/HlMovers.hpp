@@ -100,6 +100,12 @@ namespace hldata
         MoverReach *reach = nullptr;
         const LadderVolume *ladders = nullptr;
         int ladderCount = 0;
+        /// Parallel to `ladders`: a ladder that is not one plain box (a
+        /// leaning or a turned one), its brush model (into `models`) -- whose
+        /// hull for the player's size says whether they are on it, and whose
+        /// own faces which way it faces, as the game's PM_Ladder and
+        /// PM_LadderMove have it. 0 (or no table): a box, all its bounds.
+        const std::uint16_t *ladderModels = nullptr;
         /// The world's render tree, which is where water is: the clip hulls
         /// the player collides with know only solid and empty. Null on a
         /// world given no tree (some tests): then nothing is water.

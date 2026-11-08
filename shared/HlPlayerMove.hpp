@@ -1240,8 +1240,12 @@ namespace hldata
             }
 
             /// The ladder the player is touching, as an index; -1 if none.
+            /// (On two at once -- where one ends and the next goes on, as
+            /// up a ladder that bends -- the one with a face to climb: the
+            /// other's line to its middle may meet its top.)
             int findLadder() const
             {
+                int first = -1;
                 for (int i = 0; i < world.ladderCount; ++i)
                 {
                     const LadderVolume &ladder = world.ladders[i];
@@ -1262,16 +1266,86 @@ namespace hldata
                         touching = s.origin[a] + half >= ladder.mins[a] - (a == 2 ? below : 0) &&
                                    s.origin[a] - half <= ladder.maxs[a] + (a == 2 ? above : 0);
                     }
-                    if (touching)
+                    if (!touching || !onShape(i))
+                        continue;
+                    if (ladderShape(i) == nullptr)
                         return i;
+                    std::int32_t normal[3], up[3];
+                    ladderNormal(i, normal, up);
+                    if (up[2] != 0)
+                        return i;
+                    if (first < 0)
+                        first = i;
                 }
-                return -1;
+                return first;
             }
 
-            /// Which way the ladder faces, as seen from the player: the side of
-            /// its volume the player is on. Unit, Q30, horizontal.
-            void ladderNormal(const LadderVolume &ladder, std::int32_t *normal) const
+            /// Ladder `i`'s model, if it is not a box (leaning, or turned);
+            /// null for a box.
+            const Model *ladderShape(int i) const
             {
+                if (world.ladderModels == nullptr || world.models == nullptr || world.ladderModels[i] == 0)
+                    return nullptr;
+                return &world.models[world.ladderModels[i]];
+            }
+
+            /// For a ladder that is not a box: the player's origin inside its
+            /// brush's hull for their size, as the game's PM_Ladder has it --
+            /// its bounds alone are mostly air.
+            bool onShape(int i) const
+            {
+                const Model *model = ladderShape(i);
+                if (model == nullptr)
+                    return true;
+                const Hull &like = s.ducked ? world.crouched : world.standing;
+                const Hull shape{like.nodes, like.planes, like.planeTypes,
+                                 s.ducked ? model->clipCrouched : model->clipStanding};
+                return hullPointContents(shape, shape.root, s.origin) == kContentsSolid;
+            }
+
+            /// Which way ladder `i` faces, as seen from the player (unit,
+            /// Q30), and which way is up it (`up`, unit, Q30; none when the
+            /// player is above or below it). One that is not a box: the face
+            /// a line from the player to its middle meets first, its own
+            /// (the game's PM_LadderMove), which may lean, and up it is
+            /// along that face. A box: the side of it the player is on,
+            /// and up is straight up.
+            [[gnu::noinline]] void ladderNormal(int i, std::int32_t *normal, std::int32_t *up) const
+            {
+                const LadderVolume &ladder = world.ladders[i];
+                up[0] = up[1] = 0;
+                up[2] = kNormalOne;
+                const Model *model = ladderShape(i);
+                if (model != nullptr && world.nodes != nullptr && world.leaves != nullptr)
+                {
+                    const fx middle[3] = {(ladder.mins[0] + ladder.maxs[0]) / 2, (ladder.mins[1] + ladder.maxs[1]) / 2,
+                                          (ladder.mins[2] + ladder.maxs[2]) / 2};
+                    std::int32_t hit = kFractionOne;
+                    int wall = -1;
+                    if (!detail::lineThrough(world, model->headNode, 0, kFractionOne, s.origin, middle, hit, 0, -1, &wall) &&
+                        wall >= 0)
+                    {
+                        const Plane &plane = world.standing.planes[wall >> 1];
+                        for (int a = 0; a < 3; ++a)
+                            normal[a] = (wall & 1) ? -plane.normal[a] : plane.normal[a];
+                        // Up along it: n x (up x n), made unit -- (-nz nx, -nz
+                        // ny, c) / c with c its horizontal length. (Once, on a
+                        // ladder that is not a box: the divide is meant.)
+                        const std::int64_t nx = normal[0], ny = normal[1], nz = normal[2];
+                        const auto c = static_cast<std::int64_t>(isqrt64(static_cast<std::uint64_t>(nx * nx + ny * ny)));
+                        if (c > (kNormalOne >> 6))
+                        {
+                            up[0] = static_cast<std::int32_t>(-(nz * nx) / c);
+                            up[1] = static_cast<std::int32_t>(-(nz * ny) / c);
+                            up[2] = static_cast<std::int32_t>(c);
+                        }
+                        else
+                        {
+                            up[2] = 0; // (its top or foot: no way up it from there)
+                        }
+                        return;
+                    }
+                }
                 // How far outside the volume the player's centre is along each
                 // horizontal axis (negative: inside). The face they are in
                 // front of is the one they are furthest outside of.
@@ -1303,10 +1377,10 @@ namespace hldata
             /// the velocity outright. What would carry the player INTO the
             /// ladder carries them UP it instead. Returns false if the player
             /// jumped off, and so is no longer climbing.
-            bool ladderMove(const MoveCommand &cmd, const LadderVolume &ladder)
+            bool ladderMove(const MoveCommand &cmd, int index)
             {
-                std::int32_t normal[3];
-                ladderNormal(ladder, normal);
+                std::int32_t normal[3], up[3];
+                ladderNormal(index, normal, up);
                 if (cmd.jump)
                 {
                     for (int a = 0; a < 3; ++a)
@@ -1333,16 +1407,18 @@ namespace hldata
                     wish[a] = fxMul(cmd.viewForward[a], climb * cmd.forward) +
                               fxMul(cmd.viewRight[a], climb * cmd.side);
                 }
-                // Split into the part along the ladder's normal and the rest.
-                // The normal is horizontal, so "up the ladder" is straight up.
+                // Split into the part along the ladder's normal and the rest;
+                // what would carry the player into it carries them up it
+                // (the game's: lateral - into * up).
                 const fx into = dotNormal(wish, normal);
                 for (int a = 0; a < 3; ++a)
                 {
                     const fx along = static_cast<fx>(
                         (static_cast<std::int64_t>(normal[a]) * into) >> kNormalShift);
-                    s.velocity[a] = wish[a] - along;
+                    const fx climbs = static_cast<fx>(
+                        (static_cast<std::int64_t>(up[a]) * into) >> kNormalShift);
+                    s.velocity[a] = wish[a] - along - climbs;
                 }
-                s.velocity[2] -= into;
                 // Standing on the floor and pushing away from the ladder: step
                 // off it, rather than hang on by the fingertips.
                 if (s.onGround && into > 0)
@@ -1575,7 +1651,7 @@ namespace hldata
         m.duck(cmd, ms);
 
         const int ladder = m.findLadder();
-        state.onLadder = ladder >= 0 && m.ladderMove(cmd, world.ladders[ladder]);
+        state.onLadder = ladder >= 0 && m.ladderMove(cmd, ladder);
         if (state.onLadder)
         {
             m.checkVelocity();
