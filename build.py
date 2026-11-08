@@ -149,8 +149,8 @@ nds = NdsRom(
     nds_path='half-life-nds-port.nds',
     game_icon="Logo.bmp",
     game_title='HALF-LIFE DS',
-    game_subtitle='Ported by Warioware64',
-    game_author='github.com/Warioware64',
+    game_subtitle='Ported by CrowbarDS',
+    game_author='github.com/CrowbarDS',
     # 2 = NDS + DSi hybrid: one ROM that runs on a DS and, booted in DSi mode,
     # gets the 16 MB of RAM and the 134 MHz clock (Global::Init).
     unit_code=2,

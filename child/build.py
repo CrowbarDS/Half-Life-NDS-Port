@@ -83,7 +83,7 @@ nds = NdsRom(
     game_icon='../Logo.bmp',
     game_title='HALF-LIFE DS',
     game_subtitle='Sent by Download Play',
-    game_author='github.com/Warioware64',
+    game_author='github.com/CrowbarDS',
     # (Hybrid: tools/dlp_twl_child.py folds its DSi parts in, for a console
     # that starts it in DSi mode.)
     unit_code=2,
