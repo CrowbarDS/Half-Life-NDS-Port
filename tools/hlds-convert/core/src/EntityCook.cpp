@@ -1047,7 +1047,10 @@ namespace hlds
         (void)people;
         needOf("models/hgibs.mdl").firstSequence = true;
         // What the scripts have their actors do: an actor by name, or every
-        // actor of a class.
+        // actor of a class. (One a monstermaker makes is called by the
+        // maker's netname, as it is named when it is made: the gargantua of
+        // Uplink's end is the "garg" that spawn_garg makes, and acts out
+        // what its scripts name.)
         for (const Entity &script : entities)
         {
             if (!isScript(std::string(script.className())))
@@ -1061,7 +1064,8 @@ namespace hlds
                 const ActorInfo info = actorOf(entity);
                 if (!info.is)
                     continue;
-                if (lowered(entity.value("targetname")) != who && std::string(entity.className()) != who)
+                const std::string named = lowered(entity.value(info.spare != 0 ? "netname" : "targetname"));
+                if (named != who && std::string(entity.className()) != who)
                     continue;
                 ModelNeed &need = needOf(info.file);
                 add(need, play);

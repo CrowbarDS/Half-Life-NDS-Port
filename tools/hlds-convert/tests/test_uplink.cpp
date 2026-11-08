@@ -312,6 +312,109 @@ namespace
     }
 } // namespace
 
+namespace
+{
+    /// Uplink's end (hldemo1, come back to): the vent gives way under the
+    /// player, a gargantua is made, the scientist is caught by the burning
+    /// computers, and the gargantua acts out its scenes -- kicks a cabinet,
+    /// smashes the catwalk, rolls cabinets over -- each scene setting off the
+    /// next, the rolls by the clip's own "roll" event; the last cabinet falls
+    /// on the player, the screen goes dark, and the demo ends
+    /// (trigger_endsection "end"). If a scene has nothing to act out, it
+    /// ends at once and the event that carries the chain on never comes.
+    void testGargFinale(const char *dir)
+    {
+        auto game = std::make_unique<Game>();
+        std::string error;
+        if (!game->bsp.load(std::string(dir) + "/maps/hldemo1.bsp", error))
+        {
+            std::printf("test_uplink: no hldemo1 (%s): the finale was not played\n", error.c_str());
+            return;
+        }
+        finish(*game, nullptr, dir);
+        check(game->ok, "hldemo1 cooks");
+        if (!game->ok)
+            return;
+        Game &g = *game;
+        const int vent = recordNamed(g, "garg_vent_break", LogicKind::Breakable);
+        check(vent >= 0, "hldemo1 has the vent that gives way");
+        if (vent < 0)
+            return;
+        // On the platform the vent drops the player onto, out of the way.
+        g.player.origin[0] = fxFromInt(1890);
+        g.player.origin[1] = fxFromInt(56);
+        g.player.origin[2] = fxFromInt(200);
+        g.player.health = 100;
+        logicFire(g.logic, g.player, g.view.logic[vent].name, -1, kUseToggle, 0);
+        const std::uint32_t gargName = nameHash("garg"), sciName = nameHash("garg_sci_1");
+        const char *const clipNames[] = {"kickcar", "rollcar", "bust", "attack", "walk", "run", "idle1"};
+        int garg = -1, sci = -1, lastScript = -2, lastClip = -2, rolls = 0, kicks = 0, busts = 0;
+        bool sciDead = false, gargGone = false, ended = false;
+        int ms = 0;
+        for (; ms < 200000 && !ended; ms += 33)
+        {
+            g.player.health = 100;
+            logicTick(g.logic, g.player, 33);
+            g.logic.viewTurn = 0;
+            monstersTick(g.logic, g.player, 33);
+            playerMove(g.player, MoveCommand(), g.move, kPlayerTick);
+            g.drain();
+            for (int i = 0; i < g.actors.count; ++i)
+            {
+                const ActorState &a = g.actors.states[i];
+                if (a.active && a.nameHash == gargName && garg < 0)
+                {
+                    garg = i;
+                    std::printf("test_uplink: hldemo1 at %d ms: the gargantua is made\n", ms);
+                }
+                if (a.nameHash == sciName && sci < 0)
+                    sci = i;
+            }
+            if (sci >= 0 && !sciDead && (!g.actors.states[sci].active || g.actors.states[sci].ai >= kAiDying))
+            {
+                sciDead = true;
+                std::printf("test_uplink: hldemo1 at %d ms: the scientist is dead\n", ms);
+            }
+            if (garg >= 0)
+            {
+                const ActorState &a = g.actors.states[garg];
+                if (!a.active && !gargGone)
+                {
+                    gargGone = true;
+                    std::printf("test_uplink: hldemo1 at %d ms: the gargantua is gone\n", ms);
+                }
+                const ModelView *model = actorModel(g.actors, a);
+                if (a.active && (a.script != lastScript || a.clip != lastClip))
+                {
+                    const char *clip = "?";
+                    for (const char *name : clipNames)
+                    {
+                        if (model != nullptr && model->findClip(nameHash(name)) == a.clip)
+                            clip = name;
+                    }
+                    std::printf("test_uplink: hldemo1 at %d ms: the gargantua plays %s (clip %d), script %d, at %d %d\n",
+                                ms, clip, a.clip, a.script, fxToInt(a.pos[0]), fxToInt(a.pos[1]));
+                    if (a.script >= 0 && model != nullptr && a.clip >= 0)
+                    {
+                        rolls += a.clip == model->findClip(nameHash("rollcar"));
+                        kicks += a.clip == model->findClip(nameHash("kickcar"));
+                        busts += a.clip == model->findClip(nameHash("bust"));
+                    }
+                    lastScript = a.script;
+                    lastClip = a.clip;
+                }
+            }
+            ended = g.logic.endSection;
+        }
+        std::printf("test_uplink: hldemo1: kickcar %d, bust %d, rollcar %d; %s at %d ms\n", kicks, busts, rolls,
+                    ended ? "the demo ends" : "NOT ended", ms);
+        check(garg >= 0 && sciDead, "the vent gives way: a gargantua is made, and the scientist dies");
+        check(kicks > 0 && busts > 0 && rolls > 0, "... the gargantua acts out its scenes: kicks, smashes, rolls");
+        check(gargGone, "... is taken away in the dark");
+        check(ended, "... and the demo ends (trigger_endsection)");
+    }
+} // namespace
+
 int main()
 {
     const char *dir = std::getenv("HLDS_VALVE_DIR");
@@ -324,6 +427,7 @@ int main()
     testSewerLid(dir);
     testCageReturns(dir);
     testHeld(dir);
+    testGargFinale(dir);
     if (g_failures == 0)
         std::printf("test_uplink: ok\n");
     return g_failures == 0 ? 0 : 1;
