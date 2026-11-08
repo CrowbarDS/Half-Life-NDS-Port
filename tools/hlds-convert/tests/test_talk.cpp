@@ -698,7 +698,7 @@ namespace
                                             g.view.modelRefs);
         int guards = 0;
         for (const Arrival::Visitor &v : arrival.visitors)
-            guards += v.kind == static_cast<std::uint8_t>(ActorKind::Guard);
+            guards += (v.kind & kVisitorKind) == static_cast<std::uint8_t>(ActorKind::Guard);
         check(guards == 1, "the guard comes with the tram");
         auto next = load(dir, "c0a0e");
         if (!next)
@@ -724,6 +724,9 @@ namespace
         if (guard < 0 || door < 0)
             return;
         const ActorState &a = n.actors.states[guard];
+        // He met the player before the disaster, and still has on this side:
+        // USE has him decline, not drop what the map has him do to follow.
+        check((a.item & kPersonPreDisaster) != 0, "... and is still one met before the disaster");
         const ModelView *model = actorModel(n.actors, a);
         const int push = model != nullptr ? model->findClip(nameHash("intropush")) : -1;
         std::printf("test_talk: c0a0e: the guard's model has intropush: %s\n", push >= 0 ? "yes" : "NO");
@@ -928,7 +931,7 @@ namespace
                                             g.view.modelRefs);
         int carried = 0;
         for (const Arrival::Visitor &v : arrival.visitors)
-            carried += v.model != 0 && v.kind == static_cast<std::uint8_t>(ActorKind::Scientist);
+            carried += v.model != 0 && (v.kind & kVisitorKind) == static_cast<std::uint8_t>(ActorKind::Scientist);
         std::printf("test_talk: c1a2 -> %s: the scientist at %d %d %d (mark %d %d %d), ai %d active %d script %d, %d carried\n",
                     "next", fxToInt(s.pos[0]), fxToInt(s.pos[1]), fxToInt(s.pos[2]), fxToInt(mark->origin[0]),
                     fxToInt(mark->origin[1]), fxToInt(mark->origin[2]), s.ai, s.active, s.script, carried);
@@ -1025,7 +1028,7 @@ namespace
         auto zombiesIn = [&](const Arrival &arrival) {
             int n = 0;
             for (const Arrival::Visitor &v : arrival.visitors)
-                n += v.model != 0 && v.kind == static_cast<std::uint8_t>(ActorKind::Zombie);
+                n += v.model != 0 && (v.kind & kVisitorKind) == static_cast<std::uint8_t>(ActorKind::Zombie);
             return n;
         };
         const int alive = zombiesIn(makeArrival(g.logic, g.view.landmarks, g.view.landmarkCount, g.player, change,

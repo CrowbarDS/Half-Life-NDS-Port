@@ -77,6 +77,13 @@ namespace hldata
     inline constexpr std::uint8_t kVisitorProvoked = 64;
     inline constexpr std::uint8_t kVisitorMind = 128;
     inline constexpr std::uint16_t kVisitorHealth = 63;
+    /// And in what `kind` has to spare (there are fewer than 128 kinds):
+    /// that one of the people met the player before the disaster
+    /// (kPersonPreDisaster). He is still that on the other side: the guard
+    /// who walks the tram's passenger in declines to follow, and goes on
+    /// with what the map has him do.
+    inline constexpr std::uint8_t kVisitorPreDisaster = 128;
+    inline constexpr std::uint8_t kVisitorKind = 127;
 
     /// A visitor slot that is not someone: where a func_train that crosses
     /// is HEADING (the corner it was on its way to), from the landmark; its
@@ -305,6 +312,8 @@ namespace hldata
                 visitor.yaw = actor.yaw;
                 visitor.body = actor.body;
                 visitor.kind = actor.kind;
+                if (person && (actor.item & kPersonPreDisaster))
+                    visitor.kind |= kVisitorPreDisaster;
                 visitor.flags = actor.flags;
                 visitor.light = static_cast<std::uint8_t>(actor.light > kVisitorLight ? kVisitorLight : actor.light);
                 if (minded)
@@ -506,7 +515,9 @@ namespace hldata
                 actor.pos[a] = here->origin[a] + visitor.offset[a];
             actor.yaw = visitor.yaw;
             actor.body = visitor.body;
-            actor.kind = visitor.kind;
+            actor.kind = static_cast<std::uint8_t>(visitor.kind & kVisitorKind);
+            if (visitor.kind & kVisitorPreDisaster)
+                actor.item = static_cast<std::uint8_t>(actor.item | kPersonPreDisaster);
             actor.flags = visitor.flags;
             actor.light = static_cast<std::uint8_t>(visitor.light & kVisitorLight);
             // One of the people, as he left: his health, whether he follows
@@ -531,7 +542,7 @@ namespace hldata
             if (view != nullptr && view->header->clipCount != 0)
             {
                 const int idle = view->findClip(nameHash(
-                    visitor.kind == static_cast<std::uint8_t>(ActorKind::Gman) ? "idle01" : "idle1"));
+                    actor.kind == static_cast<std::uint8_t>(ActorKind::Gman) ? "idle01" : "idle1"));
                 actor.restClip = static_cast<std::int16_t>(idle < 0 ? 0 : idle);
             }
             actorRest(actor);
