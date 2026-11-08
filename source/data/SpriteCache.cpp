@@ -59,6 +59,11 @@ namespace hlrt
 
     const hldata::SpriteRef *SpriteCache::ref(unsigned index) const
     {
+        // (A common sprite a level cooked before it has not got: that place
+        // is one of the map's own.)
+        if (index < static_cast<unsigned>(hldata::CommonSprite::Count) &&
+            index >= hldata::commonSpritesOf(level.view.header->version))
+            return nullptr;
         return material(index) != nullptr ? &level.view.sprites[index] : nullptr;
     }
 } // namespace hlrt

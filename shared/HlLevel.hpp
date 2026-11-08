@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 60;
+    inline constexpr std::uint16_t kLevelVersion = 61;
     /// The oldest level format this build reads. (49: a map's textures are
     /// stored in its archive as they are, never compressed, so that one that
     /// streams is read straight in during play. 50: each texture's record
@@ -93,7 +93,9 @@ namespace hldata
     /// build before draws as a speck. 59: triggers the monsters set off,
     /// some of them not the player's, which a build before lets the
     /// player set off. 60: a wheel's return speed, in move[1], which a
-    /// build before leaves alone: its wheels stay where they are let go.)
+    /// build before leaves alone: its wheels stay where they are let go.
+    /// 61: the egon's two sprites among the common ones, before the map's
+    /// own, which a build before never draws: commonSpritesOf.)
     inline constexpr std::uint16_t kLevelMinReader = 56;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,

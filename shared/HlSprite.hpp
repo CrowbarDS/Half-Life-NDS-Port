@@ -41,8 +41,18 @@ namespace hldata
         Lightning, ///< an alien slave's bolt
         Spit,      ///< a bullsquid's
         Shock,     ///< a houndeye's blast
+        EgonBeam,  ///< the egon's beam (from level version 61)
+        EgonFlare, ///< ... and where it lands
         Count
     };
+
+    /// How many of those a level of `version` has before its own sprites:
+    /// in one cooked before the egon's (61), its own come straight after
+    /// the shockwave, and are not the egon's.
+    inline constexpr unsigned commonSpritesOf(std::uint16_t version)
+    {
+        return version < 61 ? static_cast<unsigned>(CommonSprite::EgonBeam) : static_cast<unsigned>(CommonSprite::Count);
+    }
 
     /// Where each is in the game's folder, and whether it is drawn as light
     /// whatever its file says (a beam's picture always is).
@@ -51,7 +61,8 @@ namespace hldata
         static const char *const kPaths[] = {"sprites/zerogxplode.spr", "sprites/muzzleflash1.spr",
                                              "sprites/bloodspray.spr",  "sprites/flare3.spr",
                                              "sprites/laserbeam.spr",   "sprites/lgtning.spr",
-                                             "sprites/bigspit.spr",     "sprites/shockwave.spr"};
+                                             "sprites/bigspit.spr",     "sprites/shockwave.spr",
+                                             "sprites/xbeam1.spr",      "sprites/xspark1.spr"};
         static_assert(sizeof(kPaths) / sizeof(kPaths[0]) == static_cast<std::size_t>(CommonSprite::Count));
         return kPaths[static_cast<int>(sprite)];
     }

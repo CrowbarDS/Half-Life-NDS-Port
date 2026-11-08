@@ -465,7 +465,7 @@ namespace hlds
                 {"v_rpg", from("c2a5a"), {"idle", "fidget", "reload", "fire", "draw1", "draw2", "idle2", "fidget2"}},
                 {"v_hgun", from("c2a5d"), {"idle1", "fidgetsway", "fidgetshake", "up", "shoot"}},
                 {"v_egon", from("c3a2"),
-                 {"idle1", "fidget1", "altfireon", "altfirecycle", "altfireoff", "draw"}},
+                 {"idle1", "fidget1", "fire1", "fire2", "fire3", "fire4", "draw"}},
             };
             auto hold = [&](const Held &one)
             {
@@ -1215,7 +1215,8 @@ namespace hlds
         };
         std::vector<SpriteOut> sprites;
         {
-            static const int kCommon[][2] = {{32, 8}, {32, 2}, {16, 6}, {32, 1}, {32, 1}, {32, 3}, {16, 4}, {32, 1}};
+            static const int kCommon[][2] = {{32, 8}, {32, 2}, {16, 6}, {32, 1}, {32, 1}, {32, 3}, {16, 4}, {32, 1}, {32, 1}, {16, 4}};
+            static_assert(sizeof(kCommon) / sizeof(kCommon[0]) == static_cast<std::size_t>(hldata::CommonSprite::Count));
             int texels = 0;
             // (The map's signs are pictures of decals.wad, made sprites.)
             WadFile decalWad;

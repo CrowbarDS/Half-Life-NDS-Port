@@ -1221,14 +1221,15 @@ namespace hlds
         for (int c = 0; c < commonCount; ++c)
         {
             out.sounds.push_back(commonSoundPath(static_cast<CommonSound>(c)));
-            out.soundLoops.push_back(false);
+            out.soundLoops.push_back(commonSoundLoops(static_cast<CommonSound>(c)));
         }
         // The sprites: the common ones first, as the sounds.
         for (int c = 0; c < static_cast<int>(CommonSprite::Count); ++c)
         {
             const auto sprite = static_cast<CommonSprite>(c);
             out.sprites.push_back(commonSpritePath(sprite));
-            out.spriteLights.push_back(sprite == CommonSprite::Beam || sprite == CommonSprite::Lightning);
+            out.spriteLights.push_back(sprite == CommonSprite::Beam || sprite == CommonSprite::Lightning ||
+                                       sprite == CommonSprite::EgonBeam || sprite == CommonSprite::EgonFlare);
         }
         auto spriteIndex = [&](std::string path, bool light) -> std::uint16_t
         {

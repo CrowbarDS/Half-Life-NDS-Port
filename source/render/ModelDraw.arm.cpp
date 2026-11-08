@@ -1286,6 +1286,26 @@ namespace hlrt
         GFX_COLOR = 0x7FFF;
     }
 
+    bool ModelDraw::heldMuzzle(int which, fx *out) const
+    {
+        const ActorState &held = game.held;
+        const ModelView *model = held.active ? actorModel(game.actors, held) : nullptr;
+        fx at[3];
+        if (model == nullptr || !heldDrawn_ || player.state.health <= 0 || game.logic.camera >= 0 ||
+            !attachmentPosed(*model, held, which, at))
+            return false;
+        // (Turned and placed as drawHeld has it: the model's forward, left
+        // and up are the camera's, at the eye with the walk's bob. Drawn a
+        // quarter the size a quarter as far, it is seen where this is.)
+        for (int a = 0; a < 3; ++a)
+            out[a] = camera.pos[a] +
+                     static_cast<fx>((static_cast<std::int64_t>(camera.forward[a]) * player.view.bob * 2 / 5) >> 12) +
+                     static_cast<fx>((static_cast<std::int64_t>(camera.forward[a]) * at[0] -
+                                      static_cast<std::int64_t>(camera.right[a]) * at[1] +
+                                      static_cast<std::int64_t>(camera.up[a]) * at[2]) >> 12);
+        return true;
+    }
+
     void ModelDraw::drawHeld()
     {
         const ActorState &held = game.held;

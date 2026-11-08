@@ -70,6 +70,10 @@ namespace hlrt
         /// Draw what the player holds, at the eye and turned as the view is.
         /// Call last: it is nearer than anything.
         void drawHeld();
+        /// Where the end of what is in hand is (its model's attachment
+        /// `which`), in the world, as drawHeld draws it: a beam starts
+        /// there. False when it is not drawn, or has no such.
+        bool heldMuzzle(int which, hldata::fx *out) const;
         /// The kept poses are of this map's models: forget them with it.
         void forgetPoses();
         /// Whether plan() chose the small piece `n` (into ActorWorld::pieces,

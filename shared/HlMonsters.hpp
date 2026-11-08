@@ -3874,6 +3874,9 @@ namespace hldata
     /// A spent case leaves the gun now (WeaponState::shells of them): at
     /// the shot for the pistol and the MP5, at the pump for the shotgun.
     inline constexpr std::uint32_t kWeaponShell = 32;
+    /// weaponsTick: the egon's beam is on (every tick it is, not only those
+    /// it hurts on): what the others in a match are told, to see it.
+    inline constexpr std::uint32_t kWeaponBeam = 64;
 
     struct WeaponState
     {
@@ -4012,17 +4015,24 @@ namespace hldata
     /// Where the actor's model's attachment `which` is in the world, posed as
     /// it is drawn (the game's GetAttachment): a gun's muzzle, in the hand
     /// that holds it. False if its model has no such.
-    inline bool actorAttachment(const ActorWorld &a, const ActorState &actor, int which, fx *out)
+    /// ... in its model's own frame, posed as `actor` is: before it is put
+    /// where the actor is and turned as it is (the gun in hand is turned
+    /// as the view is: ModelDraw::heldMuzzle).
+    inline bool attachmentPosed(const ModelView &model, const ActorState &actor, int which, fx *at)
     {
-        const ModelView *model = actorModel(a, actor);
-        if (model == nullptr || actor.clip < 0 || which >= model->header->attachmentCount)
+        if (actor.clip < 0 || which >= model.header->attachmentCount)
             return false;
         static BoneMatrix bones[kModelMaxBones];
         std::int32_t controls[kModelControls];
         const bool controlled = actorControls(actor, controls);
-        poseModel(*model, actor.clip, actor.frame, bones, controlled ? controls : nullptr, actor.blend.value);
+        poseModel(model, actor.clip, actor.frame, bones, controlled ? controls : nullptr, actor.blend.value);
+        return attachmentPoint(model, bones, which, at);
+    }
+    inline bool actorAttachment(const ActorWorld &a, const ActorState &actor, int which, fx *out)
+    {
+        const ModelView *model = actorModel(a, actor);
         fx at[3];
-        if (!attachmentPoint(*model, bones, which, at))
+        if (model == nullptr || !attachmentPosed(*model, actor, which, at))
             return false;
         fx sine, cosine;
         fxSinCos(actor.yaw, sine, cosine);
@@ -4030,6 +4040,42 @@ namespace hldata
         out[1] = actor.pos[1] + fxMul(at[0], sine) + fxMul(at[1], cosine);
         out[2] = actor.pos[2] + at[2];
         return true;
+    }
+
+    /// An egon's wind-up and hum stopped (soundTagEgon): it is let go,
+    /// put away, or its firer is gone.
+    inline void egonQuiet(LogicWorld &w, int owner)
+    {
+        if (w.heard == nullptr)
+            return;
+        w.heard->add(kNoSound, nullptr, 0, kRadiusLarge, kSoundLoopOff, 100, soundTagEgon(owner, false));
+        w.heard->add(kNoSound, nullptr, 0, kRadiusLarge, kSoundLoopOff, 100, soundTagEgon(owner, true));
+    }
+
+    /// Where a beam along `dir` (Q12, unit) from `eye` stops within `range`
+    /// units: on the map, or on the first thing in the way that could be
+    /// hurt (a monster, another player) -- but not on actor `from`, whose
+    /// beam it is. It hurts nothing: it is for drawing it, every frame.
+    inline void beamReach(const LogicWorld &w, const fx *eye, const fx *dir, int range, int from, fx *reached)
+    {
+        const fx end[3] = {eye[0] + dir[0] * range, eye[1] + dir[1] * range, eye[2] + dir[2] * range};
+        const Shot shot = traceShot(*w.world, eye, end);
+        std::int64_t nearest = shot.fraction;
+        const ActorWorld *a = w.actors;
+        for (int i = 0; a != nullptr && i < a->count; ++i)
+        {
+            const ActorState &actor = a->states[i];
+            if (!actor.active || !canBeHurt(actor.kind) || actor.ai >= kAiDying || i == from ||
+                (actor.kind == static_cast<std::uint8_t>(ActorKind::Generic) && !(actor.flags & kActorSolid)))
+                continue;
+            fx mins[3], maxs[3];
+            targetBox(actor, mins, maxs);
+            std::int64_t enter = 0;
+            if (lineEntersBox(eye, end, mins, maxs, enter) && enter < nearest)
+                nearest = enter;
+        }
+        for (int i = 0; i < 3; ++i)
+            reached[i] = eye[i] + static_cast<fx>((static_cast<std::int64_t>(end[i] - eye[i]) * nearest) >> kFractionShift);
     }
 
     /// What a shot along `dir` (Q12, unit) from `eye` lands on within
@@ -5267,7 +5313,10 @@ namespace hldata
         // ---- the guns and the grenade, as the game has them ----
         if (state.minded != inv.current)
         {
-            // Another weapon in hand, however it got there.
+            // Another weapon in hand, however it got there. (An egon that
+            // was firing is quiet now.)
+            if (state.minded == kWeaponEgon && state.loading == 2)
+                egonQuiet(w, kEgonMine);
             state.minded = inv.current;
             state.pumpMs = 0;
             state.loading = 0;
@@ -5856,8 +5905,9 @@ namespace hldata
         if (inv.current == kWeaponEgon && ars != nullptr)
         {
             // The game's egon: a beam for as long as the trigger is held and
-            // there is uranium -- 14 to what it meets and a uranium every
-            // tenth of a second.
+            // there is uranium -- its wide beam's damage to what it meets
+            // and a uranium every tenth of a second. It winds up as it
+            // starts, hums from two seconds on, and winds down let go.
             const bool running = state.loading == 2;
             if (attack && ars->uranium > 0 && state.cooldownMs <= 0)
             {
@@ -5865,44 +5915,58 @@ namespace hldata
                 {
                     state.loading = 2;
                     state.loadMs = 0;
-                    state.secondMs = 0;
-                    say(CommonSound::EgonWindup, 100);
-                    state.anim = "altfireon";
+                    state.secondMs = 2000; // (until the hum)
+                    // (As a loop, which it is not: so that a let-go stops it.)
+                    if (w.heard != nullptr)
+                        w.heard->add(static_cast<std::uint16_t>(CommonSound::EgonWindup), nullptr, 127, kRadiusLarge,
+                                     kSoundLoopOn, 100, soundTagEgon(kEgonMine, false));
+                    static const char *const kFire[] = {"fire1", "fire2", "fire3", "fire4"};
+                    state.anim = kFire[chance() % 4];
                 }
-                // (Its hum, again and again while it runs.)
+                // (Said again each second: a loop already going round is
+                // not started twice, and one lost to a full queue is.)
                 if (state.secondMs <= 0)
                 {
-                    if (running)
-                        say(CommonSound::EgonRun, 125, 124);
+                    if (w.heard != nullptr)
+                        w.heard->add(static_cast<std::uint16_t>(CommonSound::EgonRun), nullptr, 124, kRadiusLarge,
+                                     kSoundLoopOn, 125, soundTagEgon(kEgonMine, true));
                     state.secondMs = 1000;
                 }
+                fx reached[3];
                 if ((state.loadMs -= ms) <= 0)
                 {
                     state.loadMs += 100;
                     if (state.loadMs <= 0)
                         state.loadMs = 100;
                     ars->uranium = static_cast<std::int16_t>(ars->uranium - 1);
-                    fx reached[3];
-                    fireLine(w, player, eye, forward, 2048, 14, false, false, nullptr, -1, reached, kDmgEnergyBeam);
+                    fireLine(w, player, eye, forward, 2048, skillOf(w).plrEgonWide, false, false, nullptr, -1, reached,
+                             kDmgEnergyBeam);
                     if (w.actors != nullptr)
                     {
-                        Effect &e = effectAdd(*w.actors, kEffectBeam, muzzle, reached, 5, 120);
-                        e.colour = static_cast<std::uint16_t>(18 | 10 << 5 | 31 << 10);
                         for (int i = 0; i < 3; ++i)
                             w.actors->noise[i] = eye[i];
                         w.actors->noiseMs = 200;
                     }
                     did |= kWeaponFired;
                 }
-                return did;
+                else
+                {
+                    // (Between its blows, only where it lands: it follows
+                    // the aim every frame.)
+                    beamReach(w, eye, forward, 2048, -1, reached);
+                }
+                if (w.actors != nullptr)
+                    egonBeam(*w.actors, kEgonMine, muzzle, reached, ms);
+                return did | kWeaponBeam;
             }
             if (running)
             {
                 // Let go, or empty: off.
                 state.loading = 0;
                 state.loadMs = 0;
+                egonQuiet(w, kEgonMine);
                 say(CommonSound::EgonOff, 100);
-                state.anim = "altfireoff";
+                state.anim = "idle1";
                 state.cooldownMs = 500;
                 state.idleMs = 3000;
                 return did;

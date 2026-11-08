@@ -543,6 +543,14 @@ namespace hldata
         return kPaths[static_cast<int>(sound)];
     }
 
+    /// Whether it is cooked to go round (where its file says, if it says):
+    /// then it is only ever played with kSoundLoopOn and kSoundLoopOff. The
+    /// egon's hum, for as long as it fires.
+    inline constexpr bool commonSoundLoops(CommonSound sound)
+    {
+        return sound == CommonSound::EgonRun;
+    }
+
     // How far a sound carries, as the game has it: full volume at the
     // source, nothing at the radius, a straight line between.
     inline constexpr int kRadiusEverywhere = 0; ///< as loud wherever the listener is
@@ -649,6 +657,13 @@ namespace hldata
     /// (an osprey's rotors) is this and the actor's number. Heard again while
     /// it goes round, a loop is moved to where it is now, not started again.
     inline constexpr std::uint16_t kSoundTagActor = 0x8000;
+    /// An egon's sounds (its wind-up, which a let-go cuts short, and its
+    /// hum): 0x7FE0 and on, two for each firer -- 0 this console's player,
+    /// 1 + n player n of a match. Past any logic record's number.
+    inline constexpr std::uint16_t soundTagEgon(int owner, bool hum)
+    {
+        return static_cast<std::uint16_t>(0x7FE0 + owner * 2 + (hum ? 1 : 0));
+    }
 
     inline constexpr int kMaxSoundEvents = 24;
 

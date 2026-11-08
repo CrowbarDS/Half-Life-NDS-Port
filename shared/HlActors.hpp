@@ -409,6 +409,13 @@ namespace hldata
     /// A beam from `a` to `b`, `size` units wide, in `colour` (the gauss's,
     /// the egon's).
     inline constexpr std::uint8_t kEffectBeam = 9;
+    /// An egon's beam, from its muzzle `a` to where it lands `b`, kept for
+    /// as long as it fires (egonBeam): `size` says whose (kEgonMine, or
+    /// 1 + a player of a match), `sprite` how long it has fired, in ms.
+    inline constexpr std::uint8_t kEffectEgon = 10;
+    inline constexpr int kEgonMine = 0;
+    /// How long a beam is still seen once nothing keeps it.
+    inline constexpr int kEgonLingerMs = 80;
     /// (All of these on a DSi, half on a DS: ActorWorld::effectLimit.)
     inline constexpr int kMaxEffects = 48;
 
@@ -1152,6 +1159,30 @@ namespace hldata
         slot->sprite = 0xFFFF;
         slot->colour = 0x7FFF;
         return *slot;
+    }
+
+    /// The egon beam of `owner` (kEffectEgon), from `from` to `to`: found
+    /// again and moved while it fires, so that it is one beam and not one
+    /// a tick; `ms` more of firing.
+    inline Effect &egonBeam(ActorWorld &a, int owner, const fx *from, const fx *to, int ms)
+    {
+        for (Effect &effect : a.effects)
+        {
+            if (effect.kind != kEffectEgon || effect.size != owner)
+                continue;
+            for (int i = 0; i < 3; ++i)
+            {
+                effect.a[i] = from[i];
+                effect.b[i] = to[i];
+            }
+            effect.leftMs = effect.wholeMs = static_cast<std::int16_t>(kEgonLingerMs);
+            const int fired = effect.sprite + ms;
+            effect.sprite = static_cast<std::uint16_t>(fired > 60000 ? 60000 : fired);
+            return effect;
+        }
+        Effect &effect = effectAdd(a, kEffectEgon, from, to, owner, kEgonLingerMs);
+        effect.sprite = 0;
+        return effect;
     }
 
     inline constexpr std::uint8_t kLinkOpen = 0;   ///< nothing in the way

@@ -217,6 +217,117 @@ namespace hlrt
                     from[i] = to[i];
             }
         }
+
+        /// The egon's beam's pieces: its core in two, the beam about it in
+        /// eight, and the flare.
+        constexpr int kEgonPieces = 8;
+        constexpr int kEgonQuads = 2 + kEgonPieces + 1;
+
+        /// Whether the map has this common sprite (one cooked before it was
+        /// one has not: commonSpritesOf).
+        bool commonSpriteHere(CommonSprite which)
+        {
+            return spriteCache.ref(static_cast<unsigned>(which)) != nullptr;
+        }
+
+        /// An even mix of two colours (RGB555), `t` of the second in 4096ths.
+        std::uint16_t mixColour(std::uint16_t from, std::uint16_t to, int t)
+        {
+            std::uint16_t out = 0;
+            for (int shift = 0; shift < 15; shift += 5)
+            {
+                const int a = (from >> shift) & 31, b = (to >> shift) & 31;
+                out = static_cast<std::uint16_t>(out | ((a + (((b - a) * t) >> 12)) << shift));
+            }
+            return out;
+        }
+
+        /// An egon's beam (kEffectEgon), as the game's is drawn: a bright
+        /// core out of the gun, strongest near it; a thinner beam about it
+        /// that bows out to one side and the other as it turns about the
+        /// line; a flare where it lands -- all of it pulsing, violet to
+        /// blue. Whole while it fires; gone over kEgonLingerMs once not.
+        void egon(const Effect &effect)
+        {
+            // (Its last 40 ms fading: about leftMs * 31 / 40.)
+            const int fade = effect.leftMs >= 40 ? 31 : ((effect.leftMs > 0 ? effect.leftMs : 0) * 31 * 25) >> 10;
+            fx a[3] = {effect.a[0], effect.a[1], effect.a[2]};
+            // (This console's own: out of the end of the gun in hand.)
+            if (effect.size == kEgonMine)
+                modelDraw.heldMuzzle(0, a);
+            const fx *b = effect.b;
+            const fx d[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+            const std::uint32_t clock = Global::drawClock();
+            // It comes up to its whole width over its first third of a second.
+            const int fired = effect.sprite;
+            const int ramp = fired >= 320 ? 4096 : 2048 + fired * 6;
+            fx pulseSin, pulseCos;
+            fxSinCos(static_cast<std::uint16_t>(clock * 2400), pulseSin, pulseCos);
+            (void)pulseCos;
+            const int pulse = (pulseSin + 4096) >> 1; // 0..4096
+            const bool own = commonSpriteHere(CommonSprite::EgonBeam);
+            const CommonSprite beamSprite = own ? CommonSprite::EgonBeam : CommonSprite::Beam;
+
+            // The core: the nearer quarter bright, the rest fainter.
+            const std::uint16_t core = mixColour(RGB15(27, 23, 31), RGB15(31, 30, 31), pulse);
+            const fx quarter[3] = {a[0] + (d[0] >> 2), a[1] + (d[1] >> 2), a[2] + (d[2] >> 2)};
+            const int coreWidth = (76 * ramp) >> 12;
+            if (const SpriteRef *ref = sprite(beamSprite, (28 * fade) >> 5, core))
+                beam(*ref, 0, a, quarter, coreWidth);
+            if (const SpriteRef *ref = sprite(beamSprite, (13 * fade) >> 5, core))
+                beam(*ref, 0, quarter, b, (coreWidth * 3) >> 2);
+
+            // The beam about it: a bow across the line (sin of how far along
+            // it is), as wide as a fifth of the beam's length up to 40 units,
+            // swung one way and the other as it turns, with a smaller ripple
+            // running along it.
+            const fx length = fxLength(d);
+            fx bow = (length * 13) >> 6;
+            if (bow > fxFromInt(40))
+                bow = fxFromInt(40);
+            bow = static_cast<fx>((static_cast<std::int64_t>(bow) * ramp) >> 12);
+            fx swingSin, swingCos;
+            fxSinCos(static_cast<std::uint16_t>(clock * 1700), swingSin, swingCos);
+            (void)swingSin;
+            const fx sway = fxMul(bow, swingCos);
+            const fx ripple = bow / 4;
+            std::int32_t u[3];
+            across(a, b, u);
+            static constexpr std::int32_t kBow[kEgonPieces + 1] = {0, 1567, 2896, 3784, 4096, 3784, 2896, 1567, 0};
+            fx from[3] = {a[0], a[1], a[2]};
+            const std::uint16_t outer = mixColour(RGB15(20, 8, 31), RGB15(10, 20, 31), pulse);
+            const SpriteRef *ref = sprite(beamSprite, (24 * fade) >> 5, outer);
+            if (ref != nullptr)
+            {
+                // (Under the next number: blended over the core, not cut by it.)
+                const int other = (currentId - kIdSeeThroughFirst + 1) % kIdSeeThroughCount + kIdSeeThroughFirst;
+                look((24 * fade) >> 5, other, outer);
+                for (int k = 1; k <= kEgonPieces; ++k)
+                {
+                    fx wave, unused;
+                    fxSinCos(static_cast<std::uint16_t>(k * 8192 + clock * 2900), wave, unused);
+                    (void)unused;
+                    const fx off = fxMul(sway, kBow[k]) + fxMul(fxMul(ripple, wave), kBow[k]);
+                    fx to[3];
+                    for (int i = 0; i < 3; ++i)
+                        to[i] = a[i] + static_cast<fx>((static_cast<std::int64_t>(d[i]) * k) >> 3) +
+                                static_cast<fx>((static_cast<std::int64_t>(u[i]) * off) >> 12);
+                    beam(*ref, 0, from, to, 14);
+                    for (int i = 0; i < 3; ++i)
+                        from[i] = to[i];
+                }
+            }
+
+            // The flare where it lands.
+            const bool flare = commonSpriteHere(CommonSprite::EgonFlare);
+            if (const SpriteRef *spark = sprite(flare ? CommonSprite::EgonFlare : CommonSprite::Glow, (31 * fade) >> 5,
+                                                flare ? 0x7FFF : RGB15(16, 24, 31)))
+            {
+                const int half = ((18 + ((pulse * 5) >> 12)) * ramp) >> 12;
+                const int frame = spark->frames > 1 ? static_cast<int>(clock / 3 % spark->frames) : 0;
+                picture(*spark, frame, b, camera.right, camera.up, half, half);
+            }
+        }
     } // namespace
 
     void EffectDraw::glow(const fx *at, int alpha, std::uint16_t colour, int half)
@@ -287,7 +398,7 @@ namespace hlrt
             const Effect &effect = a.effects[n];
             if (effect.kind == 0 || effect.wholeMs <= 0)
                 continue;
-            const bool line = effect.kind == kEffectBolt || effect.kind == kEffectTracer;
+            const bool line = effect.kind == kEffectBolt || effect.kind == kEffectTracer || effect.kind == kEffectEgon;
             const fx middle[3] = {line ? (effect.a[0] + effect.b[0]) / 2 : effect.a[0],
                                   line ? (effect.a[1] + effect.b[1]) / 2 : effect.a[1],
                                   line ? (effect.a[2] + effect.b[2]) / 2 : effect.a[2]};
@@ -307,7 +418,8 @@ namespace hlrt
             {
                 continue;
             }
-            add(kEffect, n, middle, 1 << 14, effect.kind == kEffectBolt ? 4 : 1);
+            add(kEffect, n, middle, 1 << 14,
+                effect.kind == kEffectBolt ? 4 : (effect.kind == kEffectEgon ? kEgonQuads : 1));
         }
         for (int i = 0; i < logic.recordCount; ++i)
         {
@@ -1248,6 +1360,9 @@ namespace hlrt
             if (const SpriteRef *ref = sprite(CommonSprite::Beam, left, effect.colour))
                 beam(*ref, static_cast<int>(Global::drawClock() / 2 % (ref->frames > 0 ? ref->frames : 1)), effect.a,
                      effect.b, effect.size * 16);
+            break;
+        case kEffectEgon:
+            egon(effect);
             break;
         case kEffectMuzzle:
             if (const SpriteRef *ref = sprite(CommonSprite::Muzzle, 31))
