@@ -5,6 +5,7 @@
 
 #include "HlUi.hpp"
 #include "HlLevel.hpp"
+#include "HlAirBank.hpp"
 
 #include <nds.h>
 #include <nds/arm9/device_io.h>
@@ -46,6 +47,11 @@ namespace hlrt::air
         hldata::GuestCursor *cursor = nullptr;
         /// The cursor's member is there to be opened (parsed, not yet read).
         bool memberOpen = false;
+        /// A demo's map's bank, all of it in memory (mountBank): its members
+        /// are files too. (What find() found in it, until the next find.)
+        const std::uint8_t *bank = nullptr;
+        std::uint32_t bankSize = 0;
+        File bankHit;
 
         /// One file open: where in which, and how far read -- or (`file`
         /// null) the stream's member under way. (Its address is the
@@ -54,6 +60,7 @@ namespace hlrt::air
         struct Open
         {
             const File *file;
+            File inBank; ///< (a member of the bank: `file` is this)
             std::uint32_t at;
             /// A packed file's: where in what it is kept as, and its undoing
             /// (made when it is first read).
@@ -132,7 +139,7 @@ namespace hlrt::air
             return path;
         }
 
-        const File *find(const char *path)
+        const File *findOwn(const char *path)
         {
             const char *want = bare(path);
             for (int i = 0; i < fileCount; ++i)
@@ -142,6 +149,24 @@ namespace hlrt::air
                     return &files[i];
             }
             return nullptr;
+        }
+
+        /// Its own files, then the bank's members.
+        const File *find(const char *path)
+        {
+            if (const File *file = findOwn(path))
+                return file;
+            hldata::AirBankEntry entry;
+            const char *want = bare(path);
+            if (bank == nullptr || !hldata::airBankFind(bank, bankSize, hldata::nameHash(want), entry))
+                return nullptr;
+            bankHit = File();
+            std::strncpy(bankHit.name, want, kNameBytes - 1);
+            bankHit.whole = entry.name;
+            bankHit.data = bank + entry.offset;
+            bankHit.size = entry.raw;
+            bankHit.packedSize = entry.packed != entry.raw ? entry.packed : 0;
+            return &bankHit;
         }
 
         Open *of(int fd) { return reinterpret_cast<Open *>(static_cast<std::uintptr_t>(fd)); }
@@ -168,6 +193,11 @@ namespace hlrt::air
                 return -1;
             }
             open->file = file;
+            if (file == &bankHit)
+            {
+                open->inBank = bankHit;
+                open->file = &open->inBank;
+            }
             open->at = 0;
             open->packedAt = 0;
             open->lz = nullptr;
@@ -317,7 +347,7 @@ namespace hlrt::air
         bool putFile(const char *name, const std::uint8_t *data, std::uint32_t size, std::uint32_t packedSize, bool owned,
                      bool ofMap)
         {
-            File *slot = const_cast<File *>(find(name));
+            File *slot = const_cast<File *>(findOwn(name));
             if (slot == nullptr)
             {
                 if (fileCount == fileRoom && global.twlChild && files == filesHere)
@@ -442,6 +472,44 @@ namespace hlrt::air
     }
 
     bool has(const char *name) { return find(name) != nullptr; }
+
+    void mountBank(const std::uint8_t *data, std::uint32_t size)
+    {
+        bank = data;
+        bankSize = data != nullptr ? size : 0;
+    }
+    bool bankMounted() { return bank != nullptr; }
+    bool bankMember(const char *name, const std::uint8_t *&data, std::uint32_t &size)
+    {
+        hldata::AirBankEntry entry;
+        if (bank == nullptr || !hldata::airBankFind(bank, bankSize, hldata::nameHash(bare(name)), entry) ||
+            entry.packed != entry.raw || (reinterpret_cast<std::uintptr_t>(bank + entry.offset) & 3) != 0)
+            return false;
+        data = bank + entry.offset;
+        size = entry.raw;
+        return true;
+    }
+
+    bool memoryOf(const char *name, const std::uint8_t *&data, std::uint32_t &size)
+    {
+        const File *file = findOwn(name);
+        if (file == nullptr || file->packedSize != 0)
+            return false;
+        data = file->data;
+        size = file->size;
+        return true;
+    }
+
+    void forget(const char *name)
+    {
+        File *slot = const_cast<File *>(findOwn(name));
+        if (slot == nullptr)
+            return;
+        if (slot->owned)
+            std::free(const_cast<std::uint8_t *>(slot->data));
+        *slot = files[fileCount - 1];
+        files[--fileCount] = File();
+    }
     int count() { return fileCount; }
     const char *name(int index) { return index >= 0 && index < fileCount ? files[index].name : ""; }
 } // namespace hlrt::air

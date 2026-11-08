@@ -86,8 +86,14 @@ namespace hlds
     /// the weapons it has not, in the order that console's loaders ask for
     /// them. `bytes`: how big, `memory`: what it comes to in that memory
     /// (all but its textures' video-memory part).
+    ///
+    /// `demo`: a demo's map (HlDemo.hpp), whose console is sent all of its
+    /// bank before it plays: every sound goes to the bank, kept as it is and
+    /// on a 4-byte boundary, to be played where it lies; and the bank names
+    /// the tracks the map plays (kDemoTracksFile). `bankBytes`: the bank's size.
     bool packAirFull(const std::filesystem::path &stage, const std::filesystem::path &card, const std::string &map,
-                     std::size_t &bytes, std::size_t &memory, std::string &error);
+                     std::size_t &bytes, std::size_t &memory, std::string &error, bool demo = false,
+                     std::size_t *bankBytes = nullptr);
 
     /// A level as a console sent the map has it: each texture made as much
     /// smaller as its TextureRef::guestHalvings say (the converter cooked it

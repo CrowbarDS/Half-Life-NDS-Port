@@ -121,10 +121,17 @@ namespace hlrt::guest
     // -------------------------------------------------------------- a demo
 
     /// A console in DSi mode playing a demo: its memory for the demo's streams
-    /// (longest: the longest), its first map asked for and offered. All its
-    /// streams at full quality, till demoEnd. False: not enough memory.
-    bool demoBegin(std::uint32_t longest, const char *map);
+    /// (longest: the longest; music: the room its tracks need), its first map
+    /// asked for and offered. All its streams at full quality, till demoEnd.
+    /// False: not enough memory.
+    bool demoBegin(std::uint32_t longest, std::uint32_t music, const char *map);
     void demoEnd();
+    /// ... and when there was not: what the smallest way needed, and what
+    /// there was (KB).
+    void demoRoomSaid(std::uint32_t &needKb, std::uint32_t &hadKb);
+    /// What a map's load is waiting for besides the map ("Receiving the
+    /// music"); null: the map.
+    const char *demoStep();
     // Its progress, kept by the host (HlDemoSave.hpp).
     /// Room in the outbox for a file of `size`, waiting for what is before it
     /// if need be; nullptr: none. Then demoSendReady, once it is written.

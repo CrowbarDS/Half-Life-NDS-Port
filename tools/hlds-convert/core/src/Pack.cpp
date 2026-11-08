@@ -775,10 +775,11 @@ namespace hlds
         return finish(packing, card / "maps" / (map + ".npac"), compress, error);
     }
 
-    static bool writeBank(std::vector<NpacMember> &members, const fs::path &out, std::string &error);
+    static bool writeBank(std::vector<NpacMember> &members, const fs::path &out, std::string &error, bool demo = false,
+                          std::size_t *size = nullptr);
 
     bool packAirFull(const fs::path &stage, const fs::path &card, const std::string &map, std::size_t &bytes,
-                     std::size_t &memory, std::string &error)
+                     std::size_t &memory, std::string &error, bool demo, std::size_t *bankBytes)
     {
         PackReport report;
         Packing packing;
@@ -910,7 +911,9 @@ namespace hlds
                 const hldata::SoundRef &ref = view.sounds[i];
                 if (ref.name[0] == '\0' || (kept[i] != 0) != (pass == 0) || (match && talk[i] != 0))
                     continue;
-                const bool ask = pass == 1 || gunOnly[i] != 0 || hldata::soundLazy(ref);
+                // (A demo's: all of them, the bank being sent whole, where they
+                // are played from as they lie.)
+                const bool ask = demo || pass == 1 || gunOnly[i] != 0 || hldata::soundLazy(ref);
                 const std::string plain = std::string("snd/") + ref.name + ".hsn";
                 char twin[sizeof(hldata::SoundRef)];
                 const bool hasTwin = hldata::soundTwinName(ref, twin, sizeof(twin));
@@ -968,8 +971,32 @@ namespace hlds
         };
         for (NpacMember &member : weapons.members)
             (startsWith(member.path) ? members : asked).push_back(std::move(member));
+        // A demo's: the tracks the map plays, for the console to be sent them
+        // before it plays it.
+        if (demo)
+        {
+            std::set<int> tracks;
+            for (std::uint32_t i = 0; i < view.logicCount; ++i)
+            {
+                const hldata::LogicRecord &record = view.logic[i];
+                if (record.kind == static_cast<std::uint8_t>(hldata::LogicKind::Music) && record.extra[0] >= 2 &&
+                    record.extra[0] <= 99)
+                    tracks.insert(static_cast<int>(record.extra[0]));
+            }
+            if (!tracks.empty())
+            {
+                NpacMember member;
+                member.path = hldata::kDemoTracksFile;
+                for (const int track : tracks)
+                {
+                    if (member.data.size() < static_cast<std::size_t>(hldata::kDemoTracksMost))
+                        member.data.push_back(static_cast<std::uint8_t>(track));
+                }
+                asked.push_back(std::move(member));
+            }
+        }
         fs::create_directories(card / "air");
-        if (!writeBank(asked, card / "air" / (map + ".dsi.bank"), error))
+        if (!writeBank(asked, card / "air" / (map + ".dsi.bank"), error, demo, bankBytes))
             return false;
         std::size_t raw[static_cast<int>(hldata::GuestKind::Count) + 2] = {};
         fs::create_directories(card / "air");
@@ -1263,7 +1290,8 @@ namespace hlds
 
     /// A bank (HlAirBank.hpp) of `members`: each packed if that makes it
     /// smaller, the table sorted by what they are called.
-    static bool writeBank(std::vector<NpacMember> &members, const fs::path &out, std::string &error)
+    static bool writeBank(std::vector<NpacMember> &members, const fs::path &out, std::string &error, bool demo,
+                          std::size_t *size)
     {
         std::sort(members.begin(), members.end(), [](const NpacMember &a, const NpacMember &b)
                   { return hldata::nameHash(a.path.c_str()) < hldata::nameHash(b.path.c_str()); });
@@ -1276,8 +1304,14 @@ namespace hlds
         const std::uint32_t start = static_cast<std::uint32_t>(sizeof(header) + members.size() * sizeof(hldata::AirBankEntry));
         for (const NpacMember &member : members)
         {
-            std::vector<std::uint8_t> packed = lz77Compress(member.data.data(), member.data.size());
-            const bool smaller = packed.size() < member.data.size();
+            // (A demo's sounds, textures and tracks as they are: read where
+            // they lie, each from a 4-byte boundary -- the table's end is one.)
+            const bool asItIs = demo && (member.path.rfind("snd/", 0) == 0 || member.path.rfind("tex/", 0) == 0 ||
+                                         member.path.rfind("music/", 0) == 0);
+            if (demo)
+                body.resize((body.size() + 3) & ~static_cast<std::size_t>(3), 0);
+            std::vector<std::uint8_t> packed = asItIs ? std::vector<std::uint8_t>() : lz77Compress(member.data.data(), member.data.size());
+            const bool smaller = !asItIs && packed.size() < member.data.size();
             const std::vector<std::uint8_t> &sent = smaller ? packed : member.data;
             hldata::AirBankEntry entry{};
             entry.name = hldata::nameHash(member.path.c_str());
@@ -1293,6 +1327,8 @@ namespace hlds
         if (!table.empty())
             std::memcpy(file.data() + sizeof(header), table.data(), table.size() * sizeof(hldata::AirBankEntry));
         file.insert(file.end(), body.begin(), body.end());
+        if (size != nullptr)
+            *size = file.size();
         return writeFileAtomic(out, file, error);
     }
 

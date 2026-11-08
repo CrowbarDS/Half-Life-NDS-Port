@@ -14,6 +14,12 @@
 //    next. As many streams at once as a host can keep files open for; what is
 //    wanted now before what is wanted for later.
 //
+// A map's stream is all a console needs of it, so that nothing is asked for
+// once it is played: its .dsi.hgs, then (at demoBankAt) its .dsi.bank -- the
+// textures that stream, every sound, the weapons it has not -- which the
+// console keeps where it came and reads its files out of. The tracks its
+// bank names (kDemoTracksFile) come after it, each a stream of its own.
+//
 // std-only: the host tests run it, over a radio that loses frames.
 
 #include <cstring>
@@ -38,6 +44,24 @@ namespace hldata
     inline const char *const *netDemoMaps(int group)
     {
         return group == kDemoUplink ? kDemoUplinkMaps : kDemoHazardMaps;
+    }
+    /// Where a map's bank begins in its stream: after its .dsi.hgs of
+    /// `guestBytes`, at the next 32 (its sounds are played where they are).
+    inline constexpr std::uint32_t demoBankAt(std::uint32_t guestBytes) { return (guestBytes + 31u) & ~31u; }
+    /// A track's stream's name, and what it is known by ("track03").
+    inline void demoTrackName(int track, char *name, int room)
+    {
+        if (room < 8)
+        {
+            if (room > 0)
+                name[0] = 0;
+            return;
+        }
+        const int t = track < 0 ? 0 : (track > 99 ? 99 : track);
+        std::memcpy(name, "track", 5);
+        name[5] = static_cast<char>('0' + t / 10);
+        name[6] = static_cast<char>('0' + t % 10);
+        name[7] = 0;
     }
     /// What a beacon's `mode` says of a demo.
     inline constexpr std::uint8_t kNetModeDemoBase = 2;
@@ -195,6 +219,7 @@ namespace hldata
             // What the stream is, for when it is begun.
             std::uint32_t length = 0, crc = 0;
             std::uint16_t serve = 0;
+            AirStream kind = AirStream::MapFull; ///< a map's, or a track's
             char name[kAirNameBytes] = {};
         };
         struct Stream
@@ -231,7 +256,7 @@ namespace hldata
         /// Player `seat`, called `token` (it may have been on another seat when
         /// the link was lost), wants `map`'s stream from piece `from`.
         void want(std::uint16_t token, int seat, std::uint32_t map, bool live, std::uint32_t from, const char *name,
-                  std::uint32_t length, std::uint32_t crc, std::uint16_t serve)
+                  std::uint32_t length, std::uint32_t crc, std::uint16_t serve, AirStream kind = AirStream::MapFull)
         {
             Receiver *r = receiverOf(token);
             if (r == nullptr)
@@ -264,6 +289,7 @@ namespace hldata
             r->length = length;
             r->crc = crc;
             r->serve = serve;
+            r->kind = kind;
             std::strncpy(r->name, name, kAirNameBytes - 1);
             r->name[kAirNameBytes - 1] = 0;
             attach(*r);
@@ -420,7 +446,7 @@ namespace hldata
             streams[free] = Stream();
             streams[free].on = true;
             streams[free].map = r.map;
-            streams[free].air.begin(AirStream::MapFull, r.name, r.length, r.serve, 0);
+            streams[free].air.begin(r.kind, r.name, r.length, r.serve, 0);
             streams[free].air.crc = r.crc;
             join(r, free);
         }

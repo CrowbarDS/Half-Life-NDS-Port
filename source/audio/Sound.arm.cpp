@@ -36,7 +36,8 @@ namespace hlrt
         /// musicTick keeps filled ahead of it (two thirds of a second: a
         /// frame of the game's held up by the card does not run it dry).
 #ifdef HLDS_CHILD
-        // (A console sent the game is sent no music: nothing to keep ahead of.)
+        // (A console sent the game has music only in a demo, whose tracks are
+        // in memory whole and played where they lie: nothing to keep ahead of.)
         constexpr std::uint32_t kMusicRingBlocks = 1;
 #else
         constexpr std::uint32_t kMusicRingBlocks = 8;
@@ -1558,6 +1559,27 @@ namespace hlrt
         musicLeft_ = header.blocks - block;
         musicSkipped_ = block * StereoMusic::kPairsPerBlock;
         const std::uint32_t pairs = header.pairs > musicSkipped_ ? header.pairs - musicSkipped_ : 0;
+#ifdef HLDS_CHILD
+        // A demo's track, all of it in memory (on a 32-byte boundary, flushed
+        // as it came): the ARM7's ring is the rest of it, every block written.
+        // (The file stays open: it is what says music is playing.)
+        {
+            const std::uint8_t *whole = nullptr;
+            std::uint32_t wholeSize = 0;
+            if (air::memoryOf(path.c_str(), whole, wholeSize) && wholeSize == static_cast<std::uint32_t>(size) &&
+                musicLeft_ <= 0xFFFF)
+            {
+                arm7Audio.musicPrepare();
+                arm7Audio.musicWrote(musicLeft_);
+                const std::uint32_t blocks = musicLeft_;
+                musicLeft_ = 0;
+                musicShown_ = (musicGain() * mixer_.focus) >> 8;
+                arm7Audio.musicOpen(whole + sizeof(header) + block * static_cast<std::uint32_t>(blockBytes), blocks,
+                                    header.rate, pairs, musicShown_);
+                return;
+            }
+        }
+#endif
         // The ring filled first, then the ARM7 told: it begins on music.
         arm7Audio.musicPrepare();
         for (std::uint32_t n = 0; n < kMusicRingBlocks && musicLeft_ != 0; ++n)

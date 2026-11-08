@@ -47,6 +47,17 @@ namespace hlrt::air
     bool put(const char *name, const std::uint8_t *data, std::uint32_t size);
     /// Whether `name` is there.
     bool has(const char *name);
+    /// A demo's map's bank (HlAirBank.hpp), whole and checked, at `data`
+    /// (which stays put while it is mounted): its members are files too, after
+    /// those put here. Null: none.
+    void mountBank(const std::uint8_t *data, std::uint32_t size);
+    bool bankMounted();
+    /// A member of it stored as it is, on a 4-byte boundary: where it lies.
+    bool bankMember(const char *name, const std::uint8_t *&data, std::uint32_t &size);
+    /// Where `name`, put here as it is (not packed), lies in memory.
+    bool memoryOf(const char *name, const std::uint8_t *&data, std::uint32_t &size);
+    /// `name`, put here, is no longer.
+    void forget(const char *name);
     /// The files there, by number (0 .. count()-1).
     int count();
     const char *name(int index);

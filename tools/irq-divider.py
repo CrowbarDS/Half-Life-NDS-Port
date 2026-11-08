@@ -62,7 +62,8 @@ INSTALLERS = {
     "Wifi_MultiplayerFromHostSetPacketHandler": {
         "hlrt::netlink::join(int)", "hlrt::netlink::joinDirect", "hlrt::netlink::scan()", "hlrt::netlink::shutdown()"},
     "hlrt::netlink::setSink(bool (*)(unsigned char const*, int))": {
-        "hlrt::guest::(anonymous namespace)::demoWant", "hlrt::guest::(anonymous namespace)::ringOn"},
+        "hlrt::guest::(anonymous namespace)::demoWant", "hlrt::guest::(anonymous namespace)::ringOn",
+        "hlrt::guest::(anonymous namespace)::demoGetTrack"},
 }
 UNITS = ("__wrap___aeabi_ldivmod", "__wrap___aeabi_uldivmod", "hlHwSqrt64")
 CRASH = "__assert_func"

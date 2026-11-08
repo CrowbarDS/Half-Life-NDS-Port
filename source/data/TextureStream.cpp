@@ -20,6 +20,9 @@
 #include "data/ModelCache.hpp"
 #include "data/TextureCache.hpp"
 #include "data/VramWriter.hpp"
+#ifdef HLDS_CHILD
+#include "net/AirDevice.hpp"
+#endif
 #include "render/WorldDraw.hpp"
 #include <cstddef>
 extern "C" {
@@ -366,7 +369,8 @@ namespace hlrt
     void TextureStream::fetchTick()
     {
 #ifdef HLDS_CHILD
-        if (!global.twlChild || !active_ || netGame.fetchBusy())
+        // (A demo's map came with all of its textures: nothing to ask for.)
+        if (!global.twlChild || !active_ || netGame.fetchBusy() || air::bankMounted())
             return;
         int best = -1, bestScore = -1;
         for (int id = 0; id < planner.count(); ++id)
@@ -582,7 +586,11 @@ namespace hlrt
         std::memset(fetchNever, 0, sizeof(fetchNever));
         fetchAsked = -1;
         fetchCame_ = false;
-        if (global.twlChild)
+        bool nothingYet = global.twlChild;
+#ifdef HLDS_CHILD
+        nothingYet = nothingYet && !air::bankMounted(); // (a demo's map: they are all here)
+#endif
+        if (nothingYet)
         {
         }
         else if (planner.allFit())

@@ -116,7 +116,8 @@ namespace
     }
     void guestMapProgress(int percent)
     {
-        const std::string step = "Receiving " + guestMapName;
+        const char *besides = hlrt::guest::demoStep();
+        const std::string step = besides != nullptr ? std::string(besides) : "Receiving " + guestMapName;
         const int demo = hlrt::netGame.demo();
         guestPage(demo != 0 ? hldata::netDemoTitle(demo) : "JOINING THE MATCH", step.c_str(), percent);
     }
@@ -905,9 +906,12 @@ namespace
     /// begin flat.
     void demoReady()
     {
-        hlrt::bottomScreen.showProgress(hldata::netDemoTitle(hlrt::netGame.demo()), "Ready", "Getting the textures", 100, 100, false, true);
+        // (Sent with its bank, as a demo's map is: all of it here already.)
+        const bool whole = hlrt::air::bankMounted();
+        if (!whole)
+            hlrt::bottomScreen.showProgress(hldata::netDemoTitle(hlrt::netGame.demo()), "Ready", "Getting the textures", 100, 100, false, true);
         int heard = 0;
-        for (int n = 0; n < 15 * 60 && hlrt::netGame.on(); ++n)
+        for (int n = 0; n < 15 * 60 && hlrt::netGame.on() && !whole; ++n)
         {
             swiWaitForVBlank();
             hlrt::sound.frame();
@@ -1658,7 +1662,7 @@ int main(int argc, char *argv[])
                     const char *first = hldata::netDemoMaps(demo)[0];
                     leaving();
                     hlrt::netGame.forMapLoad();
-                    bool started = hlrt::guest::demoBegin(hlrt::netGame.demoLongest(), first);
+                    bool started = hlrt::guest::demoBegin(hlrt::netGame.demoLongest(), hlrt::netGame.demoMusicBytes(), first);
                     if (started)
                     {
                         hlrt::game.resetProgress();
@@ -1681,7 +1685,14 @@ int main(int argc, char *argv[])
                         }
                     }
                     else
-                        error = "Not enough memory";
+                    {
+                        std::uint32_t need = 0, had = 0;
+                        hlrt::guest::demoRoomSaid(need, had);
+                        char line[64];
+                        std::snprintf(line, sizeof(line), "Not enough memory: needs %lu KB, has %lu KB",
+                                      static_cast<unsigned long>(need), static_cast<unsigned long>(had));
+                        error = line;
+                    }
                     if (started)
                     {
                         demoReady();

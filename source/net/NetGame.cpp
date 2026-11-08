@@ -136,6 +136,7 @@ namespace hlrt
         rules.voteSeconds = settings.voteSeconds;
         rules.demo = match_.rules.demo;
         rules.demoLongest = match_.rules.demoLongest;
+        rules.demoMusic = match_.rules.demoMusic;
         const std::string *hosted = hostedMap(maps_);
         // (The map coming next, chosen when the last match ended, is not the
         // settings': they keep the host's own choice.)
@@ -2065,26 +2066,139 @@ namespace hlrt
         return true;
     }
 
-    bool NetGame::demoHost(int group)
+    namespace
     {
-        // How long the longest is: what a receiver makes its room by.
-        const char *const *maps = netDemoMaps(group);
-        std::uint32_t longest = 0;
-        for (int m = 0; m < kDemoMapsMost && maps[m] != nullptr; ++m)
+        std::uint32_t demoFileLength(const std::string &path)
         {
-            demoLength_[m] = demoCrc_[m] = 0;
-            if (std::FILE *file = std::fopen(global.dataPath(std::string("air/") + maps[m] + ".dsi.hgs").c_str(), "rb"))
+            std::uint32_t length = 0;
+            if (std::FILE *file = std::fopen(path.c_str(), "rb"))
             {
                 std::fseek(file, 0, SEEK_END);
-                demoLength_[m] = static_cast<std::uint32_t>(std::ftell(file));
+                const long end = std::ftell(file);
+                length = end > 0 ? static_cast<std::uint32_t>(end) : 0;
                 std::fclose(file);
-                longest = demoLength_[m] > longest ? demoLength_[m] : longest;
             }
+            return length;
+        }
+        std::string demoTrackPath(int track)
+        {
+            char name[16];
+            musicFileName(track, name, sizeof(name));
+            return global.dataPath(std::string("music/") + name);
+        }
+        /// The tracks a demo's map plays, as its bank says (kDemoTracksFile).
+        int demoBankTracks(const std::string &bank, int *tracks)
+        {
+            std::FILE *file = std::fopen(bank.c_str(), "rb");
+            if (file == nullptr)
+                return 0;
+            int count = 0;
+            AirBankHeader header;
+            const std::uint32_t want = nameHash(kDemoTracksFile);
+            if (std::fread(&header, sizeof(header), 1, file) == 1 && std::memcmp(header.magic, kAirBankMagic, 4) == 0 &&
+                header.version == kAirBankVersion)
+            {
+                for (int i = 0; i < header.count; ++i)
+                {
+                    AirBankEntry entry;
+                    if (std::fread(&entry, sizeof(entry), 1, file) != 1)
+                        break;
+                    if (entry.name != want)
+                        continue;
+                    std::uint8_t numbers[kDemoTracksMost];
+                    const std::uint32_t take = entry.raw < kDemoTracksMost ? entry.raw : kDemoTracksMost;
+                    if (entry.packed == entry.raw && std::fseek(file, static_cast<long>(entry.offset), SEEK_SET) == 0 &&
+                        std::fread(numbers, 1, take, file) == take)
+                    {
+                        for (std::uint32_t n = 0; n < take; ++n)
+                        {
+                            if (numbers[n] >= 2 && numbers[n] <= 99)
+                                tracks[count++] = numbers[n];
+                        }
+                    }
+                    break;
+                }
+            }
+            std::fclose(file);
+            return count;
+        }
+        /// The checksum of what is sent of a stream: `first`, then (if any)
+        /// `second` at demoBankAt.
+        std::uint32_t demoStreamCrc(const std::string &first, const std::string &second)
+        {
+            static std::uint8_t chunk[4096];
+            std::uint32_t crc = kCrcStart, length = 0;
+            if (std::FILE *file = std::fopen(first.c_str(), "rb"))
+            {
+                for (std::size_t got; (got = std::fread(chunk, 1, sizeof(chunk), file)) > 0;)
+                {
+                    crc = crc32Update(crc, chunk, got);
+                    length += static_cast<std::uint32_t>(got);
+                }
+                std::fclose(file);
+            }
+            if (!second.empty())
+            {
+                std::memset(chunk, 0, 32);
+                crc = crc32Update(crc, chunk, demoBankAt(length) - length);
+                if (std::FILE *file = std::fopen(second.c_str(), "rb"))
+                {
+                    for (std::size_t got; (got = std::fread(chunk, 1, sizeof(chunk), file)) > 0;)
+                        crc = crc32Update(crc, chunk, got);
+                    std::fclose(file);
+                }
+            }
+            return crc32Finish(crc);
+        }
+    } // namespace
+
+    bool NetGame::demoHost(int group)
+    {
+        // How long the longest is: what a receiver makes its room by. A map's
+        // stream is all of it: its .dsi.hgs, then its bank.
+        const char *const *maps = netDemoMaps(group);
+        std::uint32_t longest = 0, music = 0;
+        for (DemoTrack &track : demoTracks_)
+            track = DemoTrack();
+        for (int m = 0; m < kDemoMapsMost && maps[m] != nullptr; ++m)
+        {
+            demoLength_[m] = demoCrc_[m] = demoGuest_[m] = 0;
+            const std::string air = std::string("air/") + maps[m];
+            const std::uint32_t guest = demoFileLength(global.dataPath(air + ".dsi.hgs"));
+            const std::uint32_t bank = demoFileLength(global.dataPath(air + ".dsi.bank"));
+            if (guest == 0 || bank == 0)
+                continue;
+            demoGuest_[m] = guest;
+            demoLength_[m] = demoBankAt(guest) + bank;
+            longest = demoLength_[m] > longest ? demoLength_[m] : longest;
+            // ... and the music it plays, all held at once (and what is held
+            // from the map before may stay: the room is the most any map's
+            // tracks come to).
+            int tracks[kDemoTracksMost];
+            const int count = demoBankTracks(global.dataPath(air + ".dsi.bank"), tracks);
+            std::uint32_t mapMusic = 0;
+            for (int t = 0; t < count; ++t)
+            {
+                const std::uint32_t length = demoFileLength(demoTrackPath(tracks[t]));
+                mapMusic += (length + 31u) & ~31u;
+                for (DemoTrack &track : demoTracks_)
+                {
+                    if (track.track == tracks[t] || track.track == 0)
+                    {
+                        track.track = tracks[t];
+                        track.length = length;
+                        break;
+                    }
+                }
+            }
+            music = mapMusic > music ? mapMusic : music;
         }
         if (longest == 0 || !host())
             return false;
         match_.rules.demo = static_cast<std::uint8_t>(group);
         match_.rules.demoLongest = static_cast<std::uint16_t>((longest + 16383) / 16384);
+        const std::uint32_t musicUnits = (music + 65535) / 65536;
+        match_.rules.demoMusic = static_cast<std::uint8_t>(musicUnits > 255 ? 0 : musicUnits);
         demoServer_ = DemoServer();
         for (int c = 0; c < kNetPlayers; ++c)
         {
@@ -2099,12 +2213,7 @@ namespace hlrt
     void NetGame::demoStop()
     {
         for (int s = 0; s < DemoServer::kStreams; ++s)
-        {
-            if (demoFile_[s] != nullptr)
-                std::fclose(demoFile_[s]);
-            demoFile_[s] = nullptr;
-            demoFileMap_[s] = 0;
-        }
+            demoClose(s);
         demoServer_ = DemoServer();
         demoLiveNow_ = false;
         for (DemoUpTaker &taker : demoTakers_)
@@ -2243,23 +2352,41 @@ namespace hlrt
             return;
         const std::uint32_t map = static_cast<std::uint16_t>(event.v[0]) | static_cast<std::uint32_t>(static_cast<std::uint16_t>(event.v[1])) << 16;
         const std::uint32_t from = static_cast<std::uint16_t>(event.v[2]) | static_cast<std::uint32_t>(static_cast<std::uint16_t>(event.v[3])) << 16;
+        // A track of the music: one of those the demo's maps play.
+        if (event.v[4] != 0)
+        {
+            for (DemoTrack &track : demoTracks_)
+            {
+                if (track.track != event.v[4] || track.length == 0)
+                    continue;
+                char name[kAirNameBytes];
+                demoTrackName(track.track, name, sizeof(name));
+                if (nameHash(name) != map)
+                    return;
+                if (track.crc == 0)
+                    track.crc = demoStreamCrc(demoTrackPath(track.track), std::string());
+                demoTokens_[c] = match_.host.clients[c].token;
+                if (from == 0xFFFFFFFFu)
+                {
+                    demoServer_.lost(demoTokens_[c]);
+                    return;
+                }
+                demoServer_.want(demoTokens_[c], c, map, event.a != 0, from, name, track.length, track.crc,
+                                 static_cast<std::uint16_t>(0x200 | track.track), AirStream::Music);
+                return;
+            }
+            return;
+        }
         const char *const *maps = netDemoMaps(match_.rules.demo);
         for (int m = 0; m < kDemoMapsMost && maps[m] != nullptr; ++m)
         {
             if (nameHash(maps[m]) != map)
                 continue;
             // What it is said to come to, worked out the first time it is asked for.
-            if (demoCrc_[m] == 0)
+            if (demoCrc_[m] == 0 && demoLength_[m] != 0)
             {
-                if (std::FILE *file = std::fopen(global.dataPath(std::string("air/") + maps[m] + ".dsi.hgs").c_str(), "rb"))
-                {
-                    static std::uint8_t chunk[4096];
-                    std::uint32_t crc = kCrcStart;
-                    for (std::size_t got; (got = std::fread(chunk, 1, sizeof(chunk), file)) > 0;)
-                        crc = crc32Update(crc, chunk, got);
-                    std::fclose(file);
-                    demoCrc_[m] = crc32Finish(crc);
-                }
+                const std::string air = std::string("air/") + maps[m];
+                demoCrc_[m] = demoStreamCrc(global.dataPath(air + ".dsi.hgs"), global.dataPath(air + ".dsi.bank"));
             }
             demoTokens_[c] = match_.host.clients[c].token;
             // (What it is playing: whose textures it will ask for. All of it
@@ -2275,6 +2402,61 @@ namespace hlrt
                              static_cast<std::uint16_t>(m + 1));
             return;
         }
+    }
+
+    void NetGame::demoClose(int stream)
+    {
+        if (demoFile_[stream] != nullptr)
+            std::fclose(demoFile_[stream]);
+        if (demoBank_[stream] != nullptr)
+            std::fclose(demoBank_[stream]);
+        demoFile_[stream] = demoBank_[stream] = nullptr;
+        demoFileMap_[stream] = 0;
+        demoFileGuest_[stream] = 0;
+    }
+
+    bool NetGame::demoRead(int stream, std::uint32_t at, std::uint8_t *to, int count)
+    {
+        // The first file; the gap to the bank, nothing; then the bank.
+        const std::uint32_t guest = demoFileGuest_[stream];
+        const std::uint32_t bankAt = demoBankAt(guest);
+        while (count > 0)
+        {
+            std::FILE *file = nullptr;
+            std::uint32_t inFile = 0, left = 0;
+            if (at < guest)
+            {
+                file = demoFile_[stream];
+                inFile = at;
+                left = guest - at;
+            }
+            else if (at < bankAt || demoBank_[stream] == nullptr)
+            {
+                if (demoBank_[stream] == nullptr)
+                    return false; // (past the end of a track)
+                const std::uint32_t gap = bankAt - at;
+                const int zeros = static_cast<int>(gap) < count ? static_cast<int>(gap) : count;
+                std::memset(to, 0, static_cast<std::size_t>(zeros));
+                to += zeros;
+                at += static_cast<std::uint32_t>(zeros);
+                count -= zeros;
+                continue;
+            }
+            else
+            {
+                file = demoBank_[stream];
+                inFile = at - bankAt;
+                left = 0x7FFFFFFF;
+            }
+            const int step = static_cast<int>(left) < count ? static_cast<int>(left) : count;
+            if (std::fseek(file, static_cast<long>(inFile), SEEK_SET) != 0 ||
+                std::fread(to, 1, static_cast<std::size_t>(step), file) != static_cast<std::size_t>(step))
+                return false;
+            to += step;
+            at += static_cast<std::uint32_t>(step);
+            count -= step;
+        }
+        return true;
     }
 
     int NetGame::demoFrame()
@@ -2309,21 +2491,31 @@ namespace hlrt
             if (textures && !live)
                 break;
             demoLiveNow_ = demoLiveNow_ || live;
+            const AirSender &air = demoServer_.streams[stream].air;
             if (demoFileMap_[stream] != demoServer_.streams[stream].map)
             {
-                if (demoFile_[stream] != nullptr)
-                    std::fclose(demoFile_[stream]);
-                demoFile_[stream] = nullptr;
+                demoClose(stream);
                 demoFileMap_[stream] = demoServer_.streams[stream].map;
-                demoFile_[stream] = std::fopen(
-                    global.dataPath(std::string("air/") + demoServer_.streams[stream].air.name + ".dsi.hgs").c_str(), "rb");
+                if (air.stream == AirStream::Music)
+                {
+                    const int track = (air.name[5] - '0') * 10 + (air.name[6] - '0');
+                    demoFile_[stream] = std::fopen(demoTrackPath(track).c_str(), "rb");
+                    demoFileGuest_[stream] = air.length;
+                }
+                else
+                {
+                    const std::string path = global.dataPath(std::string("air/") + air.name);
+                    demoFile_[stream] = std::fopen((path + ".dsi.hgs").c_str(), "rb");
+                    demoBank_[stream] = std::fopen((path + ".dsi.bank").c_str(), "rb");
+                    demoFileGuest_[stream] = demoFileLength(path + ".dsi.hgs");
+                    if (demoBank_[stream] == nullptr)
+                        demoClose(stream);
+                }
             }
             if (demoFile_[stream] == nullptr)
                 break;
-            const AirSender &air = demoServer_.streams[stream].air;
             const int count = air.pieceBytes(index);
-            if (std::fseek(demoFile_[stream], static_cast<long>(index) * kAirPiece, SEEK_SET) != 0 ||
-                std::fread(piece, 1, static_cast<std::size_t>(count), demoFile_[stream]) != static_cast<std::size_t>(count))
+            if (!demoRead(stream, index * kAirPiece, piece, count))
                 break;
             const int size = air.piece(index, piece, count, bytes);
             if (size > 0)
@@ -2354,11 +2546,11 @@ namespace hlrt
         fetchAsk(FetchFrom::DemoSave, what);
     }
 
-    void NetGame::demoAsk(std::uint32_t map, bool now, std::uint32_t from)
+    void NetGame::demoAsk(std::uint32_t map, bool now, std::uint32_t from, int track)
     {
         netSay(match_, netEvent(NetEventType::DemoWant, now ? 1 : 0, static_cast<std::int16_t>(map & 0xFFFF),
                                 static_cast<std::int16_t>(map >> 16), static_cast<std::int16_t>(from & 0xFFFF),
-                                static_cast<std::int16_t>(from >> 16)));
+                                static_cast<std::int16_t>(from >> 16), track));
     }
 #endif
 

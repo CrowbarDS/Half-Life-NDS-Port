@@ -47,6 +47,45 @@ namespace hldata
     };
     static_assert(sizeof(AirBankEntry) == 20);
 
+    /// A bank in memory (`size` bytes at `bank`, 4-aligned): the member whose
+    /// path hashes to `name`, if the table has it and it lies inside. Nothing
+    /// in a bank is trusted: one cut short or wrong finds nothing.
+    inline bool airBankFind(const std::uint8_t *bank, std::uint32_t size, std::uint32_t name, AirBankEntry &out)
+    {
+        if (bank == nullptr || size < sizeof(AirBankHeader))
+            return false;
+        AirBankHeader header;
+        std::memcpy(&header, bank, sizeof(header));
+        if (std::memcmp(header.magic, kAirBankMagic, 4) != 0 || header.version != kAirBankVersion ||
+            sizeof(AirBankHeader) + static_cast<std::uint32_t>(header.count) * sizeof(AirBankEntry) > size)
+            return false;
+        const std::uint8_t *table = bank + sizeof(AirBankHeader);
+        int low = 0, high = static_cast<int>(header.count) - 1;
+        while (low <= high)
+        {
+            const int middle = (low + high) / 2;
+            AirBankEntry entry;
+            std::memcpy(&entry, table + static_cast<std::size_t>(middle) * sizeof(AirBankEntry), sizeof(entry));
+            if (entry.name == name)
+            {
+                if (entry.offset > size || entry.packed > size - entry.offset || entry.raw < entry.packed)
+                    return false;
+                out = entry;
+                return true;
+            }
+            if (entry.name < name)
+                low = middle + 1;
+            else
+                high = middle - 1;
+        }
+        return false;
+    }
+
+    /// The tracks a demo's map plays, as its bank has them (kDemoTracksFile):
+    /// one byte each, the game's numbers.
+    inline constexpr const char *kDemoTracksFile = "music/tracks";
+    inline constexpr int kDemoTracksMost = 4;
+
     /// What is asked for: from where, and what.
     enum class FetchFrom : std::uint8_t
     {

@@ -146,11 +146,14 @@ namespace hlds
             // sounds, and the base's (textures are in video memory).
             for (const std::string &map : groups[g])
             {
-                std::size_t bytes = 0, memory = 0;
+                std::size_t bytes = 0, memory = 0, bank = 0;
                 std::string failed;
-                if (packAirFull(stageDir(), dataDir(options_.cardRoot), map, bytes, memory, failed))
+                // (The demos' maps, groups after the first: sent with all of
+                // their bank.)
+                if (packAirFull(stageDir(), dataDir(options_.cardRoot), map, bytes, memory, failed, g != 0, &bank))
                     common_.guest.push_back("  " + map + " at full quality: " + std::to_string(bytes / 1024) + " KB sent, " +
-                                            std::to_string(memory / 1024) + " KB in memory");
+                                            std::to_string(memory / 1024) + " KB in memory" +
+                                            (g != 0 ? ", bank " + std::to_string(bank / 1024) + " KB" : std::string()));
                 else
                     common_.warnings.push_back("the full-quality stream of " + map + " was not made: " + failed);
             }

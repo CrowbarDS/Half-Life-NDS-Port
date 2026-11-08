@@ -10,7 +10,9 @@
 #include <nds.h>
 
 #include "Global.hpp"
+#include "HlAirBank.hpp"
 #include "HlLevelReader.hpp"
+#include "HlSound.hpp"
 #include "net/AirDevice.hpp"
 #include "net/NetGame.hpp"
 #include "net/NetLink.hpp"
@@ -241,11 +243,15 @@ namespace hlrt::guest
         // kept until it ends. The stream comes to it, wherever the game is.
         constexpr std::uint32_t kDemoFolderBytes = 256 * 1024;
         constexpr std::uint32_t kDemoCrcBytes = 8 * 1024; ///< checked, of a stream come, as a frame goes
+        constexpr std::uint32_t kDemoCheckBytes = 256 * 1024; ///< ... and a vblank's worth, while a map waits for it
         constexpr std::uint32_t kDemoAskVblanks = 120;
         constexpr std::uint32_t kDemoGiveUpVblanks = 3600;
-        /// What a full map needs beside its stream: its own blocks, and the
-        /// textures that come as they are looked at.
-        constexpr std::uint32_t kDemoPlayBytes = 5 * 1024 * 1024;
+        /// A track the host does not answer for: gone without.
+        constexpr std::uint32_t kDemoTrackGiveUpVblanks = 600;
+        /// What a full map needs beside its stream: its own blocks. (Its
+        /// textures, sounds and weapons are in its stream's bank, and played
+        /// or read where they lie.)
+        constexpr std::uint32_t kDemoPlayBytes = 9 * 512 * 1024;
         constexpr int kDemoLinksMost = 8;
         std::uint8_t *demoRoom = nullptr;
         std::uint32_t demoRoomBytes = 0;
@@ -262,6 +268,25 @@ namespace hlrt::guest
         /// How far each place got, if it was left for something more urgent.
         std::uint32_t demoFrom[hldata::DemoArena::kPlaces] = {};
         std::uint32_t demoFromMap[hldata::DemoArena::kPlaces] = {};
+        /// The map's tracks (HlAirBank.hpp's kDemoTracksFile): in the block's
+        /// last part, each put on the drive as music/trackNN.hsd once whole
+        /// and checked, and kept from map to map while there is room.
+        std::uint8_t *demoMusicRoom = nullptr;
+        std::uint32_t demoMusicBytes = 0;
+        struct DemoTrack
+        {
+            int track;
+            std::uint32_t at, length;
+        };
+        DemoTrack demoTracks[hldata::kDemoTracksMost];
+        int demoTrackCount = 0;
+        int demoTakingTrack = 0; ///< the track the receiver is on (0: a map's stream)
+        /// beginMap waits for all of the map: it checks what has come, not
+        /// demoAnswer, and nothing else is asked for meanwhile.
+        bool demoWaiting = false;
+        const char *demoStepNow = nullptr;
+        std::uint32_t demoGuestEnd = 0; ///< where the map's .dsi.hgs ends in its stream
+        std::uint32_t demoNeedKb = 0, demoHadKb = 0;
 
         // What is on its way to the host: in the block's first part, one after
         // the other, the first of them going. No heap: this is during play.
@@ -307,7 +332,7 @@ namespace hlrt::guest
             const int place = name == nullptr ? -1 : demoArena.take(map, 0, live ? hldata::DemoArena::Role::Current : hldata::DemoArena::Role::Next);
             if (place < 0)
                 return;
-            const int left = demoTaking != 0 ? demoArena.find(demoTaking) : -1;
+            const int left = demoTaking != 0 && demoTakingTrack == 0 ? demoArena.find(demoTaking) : -1;
             std::uint32_t from;
             {
                 const Hold hold;
@@ -317,9 +342,11 @@ namespace hlrt::guest
                     demoFromMap[left] = demoTaking;
                 }
                 from = demoFromMap[place] == map ? demoFrom[place] : 0;
-                receiver.wantDirect(hldata::AirStream::MapFull, name, demoRoom + demoArena.offsetOf(place), from);
+                receiver.wantDirect(hldata::AirStream::MapFull, name, demoRoom + demoArena.offsetOf(place), from,
+                                    demoArena.placeBytes);
             }
             demoTaking = map;
+            demoTakingTrack = 0;
             streamSince = Global::vblanks();
             demoCrcAt = 0;
             demoCrcSoFar = hldata::kCrcStart;
@@ -338,6 +365,7 @@ namespace hlrt::guest
             const std::uint8_t *data = nullptr;
             std::uint32_t map = 0;
             std::uint32_t at = 0;
+            std::uint32_t end = 0; ///< where its .dsi.hgs ends (0: where the stream does)
             int shown = -1;
             std::uint32_t heardAt = 0;
             std::uint32_t since = 0;
@@ -358,6 +386,7 @@ namespace hlrt::guest
                             come = receiver.base * hldata::kAirPiece;
                         }
                     }
+                    all = end != 0 && all > end ? end : all;
                     come = come > all ? all : come;
                     if (Global::vblanks() != heardAt)
                     {
@@ -383,6 +412,280 @@ namespace hlrt::guest
             }
         };
         ArenaSupply arenaSupply;
+
+        /// What has come of the stream being taken (all of it, at `data`),
+        /// checked `step` bytes further: 0 not yet known, 1 right, -1 wrong.
+        int demoCheck(const std::uint8_t *data, std::uint32_t step)
+        {
+            const std::uint32_t rest = receiver.length - demoCrcAt;
+            const std::uint32_t n = rest < step ? rest : step;
+            demoCrcSoFar = hldata::crc32Update(demoCrcSoFar, data + demoCrcAt, n);
+            demoCrcAt += n;
+            if (demoCrcAt < receiver.length)
+                return 0;
+            return hldata::crc32Finish(demoCrcSoFar) == receiver.crc ? 1 : -1;
+        }
+
+        /// The map's stream came wrong: all of it asked for again.
+        void demoSpoiled(std::uint32_t map)
+        {
+            const int place = demoArena.find(map);
+            if (place >= 0)
+                demoFromMap[place] = 0;
+            demoTaking = 0;
+            demoArena.spoiled(map);
+            demoWant(map, map == demoMap);
+        }
+
+        /// How far what is being waited for has got, told now and then.
+        struct Shown
+        {
+            int percent = -1;
+            std::uint32_t at = 0;
+            void tell()
+            {
+                std::uint32_t base, pieces;
+                {
+                    const Hold hold;
+                    base = receiver.base;
+                    pieces = receiver.known ? receiver.pieces() : 0;
+                }
+                const int now = pieces == 0 ? 0 : static_cast<int>(static_cast<std::uint64_t>(base) * 100 / pieces);
+                if (mapProgress != nullptr && now != percent && (percent < 0 || Global::vblanks() - at >= 6))
+                {
+                    at = Global::vblanks();
+                    mapProgress(percent = now);
+                }
+            }
+        };
+
+        void demoForgetTrack(int index)
+        {
+            char name[24] = "music/";
+            hldata::musicFileName(demoTracks[index].track, name + 6, sizeof(name) - 6);
+            air::forget(name);
+            for (int k = index; k + 1 < demoTrackCount; ++k)
+                demoTracks[k] = demoTracks[k + 1];
+            --demoTrackCount;
+        }
+
+        /// Track `track` to the music's room, after those held (or, if there
+        /// is not room for it there, after those of them the map plays too,
+        /// moved down: the others let go of). Done without, if it cannot be
+        /// had: the host has it not, or there is no room.
+        /// (Not folded into its caller: it puts the radio's sink in, which
+        /// tools/irq-divider.py knows it for.)
+        __attribute__((noinline)) void demoGetTrack(int track, const int *wanted, int wantedCount)
+        {
+            char named[hldata::kAirNameBytes];
+            hldata::demoTrackName(track, named, sizeof(named));
+            const std::uint32_t hash = hldata::nameHash(named);
+            for (int attempt = 0, wrong = 0; attempt < 2 && wrong < 3;)
+            {
+                if (attempt == 1)
+                {
+                    // (Only what the map plays: moved down, lowest first.)
+                    for (int k = 0; k < demoTrackCount;)
+                    {
+                        bool keep = false;
+                        for (int w = 0; w < wantedCount; ++w)
+                            keep = keep || wanted[w] == demoTracks[k].track;
+                        if (keep)
+                            ++k;
+                        else
+                            demoForgetTrack(k);
+                    }
+                    std::uint32_t at = 0;
+                    for (int k = 0; k < demoTrackCount; ++k)
+                    {
+                        DemoTrack &held = demoTracks[k];
+                        if (held.at != at)
+                        {
+                            std::memmove(demoMusicRoom + at, demoMusicRoom + held.at, held.length);
+                            DC_FlushRange(demoMusicRoom + at, held.length);
+                            held.at = at;
+                            char name[24] = "music/";
+                            hldata::musicFileName(held.track, name + 6, sizeof(name) - 6);
+                            air::put(name, demoMusicRoom + at, held.length);
+                        }
+                        at += (held.length + 31u) & ~31u;
+                    }
+                }
+                std::uint32_t end = 0;
+                for (int k = 0; k < demoTrackCount; ++k)
+                {
+                    const std::uint32_t after = demoTracks[k].at + ((demoTracks[k].length + 31u) & ~31u);
+                    end = after > end ? after : end;
+                }
+                if (end >= demoMusicBytes || demoTrackCount == hldata::kDemoTracksMost)
+                {
+                    ++attempt;
+                    continue;
+                }
+                {
+                    const Hold hold;
+                    receiver.wantDirect(hldata::AirStream::Music, named, demoMusicRoom + end, 0, demoMusicBytes - end);
+                }
+                demoTaking = hash;
+                demoTakingTrack = track;
+                streamSince = demoAskedAt = Global::vblanks();
+                quietSince = streamSince;
+                demoCrcAt = 0;
+                demoCrcSoFar = hldata::kCrcStart;
+                demoSaidDone = 0;
+                netlink::setSink(sinkTake);
+                netGame.demoAsk(hash, true, 0, track);
+                Shown shown;
+                std::uint32_t lastBase = 0, lastAt = Global::vblanks();
+                int result = 0;
+                while (result == 0)
+                {
+                    if (!netGame.on())
+                        return;
+                    bool done, refused;
+                    std::uint32_t base;
+                    {
+                        const Hold hold;
+                        done = receiver.done();
+                        refused = receiver.refused;
+                        base = receiver.base;
+                    }
+                    if (refused)
+                        break;
+                    if (done)
+                        result = demoCheck(demoMusicRoom + end, kDemoCheckBytes);
+                    shown.tell();
+                    if (base != lastBase)
+                    {
+                        lastBase = base;
+                        lastAt = Global::vblanks();
+                    }
+                    else if (Global::vblanks() - lastAt > (base == 0 ? kDemoTrackGiveUpVblanks : kDemoGiveUpVblanks))
+                        return;
+                    netGame.frame();
+                    swiWaitForVBlank();
+                }
+                if (result == 0) // (refused: no room there)
+                {
+                    ++attempt;
+                    continue;
+                }
+                if (result < 0)
+                {
+                    ++wrong;
+                    continue;
+                }
+                // Here and right: played where it lies, by the ARM7.
+                DC_FlushRange(demoMusicRoom + end, receiver.length);
+                char name[24] = "music/";
+                hldata::musicFileName(track, name + 6, sizeof(name) - 6);
+                if (air::put(name, demoMusicRoom + end, receiver.length))
+                    demoTracks[demoTrackCount++] = DemoTrack{track, end, receiver.length};
+                return;
+            }
+        }
+
+        /// beginMap's, for a demo's map: all of its stream here and right, its
+        /// bank mounted, and the tracks it plays here too. False: the host has
+        /// gone quiet.
+        bool demoAwait(std::uint32_t map)
+        {
+            struct Waiting
+            {
+                Waiting() { demoWaiting = true; }
+                ~Waiting()
+                {
+                    demoWaiting = false;
+                    demoStepNow = nullptr;
+                }
+            } waiting;
+            Shown shown;
+            std::uint32_t lastBase = ~0u, lastAt = Global::vblanks();
+            while (!demoArena.isWhole(map))
+            {
+                if (!netGame.on() || demoArena.find(map) < 0)
+                    return false;
+                if (demoTaking != map || demoTakingTrack != 0)
+                    demoWant(map, true);
+                bool done;
+                std::uint32_t base;
+                {
+                    const Hold hold;
+                    done = receiver.done();
+                    base = receiver.base;
+                }
+                if (done)
+                {
+                    const int result = demoCheck(demoPlaceOf(map), kDemoCheckBytes);
+                    if (result > 0)
+                    {
+                        demoArena.places[demoArena.find(map)].length = receiver.length;
+                        demoArena.arrived(map);
+                        demoSaidDone = 0;
+                        break;
+                    }
+                    if (result < 0)
+                        demoSpoiled(map);
+                }
+                shown.tell();
+                if (base != lastBase)
+                {
+                    lastBase = base;
+                    lastAt = Global::vblanks();
+                }
+                else if (Global::vblanks() - lastAt > kDemoGiveUpVblanks)
+                    return false;
+                netGame.frame();
+                swiWaitForVBlank();
+            }
+            if (mapProgress != nullptr)
+                mapProgress(100);
+            // Its bank: after its .dsi.hgs, whose header says how long that is.
+            std::uint8_t *place = demoPlaceOf(map);
+            const std::uint32_t length = demoArena.places[demoArena.find(map)].length;
+            hldata::GuestHeader header;
+            if (place == nullptr || length < sizeof(header))
+                return false;
+            std::memcpy(&header, place, sizeof(header));
+            if (header.streamBytes > length)
+                return false;
+            demoGuestEnd = header.streamBytes;
+            const std::uint32_t bankAt = hldata::demoBankAt(header.streamBytes);
+            if (bankAt < length)
+                air::mountBank(place + bankAt, length - bankAt);
+            // The tracks it plays.
+            const std::uint8_t *list = nullptr;
+            std::uint32_t listSize = 0;
+            int wanted[hldata::kDemoTracksMost];
+            int wantedCount = 0;
+            if (demoMusicRoom != nullptr && air::bankMember(hldata::kDemoTracksFile, list, listSize))
+            {
+                for (std::uint32_t n = 0; n < listSize && wantedCount < hldata::kDemoTracksMost; ++n)
+                {
+                    if (list[n] >= 2 && list[n] <= 99)
+                        wanted[wantedCount++] = list[n];
+                }
+            }
+            for (int w = 0; w < wantedCount; ++w)
+            {
+                bool held = false;
+                for (int k = 0; k < demoTrackCount; ++k)
+                    held = held || demoTracks[k].track == wanted[w];
+                if (held)
+                    continue;
+                demoStepNow = "Receiving the music";
+                demoGetTrack(wanted[w], wanted, wantedCount);
+            }
+            // (What comes next is asked for once the map is played, after it
+            // has been said that the last has all come.)
+            if (demoTakingTrack != 0)
+            {
+                demoTaking = map;
+                demoTakingTrack = 0;
+                demoSaidDone = 0;
+            }
+            return true;
+        }
 
         /// Every member of a stream, each into a block of its own, handed to
         /// `keep` (which owns it from then on, or frees it). (Its cursor in
@@ -471,7 +774,8 @@ namespace hlrt::guest
                 return true;
             }
         }
-        return false;
+        // (A demo's map's bank, where its sounds lie.)
+        return air::bankMember(name, data, size);
     }
 
     void offerMap(const std::string &map, const std::uint8_t *data, std::uint32_t size)
@@ -504,8 +808,9 @@ namespace hlrt::guest
     bool beginMap(const std::string &map)
     {
         endMap();
-        // (The last map's weapons, kept packed, go with it.)
+        // (The last map's weapons, kept packed, go with it; and its bank.)
         air::dropMapFiles();
+        air::mountBank(nullptr, 0);
         if (demoOn && offerCount > 0)
             offers[0].map = map;
         for (int i = 0; i < offerCount; ++i)
@@ -533,10 +838,15 @@ namespace hlrt::guest
                 }
                 else
                     netGame.demoAsk(hash, true, 0xFFFFFFFFu); // (for whose textures)
+                // All of it before any is read: its bank, which its files are
+                // read from as the map loads, and its music.
+                if (demoPlaceOf(hash) == nullptr || !demoAwait(hash))
+                    return false;
                 arenaSupply = ArenaSupply();
-                arenaSupply.progress = mapProgress;
+                arenaSupply.progress = nullptr;
                 arenaSupply.map = hash;
                 arenaSupply.data = demoPlaceOf(hash);
+                arenaSupply.end = demoGuestEnd;
                 if (arenaSupply.data == nullptr)
                     return false;
                 supply = &arenaSupply;
@@ -741,18 +1051,32 @@ namespace hlrt::guest
         return ok;
     }
 
-    bool demoBegin(std::uint32_t longest, const char *map)
+    bool demoBegin(std::uint32_t longest, std::uint32_t music, const char *map)
     {
-        // (This one and the next, if there is the room: else only this one,
-        // and the next comes as it is gone to. Kept once had: a block this
-        // size let go of may not be had again, and it is wanted again by a
-        // console that comes back.)
-        for (std::uint32_t count = 2; count >= 1 && !demoOn; --count)
+        // This map and the next, and the music, if there is the room; else
+        // this map and the music (the next comes as it is gone to); else this
+        // map without its music. Kept once had: a block this size let go of
+        // may not be had again, and it is wanted again by a console that
+        // comes back. (Its places and its music on 32-byte boundaries: the
+        // bank's sounds and the tracks are played where they lie.)
+        longest = (longest + 31u) & ~31u;
+        music = (music + 31u) & ~31u;
+        const struct
         {
-            const std::uint32_t bytes = kDemoFolderBytes + count * longest;
+            std::uint32_t places, music;
+        } ways[] = {{2, music}, {1, music}, {1, 0}};
+        demoNeedKb = demoHadKb = 0;
+        for (const auto &way : ways)
+        {
+            if (demoOn)
+                break;
+            const std::uint32_t bytes = kDemoFolderBytes + way.places * longest + way.music;
+            const std::uint32_t arena = bytes - way.music;
             if (demoRoom != nullptr && demoRoomBytes >= bytes)
             {
-                demoArena.plan(demoRoomBytes, kDemoFolderBytes, longest);
+                demoArena.plan(arena, kDemoFolderBytes, longest);
+                demoMusicRoom = way.music != 0 ? demoRoom + arena : nullptr;
+                demoMusicBytes = way.music;
                 demoOn = true;
                 break;
             }
@@ -761,18 +1085,28 @@ namespace hlrt::guest
             demoRoomBytes = 0;
             // (What was let go of counts as well as what was never had.)
             const struct mallinfo info = mallinfo();
-            if (global.heapHeadroom() + info.fordblks < bytes + kDemoPlayBytes)
+            const std::size_t free = global.heapHeadroom() + info.fordblks;
+            if (demoNeedKb == 0 || bytes + kDemoPlayBytes < demoNeedKb * 1024u)
+            {
+                demoNeedKb = (bytes + kDemoPlayBytes) / 1024;
+                demoHadKb = static_cast<std::uint32_t>(free / 1024);
+            }
+            if (free < bytes + kDemoPlayBytes)
                 continue;
-            demoRoom = static_cast<std::uint8_t *>(std::malloc(bytes));
+            demoRoom = static_cast<std::uint8_t *>(memalign(32, bytes));
             if (demoRoom != nullptr)
             {
                 demoRoomBytes = bytes;
-                demoArena.plan(bytes, kDemoFolderBytes, longest);
+                demoArena.plan(arena, kDemoFolderBytes, longest);
+                demoMusicRoom = way.music != 0 ? demoRoom + arena : nullptr;
+                demoMusicBytes = way.music;
                 demoOn = true;
             }
         }
         if (!demoOn)
             return false;
+        demoTrackCount = 0;
+        demoTakingTrack = 0;
         for (std::uint32_t &at : demoFromMap)
             at = 0;
         demoUp = hldata::DemoUpSender();
@@ -789,6 +1123,10 @@ namespace hlrt::guest
     {
         if (!demoOn)
             return;
+        air::mountBank(nullptr, 0);
+        while (demoTrackCount > 0)
+            demoForgetTrack(demoTrackCount - 1);
+        demoTakingTrack = 0;
         {
             const Hold hold;
             receiver = hldata::AirReceiver();
@@ -805,6 +1143,14 @@ namespace hlrt::guest
     }
 
     bool demoPlaying() { return demoOn; }
+
+    const char *demoStep() { return demoStepNow; }
+
+    void demoRoomSaid(std::uint32_t &needKb, std::uint32_t &hadKb)
+    {
+        needKb = demoNeedKb;
+        hadKb = demoHadKb;
+    }
 
     std::uint8_t *demoSendRoom(std::uint32_t size)
     {
@@ -960,7 +1306,7 @@ namespace hlrt::guest
             if (now - quietSince >= kDemoAskVblanks && now - demoAskedAt >= kDemoAskVblanks)
             {
                 demoAskedAt = now;
-                netGame.demoAsk(demoTaking, demoTaking == demoMap, receiver.base);
+                netGame.demoAsk(demoTaking, demoTaking == demoMap || demoTakingTrack != 0, receiver.base, demoTakingTrack);
                 return 0;
             }
             // (An answer for a frame that has come, as pump's: said with
@@ -973,30 +1319,19 @@ namespace hlrt::guest
             return receiver.known ? receiver.ask(reply) : 0;
         }
         // All here: is it what was sent? A little at a time: the game is on.
-        if (!demoArena.isWhole(demoTaking))
+        // (A map being waited for, or a track: checked by who waits.)
+        if (!demoWaiting && demoTakingTrack == 0 && !demoArena.isWhole(demoTaking))
         {
-            const std::uint8_t *data = demoPlaceOf(demoTaking);
-            const std::uint32_t rest = receiver.length - demoCrcAt;
-            const std::uint32_t step = rest < kDemoCrcBytes ? rest : kDemoCrcBytes;
-            demoCrcSoFar = hldata::crc32Update(demoCrcSoFar, data + demoCrcAt, step);
-            demoCrcAt += step;
-            if (demoCrcAt >= receiver.length)
+            const int result = demoCheck(demoPlaceOf(demoTaking), kDemoCrcBytes);
+            if (result > 0)
             {
-                if (hldata::crc32Finish(demoCrcSoFar) == receiver.crc)
-                {
-                    demoArena.places[demoArena.find(demoTaking)].length = receiver.length;
-                    demoArena.arrived(demoTaking);
-                }
-                else
-                {
-                    const std::uint32_t map = demoTaking;
-                    const int place = demoArena.find(map);
-                    demoFromMap[place] = 0;
-                    demoTaking = 0;
-                    demoArena.spoiled(map);
-                    demoWant(map, map == demoMap);
-                    return 0;
-                }
+                demoArena.places[demoArena.find(demoTaking)].length = receiver.length;
+                demoArena.arrived(demoTaking);
+            }
+            else if (result < 0)
+            {
+                demoSpoiled(demoTaking);
+                return 0;
             }
         }
         // (Said for a while: one lost answer would keep the host sending.)
@@ -1008,7 +1343,7 @@ namespace hlrt::guest
         }
         // Then what is wanted next: what comes after this map, or the rest of
         // one left for it.
-        if (demoArena.isWhole(demoTaking))
+        if (!demoWaiting && demoTakingTrack == 0 && demoArena.isWhole(demoTaking))
         {
             for (int n = 0; n < demoLinkCount; ++n)
             {

@@ -172,8 +172,11 @@ namespace hlrt
         /// of those here; false: no such. Its signal, 0..4.
         bool demoRow(int row, char *line, int room, int &bars);
 #else
-        /// A console in DSi mode playing a demo: this map wanted, from this piece.
-        void demoAsk(std::uint32_t map, bool now, std::uint32_t from);
+        /// A console in DSi mode playing a demo: this map wanted, from this piece
+        /// (`track`: not a map, the music's track of that number).
+        void demoAsk(std::uint32_t map, bool now, std::uint32_t from, int track = 0);
+        /// The room the demo's tracks need (0: it has none).
+        std::uint32_t demoMusicBytes() const { return static_cast<std::uint32_t>(match_.rules.demoMusic) * 65536u; }
         /// Who this console is, to the host (which says whether it holds its
         /// progress: demoKnown); or that its progress is let go of.
         void demoHello(bool letGo);
@@ -380,10 +383,24 @@ namespace hlrt
         // Serving a demo: who is sent what, each stream's file, and what is
         // known of each map's.
         hldata::DemoServer demoServer_;
+        // (A map's stream is two files, its .dsi.hgs then, at demoBankAt, its
+        // .dsi.bank; a track's, one: demoBank_ null.)
         std::FILE *demoFile_[hldata::DemoServer::kStreams] = {};
+        std::FILE *demoBank_[hldata::DemoServer::kStreams] = {};
         std::uint32_t demoFileMap_[hldata::DemoServer::kStreams] = {};
+        std::uint32_t demoFileGuest_[hldata::DemoServer::kStreams] = {}; ///< the first file's length
         std::uint32_t demoLength_[hldata::kDemoMapsMost] = {};
+        std::uint32_t demoGuest_[hldata::kDemoMapsMost] = {}; ///< its .dsi.hgs's length
         std::uint32_t demoCrc_[hldata::kDemoMapsMost] = {};
+        struct DemoTrack
+        {
+            int track = 0;
+            std::uint32_t length = 0, crc = 0;
+        };
+        static constexpr int kDemoTracks = 8;
+        DemoTrack demoTracks_[kDemoTracks];
+        bool demoRead(int stream, std::uint32_t at, std::uint8_t *to, int count);
+        void demoClose(int stream);
         bool demoLiveNow_ = false;    ///< a stream someone is waiting for went out this frame
         std::uint32_t demoIds_[hldata::kNetPlayers] = {}; ///< who they are, from one day to the next
         hldata::DemoUpTaker demoTakers_[hldata::kNetPlayers];

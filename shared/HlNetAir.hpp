@@ -75,6 +75,7 @@ namespace hldata
         MapFull, ///< a map's own at full quality (<map>.dsi.hgs), to a console in DSi mode: before the others' base and map
         CharacterFull, ///< ... at its finest, to a console in DSi mode (before the others' Character)
         Character, ///< who a player chose to be (HlCharacters.hpp), by its name: after the map, to those with room
+        Music,     ///< a track of a demo's map (music/trackNN.hsd), by "trackNN": to a demo's console, before the map is played
     };
     /// A stream's name on the wire.
     inline constexpr int kAirNameBytes = 24;
@@ -352,6 +353,11 @@ namespace hldata
         /// Into memory as long as the stream, each piece at its own place, not
         /// a ring handed on as it is read (a demo's map: nothing to hand on).
         bool direct = false;
+        /// ... where there is room for this much of it at most (0: as much as
+        /// it says): one said to be longer is not taken (`refused`). What
+        /// comes is written where it belongs, by the radio's interrupt.
+        std::uint32_t limit = 0;
+        bool refused = false;
         std::uint32_t base = 0;    ///< the first piece not come
         std::uint64_t have = 0;    ///< bit n: piece base + 1 + n has come
         std::uint32_t given = 0;   ///< the pieces handed on
@@ -369,11 +375,13 @@ namespace hldata
         }
         /// ... into `room`, as long as the stream, what comes before piece
         /// `from` being there already.
-        void wantDirect(AirStream what, const char *named, std::uint8_t *room, std::uint32_t from = 0)
+        void wantDirect(AirStream what, const char *named, std::uint8_t *room, std::uint32_t from = 0,
+                        std::uint32_t most = 0)
         {
             want(what, named, room);
             direct = true;
             base = from;
+            limit = most;
         }
         std::uint32_t pieces() const { return airPieces(length); }
         bool done() const { return known && (direct ? base >= pieces() : given >= pieces() && !holding); }
@@ -393,6 +401,11 @@ namespace hldata
                 return false;
             if (!known)
             {
+                if (direct && limit != 0 && head.length > limit)
+                {
+                    refused = true;
+                    return true;
+                }
                 // (The first heard of it: this sending is the one followed.)
                 known = true;
                 serve = head.serve;

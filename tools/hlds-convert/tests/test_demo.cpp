@@ -3,10 +3,13 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <algorithm>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <vector>
 
+#include "HlAirBank.hpp"
 #include "HlDemo.hpp"
 #include "HlDemoSave.hpp"
 #include "HlLevel.hpp"
@@ -66,11 +69,12 @@ namespace
         Bytes arena;
         int loss = 0;
         bool away = false;
-        void want(const File &f, std::uint32_t from = 0)
+        AirStream kind = AirStream::MapFull;
+        void want(const File &f, std::uint32_t from = 0, std::uint32_t limit = 0)
         {
             if (arena.size() < f.bytes.size())
                 arena.resize(f.bytes.size());
-            taking.wantDirect(AirStream::MapFull, f.name, arena.data(), from);
+            taking.wantDirect(kind, f.name, arena.data(), from, limit);
         }
         void resumeFrom(const File &f)
         {
@@ -427,6 +431,156 @@ namespace
         check(same(stays, f), "who leaves costs the other nothing");
         check(other.receiverOf(goes.token) == nullptr, "... and nothing is kept of them");
     }
+    // A map's stream, then its track: the same console, one after the other;
+    // and one asking for the track while another takes the map.
+    void testTrack()
+    {
+        const File map = file("hldemo3", 30 * kAirPiece + 7, 5);
+        const File track = file("track02", 12 * kAirPiece + 300, 6);
+        DemoServer server;
+        Console a{100, 1}, b{200, 2};
+        b.kind = AirStream::Music;
+        a.want(map);
+        b.want(track);
+        server.want(a.token, a.seat, map.map, true, 0, map.name, static_cast<std::uint32_t>(map.bytes.size()), map.crc, 4);
+        server.want(b.token, b.seat, track.map, true, 0, track.name, static_cast<std::uint32_t>(track.bytes.size()), track.crc,
+                    0x202, AirStream::Music);
+        check(server.streams[0].air.stream == AirStream::MapFull && server.streams[1].air.stream == AirStream::Music,
+              "a track is sent as one");
+        std::vector<Console *> consoles{&a, &b};
+        a.loss = b.loss = 15;
+        air(server, {&map, &track}, consoles, 400);
+        check(same(a, map), "the map, whole, beside a track");
+        check(same(b, track), "the track, whole, beside a map");
+        // The first console on to the track: the map's stream let go of.
+        a.kind = AirStream::Music;
+        a.arena.assign(a.arena.size(), 0);
+        a.want(track);
+        server.want(a.token, a.seat, track.map, true, 0, track.name, static_cast<std::uint32_t>(track.bytes.size()), track.crc,
+                    0x202, AirStream::Music);
+        air(server, {&map, &track}, consoles, 300);
+        check(same(a, track), "then its track");
+        server.frame();
+        check(!server.streams[0].on && !server.streams[1].on, "all had: nothing more sent");
+    }
+
+    // A stream longer than the room it is wanted into: not taken at all.
+    void testTooLong()
+    {
+        const File f = file("hldemo1", 20 * kAirPiece, 8);
+        DemoServer server;
+        Console c{100, 1};
+        c.want(f, 0, 19 * kAirPiece);
+        c.arena.assign(c.arena.size(), 0xAB);
+        server.want(c.token, c.seat, f.map, true, 0, f.name, static_cast<std::uint32_t>(f.bytes.size()), f.crc, 1);
+        std::vector<Console *> consoles{&c};
+        air(server, {&f}, consoles, 5);
+        check(c.taking.refused && !c.taking.known && !c.taking.done(), "too long for its room: refused");
+        bool untouched = true;
+        for (const std::uint8_t byte : c.arena)
+            untouched = untouched && byte == 0xAB;
+        check(untouched, "... and nothing of it written");
+        Console d{101, 2};
+        d.want(f, 0, 20 * kAirPiece);
+        std::vector<Console *> fits{&d};
+        server.want(d.token, d.seat, f.map, true, 0, f.name, static_cast<std::uint32_t>(f.bytes.size()), f.crc, 1);
+        air(server, {&f}, fits, 100);
+        check(same(d, f), "exactly its room: taken");
+    }
+
+    // Where a map's bank begins in its stream, and what a track is called.
+    void testLayout()
+    {
+        check(demoBankAt(0) == 0 && demoBankAt(1) == 32 && demoBankAt(32) == 32 && demoBankAt(33) == 64,
+              "the bank at the next 32");
+        check(demoBankAt(3002118) % 32 == 0 && demoBankAt(3002118) - 3002118 < 32, "... a real map's");
+        char name[kAirNameBytes];
+        demoTrackName(2, name, sizeof(name));
+        check(std::strcmp(name, "track02") == 0, "track 2's name");
+        demoTrackName(17, name, sizeof(name));
+        check(std::strcmp(name, "track17") == 0, "track 17's name");
+        char tiny[4] = {'x', 'x', 'x', 'x'};
+        demoTrackName(3, tiny, sizeof(tiny));
+        check(tiny[0] == 0, "no room: nothing");
+    }
+
+    // A bank in memory: its members found by name, and nothing found in one
+    // that is wrong.
+    Bytes bank(const std::vector<std::pair<std::string, Bytes>> &members)
+    {
+        std::vector<std::pair<std::uint32_t, const Bytes *>> sorted;
+        for (const auto &member : members)
+            sorted.push_back({nameHash(member.first.c_str()), &member.second});
+        std::sort(sorted.begin(), sorted.end());
+        AirBankHeader header{};
+        std::memcpy(header.magic, kAirBankMagic, 4);
+        header.version = kAirBankVersion;
+        header.count = static_cast<std::uint16_t>(sorted.size());
+        Bytes out(sizeof(header) + sorted.size() * sizeof(AirBankEntry));
+        std::memcpy(out.data(), &header, sizeof(header));
+        for (std::size_t n = 0; n < sorted.size(); ++n)
+        {
+            out.resize((out.size() + 3) & ~std::size_t(3));
+            AirBankEntry entry{};
+            entry.name = sorted[n].first;
+            entry.offset = static_cast<std::uint32_t>(out.size());
+            entry.packed = entry.raw = static_cast<std::uint32_t>(sorted[n].second->size());
+            entry.crc = crc32(sorted[n].second->data(), entry.packed);
+            std::memcpy(out.data() + sizeof(header) + n * sizeof(entry), &entry, sizeof(entry));
+            out.insert(out.end(), sorted[n].second->begin(), sorted[n].second->end());
+        }
+        return out;
+    }
+
+    void testBank()
+    {
+        std::vector<std::pair<std::string, Bytes>> members;
+        for (int n = 0; n < 40; ++n)
+            members.push_back({"snd/sound" + std::to_string(n) + ".hsn", made(100 + n * 13, static_cast<unsigned>(n))});
+        members.push_back({kDemoTracksFile, Bytes{2, 3}});
+        Bytes b = bank(members);
+        bool all = true;
+        for (const auto &member : members)
+        {
+            AirBankEntry entry;
+            all = all && airBankFind(b.data(), static_cast<std::uint32_t>(b.size()), nameHash(member.first.c_str()), entry) &&
+                  entry.raw == member.second.size() && entry.offset % 4 == 0 &&
+                  std::memcmp(b.data() + entry.offset, member.second.data(), entry.raw) == 0;
+        }
+        check(all, "every member of a bank found where it lies");
+        AirBankEntry entry;
+        check(!airBankFind(b.data(), static_cast<std::uint32_t>(b.size()), nameHash("snd/none.hsn"), entry),
+              "one it has not: not found");
+        check(airBankFind(b.data(), static_cast<std::uint32_t>(b.size()), nameHash(kDemoTracksFile), entry) && entry.raw == 2 &&
+                  b[entry.offset] == 2 && b[entry.offset + 1] == 3,
+              "the tracks a map plays");
+        // Cut short: what lies past the end is not found; nor is anything in
+        // a table that says it is longer than the bank.
+        const std::uint32_t lastName = nameHash(members.back().first.c_str());
+        check(!airBankFind(b.data(), 12, lastName, entry), "a bank cut short in its table finds nothing");
+        AirBankEntry far;
+        bool farFound = false;
+        for (const auto &member : members)
+        {
+            AirBankEntry e;
+            if (airBankFind(b.data(), static_cast<std::uint32_t>(b.size()), nameHash(member.first.c_str()), e) &&
+                (!farFound || e.offset > far.offset))
+            {
+                far = e;
+                farFound = true;
+            }
+        }
+        check(farFound && !airBankFind(b.data(), far.offset + far.packed - 1, far.name, entry), "a member cut short: not found");
+        Bytes wrong = b;
+        wrong[0] = 'X';
+        check(!airBankFind(wrong.data(), static_cast<std::uint32_t>(wrong.size()), lastName, entry), "not a bank: nothing");
+        Bytes counted = b;
+        counted[6] = 0xFF;
+        counted[7] = 0xFF;
+        check(!airBankFind(counted.data(), static_cast<std::uint32_t>(counted.size()), lastName, entry),
+              "a table longer than the bank: nothing");
+        check(!airBankFind(nullptr, 0, lastName, entry), "no bank: nothing");
+    }
 } // namespace
 
 int main()
@@ -446,6 +600,10 @@ int main()
     testResume();
     testLiveFirst();
     testSharing();
+    testTrack();
+    testTooLong();
+    testLayout();
+    testBank();
     if (g_failures == 0)
         std::printf("test_demo: ok\n");
     return g_failures == 0 ? 0 : 1;

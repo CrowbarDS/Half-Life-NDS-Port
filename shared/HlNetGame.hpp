@@ -83,6 +83,7 @@ namespace hldata
         std::uint8_t voteSeconds = 10;       ///< how long a vote stays open
         std::uint8_t demo = 0;               ///< the demo being served (HlDemo.hpp); 0: a game
         std::uint16_t demoLongest = 0;       ///< ... its longest stream, in 16 KB
+        std::uint8_t demoMusic = 0;          ///< ... the room its tracks need, in 64 KB (0: none)
         bool teams() const { return mode == kNetModeTeamplay; }
         bool has(std::uint16_t flag) const { return (flags & flag) != 0; }
     };
@@ -545,7 +546,7 @@ namespace hldata
             NetEvent rules = netEvent(NetEventType::Rules, 0, match.rules.mode, match.rules.flags, match.rules.most,
                                     static_cast<int>(match.rules.mapHash & 0xFFFF), static_cast<int>(match.rules.mapHash >> 16),
                                     match.rules.frags | match.rules.minutes << 8);
-            match.host.out.add(netEvent(NetEventType::RulesMore, 0, match.rules.chatSeconds, match.rules.nextMode,
+            match.host.out.add(netEvent(NetEventType::RulesMore, match.rules.demoMusic, match.rules.chatSeconds, match.rules.nextMode,
                                         match.rules.totals ? 1 : 0, match.rules.voteSeconds, match.rules.demo, match.rules.demoLongest));
             match.host.out.add(rules);
             for (int p = 0; p < kNetPlayers; ++p)
@@ -779,6 +780,7 @@ namespace hldata
                     match.rules.totals = event.v[2] != 0;
                     match.rules.demo = static_cast<std::uint8_t>(event.v[4]);
                     match.rules.demoLongest = static_cast<std::uint16_t>(event.v[5]);
+                    match.rules.demoMusic = event.a;
                     match.rules.voteSeconds = static_cast<std::uint8_t>(event.v[3] < 5 ? 5 : (event.v[3] > 150 ? 150 : event.v[3]));
                 }
                 break;
@@ -1147,7 +1149,7 @@ namespace hldata
         match.host.out.add(netEvent(NetEventType::Rules, 0, match.rules.mode, match.rules.flags, match.rules.most,
                                     static_cast<int>(match.rules.mapHash & 0xFFFF), static_cast<int>(match.rules.mapHash >> 16),
                                     match.rules.frags | match.rules.minutes << 8));
-        match.host.out.add(netEvent(NetEventType::RulesMore, 0, match.rules.chatSeconds, match.rules.nextMode,
+        match.host.out.add(netEvent(NetEventType::RulesMore, match.rules.demoMusic, match.rules.chatSeconds, match.rules.nextMode,
                                     match.rules.totals ? 1 : 0, match.rules.voteSeconds, match.rules.demo, match.rules.demoLongest));
         for (int p = 0; p < kNetPlayers && again; ++p)
             match.profiles[p].team = 0;
