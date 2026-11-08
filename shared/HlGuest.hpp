@@ -90,8 +90,9 @@ namespace hldata
     // wheels turned while USE is held (8 Nov 2026): subtransit was over by
     // then already; crossfire, the nearest that fits, is about 32 KB under.
     // Raised 2 KB for a demo's map sent whole, its music with it (8 Nov
-    // 2026): crossfire about 30 KB under.
-    inline constexpr std::uint32_t kGuestImageBytes = 0x165B6C + 69 * 1024;
+    // 2026): crossfire about 30 KB under. Raised 6 KB for the egon's beam as
+    // the game draws it, and the others' beams in a match (8 Nov 2026).
+    inline constexpr std::uint32_t kGuestImageBytes = 0x165B6C + 75 * 1024;
     /// The heap's end: the end of main RAM less what the start-up code keeps.
     inline constexpr std::uint32_t kGuestRamBytes = 0x3F4000;
     /// What the engine holds beside a map's data -- its tables, the world's

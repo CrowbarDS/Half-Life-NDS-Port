@@ -203,6 +203,8 @@ namespace hldata
         int model = -1;      ///< the players' model, in the map's ModelRefs
         NetGlide glide[kNetPlayers];
         std::uint8_t pose[kNetPlayers] = {}; ///< which clip each is in (kPose*)
+        /// How long each has fired their egon, as seen here (-1: not).
+        std::int32_t egonMs[kNetPlayers] = {-1, -1, -1, -1, -1, -1, -1, -1};
 
         // This console's own player.
         NetPlayer mine;
@@ -361,6 +363,64 @@ namespace hldata
 
         /// Where player `p` is, as someone the map's logic can be asked
         /// about: the middle of them, standing or crouched.
+        /// Another player's egon, as it fires there: its beam drawn here,
+        /// from their hands along their aim to what it meets, and its
+        /// wind-up, hum and wind-down heard where they are. (What it does
+        /// to anyone is theirs to say, as any shot's.)
+        inline void netEgon(NetMatch &match, LogicWorld &w, int p, const ActorState &actor, const NetPlayer &heard,
+                            bool alive, int ms)
+        {
+            const bool on = alive && heard.weapon == kWeaponEgon && (heard.flags & kNetFiring) != 0;
+            std::int32_t &firedMs = match.egonMs[p];
+            if (!on)
+            {
+                if (firedMs >= 0)
+                {
+                    egonQuiet(w, 1 + p);
+                    if (w.heard != nullptr)
+                        w.heard->add(CommonSound::EgonOff, actor.pos, 100, kRadiusLarge);
+                    firedMs = -1;
+                }
+                return;
+            }
+            // Their eye (their model's middle is its origin), and their aim.
+            const bool crouched = (heard.flags & kNetCrouched) != 0;
+            const fx eye[3] = {actor.pos[0], actor.pos[1], actor.pos[2] + fxFromInt(crouched ? 12 : 28)};
+            // (One sum for both angles: the sine is long, written out.)
+            const std::uint16_t angle[2] = {heard.yaw,
+                                            static_cast<std::uint16_t>(static_cast<std::int32_t>(heard.pitch) << 8)};
+            fx sine[2], cosine[2];
+            for (int k = 0; k < 2; ++k)
+                fxSinCos(angle[k], sine[k], cosine[k]);
+            const fx sy = sine[0], cy = cosine[0], sp = sine[1], cp = cosine[1];
+            const fx forward[3] = {fxMul(cp, cy), fxMul(cp, sy), sp};
+            const fx right[3] = {sy, -cy, 0};
+            // (Their gun's end: ahead, to the right and down, as the
+            // player's own.)
+            fx muzzle[3], reached[3];
+            for (int i = 0; i < 3; ++i)
+                muzzle[i] = eye[i] + forward[i] * 16 + right[i] * 5 - fxFromInt(i == 2 ? 10 : 0);
+            beamReach(w, eye, forward, 2048, match.firstActor + p, reached);
+            if (w.actors != nullptr)
+                egonBeam(*w.actors, 1 + p, muzzle, reached, ms);
+            if (w.heard != nullptr)
+            {
+                if (firedMs < 0)
+                    w.heard->add(static_cast<std::uint16_t>(CommonSound::EgonWindup), actor.pos, 127, kRadiusLarge,
+                                 kSoundLoopOn, 100, soundTagEgon(1 + p, false));
+                // (Its hum from two seconds on, said again where they are
+                // now each tenth of one: a loop going round is moved, not
+                // started again.)
+                const std::int32_t was = firedMs < 0 ? 0 : firedMs;
+                if (was + ms >= 2000 && was / 100 != (was + ms) / 100)
+                    w.heard->add(static_cast<std::uint16_t>(CommonSound::EgonRun), actor.pos, 124, kRadiusLarge,
+                                 kSoundLoopOn, 125, soundTagEgon(1 + p, true));
+            }
+            firedMs = (firedMs < 0 ? 0 : firedMs) + ms;
+            if (firedMs > 600000)
+                firedMs = 600000;
+        }
+
         inline PlayerState netGhost(const NetMatch &match, const LogicWorld &w, int p)
         {
             const NetPlayer &heard = netPlayer(match, p);
@@ -1550,7 +1610,8 @@ namespace hldata
         mine.flags = static_cast<std::uint8_t>(kNetHere | (match.playing ? kNetInGame : 0) |
                                                (match.playing && player.health > 0 ? kNetAlive : 0) |
                                                (player.ducked ? kNetCrouched : 0) | (player.onGround ? kNetOnGround : 0) |
-                                               ((did & kWeaponFired) ? kNetFiring : 0) | (lamp ? kNetLamp : 0));
+                                               ((did & (kWeaponFired | kWeaponBeam)) ? kNetFiring : 0) |
+                                               (lamp ? kNetLamp : 0));
 
         // ---- what the others did
         detail::netEvents(match, w, player);
@@ -1570,6 +1631,11 @@ namespace hldata
                 {
                     actor.active = false;
                     actorPlaceBox(a, match.firstActor + p);
+                }
+                if (match.egonMs[p] >= 0)
+                {
+                    egonQuiet(w, 1 + p);
+                    match.egonMs[p] = -1;
                 }
                 match.glide[p].placed = false;
                 match.pose[p] = 0;
@@ -1622,6 +1688,7 @@ namespace hldata
                 match.pose[p] = pose;
             }
             actorPlaceBox(a, match.firstActor + p);
+            detail::netEgon(match, w, p, actor, heard, alive && !match.over, ms);
             // ... and walking into the map's things here, as they do there.
             if (alive)
             {
