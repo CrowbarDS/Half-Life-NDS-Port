@@ -6,6 +6,7 @@
 #include <nds/arm9/dldi.h>
 
 #include "HlArchive.hpp"
+#include "HlRtcom.hpp"
 #include "HlManifest.hpp"
 #include "HlGuest.hpp"
 #include "net/AirDevice.hpp"
@@ -63,6 +64,18 @@ void Global::latchDrawClock()
 
 void Global::process(void (*draw)())
 {
+    // A 3DS's word about its top screen (arm7/source/Rtcom.cpp), once, and
+    // the picture made to match if the screen setting follows it.
+    static bool heard = false;
+    if (!heard && fifoCheckValue32(FIFO_USER_02))
+    {
+        heard = true;
+        const std::uint32_t word = fifoGetValue32(FIFO_USER_02);
+        rtcomAnswered = (word & hldata::kRtcomAnswered) != 0;
+        wideTop = (word & hldata::kRtcomWide) != 0;
+        if (wideTop)
+            hlrt::camera.applyScreenShape();
+    }
     NEA_Process(draw);
 }
 

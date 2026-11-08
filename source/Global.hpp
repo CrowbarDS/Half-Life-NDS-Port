@@ -50,6 +50,8 @@ public:
     /// TWPatch's wide one (stretching 256 by 192 to 384 by 240). What the
     /// screen setting's auto follows.
     bool wideTop = false;
+    /// A 3DS's TwlBg answered rtcom (TWPatch's): wideTop is its word.
+    bool rtcomAnswered = false;
 
     /// IRQs, clock and FAT: everything but the picture. Call once at startup.
     /// `launchedFrom`: argv[0], if the loader gave one.

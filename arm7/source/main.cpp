@@ -2,7 +2,8 @@
 // library the Download Play build needs) does -- the touch screen and the
 // buttons, the wifi, the card on a DSi, the clock -- and, instead of maxmod,
 // the game's own sound (Audio.cpp), which plays what the ARM9 asks through
-// one block of shared memory (shared/HlAudioLink.hpp).
+// one block of shared memory (shared/HlAudioLink.hpp); and, on a 3DS, the
+// shape of its top screen (Rtcom.cpp).
 
 #include <cstdint>
 
@@ -10,6 +11,7 @@
 #include <nds.h>
 
 #include "Audio.hpp"
+#include "Rtcom.hpp"
 
 namespace
 {
@@ -54,6 +56,9 @@ int main()
     if (isDSiMode())
         installCameraFIFO();
 
+    // A 3DS's TwlBg asked whether it shows the top screen wide: before the
+    // sound, which it would hold up.
+    hlrtcom::detect();
     hlaudio::install();
 
     setPowerButtonCB(powerButton);
