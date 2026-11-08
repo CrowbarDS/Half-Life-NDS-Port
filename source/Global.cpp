@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstring>
 #include <nds/arm9/dldi.h>
+#include <sys/stat.h>
 
 #include "HlArchive.hpp"
 #include "HlRtcom.hpp"
@@ -77,6 +78,32 @@ void Global::process(void (*draw)())
             hlrt::camera.applyScreenShape();
     }
     NEA_Process(draw);
+}
+
+namespace
+{
+#ifndef HLDS_CHILD
+    // A 3DS's wide TwlBg, left in Luma's place for it: TWiLight Menu++ puts
+    // its Widescreen.cxi there for one launch and takes it back on its own
+    // next start -- a game started otherwise leaves it, and every DS(i)
+    // program after is shown wide. Put back where TWiLight keeps it (not
+    // over one already there: then it is left as it is).
+    void putBackWideTwlBg(const std::string &root)
+    {
+        struct stat st;
+        const std::string from = root + "luma/sysmodules/TwlBg.cxi";
+        if (stat(from.c_str(), &st) != 0)
+            return;
+        const std::string dir = root + "_nds/TWiLightMenu/TwlBg";
+        const std::string to = dir + "/Widescreen.cxi";
+        if (stat(to.c_str(), &st) == 0)
+            return;
+        mkdir((root + "_nds").c_str(), 0777);
+        mkdir((root + "_nds/TWiLightMenu").c_str(), 0777);
+        mkdir(dir.c_str(), 0777);
+        std::rename(from.c_str(), to.c_str());
+    }
+#endif
 }
 
 #ifdef HLDS_CHILD
@@ -190,6 +217,9 @@ void Global::Init(const char *launchedFrom)
     if (hasFat)
     {
         fatDeviceCPP = fatDevice;
+#ifndef HLDS_CHILD
+        putBackWideTwlBg(fatDeviceCPP);
+#endif
     }
     else
     {
