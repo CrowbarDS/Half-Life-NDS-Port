@@ -17,8 +17,10 @@ namespace detect
     std::vector<hlds::install::Volume> volumes();
     /// The volume `path` is on, looked at.
     hlds::install::Volume volumeOf(const QString &path);
-    /// The console's program: beside this one, or in the folders above it (a
-    /// build tree). Empty: not there.
+    /// The console's program: the one built into this converter (put in this
+    /// computer's cache folder, to be copied from); or, with none built in,
+    /// one beside this program, or in the folders above it (a build tree).
+    /// Empty: not there.
     QString findRom();
     /// A volume, ejected if the system has a way; false if not.
     bool eject(const QString &root);

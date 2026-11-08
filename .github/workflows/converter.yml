@@ -23,6 +23,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The console's program made in this run, built into the converter: a
+      # player needs only the converter, which puts it on the card.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: rom
+          path: ${{ runner.temp }}/rom
+
       - name: Install what it needs
         run: |
           sudo apt-get update
@@ -43,13 +50,13 @@ jobs:
 
       - name: Build the static command line
         run: |
-          cmake -S tools/hlds-convert -B build/cli -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          cmake -S tools/hlds-convert -B build/cli -G Ninja -DCMAKE_BUILD_TYPE=Release -DHLDS_BUNDLED_ROM="$RUNNER_TEMP/rom/half-life-nds-port.nds" \
             -DHLDS_BUILD_GUI=OFF -DHLDS_BUILD_TESTS=OFF -DCMAKE_EXE_LINKER_FLAGS=-static
           cmake --build build/cli --target hlds-convert
 
       - name: Build the window and the tests
         run: |
-          cmake -S tools/hlds-convert -B build/convert -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_DIR"
+          cmake -S tools/hlds-convert -B build/convert -G Ninja -DCMAKE_BUILD_TYPE=Release -DHLDS_BUNDLED_ROM="$RUNNER_TEMP/rom/half-life-nds-port.nds" -DCMAKE_PREFIX_PATH="$QT_DIR"
           cmake --build build/convert
 
       - name: Test
@@ -82,7 +89,7 @@ jobs:
           ./linuxdeploy --appdir AppDir -e build/convert/gui/hlds-convert-gui \
             -d hlds-convert-gui.desktop -i hlds-convert-gui.png --plugin qt
           # The licences of the system's libraries it took along.
-          cp THIRD_PARTY_LICENSES AppDir/
+          cp THIRD_PARTY_LICENSES LICENSE-HALF-LIFE-SDK AppDir/
           for lib in AppDir/usr/lib/*.so*; do
             dpkg -S "$(basename "$lib")" 2>/dev/null | head -1 | cut -d: -f1
           done | sort -u | while read -r pkg; do
@@ -92,7 +99,7 @@ jobs:
           ./linuxdeploy --appdir AppDir --output appimage
           mv ./*.AppImage "dist/hlds-convert-${{ matrix.name }}.AppImage"
           mkdir cli
-          cp build/cli/hlds-convert "$RUNNER_TEMP/ptexconv/ptexconv" THIRD_PARTY_LICENSES cli/
+          cp build/cli/hlds-convert "$RUNNER_TEMP/ptexconv/ptexconv" THIRD_PARTY_LICENSES LICENSE-HALF-LIFE-SDK cli/
           tar -C cli -czf "dist/hlds-convert-cli-${{ matrix.name }}.tar.gz" .
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -117,6 +124,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+
+      # The console's program made in this run, built into the converter: a
+      # player needs only the converter, which puts it on the card.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: rom
+          path: ${{ runner.temp }}/rom
 
       - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
         with:
@@ -143,13 +157,13 @@ jobs:
 
       - name: Build the static command line
         run: |
-          cmake -S tools/hlds-convert -B build/cli -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          cmake -S tools/hlds-convert -B build/cli -G Ninja -DCMAKE_BUILD_TYPE=Release -DHLDS_BUNDLED_ROM="$(cygpath -m "$RUNNER_TEMP")/rom/half-life-nds-port.nds" \
             -DHLDS_BUILD_GUI=OFF -DHLDS_BUILD_TESTS=OFF -DCMAKE_EXE_LINKER_FLAGS=-static
           cmake --build build/cli --target hlds-convert
 
       - name: Build the window and the tests
         run: |
-          cmake -S tools/hlds-convert -B build/convert -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake -S tools/hlds-convert -B build/convert -G Ninja -DCMAKE_BUILD_TYPE=Release -DHLDS_BUNDLED_ROM="$(cygpath -m "$RUNNER_TEMP")/rom/half-life-nds-port.nds"
           cmake --build build/convert
 
       - name: Test
@@ -166,7 +180,7 @@ jobs:
         run: |
           out="dist/hlds-convert-${{ matrix.name }}"
           mkdir -p "$out"
-          cp build/convert/gui/hlds-convert-gui.exe build/cli/hlds-convert.exe tools-bin/ptexconv.exe THIRD_PARTY_LICENSES "$out/"
+          cp build/convert/gui/hlds-convert-gui.exe build/cli/hlds-convert.exe tools-bin/ptexconv.exe THIRD_PARTY_LICENSES LICENSE-HALF-LIFE-SDK "$out/"
           windeployqt6 --no-translations --no-opengl-sw "$out/hlds-convert-gui.exe"
           # What Qt and the compiler stand on, from the MSYS2 system they came from.
           ldd "$out/hlds-convert-gui.exe" | awk '{print $3}' | grep -iE "^/(ucrt64|clangarm64)/" | sort -u | xargs -I{} cp -n {} "$out/"
@@ -199,6 +213,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+
+      # The console's program made in this run, built into the converter: a
+      # player needs only the converter, which puts it on the card.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: rom
+          path: ${{ runner.temp }}/rom
 
       # (MSYS2 no longer has a make for 32-bit: the 64-bit one runs the build
       # just as well, the compiler being the 32-bit one.)
@@ -283,13 +304,13 @@ jobs:
 
       - name: Build the static command line
         run: |
-          cmake -S tools/hlds-convert -B build/cli -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          cmake -S tools/hlds-convert -B build/cli -G Ninja -DCMAKE_BUILD_TYPE=Release -DHLDS_BUNDLED_ROM="$(cygpath -m "$RUNNER_TEMP")/rom/half-life-nds-port.nds" \
             -DHLDS_BUILD_GUI=OFF -DHLDS_BUILD_TESTS=OFF -DCMAKE_EXE_LINKER_FLAGS=-static
           cmake --build build/cli --target hlds-convert
 
       - name: Build the window and the tests
         run: |
-          cmake -S tools/hlds-convert -B build/convert -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          cmake -S tools/hlds-convert -B build/convert -G Ninja -DCMAKE_BUILD_TYPE=Release -DHLDS_BUNDLED_ROM="$(cygpath -m "$RUNNER_TEMP")/rom/half-life-nds-port.nds" \
             -DHLDS_QT5=ON -DCMAKE_PREFIX_PATH="$QT5_DIR"
           cmake --build build/convert
 
@@ -308,7 +329,7 @@ jobs:
           qt="$(cygpath -u "$QT5_DIR")"
           out="dist/hlds-convert-windows-x86"
           mkdir -p "$out/platforms" "$out/styles"
-          cp build/convert/gui/hlds-convert-gui.exe build/cli/hlds-convert.exe tools-bin/ptexconv.exe THIRD_PARTY_LICENSES "$out/"
+          cp build/convert/gui/hlds-convert-gui.exe build/cli/hlds-convert.exe tools-bin/ptexconv.exe THIRD_PARTY_LICENSES LICENSE-HALF-LIFE-SDK "$out/"
           cp "$qt"/bin/Qt5Core.dll "$qt"/bin/Qt5Gui.dll "$qt"/bin/Qt5Widgets.dll "$out/"
           cp "$qt/plugins/platforms/qwindows.dll" "$out/platforms/"
           cp "$qt/plugins/styles/qwindowsvistastyle.dll" "$out/styles/"
@@ -355,6 +376,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The console's program made in this run, built into the converter: a
+      # player needs only the converter, which puts it on the card.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: rom
+          path: ${{ runner.temp }}/rom
+
       - name: Install Qt
         run: |
           . docker/versions.env
@@ -371,7 +399,7 @@ jobs:
 
       - name: Build for both processors
         run: |
-          cmake -S tools/hlds-convert -B build/convert -DCMAKE_BUILD_TYPE=Release \
+          cmake -S tools/hlds-convert -B build/convert -DCMAKE_BUILD_TYPE=Release -DHLDS_BUNDLED_ROM="$RUNNER_TEMP/rom/half-life-nds-port.nds" \
             -DCMAKE_PREFIX_PATH="$QT_DIR" -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0
           cmake --build build/convert -j4
 
@@ -388,12 +416,12 @@ jobs:
           app=build/convert/gui/hlds-convert-gui.app
           cp "$RUNNER_TEMP/ptexconv/ptexconv" "$app/Contents/MacOS/"
           mkdir -p "$app/Contents/Resources"
-          cp THIRD_PARTY_LICENSES "$app/Contents/Resources/"
+          cp THIRD_PARTY_LICENSES LICENSE-HALF-LIFE-SDK "$app/Contents/Resources/"
           "$QT_DIR/bin/macdeployqt" "$app"
           codesign --force --deep --sign - "$app"
           mkdir -p dist cli
           ditto -c -k --keepParent "$app" dist/hlds-convert-macos-universal.zip
-          cp build/convert/hlds-convert "$RUNNER_TEMP/ptexconv/ptexconv" THIRD_PARTY_LICENSES cli/
+          cp build/convert/hlds-convert "$RUNNER_TEMP/ptexconv/ptexconv" THIRD_PARTY_LICENSES LICENSE-HALF-LIFE-SDK cli/
           tar -C cli -czf dist/hlds-convert-cli-macos-universal.tar.gz .
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

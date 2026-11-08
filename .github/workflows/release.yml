@@ -57,7 +57,7 @@ jobs:
     uses: ./.github/workflows/rom.yml
 
   converter:
-    needs: tag
+    needs: [tag, rom]
     permissions:
       contents: read
     uses: ./.github/workflows/converter.yml

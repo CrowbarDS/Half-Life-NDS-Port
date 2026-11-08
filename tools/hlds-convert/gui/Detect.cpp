@@ -1,4 +1,5 @@
 #include "Detect.hpp"
+#include "BundledRom.hpp"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -123,10 +124,22 @@ namespace detect
 
     QString findRom()
     {
+        // The one made with this converter: its data is what that program
+        // reads. (Copied from the cache folder, as everything is, so that the
+        // card's is compared with it and left alone if it is the same.)
+        const std::span<const std::uint8_t> bundled = bundledRom();
+        if (!bundled.empty())
+        {
+            const QString folder = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+            const QString file = folder + QStringLiteral("/") + QString::fromLatin1(kRomName);
+            std::string why;
+            if (putRom(bundled, toPath(file), why) != RomPut::Failed)
+                return file;
+        }
         QDir dir(QCoreApplication::applicationDirPath());
         for (int up = 0; up < 5; ++up)
         {
-            const QString here = dir.filePath(QStringLiteral("half-life-nds-port.nds"));
+            const QString here = dir.filePath(QString::fromLatin1(kRomName));
             if (QFileInfo::exists(here))
                 return here;
             if (!dir.cdUp())

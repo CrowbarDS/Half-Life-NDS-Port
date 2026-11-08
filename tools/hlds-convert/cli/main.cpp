@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "BundledRom.hpp"
 #include "HlLevelReader.hpp"
 #include "hlds/TextureFamily.hpp"
 #include "hlds/AtomicWrite.hpp"
@@ -43,7 +44,9 @@ namespace
                      "  hlds-convert cook-all <game folder> -o <card root> [options]\n"
                      "      Cook one map, or every map, and put it on the card under\n"
                      "      <card root>/_nds/hl_nds/data/: one archive a map in maps/, one for\n"
-                     "      what every map shares, the music and the manifest.\n"
+                     "      what every map shares, the music and the manifest. The console's\n"
+                     "      program built into this converter (a release's) goes to the card's\n"
+                     "      root, if the one there is not that one.\n"
                      "      --stage <folder>   where the converter keeps its own files, which\n"
                      "                         the archives are made from and the next run\n"
                      "                         finds again (default: <card root>-stage)\n"
@@ -378,6 +381,20 @@ namespace
             std::printf("%s\n", line.c_str());
         if (all)
             std::printf("%zu maps, %d failed\n", names.size(), failed);
+        // The program the data is for, if one is built in.
+        const std::span<const std::uint8_t> rom = install::bundledRom();
+        if (!rom.empty())
+        {
+            std::string why;
+            const install::RomPut put = install::putRom(rom, options.cardRoot / install::kRomName, why);
+            if (put == install::RomPut::Failed)
+            {
+                std::fprintf(stderr, "error: the console's program: %s\n", why.c_str());
+                return 1;
+            }
+            std::printf("the console's program, %s: %s\n", install::kRomName,
+                        put == install::RomPut::Same ? "already on the card" : "put on the card");
+        }
         return failed == 0 ? 0 : 1;
     }
 

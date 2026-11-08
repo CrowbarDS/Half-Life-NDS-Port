@@ -22,6 +22,7 @@ target_link_libraries(hlds-convert-gui
     PRIVATE
         hlds_convert_core
         hlds_install
+        hlds_bundled_rom
         Qt::Widgets
 )
 set_target_properties(hlds-convert-gui PROPERTIES
@@ -35,5 +36,6 @@ target_link_libraries(hlds-install-check
     PRIVATE
         hlds_convert_core
         hlds_install
+        hlds_bundled_rom
         Qt::Widgets
 )

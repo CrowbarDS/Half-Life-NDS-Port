@@ -106,12 +106,6 @@ if(NOT MSVC)
 endif()
 
 # ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
-add_executable(hlds-convert cli/main.cpp)
-target_link_libraries(hlds-convert PRIVATE hlds_convert_core)
-
-# ---------------------------------------------------------------------------
 # Tests
 #
 # No Valve data is in this repository and none may be added, so every test
@@ -123,6 +117,38 @@ target_link_libraries(hlds-convert PRIVATE hlds_convert_core)
 add_library(hlds_install STATIC install/Install.cpp)
 target_include_directories(hlds_install PUBLIC install)
 target_compile_features(hlds_install PUBLIC cxx_std_20)
+
+# The console's program, built into the converter: a release's converter is
+# given the ROM made with it, and puts it on the card when the card has none,
+# or another. Empty (a build for working on the converter): none is built in,
+# and the window looks for one beside it.
+set(HLDS_BUNDLED_ROM "" CACHE FILEPATH "The console's program to build into the converter (empty: none)")
+add_executable(hlds-embed-rom cmake/EmbedRom.cpp)
+set(HLDS_BUNDLED_ROM_FILE "${CMAKE_CURRENT_BINARY_DIR}/generated/BundledRom.gen.cpp")
+if(HLDS_BUNDLED_ROM)
+    if(NOT EXISTS "${HLDS_BUNDLED_ROM}")
+        message(FATAL_ERROR "HLDS_BUNDLED_ROM: ${HLDS_BUNDLED_ROM} not found")
+    endif()
+    message(STATUS "hlds-convert: the console's program built in, from ${HLDS_BUNDLED_ROM}")
+    set(hlds_rom_input "${HLDS_BUNDLED_ROM}")
+    set(hlds_rom_depends "${HLDS_BUNDLED_ROM}")
+else()
+    set(hlds_rom_input "-")
+    set(hlds_rom_depends "")
+endif()
+add_custom_command(OUTPUT ${HLDS_BUNDLED_ROM_FILE}
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/generated"
+    COMMAND hlds-embed-rom "${hlds_rom_input}" ${HLDS_BUNDLED_ROM_FILE}
+    DEPENDS hlds-embed-rom ${hlds_rom_depends}
+    VERBATIM)
+add_library(hlds_bundled_rom STATIC ${HLDS_BUNDLED_ROM_FILE})
+target_link_libraries(hlds_bundled_rom PUBLIC hlds_install)
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+add_executable(hlds-convert cli/main.cpp)
+target_link_libraries(hlds-convert PRIVATE hlds_convert_core hlds_bundled_rom)
 
 option(HLDS_BUILD_TESTS "Build the converter tests" ON)
 if(HLDS_BUILD_TESTS)

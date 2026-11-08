@@ -6,6 +6,7 @@
 #include <fstream>
 #include <string>
 
+#include "BundledRom.hpp"
 #include "Install.hpp"
 
 namespace fs = std::filesystem;
@@ -232,6 +233,29 @@ namespace
         check(!runCopy(plan, nullptr, nullptr, why) && !why.empty(), "a card that cannot be written says why");
     }
 
+    /// The program built into the converter, put on a card: when it has
+    /// none, or another; not again when it has this one.
+    void testRomPut(const fs::path &root)
+    {
+        const std::uint8_t mine[] = {'r', 'o', 'm', 0, 255, 1};
+        const std::uint8_t newer[] = {'r', 'o', 'm', 0, 255, 2};
+        const fs::path file = root / "card" / kRomName;
+        std::string why;
+        check(putRom(mine, file, why) == RomPut::Written && read(file) == std::string("rom\0\xff\1", 6),
+              "a card with no program is given it");
+        const auto when = fs::last_write_time(file);
+        check(putRom(mine, file, why) == RomPut::Same && fs::last_write_time(file) == when,
+              "... and not again when it has it");
+        check(putRom(newer, file, why) == RomPut::Written && read(file) == std::string("rom\0\xff\2", 6),
+              "another (an older one) is replaced");
+        put(file, "short");
+        check(putRom(mine, file, why) == RomPut::Written && read(file).size() == 6, "... whatever its size");
+        check(!fs::exists(root / "card" / (std::string(kRomName) + ".new")), "no temporary left");
+        put(root / "blocked", "a file, not a folder");
+        check(putRom(mine, root / "blocked" / kRomName, why) == RomPut::Failed && !why.empty(),
+              "a card that cannot be written says why");
+    }
+
     void testParts()
     {
         check(partOfMap("t0a0b1") == Part::HazardCourse, "Hazard Course");
@@ -254,6 +278,7 @@ int main()
     testVolumes();
     testLook(root);
     testCopy(root / "c");
+    testRomPut(root / "r");
     testParts();
     fs::remove_all(root, ec);
     if (failures == 0)

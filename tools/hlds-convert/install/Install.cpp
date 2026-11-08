@@ -1,4 +1,5 @@
 #include "Install.hpp"
+#include "BundledRom.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -401,5 +402,46 @@ namespace hlds::install
             }
         }
         return true;
+    }
+    RomPut putRom(std::span<const std::uint8_t> bytes, const fs::path &file, std::string &why)
+    {
+        std::error_code ec;
+        if (fs::exists(file, ec) && sizeOf(file) == bytes.size())
+        {
+            std::ifstream in(file, std::ios::binary);
+            std::vector<char> had(bytes.size());
+            if (in.read(had.data(), static_cast<std::streamsize>(had.size())) &&
+                std::equal(had.begin(), had.end(), bytes.begin(),
+                           [](char a, std::uint8_t b) { return static_cast<std::uint8_t>(a) == b; }))
+                return RomPut::Same;
+        }
+        fs::create_directories(file.parent_path(), ec);
+        fs::path temporary = file;
+        temporary += ".new";
+        {
+            std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
+            out.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+            if (!out.flush())
+            {
+                why = "cannot write " + temporary.string();
+                fs::remove(temporary, ec);
+                return RomPut::Failed;
+            }
+        }
+        fs::rename(temporary, file, ec);
+        if (ec)
+        {
+            // (A system that does not put one over another.)
+            ec.clear();
+            fs::remove(file, ec);
+            fs::rename(temporary, file, ec);
+        }
+        if (ec)
+        {
+            why = "cannot put " + file.string() + " in place: " + ec.message();
+            fs::remove(temporary, ec);
+            return RomPut::Failed;
+        }
+        return RomPut::Written;
     }
 } // namespace hlds::install

@@ -54,17 +54,17 @@ Auto works only with a TwlBg made by TWPatch, which can be asked through its rtc
 
 ## Quick start
 
-1. **Get the release.** Download the ROM zip and the converter for your system from the [Releases](https://github.com/CrowbarDS/Half-Life-NDS-Port/releases) page. `SHA256SUMS.txt` lists each file's checksum.
+1. **Get the release.** Download the converter for your system from the [Releases](https://github.com/CrowbarDS/Half-Life-NDS-Port/releases) page. It has the ROM built in. The ROM zip is there too, for a console that only needs the ROM. `SHA256SUMS.txt` lists each file's checksum.
 2. **Run the converter on your own Half-Life copy.** Open the installer, which finds your game and your SD card, or use the command line:
 
    ```sh
    hlds-convert cook-all <path to>/Half-Life/valve -o <SD card root>
    ```
 
-   Everything goes to `<card>/_nds/hl_nds/data/`. On macOS, right-click the app and choose Open the first time, because it isn't signed by a developer account.
-3. **Copy the ROM to the SD card** and start it from your console's homebrew loader.
+   The game's data goes to `<card>/_nds/hl_nds/data/`, and the ROM, `half-life-nds-port.nds`, to the card's root. The ROM is copied only if the card doesn't already have this version of it. On macOS, right-click the app and choose Open the first time, because it isn't signed by a developer account.
+3. **Start `half-life-nds-port.nds`** from your console's homebrew loader.
 
-Use a converter and a ROM from the same release. The title screen shows the version at the bottom, and warns you if the card's data came from a different one.
+If you copy a ROM yourself, use one from the same release as the converter. The title screen shows the version at the bottom, and warns you if the card's data came from a different one.
 
 ## Controls
 
