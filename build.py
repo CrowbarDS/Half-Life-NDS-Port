@@ -148,6 +148,10 @@ nds = NdsRom(
     # 2 = NDS + DSi hybrid: one ROM that runs on a DS and, booted in DSi mode,
     # gets the 16 MB of RAM and the 134 MHz clock (Global::Init).
     unit_code=2,
+    # The game code's W and the ROM version 0x57 ('W'): TWiLight Menu++ takes
+    # a homebrew so marked as able to draw for a 3DS's wide screen, offers
+    # 16:10 for it, and swaps the wide TwlBg in (settings: Screen).
+    game_info=('WHLD', '00', 'HOMEBREW', 0x57),
 )
 nds.generate_nds()
 
