@@ -1207,6 +1207,57 @@ Where the mod's own maps differ, the original's nearest is used:
 checks that every name, monster and place is in the map it is given for, and
 plays a few: the hand dryer, `loser_mm` after the offer, the guard in c1a1.
 
+## Widescreen on a 3DS
+
+On a 3DS, a DS(i) program's screens are shown by TwlBg, a 3DS-side module
+loaded from the console's own firmware.
+
+**The wide TwlBg.** TWPatch makes one from the owner's firmware. It shows
+the top screen's 256 by 192 pixels at 384 by 240 (×1.5 across, ×1.25 down),
+a 16:10 picture. TWiLight Menu++ swaps it in for one launch, and only if two
+things hold:
+
+- the ROM is a homebrew marked as able to draw for it, by the game code's
+  first letter `W` or ROM version `0x57` (`build.py`: `WHLD`, `0x57`);
+- its per-game Screen Aspect Ratio is 16:10.
+
+**Drawing for it.** The game draws through a 1.6 projection
+(`NEA_SetAspect`, in the Nitro Engine fork) and keeps the 4:3 picture's
+height, so a field of view of 90 shows 101 degrees across
+(`Camera::setWide`). The rest follows the projection:
+
+- **cull planes:** worked out in fixed point, with no double-precision
+  library, which would cost a Download Play guest 3 KB;
+- **crossbow sight:** its planes are widened the same way;
+- **crosshair autoaim shift:** follows the wider view;
+- **flat pictures drawn in 3D** (loading screen, logo): drawn with a
+  horizontal pixel 6/5 of the vertical one, so they cover the same pixels as
+  on 4:3.
+
+The HUD's sprites and the 2D menus are stretched with the rest of the
+screen, as in retail widescreen patches.
+
+**Knowing which TwlBg is loaded.** TWiLight puts the files back before the
+game starts and tells a homebrew nothing. The game asks the 3DS instead,
+through TWPatch's **rtcom**: the TwlBg's per-frame hook reads two of the
+emulated clock's registers, which the ARM7 reaches through the clock's
+serial port with commands sent high bit first. The ARM7 does this once at
+start, before the sound (`arm7/source/Rtcom.cpp`):
+
+1. TWiLight's MCU test (register `0x71` does not keep a write on a 3DS). It
+   runs in DSi mode only: a DSi's or a DS's clock is a real chip and is
+   never sent rtcom commands.
+2. An unknown command, which a TwlBg with rtcom answers `0x82`.
+3. An upload of `Peek11.s`, 88 bytes of ARMv4 that the ARM11 also runs.
+4. A read of the top screen's window edges at `0x1ED02218`/`0x1ED0221C`
+   on the ARM11's side: 320 pixels wide on the plain TwlBg (measured on an
+   Old 3DS: `0x28`..`0x167`), 384 on the wide one.
+
+The answer goes to the ARM9 once, on `FIFO_USER_02`. The screen setting's
+"auto" follows it, and "4:3" and "16:10" override it. The probe that found
+all this is `tools/hwtest/rtcom`. The wide TwlBg's window has not yet been
+read on hardware; the 384 comes from TWPatch's source.
+
 ## Not yet
 
 Friends who follow and talk; the rest of the game's weapons;

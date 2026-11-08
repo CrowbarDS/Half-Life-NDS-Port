@@ -42,6 +42,16 @@ One ROM covers all of them.
 
 DSi mode has more memory, so it gets richer content than DS mode.
 
+### Widescreen on a 3DS
+
+On a 3DS, the game can fill the wider top screen at 16:10. It sees more to the sides and keeps the same height. The HUD and menus are stretched.
+
+1. Make a widescreen `TwlBg.cxi` with [TWPatch](https://wiki.ds-homebrew.com/ds-index/rtcom) and save it as `sd:/_nds/TWiLightMenu/TwlBg/Widescreen.cxi`. Turn on external FIRMs and modules in Luma3DS's settings.
+2. In TWiLight Menu++, press Y on the game and set **Screen Aspect Ratio** to **16:10**.
+3. In the game, **OPTIONS > GRAPHICS > Screen** is **auto** by default: it asks the 3DS which screen it is showing. You can also set it to **4:3** or **16:10** yourself.
+
+Auto works only with a TwlBg made by TWPatch, which can be asked through its rtcom channel. With any other TwlBg, set the screen yourself.
+
 ## Quick start
 
 1. **Get the release.** Download the ROM zip and the converter for your system from the [Releases](https://github.com/CrowbarDS/Half-Life-NDS-Port/releases) page. `SHA256SUMS.txt` lists each file's checksum.
