@@ -352,15 +352,52 @@ namespace hlds
             }
             return -(child + 1);
         };
+        // Where a player's eye can be in a leaf: its middle, if that is no
+        // higher above the floor below than a jump takes them; or else a
+        // standing eye's height above that floor, if that is still in it.
+        // Open air nobody reaches -- high over an outdoor map -- is not
+        // looked from: from there the whole map is in view at once, and a
+        // map was taken as heavier than it is as it is played.
+        constexpr double kReach = 256.0, kEyeAboveFloor = 64.0;
+        auto liquid = [](int contents)
+        {
+            return contents == hldata::kContentsWater || contents == hldata::kContentsSlime ||
+                   contents == hldata::kContentsLava;
+        };
+        auto placeEye = [&](double *eye, int leaf) -> bool
+        {
+            if (liquid(bsp.leaves[leaf].contents))
+                return true; // (swum in, at any depth)
+            double p[3] = {eye[0], eye[1], eye[2]};
+            for (int step = 0; step < 1024; ++step)
+            {
+                p[2] -= 8.0;
+                const int contents = bsp.leaves[leafAt(p)].contents;
+                if (contents == hldata::kContentsSky)
+                    return false; // (nothing to stand on, all the way down)
+                if (contents != hldata::kContentsSolid && !liquid(contents))
+                    continue;
+                if (eye[2] - p[2] <= kReach)
+                    return true;
+                const double at[3] = {eye[0], eye[1], p[2] + 8.0 + kEyeAboveFloor};
+                if (leafAt(at) != leaf)
+                    return false;
+                eye[2] = at[2];
+                return true;
+            }
+            return false;
+        };
         for (int leaf = 1; leaf <= visLeaves && leaf < leafCount; ++leaf)
         {
             const hldata::Leaf &l = level.leaves[leaf];
             if (l.contents == hldata::kContentsSolid || l.contents == hldata::kContentsSky)
                 continue;
-            const double eyeAt[3] = {(l.mins[0] + l.maxs[0]) * 0.5, (l.mins[1] + l.maxs[1]) * 0.5,
-                                     (l.mins[2] + l.maxs[2]) * 0.5};
+            double eyeAt[3] = {(l.mins[0] + l.maxs[0]) * 0.5, (l.mins[1] + l.maxs[1]) * 0.5,
+                               (l.mins[2] + l.maxs[2]) * 0.5};
             if (leafAt(eyeAt) != leaf)
                 continue; // (a leaf whose middle is elsewhere: its neighbours stand for it)
+            if (!placeEye(eyeAt, leaf))
+                continue;
             const std::vector<std::uint8_t> row = bsp.decompressVis(leaf);
             auto inPvs = [&](int other)
             {

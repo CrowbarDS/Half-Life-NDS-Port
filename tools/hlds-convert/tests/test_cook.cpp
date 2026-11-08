@@ -53,6 +53,17 @@ namespace
         return c;
     }
 
+    // A tall room: its middle is out of a jump's reach of the floor, so its
+    // worst view is taken from a standing eye over the floor instead -- it
+    // is still looked from, not left out as air nobody reaches.
+    void testTallRoomSeen()
+    {
+        BoxRoom room;
+        room.maxs[2] = 2048;
+        const Cooked c = cook(room);
+        check(c.ok && c.view.header->worstPolygons > 0, "a tall room's worst view is taken over its floor");
+    }
+
     void testBoxRoom()
     {
         const Cooked c = cook(BoxRoom());
@@ -336,6 +347,7 @@ int main()
     testChapters();
     testMaterials();
     testBoxRoom();
+    testTallRoomSeen();
     testDroppedFaces();
     testTooLarge();
     testSizesOverride();

@@ -55,8 +55,8 @@ Milestone 11, "levels of detail".
   converter's flood from every leaf: 1536 to 8192 units), the fog whole by
   then. What a view asks for beyond the budget is left out from the far end,
   and a map the converter judged HEAVY (its worst view as it is seen -- from
-  the middle of every leaf, eight ways round and three up and down, through
-  the portals -- is over a pass's budget) has the fog on always,
+  every leaf a player's eye can be in, eight ways round and three up and
+  down, through the portals -- is over a pass's budget) has the fog on always,
   at the player's distance, unless the fog is set to off or to "always" already.
   In the others it comes in only where a view is cut (see "Fog" below). Back faces
   are rejected on the CPU, surface by surface; the hardware's own test is off,
