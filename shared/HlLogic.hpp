@@ -3975,28 +3975,34 @@ namespace hldata
             logicPlaceBrushTurned(w, record.brush, state.base, angles);
         }
 
-        /// A wheel turned by hand, a frame on: round at its speed, to its end;
-        /// what it targets is told how far round it is -- a momentary_door
-        /// goes as far along, and anything else is used (USE_SET), as the
-        /// game's UpdateTarget does while the wheel turns: a door opens.
+        /// A wheel turned by hand, a frame on: round at its speed, to its end
+        /// -- or, let go of, one that goes back by itself (`state.bits` 1)
+        /// back at its return speed (move[1]), to where it started. What it
+        /// targets is told how far round it is: a momentary_door goes as far
+        /// along, and anything else is used (USE_SET), as the game's
+        /// UpdateTarget does while the wheel turns -- a door opens.
         inline void momentaryTick(LogicWorld &w, PlayerState &player, int index, int ms)
         {
             const LogicRecord &record = w.records[index];
             LogicState &state = w.states[index];
-            if (record.brush == kNoBrush || !state.running)
+            const bool returning = state.bits == 1;
+            if (record.brush == kNoBrush || (!state.running && !returning))
                 return;
             const std::int64_t distance = record.move[0] < 0 ? -record.move[0] : record.move[0];
             if (distance == 0)
             {
                 state.running = false;
+                state.bits = 0;
                 return;
             }
-            const std::int64_t step = (static_cast<std::int64_t>(record.speed) * ms * 65536) / (1000 * distance);
-            std::int64_t at = state.phase + (state.speed < 0 ? -step : step);
+            const fx speed = returning ? record.move[1] : record.speed;
+            const std::int64_t step = (static_cast<std::int64_t>(speed) * ms * 65536) / (1000 * distance);
+            std::int64_t at = state.phase + (returning || state.speed < 0 ? -step : step);
             if (at <= 0 || at >= 65536)
             {
                 at = at <= 0 ? 0 : 65536;
                 state.running = false;
+                state.bits = 0;
             }
             state.phase = static_cast<std::int32_t>(at);
             momentaryPlace(w, index);
@@ -4016,8 +4022,9 @@ namespace hldata
                 }
             }
             // (Ten times a second, `timer` counting down to it: the game's
-            // is each time the player's USE comes in.)
-            if (record.target != 0 && state.timer < 0)
+            // is each time the player's USE comes in, or its Return thinks --
+            // which, all the way back, tells nothing more.)
+            if (record.target != 0 && state.timer < 0 && (!returning || state.phase > 0))
             {
                 state.timer = 100;
                 logicFire(w, player, record.target, index, kUseSet, 0);
@@ -4380,17 +4387,24 @@ namespace hldata
 
         case LogicKind::MomentaryButton:
             // Turned while it is held in the game; here, from one USE to the
-            // next -- or to its end, and back from there the next time.
+            // next -- or to its end, and back from there the next time. Let
+            // go of, one that goes back by itself does (CMomentaryRotButton::
+            // Off), and taken hold of again, it turns on from there.
             if (state.running)
             {
                 state.running = false;
+                if (record.move[1] > 0 && state.phase > 0)
+                    state.bits = 1;
             }
             else
             {
-                if (state.phase >= 65536)
+                if (state.bits == 1)
+                    state.speed = 1;
+                else if (state.phase >= 65536)
                     state.speed = -1;
                 else if (state.phase <= 0)
                     state.speed = 1;
+                state.bits = 0;
                 state.running = true;
                 detail::recordSound(w, index, false);
             }

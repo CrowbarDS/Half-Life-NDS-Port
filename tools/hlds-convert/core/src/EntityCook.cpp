@@ -1848,6 +1848,11 @@ namespace hlds
                 if (speed <= 0)
                     speed = 40;
                 record.speed = static_cast<fx>(std::lround(speed * 65536.0 / 360.0));
+                // (Flag 16: let go of, it goes back by itself, at its
+                // "returnspeed" -- none, it stays.)
+                const double back = numberKey(entity, "returnspeed");
+                if ((spawnflags & 16) && back > 0)
+                    record.move[1] = static_cast<fx>(std::lround(back * 65536.0 / 360.0));
             }
             else if (cls == "momentary_door" && brushRecordOfEntity[e] >= 0)
             {

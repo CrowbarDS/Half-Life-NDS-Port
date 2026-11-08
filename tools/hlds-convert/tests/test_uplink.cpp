@@ -10,7 +10,8 @@
 //
 // A wheel tells everything it targets how far round it is while it turns;
 // what is not a momentary_door is simply used, and a door opens (c3a1's
-// sewer lid).
+// sewer lid). One that goes back by itself when let go does so, and what it
+// moves with it (c2a3a's cage).
 //
 // Needs HLDS_VALVE_DIR.
 
@@ -182,6 +183,61 @@ namespace
         run(30 * 4);
         check(g.logic.states[lid].move == MoveState::AtTop, "a turn of the wheel opens it, and it stays open");
     }
+
+    /// c2a3a: the cage's wheel goes back by itself when let go (flag 16, at
+    /// its "returnspeed"), and the cage door with it.
+    void testCageReturns(const char *dir)
+    {
+        auto game = std::make_unique<Game>();
+        std::string error;
+        if (!game->bsp.load(std::string(dir) + "/maps/c2a3a.bsp", error))
+        {
+            check(false, "c2a3a is read");
+            return;
+        }
+        finish(*game, nullptr, dir);
+        check(game->ok, "c2a3a cooks");
+        if (!game->ok)
+            return;
+        Game &g = *game;
+        const int door = recordNamed(g, "cagedoor", LogicKind::MomentaryDoor);
+        int wheel = -1;
+        for (std::uint32_t i = 0; i < g.view.logicCount; ++i)
+        {
+            const LogicRecord &r = g.view.logic[i];
+            if (r.kind == static_cast<std::uint8_t>(LogicKind::MomentaryButton) && r.target != 0 &&
+                g.view.nameHashes[r.target] == nameHash("cagedoor"))
+                wheel = static_cast<int>(i);
+        }
+        check(wheel >= 0 && door >= 0, "the cage door and its wheel are there");
+        if (wheel < 0 || door < 0)
+            return;
+        check(g.view.logic[wheel].move[1] > 0, "the wheel is cooked to go back by itself");
+        auto run = [&](int frames)
+        {
+            for (int n = 0; n < frames; ++n)
+            {
+                logicTick(g.logic, g.player, 33);
+                g.drain();
+            }
+        };
+        g.player.origin[2] += fxFromInt(4000);
+        run(30);
+        logicUse(g.logic, g.player, wheel, -1, kUseToggle);
+        run(45);
+        logicUse(g.logic, g.player, wheel, -1, kUseToggle);
+        run(2);
+        const int turned = g.logic.states[wheel].phase;
+        const int opened = g.logic.states[door].phase;
+        std::printf("test_uplink: c2a3a's wheel let go at %d%% round, its door %d%% open\n", turned * 100 / 65536,
+                    opened * 100 / 65536);
+        check(turned > 0 && opened > 0, "turned, the wheel opens the cage");
+        run(30 * 5);
+        std::printf("test_uplink: ... five seconds on, %d%% and %d%%\n", g.logic.states[wheel].phase * 100 / 65536,
+                    g.logic.states[door].phase * 100 / 65536);
+        check(g.logic.states[wheel].phase == 0 && g.logic.states[door].phase == 0,
+              "let go of, it goes back by itself, and the cage shuts");
+    }
 } // namespace
 
 int main()
@@ -194,6 +250,7 @@ int main()
     }
     testDish(dir);
     testSewerLid(dir);
+    testCageReturns(dir);
     if (g_failures == 0)
         std::printf("test_uplink: ok\n");
     return g_failures == 0 ? 0 : 1;

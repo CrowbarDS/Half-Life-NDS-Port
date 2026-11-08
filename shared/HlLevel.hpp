@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 59;
+    inline constexpr std::uint16_t kLevelVersion = 60;
     /// The oldest level format this build reads. (49: a map's textures are
     /// stored in its archive as they are, never compressed, so that one that
     /// streams is read straight in during play. 50: each texture's record
@@ -92,7 +92,8 @@ namespace hldata
     /// a map's signs, marks of a picture of its own (kDecalSign), which a
     /// build before draws as a speck. 59: triggers the monsters set off,
     /// some of them not the player's, which a build before lets the
-    /// player set off.)
+    /// player set off. 60: a wheel's return speed, in move[1], which a
+    /// build before leaves alone: its wheels stay where they are let go.)
     inline constexpr std::uint16_t kLevelMinReader = 56;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,
@@ -701,8 +702,10 @@ namespace hldata
         /// A wheel turned by hand (momentary_rot_button): as a func_rot_button
         /// turns, extra[0] its axis and extra[1..3] how it rests; move[0] is
         /// how far it goes (turns * 65536), `speed` how fast (the same a
-        /// second). Used, it turns, until used again or at the end; what it
-        /// targets (momentary_door) goes as far along as it is round.
+        /// second), move[1] how fast it goes back by itself when let go (0:
+        /// it stays). Used, it turns, until used again or at the end; what
+        /// it targets goes as far along as it is round (momentary_door), or
+        /// is used.
         MomentaryButton,
         /// What a wheel moves (momentary_door): along `move`, at `speed`, to
         /// as far as the wheel that targets it is round.
