@@ -250,10 +250,17 @@ if(HLDS_BUILD_TESTS)
     # The game library as the ROM carries it, held to loading as dsltool's
     # does (tools/dsl_strip.py): a made-up library always, the built one when
     # there is a build.
-    add_test(NAME dsl_strip_self COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/../dsl_strip.py --self-test)
-    add_test(NAME dsl_strip_built COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/../dsl_strip.py --check
-             ${CMAKE_CURRENT_SOURCE_DIR}/../../build/hl/hl.full.dsl ${CMAKE_CURRENT_SOURCE_DIR}/../../build/hl/hl.dsl)
-    set_tests_properties(dsl_strip_built PROPERTIES SKIP_RETURN_CODE 77)
+    # (Python is the ROM build's; a system that builds only the converter may
+    # have none, and then these are left out.)
+    find_package(Python3 QUIET COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME dsl_strip_self COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../dsl_strip.py --self-test)
+        add_test(NAME dsl_strip_built COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../dsl_strip.py --check
+                 ${CMAKE_CURRENT_SOURCE_DIR}/../../build/hl/hl.full.dsl ${CMAKE_CURRENT_SOURCE_DIR}/../../build/hl/hl.dsl)
+        set_tests_properties(dsl_strip_built PROPERTIES SKIP_RETURN_CODE 77)
+    else()
+        message(STATUS "Python 3 not found: the dsl_strip tests are left out")
+    endif()
 
     # Not a test: writes a synthetic map with one brush of each kind in front
     # of the player, for looking at on the console (tests/make_test_map.cpp).
