@@ -1,4 +1,5 @@
-// Uplink's satellite dish (hldemo3), turned by its wheel.
+// Wheels turned by hand (momentary_rot_button) in the stock maps -- first
+// Uplink's satellite dish (hldemo3).
 //
 // The wheel turns the dish, and with it two rails in a room out of sight
 // (momentary_door). A crate stands on them and is carried along;
@@ -6,6 +7,10 @@
 // middle one -- reached when the dish is lined up -- lights the lamp by the
 // wheel, beeps, and unlocks the button that sends the signal. If the rails do
 // not take the crate with them, the dish turns for nothing.
+//
+// A wheel tells everything it targets how far round it is while it turns;
+// what is not a momentary_door is simply used, and a door opens (c3a1's
+// sewer lid).
 //
 // Needs HLDS_VALVE_DIR.
 
@@ -127,6 +132,56 @@ namespace
         check(pastX > 1375, "turned on, the crate goes on past the middle trigger");
         check(beep >= 0 && g.timesHeard[static_cast<std::size_t>(beep)] == 1, "... and nothing beeps again");
     }
+
+    int recordNamed(const Game &g, const char *name, LogicKind kind)
+    {
+        const std::uint32_t hash = nameHash(name);
+        for (std::uint32_t i = 0; i < g.view.logicCount; ++i)
+        {
+            const LogicRecord &r = g.view.logic[i];
+            if (r.kind == static_cast<std::uint8_t>(kind) && r.name != 0 && g.view.nameHashes[r.name] == hash)
+                return static_cast<int>(i);
+        }
+        return -1;
+    }
+
+    /// c3a1: the wheel by the sewer lid opens it (a func_door_rotating).
+    void testSewerLid(const char *dir)
+    {
+        auto game = std::make_unique<Game>();
+        std::string error;
+        if (!game->bsp.load(std::string(dir) + "/maps/c3a1.bsp", error))
+        {
+            check(false, "c3a1 is read");
+            return;
+        }
+        finish(*game, nullptr, dir);
+        check(game->ok, "c3a1 cooks");
+        if (!game->ok)
+            return;
+        Game &g = *game;
+        const int wheel = recordNamed(g, "momwheel", LogicKind::MomentaryButton);
+        const int lid = recordNamed(g, "sewlid", LogicKind::DoorRotating);
+        check(wheel >= 0 && lid >= 0, "the sewer lid and its wheel are there");
+        if (wheel < 0 || lid < 0)
+            return;
+        auto run = [&](int frames)
+        {
+            for (int n = 0; n < frames; ++n)
+            {
+                logicTick(g.logic, g.player, 33);
+                g.drain();
+            }
+        };
+        g.player.origin[2] += fxFromInt(4000);
+        run(30);
+        check(g.logic.states[lid].move == MoveState::AtBottom, "the lid is shut");
+        logicUse(g.logic, g.player, wheel, -1, kUseToggle);
+        run(15);
+        logicUse(g.logic, g.player, wheel, -1, kUseToggle);
+        run(30 * 4);
+        check(g.logic.states[lid].move == MoveState::AtTop, "a turn of the wheel opens it, and it stays open");
+    }
 } // namespace
 
 int main()
@@ -138,6 +193,7 @@ int main()
         return 77;
     }
     testDish(dir);
+    testSewerLid(dir);
     if (g_failures == 0)
         std::printf("test_uplink: ok\n");
     return g_failures == 0 ? 0 : 1;

@@ -3976,8 +3976,10 @@ namespace hldata
         }
 
         /// A wheel turned by hand, a frame on: round at its speed, to its end;
-        /// what it targets (a momentary_door) is told how far round it is.
-        inline void momentaryTick(LogicWorld &w, int index, int ms)
+        /// what it targets is told how far round it is -- a momentary_door
+        /// goes as far along, and anything else is used (USE_SET), as the
+        /// game's UpdateTarget does while the wheel turns: a door opens.
+        inline void momentaryTick(LogicWorld &w, PlayerState &player, int index, int ms)
         {
             const LogicRecord &record = w.records[index];
             LogicState &state = w.states[index];
@@ -4012,6 +4014,13 @@ namespace hldata
                     w.states[r].phase = state.phase;
                     momentaryPlace(w, r);
                 }
+            }
+            // (Ten times a second, `timer` counting down to it: the game's
+            // is each time the player's USE comes in.)
+            if (record.target != 0 && state.timer < 0)
+            {
+                state.timer = 100;
+                logicFire(w, player, record.target, index, kUseSet, 0);
             }
         }
 
@@ -5144,7 +5153,7 @@ namespace hldata
             else if (kind == LogicKind::TrackChange)
                 detail::trackChangeTick(w, player, i, ms);
             else if (kind == LogicKind::MomentaryButton)
-                detail::momentaryTick(w, i, ms);
+                detail::momentaryTick(w, player, i, ms);
             else if (kind == LogicKind::MomentaryDoor)
                 detail::momentaryDoorTick(w, player, i, ms);
 
