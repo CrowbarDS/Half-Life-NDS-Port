@@ -3815,8 +3815,12 @@ namespace hlrt
             // PROFILE and OPTIONS from the lobby: its card and its model are
             // kept for coming back to, not made again.
             const bool away = (page_ == Page::Profile || page_ == Page::Settings) && sheetFrom_ == Page::NetLobby;
-            mapCard.setHidden(away);
-            if (!away)
+            // STARTING, while the host sends the map and every console loads
+            // it: the top screen is left bare of the card and the model
+            // (kept, for CANCEL to show them again at once).
+            const bool hostStarting = page_ == Page::NetStarting && netGame.isHost();
+            mapCard.setHidden(away || hostStarting);
+            if (!away && !hostStarting)
                 mapCard.show(card, elsewhere);
             int seat = netGame.match().me;
             if (lobby && (page_ == Page::NetHost ? hostChapter_ == kHostPlayers : true) && sheetSelected_ >= 0)
@@ -3829,7 +3833,9 @@ namespace hlrt
                     seat = chosen >= 0 ? chosen : seat;
                 }
             }
-            if (lobby)
+            if (lobby && hostStarting)
+                profileView.setHidden(true);
+            else if (lobby)
             {
                 profileView.setHidden(false);
                 const NetProfile &profile = netGame.match().profiles[seat];
