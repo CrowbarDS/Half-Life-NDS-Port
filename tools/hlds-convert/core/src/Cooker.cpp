@@ -196,6 +196,7 @@ namespace hlds
             return false;
         standInEntities(entities);
         addStartDark(entities);
+        addStartMusic(entities);
 
         // The cooked format indexes these with 16 bits.
         if (bsp.faces.size() > 0xFFFF || bsp.nodes.size() > 0x7FFF ||

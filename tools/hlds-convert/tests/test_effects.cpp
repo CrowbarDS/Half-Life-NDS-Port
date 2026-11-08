@@ -865,6 +865,39 @@ namespace
         check(at[0] == 255, "c0a0 begins black, from its first moment");
         check(at[1] == 0 && at[3] == 0, "... and its own fade brings the picture up out of it");
     }
+    /// c0a0 begins with its music (its worldspawn's "sounds" 3): the tram
+    /// ride's track under the announcer, asked for as the map starts, by
+    /// nothing the player walks into. c0a0b's "sounds" 0 asks for nothing:
+    /// the ride's music goes on until c0a0d stops it.
+    void testStartMusic(const char *dir)
+    {
+        auto game = load(dir, "c0a0");
+        if (!game)
+            return;
+        Game &g = *game;
+        int asked = -1;
+        for (int ms = 0; ms < 1000 && asked < 0; ms += 20)
+        {
+            logicTick(g.logic, g.player, 20);
+            asked = g.logic.musicRequest;
+        }
+        bool touchable = false;
+        for (std::uint32_t i = 0; i < g.view.logicCount; ++i)
+        {
+            const LogicRecord &r = g.view.logic[i];
+            touchable = touchable || (r.kind == static_cast<std::uint8_t>(LogicKind::Music) && r.extra[0] == 3 &&
+                                      (r.flags & kLogicTouch));
+        }
+        std::printf("test_effects: c0a0's music: track %d asked for as it begins\n", asked);
+        check(asked == 3 && !touchable, "c0a0 begins with its track, 3, by nothing walked into");
+        auto next = load(dir, "c0a0b");
+        if (!next)
+            return;
+        int music = 0;
+        for (std::uint32_t i = 0; i < next->view.logicCount; ++i)
+            music += next->view.logic[i].kind == static_cast<std::uint8_t>(LogicKind::Music);
+        check(music == 0, "... and c0a0b, its \"sounds\" 0, asks for nothing");
+    }
     /// The game's rule for what of the world is drawn, which the DSi keeps
     /// (WorldDraw): a node gone through has its own surfaces drawn, whether
     /// or not a seen leaf lists them. Through the gap of c1a1's broken sign
@@ -965,6 +998,7 @@ int main()
     testCrateHits(dir);
     testLightPatterns(dir);
     testStartDark(dir);
+    testStartMusic(dir);
     testNodeRule(dir);
     if (g_failures == 0)
         std::printf("test_effects: ok\n");

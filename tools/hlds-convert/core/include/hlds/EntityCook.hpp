@@ -85,6 +85,9 @@ namespace hlds
     /// what makes it so: a fade from black, held first, set off once as the
     /// map begins.
     void addStartDark(std::vector<Entity> &entities);
+    /// The track a map begins with (worldspawn's "sounds"): a music record
+    /// fired once as the map starts.
+    void addStartMusic(std::vector<Entity> &entities);
 
     /// A model a map needs, and the sequences of it the map plays.
     struct ModelNeed

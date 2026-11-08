@@ -798,6 +798,29 @@ namespace hlds
         entities.push_back(start);
     }
 
+    void addStartMusic(std::vector<Entity> &entities)
+    {
+        int track = 0;
+        for (const Entity &entity : entities)
+        {
+            if (entity.className() == "worldspawn")
+                track = static_cast<int>(numberKey(entity, "sounds"));
+        }
+        // The track a map begins with (worldspawn's "sounds": the game's CD
+        // track, started as the map is: the tram ride's music under the
+        // announcer, c0a0's). 0 and 1 start nothing: none, and the disc's
+        // program -- c0a0b's 0 does not stop the ride's.
+        if (track < 2 || track > 99)
+            return;
+        Entity music;
+        music.pairs = {{"classname", "target_cdaudio"}, {"targetname", "__startmusic"},
+                       {"health", std::to_string(track)}, {"_untouched", "1"}};
+        Entity start;
+        start.pairs = {{"classname", "trigger_auto"}, {"target", "__startmusic"}, {"spawnflags", "1"}};
+        entities.push_back(music);
+        entities.push_back(start);
+    }
+
     void addCasingNeeds(bool playerArmed, std::vector<ModelNeed> &needs)
     {
         bool brass = playerArmed;
@@ -2771,10 +2794,13 @@ namespace hlds
             else if (cls == "target_cdaudio")
             {
                 // A point with a radius: coming within it starts the track.
+                // (Or, the map's own start track, only when it is fired:
+                // addStartMusic.)
                 make = true;
                 record.kind = static_cast<std::uint8_t>(LogicKind::Music);
-                record.flags |= kLogicTouch;
                 record.extra[0] = static_cast<std::uint32_t>(std::max(0.0, numberKey(entity, "health")));
+                if (numberKey(entity, "_untouched") == 0)
+                    record.flags |= kLogicTouch;
                 const double radius = std::max(16.0, numberKey(entity, "radius", 128));
                 for (int a = 0; a < 3; ++a)
                 {
