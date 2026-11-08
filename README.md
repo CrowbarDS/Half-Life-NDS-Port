@@ -6,11 +6,7 @@ Half-Life running natively on the DS and DSi: the original campaign at DS scale,
 
 This is an unofficial fan project, not affiliated with or endorsed by Valve.
 
-| Top screen | Touch screen |
-|:--:|:--:|
-| ![The title's top screen](docs/screenshots/title-top.png) | ![The title menu](docs/screenshots/title-touch.png) |
-| ![People in a lobby of Black Mesa](docs/screenshots/lobby-top.png) | ![The touch controls in play](docs/screenshots/play-touch.png) |
-| ![A large machine hall, with the health and armour display](docs/screenshots/hall-top.png) | |
+![The title's top screen](docs/screenshots/title-top.png) ![People in a lobby of Black Mesa](docs/screenshots/lobby-top.png) ![A large machine hall, with the health and armour display](docs/screenshots/hall-top.png)
 
 Screenshots are real captures of the port, showing art from the owner's copy of the game.
 
