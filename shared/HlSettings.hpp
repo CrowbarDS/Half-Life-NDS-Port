@@ -49,6 +49,10 @@ namespace hldata
     /// What a vote's time may be set to.
     inline constexpr std::uint8_t kVoteSteps[] = {5, 10, 15, 20, 30, 45, 60, 90, 120, 150};
 
+    /// The top screen's shape: as the console shows it (a 3DS with
+    /// TWPatch's wide TwlBg stretches it to 16:10), 4:3, or 16:10.
+    inline constexpr std::uint8_t kScreenAuto = 0, kScreenStandard = 1, kScreenWide = 2, kScreenChoices = 3;
+
     struct SettingsData
     {
         /// Deprecated, can be reused for something else later
@@ -168,6 +172,8 @@ namespace hldata
         std::uint32_t rotation[kRotationMost] = {};
         /// How long a vote for the next map stays open, in seconds (kVoteSteps).
         std::uint8_t voteSeconds = kVoteDefault;
+        /// The top screen's shape (kScreen*).
+        std::uint8_t screenShape = kScreenAuto;
 
         /// What a file of version 8 held: all but the controls.
         template <class Ar>
@@ -218,6 +224,13 @@ namespace hldata
         }
         template <class Ar>
         void serialize(Ar &ar)
+        {
+            serializeTwentyFour(ar);
+            ar &screenShape;
+        }
+        /// ... and of version 24: the screen 4:3 (read as auto, the default).
+        template <class Ar>
+        void serializeTwentyFour(Ar &ar)
         {
             serializeTwentyThree(ar);
             for (int a = kActionsBeforeLook; a < kActionCount; ++a)
@@ -313,8 +326,9 @@ namespace hldata
     inline constexpr std::uint8_t kQualityStandard = 0, kQualityHigh = 1, kQualityChoices = 2;
 
     inline constexpr char kSettingsMagic[4] = {'H', 'L', 'S', 'T'};
-    inline constexpr std::uint16_t kSettingsVersion = 24;
-    /// The versions before, which are still read: 23 had no buttons that
+    inline constexpr std::uint16_t kSettingsVersion = 25;
+    /// The versions before, which are still read: 24 had no screen shape
+    /// (read as auto); 23 had no buttons that
     /// look, nor the BUTTONS ONLY layout; 22 always showed the map's
     /// name while it loaded (read as hidden, the default); 21 had no dialogue focus
     /// (read as light, the default); 19 had taps always USE in
@@ -326,6 +340,7 @@ namespace hldata
     /// 11 had no achievements' pop-ups to turn off; 10 had no autoaim; 9 had
     /// the layouts but no aim speed, custom buttons or stylus pressure; 8 no
     /// controls to choose.
+    inline constexpr std::uint16_t kSettingsVersionTwentyFour = 24;
     inline constexpr std::uint16_t kSettingsVersionTwentyThree = 23;
     inline constexpr std::uint16_t kSettingsVersionTwentyTwo = 22;
     inline constexpr std::uint16_t kSettingsVersionTwentyOne = 21;
@@ -417,6 +432,8 @@ namespace hldata
             data.serializeTwentyTwo(ar);
         else if (version == kSettingsVersionTwentyThree)
             data.serializeTwentyThree(ar);
+        else if (version == kSettingsVersionTwentyFour)
+            data.serializeTwentyFour(ar);
         else
             ar &data;
     }
@@ -442,7 +459,8 @@ namespace hldata
             return false;
         std::memcpy(&header, bytes, sizeof(header));
         if (std::memcmp(header.magic, kSettingsMagic, sizeof(header.magic)) != 0 ||
-            (header.version != kSettingsVersion && header.version != kSettingsVersionTwentyThree &&
+            (header.version != kSettingsVersion && header.version != kSettingsVersionTwentyFour &&
+             header.version != kSettingsVersionTwentyThree &&
              header.version != kSettingsVersionTwentyTwo &&
              header.version != kSettingsVersionTwentyOne &&
              header.version != kSettingsVersionTwenty &&
@@ -492,7 +510,7 @@ namespace hldata
         }
         if (read.dspAudio > 1 || read.autoaim > 1 || read.autosave > 1 || read.achievementPopups > 1 ||
             read.debugReadout > 1 || read.leftHanded > 1 || read.viewBob > 1 || read.cheats > 1 ||
-            read.hideMapName > 1 ||
+            read.hideMapName > 1 || read.screenShape >= kScreenChoices ||
             read.keyboardLayout >= kKeyboardLayouts ||
             !read.graphics.valid())
             return false;

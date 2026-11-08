@@ -1,9 +1,9 @@
 #include "render/Camera.hpp"
 
+#include "Global.hpp"
 #include "HlFog.hpp"
 #include "Settings.hpp"
 
-#include <cmath>
 
 #include <NEAMain.h>
 
@@ -23,11 +23,45 @@ namespace hlrt
         std::int32_t kCosH = 2793;
         std::int32_t kSinV = 2578; // sin 39
         std::int32_t kCosV = 3183;
-        // ... and through the crossbow's sight (10 and 7.5 drawn): 12, 9.5.
-        constexpr std::int32_t kZoomSinH = 852;
-        constexpr std::int32_t kZoomCosH = 4006;
+        // ... and through the crossbow's sight (10 and 7.5 drawn): 12, 9.5
+        // (14 across on a wide screen).
+        std::int32_t kZoomSinH = 852;
+        std::int32_t kZoomCosH = 4006;
         constexpr std::int32_t kZoomSinV = 676;
         constexpr std::int32_t kZoomCosV = 4040;
+
+        // (Angles below in turns, 65536 to the circle, and worked out in
+        // fixed point: the double-precision library would cost a guest sent
+        // the game 3 KB of its memory.)
+        constexpr int kTwoDegrees = 364;
+        constexpr int turnsOfHalf(int degrees)
+        {
+            return degrees * 65536 / 720;
+        }
+        constexpr int degreesOfHalf(int turns)
+        {
+            return (turns * 720 + 32768) / 65536;
+        }
+        /// The half-angle whose tangent is tan(half) * num / den.
+        int scaledHalf(int half, int num, int den)
+        {
+            hldata::fx s = 0, c = 0;
+            hldata::fxSinCos(static_cast<std::uint16_t>(half), s, c);
+            return hldata::fxAtan2Turns(s * num, c * den);
+        }
+        /// The half-angle across of a picture `half` high, at the screen's
+        /// shape: 4:3, or 16:10.
+        int acrossOf(int half, bool wide)
+        {
+            return wide ? scaledHalf(half, 8, 5) : scaledHalf(half, 4, 3);
+        }
+        void sinCosOf(int turns, std::int32_t &sine, std::int32_t &cosine)
+        {
+            hldata::fx s = 0, c = 0;
+            hldata::fxSinCos(static_cast<std::uint16_t>(turns), s, c);
+            sine = s;
+            cosine = c;
+        }
         // Pitch stops at 89 degrees.
         constexpr std::int16_t kMaxPitch = 16202;
 
@@ -109,19 +143,33 @@ namespace hlrt
     {
         across = across < 60 ? 60 : (across > 110 ? 110 : across);
         fovAcross = across;
-        // The height of it on a 4:3 screen; and the planes, two degrees
+        // The height of it on a 4:3 screen (which a wide one keeps), what is
+        // seen across at the screen's shape; and the planes, two degrees
         // looser than the picture each way, as above.
-        const double half = across * 3.14159265358979 / 360.0;
-        const double high = 2.0 * std::atan(std::tan(half) * 0.75) * 180.0 / 3.14159265358979;
-        fovDegrees = static_cast<int>(high + 0.5);
-        const double h = (across / 2.0 + 2.0) * 3.14159265358979 / 180.0;
-        const double v = (high / 2.0 + 2.0) * 3.14159265358979 / 180.0;
-        kSinH = static_cast<std::int32_t>(std::sin(h) * 4096.0 + 0.5);
-        kCosH = static_cast<std::int32_t>(std::cos(h) * 4096.0 + 0.5);
-        kSinV = static_cast<std::int32_t>(std::sin(v) * 4096.0 + 0.5);
-        kCosV = static_cast<std::int32_t>(std::cos(v) * 4096.0 + 0.5);
+        const int halfAcross = turnsOfHalf(across);
+        fovDegrees = degreesOfHalf(scaledHalf(halfAcross, 3, 4));
+        const int halfHigh = turnsOfHalf(fovDegrees);
+        const int drawn = wide ? acrossOf(halfHigh, true) : halfAcross;
+        fovDrawnAcross = degreesOfHalf(drawn);
+        sinCosOf(drawn + kTwoDegrees, kSinH, kCosH);
+        sinCosOf(halfHigh + kTwoDegrees, kSinV, kCosV);
+        sinCosOf(acrossOf(turnsOfHalf(kZoomFovDegrees), wide) + kTwoDegrees, kZoomSinH, kZoomCosH);
         refreshProjection();
         buildPlanes();
+    }
+
+    void Camera::setWide(bool on)
+    {
+        wide = on;
+        // 1.6 in 20.12: the picture's 256 by 192 pixels shown at 16:10.
+        NEA_SetAspect(on ? 6554 : 0);
+        setFov(fovAcross);
+    }
+
+    void Camera::applyScreenShape()
+    {
+        const std::uint8_t shape = settings.screenShape;
+        setWide(shape == hldata::kScreenWide || (shape == hldata::kScreenAuto && global.wideTop));
     }
 
     void Camera::refreshProjection()
@@ -129,8 +177,13 @@ namespace hlrt
         const int high = zoomed ? kZoomFovDegrees : fovDegrees;
         NEA_SetFov(high);
         // A pixel at the display's depth (3058 of its units): 96 of them
-        // are the depth times the tangent of half the height.
-        hudPixel = static_cast<int>(3058.0 * std::tan(high * 3.14159265358979 / 360.0) / 96.0 + 0.5);
+        // are the depth times the tangent of half the height. Across, a
+        // pixel of a picture shown wider is that much wider (6/5 on 16:10).
+        // (Only when the picture changes: the crossbow's sight, the setting.)
+        std::int32_t s = 0, c = 0;
+        sinCosOf(turnsOfHalf(high), s, c);
+        hudPixel = (3058 * s + 48 * c) / (96 * c);
+        hudPixelX = wide ? (3058 * 6 * s + 240 * c) / (480 * c) : hudPixel;
     }
 
     void Camera::buildPlanes()

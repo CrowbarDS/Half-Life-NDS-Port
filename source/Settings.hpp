@@ -93,6 +93,9 @@ public:
     bool viewBob = false;
     /// The fog, and how much detail is given up for speed (HlFog.hpp).
     hldata::GraphicsSettings graphics;
+    /// The top screen's shape (hldata::kScreen*): auto follows the
+    /// console (a 3DS's wide TwlBg: 16:10).
+    std::uint8_t screenShape = hldata::kScreenAuto;
     /// The player in a match (HlSettings.hpp): the name (the console
     /// owner's until another is typed), the model and its colours, the spray.
     char name[hldata::kProfileNameBytes] = {};

@@ -1514,6 +1514,7 @@ int main(int argc, char *argv[])
     const bool debugging = debugStart();
 
     global.InitVideo();
+    hlrt::camera.applyScreenShape();
 #ifdef HLDS_CHILD
     // Sent the game: nothing of it but the program, until its host is found
     // and has sent the rest.

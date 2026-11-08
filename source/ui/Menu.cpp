@@ -21,6 +21,7 @@
 #include "net/DlSend.hpp"
 #include "net/NetGame.hpp"
 #include "render/BottomScreen.hpp"
+#include "render/Camera.hpp"
 #include "render/HudDraw.hpp"
 #include "render/MapCard.hpp"
 #include "render/ProfileView.hpp"
@@ -92,6 +93,7 @@ namespace hlrt
             kWorldDetail,
             kModelLimit,
             kDrawDistance,
+            kScreen,
             kDuck,
             kWalk,
             kJumpButton,
@@ -878,7 +880,8 @@ namespace hlrt
                                      {Kind::Value, kModelDetail, "Model detail"},
                                      {Kind::Value, kWorldDetail, "World detail"},
                                      {Kind::Value, kModelLimit, "Models at once"},
-                                     {Kind::Value, kDrawDistance, "Draw distance"}};
+                                     {Kind::Value, kDrawDistance, "Draw distance"},
+                                     {Kind::Value, kScreen, "Screen"}};
         const Row kControlRows[] = {{Kind::Value, kScheme, "Layout"},          {Kind::Value, kHand, "Stylus hand"},
                                     {Kind::Value, kDuck, "Crouch"},            {Kind::Value, kWalk, "Walk"},
                                     {Kind::Value, kJumpButton, "Jump button"}, {Kind::Value, kTapJump, "Double tap jump"},
@@ -1311,6 +1314,12 @@ namespace hlrt
                     std::snprintf(out, size, "%d", settings.graphics.modelLimit);
                 break;
             case kDrawDistance: std::snprintf(out, size, "%s", kDrawDistanceName[settings.graphics.drawDistance]); break;
+            case kScreen:
+                if (settings.screenShape == hldata::kScreenAuto)
+                    std::snprintf(out, size, "auto (%s)", camera.wide ? "16:10" : "4:3");
+                else
+                    std::snprintf(out, size, "%s", settings.screenShape == hldata::kScreenWide ? "16:10" : "4:3");
+                break;
             // (Which side of the touch screen its column of buttons is, and
             // which hand has the pad and the trigger.)
             case kHand: std::snprintf(out, size, "%s", settings.leftHanded ? "left" : "right"); break;
@@ -1377,6 +1386,9 @@ namespace hlrt
             case kWorldDetail: return "How much of the walls is drawn far off.";
             case kModelLimit: return "How many people and monsters are drawn at once: auto, or a number.";
             case kDrawDistance: return "How far the world is drawn.";
+            case kScreen:
+                return "The top screen's shape. 16:10 is for a 3DS whose screen TWPatch made wide (TWiLight Menu++: "
+                       "Screen Aspect Ratio); auto follows the console.";
             case kScheme: return "Which button does what: classic, modern, buttons only (no stylus), or your own (BUTTONS).";
             case kHand: return "Which hand holds the stylus: the touch screen's buttons go to the other side.";
             case kDuck: return "Crouch held down, or pressed once to crouch and again to stand.";
@@ -1503,6 +1515,10 @@ namespace hlrt
             case kModelDetail: cycle(settings.graphics.modelDetail, kDetailLevels); return true;
             case kWorldDetail: cycle(settings.graphics.worldDetail, kDetailLevels); return true;
             case kDrawDistance: cycle(settings.graphics.drawDistance, kDrawDistances); return true;
+            case kScreen:
+                cycle(settings.screenShape, hldata::kScreenChoices);
+                camera.applyScreenShape();
+                return true;
             case kModelLimit:
             {
                 // auto, 4, 6, 8, 10, 12, and round again.
@@ -2595,6 +2611,8 @@ namespace hlrt
                 sound.applySoundMode();
                 sound.applyVolumes();
             }
+            if (settingsChapter_ == 1 && page_ != Page::Profile)
+                camera.applyScreenShape();
             capturing_ = -1;
             settings.save();
             drawSheet();

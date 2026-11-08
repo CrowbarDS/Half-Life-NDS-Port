@@ -34,6 +34,7 @@ void Settings::load()
         leftHanded = data.leftHanded != 0;
         viewBob = data.viewBob != 0;
         graphics = data.graphics;
+        screenShape = data.screenShape;
         controlScheme = data.controlScheme;
         padTurns = data.padTurns != 0;
         padLooks = data.padLooks != 0;
@@ -107,6 +108,7 @@ void Settings::reset(int category)
         break;
     case 1:
         graphics = first.graphics;
+        screenShape = first.screenShape;
         break;
     case 2:
         // (The layouts; the buttons of one's own are BUTTONS'.)
@@ -175,6 +177,7 @@ bool Settings::save() const
     data.leftHanded = leftHanded ? 1 : 0;
     data.viewBob = viewBob ? 1 : 0;
     data.graphics = graphics;
+    data.screenShape = screenShape;
     data.controlScheme = controlScheme;
     data.padTurns = padTurns ? 1 : 0;
     data.padLooks = padLooks ? 1 : 0;

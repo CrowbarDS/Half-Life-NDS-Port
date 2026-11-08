@@ -720,6 +720,37 @@ namespace
         check(readSettings(file.data(), file.size(), back) && back.controlScheme == kControlsCustom &&
                   back.keys[kActionFire] == kButtonL && back.keys[kActionLookUp] == 0,
               "a file of version 23 keeps its buttons, and has none that look");
+
+        // The screen's shape: kept; a file of version 24 read as auto; one
+        // there is not, refused.
+        data.screenShape = kScreenWide;
+        written = writeSettings(data);
+        check(readSettings(written.data(), written.size(), back) && back.screenShape == kScreenWide,
+              "the wide screen is kept");
+        SettingsData before;
+        before.keys[kActionLookUp] = static_cast<std::uint16_t>(kButtonX);
+        yas::mem_ostream os24;
+        yas::binary_oarchive<yas::mem_ostream, flags> oa24(os24);
+        before.serializeTwentyFour(oa24);
+        const auto buf24 = os24.get_intrusive_buffer();
+        SettingsHeader header24{};
+        std::memcpy(header24.magic, kSettingsMagic, sizeof(header24.magic));
+        header24.version = kSettingsVersionTwentyFour;
+        header24.payloadBytes = static_cast<std::uint16_t>(buf24.size);
+        header24.crc32 =
+            crc32(reinterpret_cast<const std::uint8_t *>(buf24.data), static_cast<std::uint32_t>(buf24.size));
+        std::vector<std::uint8_t> file24(sizeof(header24) + buf24.size);
+        std::memcpy(file24.data(), &header24, sizeof(header24));
+        std::memcpy(file24.data() + sizeof(header24), buf24.data, buf24.size);
+        back.screenShape = kScreenStandard;
+        check(readSettings(file24.data(), file24.size(), back) && back.screenShape == kScreenAuto &&
+                  back.keys[kActionLookUp] == kButtonX,
+              "a file of version 24 keeps its buttons, and its screen is auto");
+        data.screenShape = kScreenChoices;
+        written = writeSettings(data);
+        check(!readSettings(written.data(), written.size(), back), "a screen shape there is not: not read");
+        data.screenShape = kScreenAuto;
+
         data.controlScheme = kControlsSchemes;
         written = writeSettings(data);
         check(!readSettings(written.data(), written.size(), back), "a layout there is not: not read");

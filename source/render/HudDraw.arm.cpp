@@ -42,7 +42,7 @@ namespace hlrt
                 return;
             fx s, c, hs, hc;
             fxSinCos(static_cast<std::uint16_t>(aim.yaw), s, c);
-            fxSinCos(static_cast<std::uint16_t>(camera.fovAcross * 65536 / 720), hs, hc);
+            fxSinCos(static_cast<std::uint16_t>(camera.fovDrawnAcross * 65536 / 720), hs, hc);
             if (c > 0 && hs > 0)
                 dx = static_cast<int>(-(static_cast<std::int64_t>(s) * hc * 128) / (static_cast<std::int64_t>(c) * hs));
             const int high = camera.zoomed ? Camera::kZoomFovDegrees : camera.fovDegrees;
@@ -64,7 +64,10 @@ namespace hlrt
         // of them, 96 * kPixel being kDepth * tan(37 degrees). The depth is
         // six of the game's units: past the near plane (four), nearer than
         // a wall can be.
-        // (kPixel is the camera's hudPixel: it follows the picture.)
+        // (kPixel is the camera's hudPixel: it follows the picture. Across it
+        // is hudPixelX, wider on a wide screen: the flat pictures cover the
+        // same pixels as on 4:3, and are stretched with the rest of the
+        // screen's 2D.)
         constexpr int kDepth = 3058;
 
         /// How far off the flat pictures are drawn: a sixteenth, at the
@@ -84,7 +87,7 @@ namespace hlrt
         {
             GFX_TEX_COORD = TEXTURE_PACK(s << 4, t << 4);
             GFX_VERTEX16 = (static_cast<std::uint32_t>((96 - sy) * camera.hudPixel) << 16) |
-                           (static_cast<std::uint32_t>((sx - 128) * camera.hudPixel) & 0xFFFF);
+                           (static_cast<std::uint32_t>((sx - 128) * camera.hudPixelX) & 0xFFFF);
             GFX_VERTEX16 = static_cast<std::uint32_t>(-kDepth) & 0xFFFF;
         }
 

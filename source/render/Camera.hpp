@@ -69,11 +69,25 @@ namespace hlrt
         int fovAcross = 90;
         int fovDegrees = kFovDegrees;
         /// How many of the head-up display's units a pixel is, at the depth
-        /// it draws at (HudDraw.arm.cpp), for the picture as it is now.
+        /// it draws at (HudDraw.arm.cpp), for the picture as it is now: down,
+        /// and across (more on a wide screen, where a pixel is shown wider).
         int hudPixel = 24;
-        /// A field of view `across` degrees wide (60 to 110): the picture
-        /// and the cull planes.
+        int hudPixelX = 24;
+        /// The top screen is shown at 16:10 (a 3DS's wide TwlBg stretches
+        /// the 256 by 192 pixels to 384 by 240): the picture keeps its
+        /// height and sees wider, as the game does on a wide screen.
+        bool wide = false;
+        /// The field of view across as the picture shows it: fovAcross on
+        /// 4:3, more on 16:10.
+        int fovDrawnAcross = 90;
+        /// A field of view `across` degrees wide (60 to 110) on 4:3: the
+        /// picture and the cull planes.
         void setFov(int across);
+        /// The screen shown 16:10 or not: the picture's shape, its width
+        /// and the planes.
+        void setWide(bool on);
+        /// setWide as the screen setting says (its auto: Global::wideTop).
+        void applyScreenShape();
         /// The picture handed to NEA again: narrow or not, at the FOV.
         void refreshProjection();
         /// Clip planes in view units (128 Half-Life units each), 20.12.

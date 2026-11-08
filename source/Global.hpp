@@ -46,6 +46,10 @@ public:
     bool twlChild = false;
     /// The ARM9 is running at 134 MHz. Only ever true when isDSi is.
     bool fastClock = false;
+    /// The console shows the top screen at 16:10: a 3DS whose TwlBg is
+    /// TWPatch's wide one (stretching 256 by 192 to 384 by 240). What the
+    /// screen setting's auto follows.
+    bool wideTop = false;
 
     /// IRQs, clock and FAT: everything but the picture. Call once at startup.
     /// `launchedFrom`: argv[0], if the loader gave one.
