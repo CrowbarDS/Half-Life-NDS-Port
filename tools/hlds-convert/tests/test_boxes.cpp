@@ -6,6 +6,7 @@
 // across went 16 units into every wall.)
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
@@ -559,6 +560,310 @@ namespace
 
     /// The same on rooms made here, and what the maps cannot be asked for: a
     /// crate shoved into a wall stops at it with its own side, however wide.
+    /// How a crate goes when it is walked into, as the game does it: the
+    /// player's move touches it, the next tick moves it. Each tick's step,
+    /// after the first: how even (the spread, the ticks it stands still
+    /// while still walked into) -- at the console's frame times (two and
+    /// three blanks). Then a crate pushed into another: the other moves on
+    /// (the game gives it a quarter of the first's speed). Then jumped onto,
+    /// and off: landed on its top, the crate not moved by it.
+    struct Feel
+    {
+        int firstMs = -1;      ///< from the first contact to the first move
+        int still = 0;         ///< ticks it did not move, once moving and still walked into
+        int ticks = 0;
+        double mean = 0, spread = 0; ///< its step, in units a tick
+    };
+
+    Feel walkInto(const BoxRoom &room, int ms, int ticks, int degrees = 0, int sideways = 0)
+    {
+        Feel feel;
+        std::unique_ptr<Game> game = cook(room);
+        if (game == nullptr)
+            return feel;
+        Game &g = *game;
+        const int box = boxesOf(g)[0];
+        const MoverHull &hull = g.movers[g.view.logic[box].brush];
+        for (int n = 0; n < 10; ++n)
+        {
+            logicTick(g.logic, g.player, 33);
+            g.drain();
+        }
+        g.player.origin[0] = hull.mins[0] - fxFromInt(40);
+        g.player.origin[1] = (hull.mins[1] + hull.maxs[1]) / 2 + fxFromInt(sideways);
+        g.player.origin[2] = hull.mins[2] + fxFromInt(37);
+        for (fx &c : g.player.velocity)
+            c = 0;
+        MoveCommand walk;
+        walk.forward = 1;
+        const double a = degrees * 3.14159265 / 180;
+        walk.forwardXY[0] = static_cast<fx>(std::cos(a) * kFxOne);
+        walk.forwardXY[1] = static_cast<fx>(std::sin(a) * kFxOne);
+        walk.rightXY[0] = walk.forwardXY[1];
+        walk.rightXY[1] = -walk.forwardXY[0];
+        const std::int32_t tick = static_cast<std::int32_t>(static_cast<std::int64_t>(kPlayerTick) * ms / 33);
+        fx was = hull.mins[0], wasY = hull.mins[1];
+        bool touched = false, moving = false;
+        int touchedAt = 0;
+        std::vector<double> steps;
+        for (int n = 0; n < ticks; ++n)
+        {
+            logicTick(g.logic, g.player, ms);
+            g.logic.viewTurn = 0;
+            const double step = std::hypot((hull.mins[0] - was) / 4096.0, (hull.mins[1] - wasY) / 4096.0);
+            was = hull.mins[0];
+            wasY = hull.mins[1];
+            if (moving)
+            {
+                steps.push_back(step);
+                feel.still += step < 0.01 ? 1 : 0;
+            }
+            else if (step > 0.01)
+            {
+                moving = true;
+                feel.firstMs = (n - touchedAt) * ms;
+            }
+            playerMove(g.player, walk, g.move, tick);
+            if (!touched && g.player.touchedMover == g.view.logic[box].brush)
+            {
+                touched = true;
+                touchedAt = n;
+            }
+            g.drain();
+            if (fxToInt(hull.maxs[0]) > 440)
+                break;
+        }
+        feel.ticks = static_cast<int>(steps.size());
+        for (double v : steps)
+            feel.mean += v;
+        feel.mean = steps.empty() ? 0 : feel.mean / steps.size();
+        for (double v : steps)
+            feel.spread = std::max(feel.spread, std::fabs(v - feel.mean));
+        return feel;
+    }
+
+    void testPushFeel()
+    {
+        BoxRoom room;
+        room.mins[0] = room.mins[1] = -512;
+        room.maxs[0] = room.maxs[1] = 512;
+        room.maxs[2] = 256;
+        room.brushes.push_back(crate(0, -32, 64, 64));
+        for (const int ms : {33, 50})
+        {
+            for (const int degrees : {0, 20, 40})
+            {
+                const Feel f = walkInto(room, ms, 200, degrees);
+                std::printf("test_boxes: walked into at %d ms a frame, %d degrees off: first moves %d ms after the touch; "
+                            "%d ticks, step %.2f +- %.2f units, still %d ticks\n",
+                            ms, degrees, f.firstMs, f.ticks, f.mean, f.spread, f.still);
+            }
+        }
+        // Along a wall: the crate against it, walked into slanting towards it.
+        {
+            BoxRoom hall = room;
+            hall.brushes.clear();
+            hall.brushes.push_back(crate(0, 440, 64, 64));
+            for (const int degrees : {0, 15, 30})
+            {
+                const Feel f = walkInto(hall, 33, 200, degrees, 0);
+                std::printf("test_boxes: along a wall, %d degrees into it: %d ticks, step %.2f +- %.2f units, still %d ticks\n",
+                            degrees, f.ticks, f.mean, f.spread, f.still);
+            }
+        }
+
+        // Into another crate.
+        BoxRoom two = room;
+        two.brushes.push_back(crate(160, -32, 64, 64));
+        std::unique_ptr<Game> game = cook(two);
+        check(game != nullptr, "the room of two crates in a row cooks");
+        if (game != nullptr)
+        {
+            Game &g = *game;
+            const std::vector<int> boxes = boxesOf(g);
+            const MoverHull &first = g.movers[g.view.logic[boxes[0]].brush];
+            const MoverHull &second = g.movers[g.view.logic[boxes[1]].brush];
+            const fx secondAt = second.mins[0];
+            g.player.origin[0] = first.mins[0] - fxFromInt(40);
+            g.player.origin[1] = 0;
+            g.player.origin[2] = first.mins[2] + fxFromInt(37);
+            MoveCommand walk;
+            walk.forward = 1;
+            for (int n = 0; n < 120; ++n)
+            {
+                logicTick(g.logic, g.player, 33);
+                g.logic.viewTurn = 0;
+                playerMove(g.player, walk, g.move, kPlayerTick);
+                g.drain();
+            }
+            std::printf("test_boxes: a crate walked into another: the first at %d, the second moved %d units\n",
+                        fxToInt(first.maxs[0]), fxToInt(second.mins[0] - secondAt));
+            check(second.mins[0] - secondAt > fxFromInt(32) && first.maxs[0] <= second.mins[0] + fxFromInt(2),
+                  "a crate walked into another shoves it on (a quarter of its speed, as the game's), not into it");
+        }
+
+        // Jumped onto, stood on, jumped off: a crate low enough to jump on.
+        BoxRoom low = room;
+        low.brushes.clear();
+        low.brushes.push_back(crate(0, -32, 64, 40));
+        game = cook(low);
+        if (game != nullptr)
+        {
+            Game &g = *game;
+            const int box = boxesOf(g)[0];
+            const int brush = g.view.logic[box].brush;
+            const MoverHull &hull = g.movers[brush];
+            for (int n = 0; n < 10; ++n)
+            {
+                logicTick(g.logic, g.player, 33);
+                g.drain();
+            }
+            const fx boxAt[2] = {hull.mins[0], hull.mins[1]};
+            g.player.origin[0] = hull.mins[0] - fxFromInt(150);
+            g.player.origin[1] = (hull.mins[1] + hull.maxs[1]) / 2;
+            g.player.origin[2] = hull.mins[2] + fxFromInt(37);
+            MoveCommand run;
+            run.forward = 1;
+            int landedAt = -1, onTopTicks = 0, topZ = 0;
+            fx peak = 0;
+            for (int n = 0; n < 90; ++n)
+            {
+                MoveCommand cmd = run;
+                cmd.jump = n >= 6 && n < 8;
+                // On top: stop, then jump straight up once.
+                if (landedAt >= 0)
+                {
+                    cmd.forward = 0;
+                    cmd.jump = n == landedAt + 20;
+                }
+                logicTick(g.logic, g.player, 33);
+                g.logic.viewTurn = 0;
+                playerMove(g.player, cmd, g.move, kPlayerTick);
+                g.drain();
+                const bool onTop = g.player.onGround && g.player.groundMover == brush;
+                if (onTop && landedAt < 0)
+                {
+                    landedAt = n;
+                    topZ = fxToInt(g.player.origin[2]);
+                }
+                onTopTicks += onTop ? 1 : 0;
+                if (std::getenv("HLDS_DEBUG_JUMP") != nullptr && n < 30)
+                    std::printf("  jump tick %d: x %.1f z %.1f ground %d mover %d, crate at %d\n", n,
+                                g.player.origin[0] / 4096.0, g.player.origin[2] / 4096.0, g.player.onGround,
+                                g.player.groundMover, fxToInt(hull.mins[0]));
+                if (landedAt >= 0 && n > landedAt + 20)
+                    peak = std::max(peak, g.player.origin[2] - fxFromInt(topZ));
+            }
+            const int moved = fxToInt(std::max(std::abs(hull.mins[0] - boxAt[0]), std::abs(hull.mins[1] - boxAt[1])));
+            std::printf("test_boxes: jumped at a crate: on its top at tick %d (z %d), on it %d ticks, jumped %d high "
+                        "from it, the crate moved %d units\n",
+                        landedAt, topZ, onTopTicks, fxToInt(peak), moved);
+        }
+    }
+
+    /// Onto a crate taller than a jump (45) reaches, but lower than ducking
+    /// in the jump lifts the feet to (45 + 18 = 63, as the game's movement
+    /// has it -- a 64 crate is out of reach there too): only by ducking. Run
+    /// at, jump, duck at the top: on it. And from standing on a crate, a
+    /// jump goes as high as from the floor.
+    void testClimb()
+    {
+        for (const bool duck : {false, true})
+        {
+            for (const int start : {100, 150, 200})
+            {
+                BoxRoom room;
+                room.mins[0] = room.mins[1] = -512;
+                room.maxs[0] = room.maxs[1] = 512;
+                room.maxs[2] = 256;
+                room.brushes.push_back(crate(0, -32, 64, 58));
+                std::unique_ptr<Game> game = cook(room);
+                if (game == nullptr)
+                    return;
+                Game &g = *game;
+                const int box = boxesOf(g)[0];
+                const int brush = g.view.logic[box].brush;
+                const MoverHull &hull = g.movers[brush];
+                for (int n = 0; n < 10; ++n)
+                {
+                    logicTick(g.logic, g.player, 33);
+                    g.drain();
+                }
+                const fx boxAt = hull.mins[0];
+                g.player.origin[0] = hull.mins[0] - fxFromInt(start);
+                g.player.origin[1] = (hull.mins[1] + hull.maxs[1]) / 2;
+                g.player.origin[2] = fxFromInt(36);
+                int onTopAt = -1, jumpAt = -1;
+                for (int n = 0; n < 60 && onTopAt < 0; ++n)
+                {
+                    MoveCommand cmd;
+                    cmd.forward = 1;
+                    // Jump a little before the crate; duck from the top of
+                    // the jump on (as one does), held.
+                    const fx gap = hull.mins[0] - g.player.origin[0];
+                    if (jumpAt < 0 && g.player.onGround && gap < fxFromInt(60))
+                        jumpAt = n;
+                    cmd.jump = jumpAt >= 0 && n < jumpAt + 2;
+                    cmd.duck = duck && jumpAt >= 0 && n >= jumpAt + 3;
+                    logicTick(g.logic, g.player, 33);
+                    g.logic.viewTurn = 0;
+                    playerMove(g.player, cmd, g.move, kPlayerTick);
+                    g.drain();
+                    if (g.player.onGround && g.player.groundMover == brush)
+                        onTopAt = n;
+                }
+                std::printf("test_boxes: run %d at a 58 crate, jump%s: %s, the crate moved %d units\n", start,
+                            duck ? " and duck" : "", onTopAt >= 0 ? "on top" : "NOT on top",
+                            fxToInt(hull.mins[0] - boxAt));
+                check(duck == (onTopAt >= 0), duck ? "a crate a jump falls short of is climbed by ducking in it"
+                                                   : "... and not without");
+            }
+        }
+        // From on top of a crate: straight up, as high as from the floor.
+        BoxRoom room;
+        room.mins[0] = room.mins[1] = -512;
+        room.maxs[0] = room.maxs[1] = 512;
+        room.maxs[2] = 256;
+        room.brushes.push_back(crate(0, -64, 128, 40));
+        std::unique_ptr<Game> game = cook(room);
+        if (game == nullptr)
+            return;
+        Game &g = *game;
+        const int box = boxesOf(g)[0];
+        const MoverHull &hull = g.movers[g.view.logic[box].brush];
+        for (int n = 0; n < 10; ++n)
+        {
+            logicTick(g.logic, g.player, 33);
+            g.drain();
+        }
+        const fx boxAt[2] = {hull.mins[0], hull.mins[1]};
+        g.player.origin[0] = (hull.mins[0] + hull.maxs[0]) / 2;
+        g.player.origin[1] = (hull.mins[1] + hull.maxs[1]) / 2;
+        g.player.origin[2] = hull.maxs[2] + fxFromInt(37);
+        fx rest = 0, peak = 0;
+        int landings = 0;
+        for (int n = 0; n < 120; ++n)
+        {
+            MoveCommand cmd;
+            cmd.jump = n == 20 || n == 60;
+            logicTick(g.logic, g.player, 33);
+            g.logic.viewTurn = 0;
+            const bool wasGround = g.player.onGround;
+            playerMove(g.player, cmd, g.move, kPlayerTick);
+            g.drain();
+            if (n == 19)
+                rest = g.player.origin[2];
+            if (n > 20)
+                peak = std::max(peak, g.player.origin[2] - rest);
+            landings += !wasGround && g.player.onGround ? 1 : 0;
+        }
+        const int moved = fxToInt(std::max(std::abs(hull.mins[0] - boxAt[0]), std::abs(hull.mins[1] - boxAt[1])));
+        std::printf("test_boxes: two jumps from on a crate: %d high, %d landings back on it, the crate moved %d units\n",
+                    fxToInt(peak), landings, moved);
+        check(fxToInt(peak) >= 40 && landings >= 2 && moved == 0,
+              "a jump from on a crate goes as high as from the floor, lands back on it, and does not move it");
+    }
+
     void testRooms()
     {
         BoxRoom room;
@@ -623,6 +928,8 @@ namespace
 
 int main()
 {
+    testPushFeel();
+    testClimb();
     testRooms();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir == nullptr || dir[0] == '\0')

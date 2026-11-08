@@ -2216,7 +2216,7 @@ namespace hldata
         }
 
         /// A box no faster than its top speed, its direction kept.
-        inline void boxLimit(const LogicRecord &record, fx *v)
+        [[gnu::noinline]] inline void boxLimit(const LogicRecord &record, fx *v)
         {
             const fx flat[3] = {v[0], v[1], 0};
             const fx speed = fxLength(flat);
@@ -2260,6 +2260,26 @@ namespace hldata
             }
             *depth = offset - start;
             return level;
+        }
+
+        /// Another box met side on is shoved on, as the game's pushable is
+        /// by anything that touches it: a quarter of the speed along the
+        /// floor of the one that meets it, up to its own top speed. (It moves
+        /// on its own tick; the one that met it stops at it, as it did.)
+        [[gnu::noinline]] inline void boxShoveOn(LogicWorld &w, int brush, const fx *v)
+        {
+            // (The list is made: the trace that met it made it.)
+            for (int n = 0; n < w.pushableCount; ++n)
+            {
+                const int other = w.pushables[n];
+                if (w.records[other].brush != brush)
+                    continue;
+                fx *shoved = w.states[other].travel;
+                shoved[0] += v[0] / 4;
+                shoved[1] += v[1] / 4;
+                boxLimit(w.records[other], shoved);
+                return;
+            }
         }
 
         inline void pushableTick(LogicWorld &w, PlayerState &player, int index, int ms)
@@ -2455,6 +2475,8 @@ namespace hldata
                     at[a] = tr.endPos[a];
                 if (tr.fraction >= kFractionOne)
                     break;
+                if (tr.mover >= 0 && tr.mover != brush && tr.normal[2] == 0)
+                    boxShoveOn(w, tr.mover, v);
                 // Take away the part of the velocity that goes into what was
                 // hit.
                 std::int64_t into = 0;
