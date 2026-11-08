@@ -231,4 +231,10 @@ namespace hlds
 
     std::vector<std::pair<std::string, std::string>> chapterTitles(const std::filesystem::path &gameDir,
                                                                    const TitlesBook *titles);
+
+    /// The file in the game's media folder that the game's CD track `track`
+    /// is (2..28; null for any other): not in their order -- the Steam game
+    /// has them by its own names, each tagged with the track it was
+    /// ("AudioTrack NN"; Half-Life16, untagged, is the one left, 15).
+    const char *cdTrackFile(int track);
 } // namespace hlds

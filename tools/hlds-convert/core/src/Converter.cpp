@@ -1182,13 +1182,22 @@ namespace hlds
             char cardName[16];
             hldata::musicFileName(track, cardName, sizeof(cardName));
             const fs::path file = dataDir(options_.cardRoot) / "music" / cardName;
+            // The game's track N is the media file cdTrackFile names. Made
+            // from it, it is not made again -- what it was made from is kept
+            // in the stage beside it (a card's tracks made before were each
+            // the file numbered N - 1, most of them the wrong music).
+            const char *source = cdTrackFile(track);
+            if (source == nullptr)
+                continue;
+            const fs::path from = stageDir() / "music" / (std::string(cardName) + ".src");
             std::error_code ec;
             if (fs::exists(file, ec) && fs::file_size(file, ec) > sizeof(hldata::StereoHeader))
-                continue;
-            // The game's track N is the file numbered N - 1: the first
-            // track of its disc was the program.
-            char source[32];
-            std::snprintf(source, sizeof(source), "half-life%02d.mp3", track - 1);
+            {
+                std::string was;
+                std::vector<std::uint8_t> said;
+                if (readFile(from, said, was) && std::string(said.begin(), said.end()) == source)
+                    continue;
+            }
             const fs::path mp3 = findNoCase(options_.gameDir / "media", source);
             std::vector<std::uint8_t> packed;
             WavData music;
@@ -1197,6 +1206,10 @@ namespace hlds
             if (mp3.empty() || !readFile(mp3, packed, why) || !decodeMp3(packed, music, why, &left, &right))
                 continue; // a game folder without its music has none
             if (!writeFileAtomic(file, encodeMusicStereo(left, right, music.rate), result.error))
+                return result;
+            fs::create_directories(from.parent_path(), ec);
+            const std::string said(source);
+            if (!writeFileAtomic(from, std::vector<std::uint8_t>(said.begin(), said.end()), result.error))
                 return result;
         }
 
@@ -2175,6 +2188,19 @@ namespace hlds
             return false;
         return true;
     }
+    const char *cdTrackFile(int track)
+    {
+        static const char *const kFiles[] = {
+            "half-life01.mp3", "prospero01.mp3", "half-life12.mp3", "half-life07.mp3", "half-life10.mp3",  //  2..6
+            "suspense01.mp3",  "suspense03.mp3", "half-life09.mp3", "half-life02.mp3", "half-life13.mp3",  //  7..11
+            "half-life04.mp3", "half-life15.mp3", "half-life14.mp3", "half-life16.mp3", "suspense02.mp3",  // 12..16
+            "half-life03.mp3", "half-life08.mp3", "prospero02.mp3", "half-life05.mp3", "prospero04.mp3",   // 17..21
+            "half-life11.mp3", "half-life06.mp3", "prospero03.mp3", "half-life17.mp3", "prospero05.mp3",   // 22..26
+            "suspense05.mp3",  "suspense07.mp3"};                                                         // 27..28
+        const int at = track - 2;
+        return at >= 0 && at < static_cast<int>(sizeof(kFiles) / sizeof(kFiles[0])) ? kFiles[at] : nullptr;
+    }
+
     std::string chapterOf(const std::string &map, const std::vector<std::pair<std::string, std::string>> &titled)
     {
         // (Uplink's maps name no chapter, and the map sorted before them is

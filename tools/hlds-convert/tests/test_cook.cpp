@@ -56,6 +56,19 @@ namespace
     // A tall room: its middle is out of a jump's reach of the floor, so its
     // worst view is taken from a standing eye over the floor instead -- it
     // is still looked from, not left out as air nobody reaches.
+    /// The game's CD tracks are its media files by the game's own names, not
+    /// in order: c0a0's track 3 (the tram ride) is Prospero01, not
+    /// Half-Life02 (which is track 10).
+    void testCdTracks()
+    {
+        check(std::string(cdTrackFile(2)) == "half-life01.mp3", "CD track 2 is Half-Life01");
+        check(std::string(cdTrackFile(3)) == "prospero01.mp3", "CD track 3, the tram ride's, is Prospero01");
+        check(std::string(cdTrackFile(10)) == "half-life02.mp3", "CD track 10 is Half-Life02");
+        check(std::string(cdTrackFile(15)) == "half-life16.mp3", "CD track 15 is Half-Life16");
+        check(std::string(cdTrackFile(28)) == "suspense07.mp3", "CD track 28 is Suspense07");
+        check(cdTrackFile(1) == nullptr && cdTrackFile(29) == nullptr, "no file for the program's track, nor past 28");
+    }
+
     void testTallRoomSeen()
     {
         BoxRoom room;
@@ -344,6 +357,7 @@ static void testChapters()
 
 int main()
 {
+    testCdTracks();
     testChapters();
     testMaterials();
     testBoxRoom();
