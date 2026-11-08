@@ -1276,6 +1276,55 @@ namespace
         }
         check(fights, "... and goes for the player when it sees them");
     }
+    /// c1a0d's scientist who buys a soda: six marks in a ring, three of them
+    /// (machine1 and m5 at the machines' fronts, m3 at the table's edge) on
+    /// a wall's face exactly. Put there, he walks off again -- the step from
+    /// a face is taken if it goes away from the wall -- and never jumps.
+    void testC1a0dSoda(const char *dir)
+    {
+        auto game = load(dir, "c1a0d");
+        if (!game)
+            return;
+        Game &g = *game;
+        const int sci = actorNamed(g, "soda");
+        const int first = recordNamed(g, "machine1");
+        const int last = recordNamed(g, "m6");
+        check(sci >= 0 && first >= 0 && last >= 0, "c1a0d's soda scientist and his marks");
+        if (sci < 0 || first < 0 || last < 0)
+            return;
+        g.player.health = 100;
+        ActorState &a = g.actors.states[sci];
+        logicFire(g.logic, g.player, g.view.logic[first].name, -1, kUseToggle, 0);
+        bool stepped = false, checkedStep = false, sawLast = false;
+        fx jump = 0;
+        fx was[2] = {a.pos[0], a.pos[1]};
+        for (int n = 0; n < 30 * 120; ++n) // (two minutes)
+        {
+            tickStill(g);
+            const fx d[3] = {a.pos[0] - was[0], a.pos[1] - was[1], 0};
+            jump = std::max(jump, fxLength(d));
+            if (std::getenv("HLDS_DEBUG_SODA") != nullptr && (n % 15 == 0 || fxLength(d) > fxFromInt(12)))
+                std::printf("soda %5d ms: at %.1f %.1f clip %d script %d\n", n * 33, a.pos[0] / 4096.0,
+                            a.pos[1] / 4096.0, a.clip, a.script);
+            was[0] = a.pos[0];
+            was[1] = a.pos[1];
+            sawLast = sawLast || a.script == last;
+            if (!checkedStep && a.script == first && a.pos[1] == fxFromInt(1232))
+            {
+                // On the machine's face: away from it (south) he may go;
+                // into it (north) he may not.
+                checkedStep = true;
+                fx away[3] = {a.pos[0], a.pos[1], a.pos[2]}, into[3] = {a.pos[0], a.pos[1], a.pos[2]};
+                stepped = walkStep(g.move, &g.actors, sci, monsterHull(a.kind), away, 0, -fxFromInt(4)) &&
+                          !walkStep(g.move, &g.actors, sci, monsterHull(a.kind), into, 0, fxFromInt(4));
+            }
+        }
+        std::printf("test_ai: c1a0d's soda scientist: biggest move in a tick %.1f units; reached m6: %s\n",
+                    jump / 4096.0, sawLast ? "yes" : "NO");
+        check(checkedStep && stepped, "on the machine's face, he steps away from it and not into it");
+        check(sawLast, "... and goes round his marks");
+        check(jump < fxFromInt(12), "... walking, never put on a mark from afar");
+    }
     /// c1a1c's crabs: five monstermakers under the ceiling (hck1..hck5,
     /// two alive at a time) and a push under them that carries what they
     /// drop out from under them -- the game's MakeMonster will not build a
@@ -1381,6 +1430,7 @@ int main()
         testPlayerNoises();
         testShotBetweenLegs(dir);
         testC1a1fScripts(dir);
+        testC1a0dSoda(dir);
         testC1a1cMakers(dir);
     }
     else

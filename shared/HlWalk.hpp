@@ -322,11 +322,37 @@ namespace hldata
             *blockedBy = -1;
         const bool small = hull == kWalkCrouched;
         const fx lift = small ? kCrouchedFeet : kStandingFeet;
-        const fx start[3] = {feet[0], feet[1], feet[2] + lift};
-        const fx up[3] = {start[0], start[1], start[2] + kStepSize};
-        const Trace raised = detail::walkerTrace(world, a, index, small, start, up);
+        fx start[3] = {feet[0], feet[1], feet[2] + lift};
+        fx up[3] = {start[0], start[1], start[2] + kStepSize};
+        Trace raised = detail::walkerTrace(world, a, index, small, start, up);
         if (raised.startSolid)
-            return false;
+        {
+            // Stood exactly on a wall's face counts as in it (the trace's
+            // rule, and the game's): someone put there -- a script's mark
+            // against the soda machine or along a table's edge, c1a0d's --
+            // would never take a step again. The game's step is tried where
+            // it goes, not where it stands; here, from a unit along the way,
+            // or a unit to either side of it: one of them is off the face
+            // unless the step is into the wall.
+            if (dx == 0 && dy == 0)
+                return false;
+            const fx sx = dx > 0 ? fxFromInt(1) : (dx < 0 ? -fxFromInt(1) : 0);
+            const fx sy = dy > 0 ? fxFromInt(1) : (dy < 0 ? -fxFromInt(1) : 0);
+            const fx tries[3][2] = {{sx, sy}, {-sy, sx}, {sy, -sx}};
+            const fx feetAt[2] = {start[0], start[1]};
+            bool free = false;
+            for (int t = 0; t < 3 && !free; ++t)
+            {
+                start[0] = feetAt[0] + tries[t][0];
+                start[1] = feetAt[1] + tries[t][1];
+                up[0] = start[0];
+                up[1] = start[1];
+                raised = detail::walkerTrace(world, a, index, small, start, up);
+                free = !raised.startSolid;
+            }
+            if (!free)
+                return false;
+        }
         const fx along[3] = {raised.endPos[0] + dx, raised.endPos[1] + dy, raised.endPos[2]};
         const Trace across = detail::walkerTrace(world, a, index, small, raised.endPos, along);
         if (across.startSolid || across.fraction < kFractionOne)
