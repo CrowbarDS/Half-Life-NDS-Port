@@ -129,7 +129,7 @@ namespace hlds
     /// What was cooked for the card as a whole (UiCook.hpp).
     struct CommonResult
     {
-        int fonts = 0;     ///< of the three
+        int fonts = 0;     ///< of hldata::kFontCount
         bool hud = false;  ///< the head-up display's pictures
         bool loading = false;
         bool menu = false;  ///< the menu's background

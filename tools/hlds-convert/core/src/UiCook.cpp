@@ -166,6 +166,16 @@ namespace hlds
         return true;
     }
 
+    bool fontWhole(const std::vector<std::uint8_t> &bytes)
+    {
+        hldata::FontView view;
+        if (!view.open(bytes.data(), bytes.size()))
+            return false;
+        const std::size_t count = view.header->count;
+        const std::size_t widthBytes = (count + 3) & ~std::size_t(3);
+        return bytes.size() == sizeof(hldata::FontHeader) + widthBytes + count * view.header->height * 4;
+    }
+
     std::vector<std::uint8_t> cookFont(const QFont &font, bool outlined, bool accented)
     {
         // 32..127; and 128..255 too (accented letters, in Windows-1252, as a

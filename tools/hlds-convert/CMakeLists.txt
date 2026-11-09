@@ -209,6 +209,7 @@ if(HLDS_BUILD_TESTS)
             test_effects
             test_manifest
             test_npac
+            test_writes
             test_graph
             test_pack
             test_mdl

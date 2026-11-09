@@ -1342,7 +1342,7 @@ namespace hlds
                 result.error = "ptexconv not found";
                 return result;
             }
-            const fs::path temp = fs::temp_directory_path() / ("hlds-convert-" + result.name);
+            const fs::path temp = fs::temp_directory_path() / ("hlds-convert-" + processTag() + "-" + result.name);
             PtexconvEncoder encoder(exe, temp, cancel_);
             TextureCookReport texReport;
             // (And a guest's smaller ones, beside them: each size is a file
@@ -1549,9 +1549,21 @@ namespace hlds
             std::vector<std::uint8_t> lump;
             QFont font;
             const fs::path wad = findGameFile(options_, kFaces[n].wad);
-            if (wad.empty() || !readWadLump(wad, kFaces[n].lump, lump, why) || !parseQFont(lump, font, why) ||
-                !put(ui / hldata::kFontFiles[n], cookFont(font, kFaces[n].outlined, kFaces[n].accented)))
+            std::vector<std::uint8_t> cooked;
+            const bool read = !wad.empty() && readWadLump(wad, kFaces[n].lump, lump, why) && parseQFont(lump, font, why);
+            if (read)
             {
+                cooked = cookFont(font, kFaces[n].outlined, kFaces[n].accented);
+                // (One the console would not take is not written: a font
+                // that came out wrong once went on to the card.)
+                if (!fontWhole(cooked))
+                    why = "it came out malformed";
+            }
+            if (!read || !fontWhole(cooked) || !put(ui / hldata::kFontFiles[n], cooked))
+            {
+                // (And none of an earlier run's left to be packed instead.)
+                std::error_code gone;
+                fs::remove(ui / hldata::kFontFiles[n], gone);
                 result.warnings.push_back(std::string("the font ") + kFaces[n].lump + " was not made" +
                                           (why.empty() ? "" : ": " + why));
                 continue;
@@ -1587,7 +1599,7 @@ namespace hlds
         const fs::path exe = findPtexconv(options_.ptexconv);
         if (exe.empty())
             return result;
-        const fs::path temp = fs::temp_directory_path() / "hlds-convert-ui";
+        const fs::path temp = fs::temp_directory_path() / ("hlds-convert-" + processTag() + "-ui");
         PtexconvEncoder encoder(exe, temp, cancel_);
         auto texture = [&](const RgbaImage &image, TextureFormat format, int colours, std::uint32_t flags,
                            const char *name) -> bool

@@ -8,6 +8,15 @@
 #include <map>
 #include <memory>
 
+#ifdef _WIN32
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
+#include <fcntl.h>
+#include <unistd.h>
+#endif
+
 namespace fs = std::filesystem;
 
 namespace hlds::install
@@ -47,14 +56,42 @@ namespace hlds::install
             return ec ? 0 : size;
         }
 
+        /// A file just written, onto the card itself: the system keeps what is
+        /// written for a while, and a card taken out before it is gone there
+        /// holds files of the right size with nothing in them. False if the
+        /// card would not say it has it.
+        bool flushToDisk(const fs::path &path)
+        {
+#ifdef _WIN32
+            HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                                      FILE_ATTRIBUTE_NORMAL, nullptr);
+            if (file == INVALID_HANDLE_VALUE)
+                return false;
+            const bool ok = FlushFileBuffers(file);
+            return CloseHandle(file) && ok;
+#else
+            const int file = ::open(path.c_str(), O_WRONLY);
+            if (file < 0)
+                return false;
+            const bool ok = ::fsync(file) == 0;
+            return ::close(file) == 0 && ok;
+#endif
+        }
+
+        /// Whether the two hold the same bytes. Anything that cannot be read
+        /// is not the same: a file that would not open (another program
+        /// holding it) used to count as already copied, and was never mended.
         bool sameFile(const fs::path &a, const fs::path &b)
         {
             std::error_code ec;
             if (!fs::exists(b, ec) || sizeOf(a) != sizeOf(b))
                 return false;
             std::ifstream one(a, std::ios::binary), two(b, std::ios::binary);
+            if (!one || !two)
+                return false;
             auto bufferOne = std::make_unique<char[]>(65536);
             auto bufferTwo = std::make_unique<char[]>(65536);
+            std::uint64_t compared = 0;
             while (one && two)
             {
                 one.read(bufferOne.get(), 65536);
@@ -62,8 +99,9 @@ namespace hlds::install
                 if (one.gcount() != two.gcount() ||
                     std::char_traits<char>::compare(bufferOne.get(), bufferTwo.get(), static_cast<std::size_t>(one.gcount())) != 0)
                     return false;
+                compared += static_cast<std::uint64_t>(one.gcount());
             }
-            return true;
+            return (one.eof() && two.eof()) && compared == sizeOf(a);
         }
 
         /// What the player made, and the converter never does. (server.ini:
@@ -380,8 +418,10 @@ namespace hlds::install
                     }
                 }
                 out.flush();
-                if (!out)
+                out.close();
+                if (!out || !flushToDisk(temp))
                 {
+                    fs::remove(temp, ec);
                     why = "The card stopped taking " + name + ". It may be full.";
                     return false;
                 }

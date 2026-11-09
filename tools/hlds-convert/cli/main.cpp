@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "HlUi.hpp"
 #include "BundledRom.hpp"
 #include "HlLevelReader.hpp"
 #include "hlds/TextureFamily.hpp"
@@ -364,7 +365,8 @@ namespace
             std::fprintf(stderr, "error: %s\n", error.c_str());
         // What was made for the card as a whole.
         const CommonResult &common = converter.common();
-        std::printf("for the card: %d of 3 fonts, %s, %s, %s, %s, %s, %d menu sounds; %s, %s, %s\n", common.fonts,
+        std::printf("for the card: %d of %d fonts, %s, %s, %s, %s, %s, %d menu sounds; %s, %s, %s\n", common.fonts,
+                    hldata::kFontCount,
                     common.hud ? "the head-up display" : "no head-up display",
                     common.icons ? "the weapons' pictures" : "no weapons' pictures",
                     common.title ? "the game's title" : "no title",

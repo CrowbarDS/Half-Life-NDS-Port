@@ -42,6 +42,11 @@ namespace hlds
     /// how solid.
     std::vector<std::uint8_t> cookFont(const QFont &font, bool outlined, bool accented = true);
 
+    /// Whether `bytes` are a font the console takes whole: it opens as the
+    /// console opens one (HlUi.hpp, FontView), and is exactly as long as
+    /// its header says -- nothing cut off, nothing after.
+    bool fontWhole(const std::vector<std::uint8_t> &bytes);
+
     /// A plain picture lump (the game's "qpic").
     bool parseQPic(const std::vector<std::uint8_t> &lump, IndexedImage &out, std::string &error);
 

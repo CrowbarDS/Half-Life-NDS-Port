@@ -14,6 +14,7 @@
 #include "HlSound.hpp"
 #include "HlSprite.hpp"
 #include "HlUi.hpp"
+#include "hlds/UiCook.hpp"
 #include "HlWeaponBundle.hpp"
 #include "HlCharacters.hpp"
 #include "hlds/AtomicWrite.hpp"
@@ -1172,12 +1173,27 @@ namespace hlds
         for (auto it = fs::directory_iterator(stage / "ui", ec); !ec && it != fs::directory_iterator();
              it.increment(ec))
         {
-            if (it->is_regular_file(ec) && it->path().extension() != ".tmp")
+            if (it->is_regular_file(ec) && !isTempName(it->path()))
                 files.push_back(it->path());
         }
         std::sort(files.begin(), files.end());
         for (const fs::path &file : files)
+        {
+            // A font is looked at as the console will before it goes in: one
+            // spoilt on the disk since it was made stops the packing here,
+            // not on the console's screen.
+            if (file.extension() == ".hfn")
+            {
+                std::vector<std::uint8_t> bytes;
+                std::string why;
+                if (!readFile(file, bytes, why) || !fontWhole(bytes))
+                {
+                    error = file.filename().string() + " is damaged; convert again" + (why.empty() ? "" : " (" + why + ")");
+                    return false;
+                }
+            }
             packing.add(file, "ui/" + file.filename().string(), true);
+        }
         for (const char *name : hldata::kUiSoundFiles)
             packing.add(stage / "snd" / (std::string(name) + ".hsn"), std::string("snd/") + name + ".hsn",
                         false, false);
@@ -1347,7 +1363,7 @@ namespace hlds
              it.increment(ec))
         {
             const std::string name = "ui/" + it->path().filename().string();
-            if (it->is_regular_file(ec) && it->path().extension() != ".tmp" && name != hldata::kLogoFile)
+            if (it->is_regular_file(ec) && !isTempName(it->path()) && name != hldata::kLogoFile)
                 files.push_back(it->path());
         }
         std::sort(files.begin(), files.end());
