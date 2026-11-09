@@ -70,6 +70,13 @@ namespace hlrt
         /// Online once already: the local wireless needs the game started
         /// again (NetRelay.hpp, holdsWifi).
         bool localBlocked() const;
+        /// Going online, a step a frame (NetRelay.hpp: connectBegin...): 0
+        /// on the way, 1 there (host() and scan() may be asked), -1 failed
+        /// (onlineWhy says why). `step`: what it is doing, in words.
+        void connectBegin();
+        int connectStep(const char *&step);
+        void connectCancel();
+        bool onlineReady() const;
         bool host();  ///< be a host; false if the radio would not start
         bool scan();  ///< look for hosts
         /// The hosts found so far: up to `most` of them, each a line to

@@ -215,6 +215,32 @@ namespace hlrt
         return netrelay::why();
     }
 
+#ifndef HLDS_CHILD
+    void NetGame::connectBegin()
+    {
+        netrelay::connectBegin();
+    }
+
+    // (A DSi's alone, in its memory: NetRelay.hpp.)
+    TWL_CODE int NetGame::connectStep(const char *&step)
+    {
+        using netrelay::Connect;
+        const Connect phase = netrelay::connectStep();
+        step = netrelay::connectText();
+        return phase == Connect::Ready ? 1 : (phase == Connect::Failed || phase == Connect::Off ? -1 : 0);
+    }
+
+    void NetGame::connectCancel()
+    {
+        netrelay::connectCancel();
+    }
+
+    bool NetGame::onlineReady() const
+    {
+        return netrelay::ready();
+    }
+#endif
+
     bool NetGame::localBlocked() const
     {
         return netrelay::holdsWifi();

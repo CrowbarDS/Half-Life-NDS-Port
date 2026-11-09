@@ -20,6 +20,7 @@
 #include "game/SaveGame.hpp"
 #include "net/DlSend.hpp"
 #include "net/NetGame.hpp"
+#include "net/NetRelay.hpp"
 #include "render/BottomScreen.hpp"
 #include "render/Camera.hpp"
 #include "render/HudDraw.hpp"
@@ -164,6 +165,7 @@ namespace hlrt
             kNetOnline,    ///< MULTIPLAYER's: a game over the Internet, through the relay
             kNetHostOnline, ///< ONLINE's: host one
             kNetJoinOnline, ///< ... or look for one
+            kNetCancelConnect, ///< CONNECTING's: give up going online
         };
         struct Row
         {
@@ -203,6 +205,7 @@ namespace hlrt
         const Row kOnlineRows[] = {{Kind::Button, kNetHostOnline, "HOST ONLINE"},
                                    {Kind::Button, kNetJoinOnline, "JOIN ONLINE"},
                                    {Kind::Button, kBack, "BACK"}};
+        const Row kConnectingRows[] = {{Kind::Button, kNetCancelConnect, "CANCEL"}};
 #endif
         const Row kDemoRows[] = {{Kind::Button, kDemoUplink, "UPLINK"},
                                  {Kind::Button, kDemoHazard, "HAZARD COURSE"},
@@ -328,6 +331,7 @@ namespace hlrt
             case 21: count = 3; return kDemoRows;
 #ifndef HLDS_CHILD
             case 24: count = 3; return kOnlineRows;
+            case 25: count = 1; return kConnectingRows;
 #endif
             case 23: count = 2; return kDemoChoiceRows;
             case 22: count = 2; return kServeRows;
@@ -436,7 +440,8 @@ namespace hlrt
     {
         return page_ == Page::Main || page_ == Page::Title || page_ == Page::Confirm || page_ == Page::Multiplayer ||
                page_ == Page::NetPause || page_ == Page::Difficulty || page_ == Page::NewGame || page_ == Page::Hand ||
-               page_ == Page::NetDemo || page_ == Page::NetServe || page_ == Page::DemoChoice || page_ == Page::NetOnline;
+               page_ == Page::NetDemo || page_ == Page::NetServe || page_ == Page::DemoChoice || page_ == Page::NetOnline ||
+               page_ == Page::NetConnecting;
     }
 
     /// What of the lobby is on the screen: who is there, what they are
@@ -562,6 +567,7 @@ namespace hlrt
                                    : page_ == Page::Hand        ? "WHICH HAND?"
                                    : page_ == Page::NetDemo     ? "SEND DEMO"
                                    : page_ == Page::NetOnline   ? "ONLINE"
+                                   : page_ == Page::NetConnecting ? "CONNECTING"
                                    : page_ == Page::DemoChoice  ? netDemoTitle(netGame.demo())
                                    : page_ == Page::NetServe    ? "SERVING THE DEMO"
                                                                 : question),
@@ -588,6 +594,13 @@ namespace hlrt
 #endif
         }
 #ifndef HLDS_CHILD
+        if (page_ == Page::NetConnecting)
+        {
+            const FontView &small = touchCanvas.font(kFontSmall);
+            const int top = kMainLayout.top + rowCount() * kMainLayout.pitch + 8;
+            drawTextCentred(canvas, small, 128, top, connectShown_ != nullptr ? connectShown_ : "",
+                            inkFor(small, kUiOrange));
+        }
         if (page_ == Page::NetOnline)
         {
             const FontView &small = touchCanvas.font(kFontSmall);
@@ -2916,8 +2929,59 @@ namespace hlrt
         return Action::None;
     }
 
+#ifndef HLDS_CHILD
+    // (CONNECTING is a DSi's alone: in its memory, as the rest of online.)
+    TWL_CODE void Menu::openConnecting(int then)
+    {
+        connectThen_ = then;
+        netGame.connectBegin();
+        connectShown_ = hlrt::netrelay::connectText();
+        page_ = Page::NetConnecting;
+        draw();
+    }
+
+    TWL_CODE bool Menu::connectFrame()
+    {
+        const char *step = nullptr;
+        const int state = netGame.connectStep(step);
+        if (state > 0)
+        {
+            if (connectThen_ == 1)
+                openHost();
+            else
+            {
+                joinWhy[0] = 0;
+                if (netGame.scan())
+                    showFound();
+            }
+            return true;
+        }
+        if (state < 0)
+        {
+            page_ = Page::NetOnline;
+            draw();
+            showReason(netGame.onlineWhy());
+            return true;
+        }
+        if (step != connectShown_)
+        {
+            connectShown_ = step;
+            draw();
+        }
+        return false;
+    }
+#endif
+
     void Menu::openHost()
     {
+#ifndef HLDS_CHILD
+        // (Online, not there yet: CONNECTING first, which comes back here.)
+        if (netGame.online() && !netGame.onlineReady())
+        {
+            openConnecting(1);
+            return;
+        }
+#endif
         if (netGame.host())
         {
             hostChapter_ = 0;
@@ -3760,6 +3824,11 @@ namespace hlrt
 #ifndef HLDS_CHILD
         case kNetJoinOnline:
             netGame.setOnline(item.id == kNetJoinOnline);
+            if (netGame.online() && !netGame.onlineReady())
+            {
+                openConnecting(2);
+                break;
+            }
 #endif
             joinWhy[0] = 0;
             if (netGame.scan())
@@ -3775,6 +3844,11 @@ namespace hlrt
             break;
 #ifndef HLDS_CHILD
         case kNetOnline:
+            page_ = Page::NetOnline;
+            draw();
+            break;
+        case kNetCancelConnect:
+            netGame.connectCancel();
             page_ = Page::NetOnline;
             draw();
             break;
@@ -4086,6 +4160,12 @@ namespace hlrt
         }
         if (sheet())
             return sheetFrame();
+#ifndef HLDS_CHILD
+        // Going online: a step a frame, and what it is doing said. (Else on
+        // to the touch below: CANCEL.)
+        if (page_ == Page::NetConnecting && connectFrame())
+            return Action::None;
+#endif
         // A game between consoles: the lobby changes without being touched.
         if (page_ == Page::NetJoin)
         {

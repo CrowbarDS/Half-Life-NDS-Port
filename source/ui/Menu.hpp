@@ -133,6 +133,7 @@ namespace hlrt
             NetServe = 22,    ///< the host serving a demo: who has got how far
             Hand = 20,        ///< a console sent the game, as it comes: which hand it is played with
             NetOnline = 24,   ///< ONLINE: host or join a game through the relay
+            NetConnecting = 25, ///< ... going online first: how far it has got, and CANCEL
         };
 
         // A sheet: a page of its own, drawn and touched apart from the rows
@@ -252,6 +253,13 @@ namespace hlrt
         unsigned netShown_ = 0;
         int netTick_ = 0;
         void showFound();
+        /// ONLINE's HOST or JOIN, not online yet: the CONNECTING page, which
+        /// then does `then` (1 host, 2 join) once there.
+        void openConnecting(int then);
+        /// CONNECTING, once a frame: true if it has moved on to another page.
+        bool connectFrame();
+        int connectThen_ = 0;
+        const char *connectShown_ = nullptr;
         unsigned netSignature() const;
         bool big() const;
         int active_ = -1; ///< the row the stylus went down on, or -1

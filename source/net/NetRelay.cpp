@@ -50,8 +50,8 @@ namespace hlrt::netrelay
         HL_TWL_TEXT(kNoAnswer, "The relay did not answer (%s:%d)");
 #undef HL_TWL_TEXT
 
-        constexpr int kConnectFrames = 20 * 60; ///< to join a saved network
-        constexpr int kAnswerFrames = 5 * 60;   ///< for the relay to answer
+        constexpr std::uint32_t kConnectFrames = 20 * 60; ///< to join a saved network
+        constexpr std::uint32_t kAnswerFrames = 5 * 60; ///< for the relay to answer
         constexpr int kRingSlots = 24;
 
         enum class Role : std::uint8_t
@@ -336,100 +336,170 @@ namespace hlrt::netrelay
             Wifi_DisconnectAP();
         }
 
-        TWL_CODE bool start()
+        // Going online, a step a frame (connectStep): the menu shows how far
+        // it has got, and can be left, instead of a frozen screen for as long
+        // as a network takes to join and the relay to answer.
+        Connect phase = Connect::Off;
+        std::uint32_t phaseAt = 0;
+        std::uint32_t lastPing = 0;
+
+        TWL_CODE void failConnect(int code, const char *text)
         {
-            if (started)
-                return true;
-            if (const char *no = unavailable())
+            fail(code, text);
+            closeSocket();
+            wifiOff();
+            phase = Connect::Failed;
+        }
+
+        TWL_CODE void stepConnect()
+        {
+            const std::uint32_t now = Global::vblanks();
+            switch (phase)
             {
-                fail(1, no);
-                return false;
+            case Connect::Starting:
+                std::memset(s.ring, 0, sizeof(s.ring));
+                s.ringHead = s.ringTail = 0;
+                s.sock = -1;
+                s.role = Role::None;
+                if (!wifiUp && !Wifi_InitDefault(INIT_ONLY | WIFI_ATTEMPT_DSI_MODE))
+                {
+                    char text[48];
+                    std::snprintf(text, sizeof(text), kNoStart, Wifi_GetInitFailStage());
+                    fail(2, text);
+                    phase = Connect::Failed;
+                    return;
+                }
+                wifiUp = true;
+                // The console's own saved connections.
+                Wifi_AutoConnect();
+                phase = Connect::Joining;
+                phaseAt = now;
+                return;
+            case Connect::Joining:
+            {
+                // (The IP stack's thread gets its address meanwhile.)
+                cothread_yield();
+                const int status = Wifi_AssocStatus();
+                if (status == ASSOCSTATUS_ASSOCIATED)
+                    phase = Connect::Finding;
+                else if (status == ASSOCSTATUS_CANNOTCONNECT || now - phaseAt >= kConnectFrames)
+                    failConnect(3, kNoNetwork);
+                return;
             }
-            std::memset(s.ring, 0, sizeof(s.ring));
-            s.ringHead = s.ringTail = 0;
-            s.sock = -1;
-            s.role = Role::None;
-            if (!wifiUp && !Wifi_InitDefault(INIT_ONLY | WIFI_ATTEMPT_DSI_MODE))
+            case Connect::Finding:
             {
-                char text[48];
-                std::snprintf(text, sizeof(text), kNoStart, Wifi_GetInitFailStage());
-                fail(2, text);
-                return false;
+                // Where the relay is. (A name asked of the network's DNS waits
+                // for its answer: a moment.)
+                addrinfo hints = {};
+                hints.ai_family = AF_INET;
+                hints.ai_socktype = SOCK_DGRAM;
+                addrinfo *found = nullptr;
+                if (getaddrinfo(s.host, nullptr, &hints, &found) != 0 || found == nullptr)
+                {
+                    failConnect(4, kNoName);
+                    return;
+                }
+                s.server = *reinterpret_cast<const sockaddr_in *>(found->ai_addr);
+                s.server.sin_port = htons(static_cast<std::uint16_t>(s.port));
+                freeaddrinfo(found);
+                // (Never waited on: every read is MSG_DONTWAIT, and a datagram
+                // is sent at once.)
+                s.sock = socket(AF_INET, SOCK_DGRAM, 0);
+                if (s.sock < 0)
+                {
+                    failConnect(5, kNoSocket);
+                    return;
+                }
+                // A session of its own: a console started again is another one.
+                std::uint8_t mac[6] = {};
+                Wifi_GetData(WIFIGETDATA_MACADDRESS, 6, mac);
+                s.session = (now * 2654435761u) ^
+                            (static_cast<std::uint32_t>(mac[2]) << 24 | mac[3] << 16 | mac[4] << 8 | mac[5]) ^
+                            Wifi_GetIP();
+                if (s.session == 0)
+                    s.session = 1;
+                phase = Connect::Waiting;
+                phaseAt = now;
+                lastPing = now - 30;
+                return;
             }
-            wifiUp = true;
-            // The console's own saved connections.
-            Wifi_AutoConnect();
-            int status = ASSOCSTATUS_DISCONNECTED;
-            for (int i = 0; i < kConnectFrames; ++i)
-            {
-                status = Wifi_AssocStatus();
-                if (status == ASSOCSTATUS_ASSOCIATED || status == ASSOCSTATUS_CANNOTCONNECT)
-                    break;
-                cothread_yield_irq(IRQ_VBLANK);
-            }
-            if (status != ASSOCSTATUS_ASSOCIATED)
-            {
-                fail(3, kNoNetwork);
-                wifiOff();
-                return false;
-            }
-            // Where the relay is.
-            addrinfo hints = {};
-            hints.ai_family = AF_INET;
-            hints.ai_socktype = SOCK_DGRAM;
-            addrinfo *found = nullptr;
-            if (getaddrinfo(s.host, nullptr, &hints, &found) != 0 || found == nullptr)
-            {
-                fail(4, kNoName);
-                wifiOff();
-                return false;
-            }
-            s.server = *reinterpret_cast<const sockaddr_in *>(found->ai_addr);
-            s.server.sin_port = htons(static_cast<std::uint16_t>(s.port));
-            freeaddrinfo(found);
-            // (Never waited on: every read is MSG_DONTWAIT, and a datagram
-            // is sent at once.)
-            s.sock = socket(AF_INET, SOCK_DGRAM, 0);
-            if (s.sock < 0)
-            {
-                fail(5, kNoSocket);
-                closeSocket();
-                wifiOff();
-                return false;
-            }
-            // A session of its own: a console started again is another one.
-            std::uint8_t mac[6] = {};
-            Wifi_GetData(WIFIGETDATA_MACADDRESS, 6, mac);
-            s.session = (Global::vblanks() * 2654435761u) ^ (static_cast<std::uint32_t>(mac[2]) << 24 | mac[3] << 16 |
-                                                             mac[4] << 8 | mac[5]) ^ Wifi_GetIP();
-            if (s.session == 0)
-                s.session = 1;
-            // ... and the relay is there.
-            started = true;
-            bool answered = false;
-            for (int i = 0; i < kAnswerFrames && !answered; ++i)
-            {
-                if (i % 30 == 0)
+            case Connect::Waiting:
+                // ... and the relay is there.
+                if (now - lastPing >= 30)
+                {
                     sendSmall(RelayKind::Ping);
-                answered = drain();
-                cothread_yield_irq(IRQ_VBLANK);
+                    lastPing = now;
+                }
+                if (drain())
+                {
+                    started = true;
+                    s.lastPump = s.lastSent = now;
+                    failCode = 0;
+                    whyText[0] = 0;
+                    phase = Connect::Ready;
+                }
+                else if (now - phaseAt >= kAnswerFrames)
+                {
+                    char text[64];
+                    std::snprintf(text, sizeof(text), kNoAnswer, s.host, s.port);
+                    failConnect(6, text);
+                }
+                return;
+            default:
+                return;
             }
-            if (!answered)
-            {
-                started = false;
-                char text[64];
-                std::snprintf(text, sizeof(text), kNoAnswer, s.host, s.port);
-                fail(6, text);
-                closeSocket();
-                wifiOff();
-                return false;
-            }
-            s.lastPump = s.lastSent = Global::vblanks();
-            failCode = 0;
-            whyText[0] = 0;
-            return true;
         }
     } // namespace
+
+    TWL_CODE void connectBegin()
+    {
+        if (started)
+        {
+            phase = Connect::Ready;
+            return;
+        }
+        if (const char *no = unavailable())
+        {
+            fail(1, no);
+            phase = Connect::Failed;
+            return;
+        }
+        phase = Connect::Starting;
+        phaseAt = Global::vblanks();
+    }
+
+    TWL_CODE Connect connectStep()
+    {
+        stepConnect();
+        return phase;
+    }
+
+    TWL_CODE const char *connectText()
+    {
+        static TWL_DATA const char kStarting[] = "Starting the wireless...";
+        static TWL_DATA const char kJoining[] = "Joining a saved network...";
+        static TWL_DATA const char kFinding[] = "Finding the relay...";
+        static TWL_DATA const char kWaiting[] = "Waiting for the relay...";
+        return phase == Connect::Starting  ? kStarting
+               : phase == Connect::Joining ? kJoining
+               : phase == Connect::Finding ? kFinding
+                                           : kWaiting;
+    }
+
+    TWL_CODE void connectCancel()
+    {
+        if (started || phase == Connect::Off)
+            return;
+        closeSocket();
+        if (wifiUp)
+            wifiOff();
+        phase = Connect::Off;
+    }
+
+    bool ready()
+    {
+        return started;
+    }
 
     TWL_CODE static const char *unavailableTwl()
     {
@@ -489,11 +559,13 @@ namespace hlrt::netrelay
         closeSocket();
         wifiOff();
         started = false;
+        phase = Connect::Off;
     }
 
     TWL_CODE bool host(const char *name, int most)
     {
-        if (!start())
+        // (Online first: connectBegin, connectStep.)
+        if (!started)
             return false;
         if (s.role == Role::Host)
         {
@@ -560,7 +632,7 @@ namespace hlrt::netrelay
 
     TWL_CODE bool scan()
     {
-        if (!start())
+        if (!started)
             return false;
         shutdown();
         s.role = Role::Scan;
@@ -657,6 +729,11 @@ namespace hlrt::netrelay
     const char *unavailable() { return "Not on a console sent the game"; }
     const char *why() { return unavailable(); }
     bool holdsWifi() { return false; }
+    void connectBegin() {}
+    Connect connectStep() { return Connect::Failed; }
+    const char *connectText() { return ""; }
+    void connectCancel() {}
+    bool ready() { return false; }
     int failStage() { return 1; }
     void shutdown() {}
     void powerDown() {}

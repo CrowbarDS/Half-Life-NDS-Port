@@ -39,6 +39,30 @@ namespace hlrt::netrelay
     const char *why();
     int failStage();
 
+    /// Going online without stopping the program: connectBegin, then
+    /// connectStep once a frame until it says Ready (host and scan may then
+    /// be asked) or Failed (why() says why). A step may take a moment of its
+    /// own -- the Wi-Fi started, the relay's name asked of the network -- but
+    /// none waits for the network or the relay. Once Ready, Ready at once
+    /// until powerDown.
+    enum class Connect : std::uint8_t
+    {
+        Off,
+        Starting, ///< the Wi-Fi being started
+        Joining,  ///< one of the console's saved networks being joined
+        Finding,  ///< the relay's name being looked up
+        Waiting,  ///< for the relay to answer
+        Ready,
+        Failed,
+    };
+    void connectBegin();
+    Connect connectStep();
+    /// What it is doing now, in words for the screen.
+    const char *connectText();
+    /// Given up before Ready (the Wi-Fi stays started: holdsWifi).
+    void connectCancel();
+    bool ready();
+
     /// Out of the room, and the relay told; the Wi-Fi stays connected.
     void shutdown();
     /// ... and the Wi-Fi given back altogether.

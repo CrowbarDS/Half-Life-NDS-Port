@@ -1017,7 +1017,7 @@ Milestone 11, "levels of detail".
     buffers, into the DSi-only part of the program, which a DS never loads.
     The library's flag for "the IP stack is on", which its code every
     console runs reads, is the program's own (`NetLink.cpp`), in memory a DS
-    has. What is left costs a DS about 2.7 KB. The stack is a cooperative
+    has. What is left costs a DS about 3.0 KB. The stack is a cooperative
     thread of the library's, run only when the program yields:
     `swiWaitForVBlank` halts, so `NetRelay` yields each frame. Not yet:
     a map the client lacks is not sent online, and nothing checks who a
