@@ -88,6 +88,7 @@ bool InstallWorker::convert(QString &why)
     options.cardRoot = toPath(cardCache);
     options.stageRoot = toPath(stage);
     options.textures = job_.textures;
+    options.jobs = job_.threads;
     if (!job_.language.isEmpty())
     {
         options.languageDir = hlds::languageFolder(options.gameDir, job_.language.toStdString());

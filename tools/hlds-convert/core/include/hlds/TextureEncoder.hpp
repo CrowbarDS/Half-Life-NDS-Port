@@ -61,6 +61,12 @@ namespace hlds
         virtual std::uint32_t version() const = 0;
     };
 
+    /// How many textures are encoded at once in this process, by every
+    /// encoder together (one ptexconv each): `threads`, or every thread the
+    /// machine has for 0. Set before a cook begins.
+    void setEncodeThreads(unsigned threads);
+    unsigned encodeThreads();
+
     class PtexconvEncoder : public ITextureEncoder
     {
     public:

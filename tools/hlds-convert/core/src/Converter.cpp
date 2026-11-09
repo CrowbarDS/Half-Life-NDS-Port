@@ -47,7 +47,11 @@ namespace hlds
         }
     } // namespace
 
-    Converter::Converter(ConvertOptions options) : options_(std::move(options)) {}
+    Converter::Converter(ConvertOptions options) : options_(std::move(options))
+    {
+        // (What the run may keep busy: the encoders too, not only the maps.)
+        setEncodeThreads(options_.jobs > 0 ? static_cast<unsigned>(options_.jobs) : 0u);
+    }
 
     fs::path Converter::dataDir(const fs::path &cardRoot)
     {
@@ -2006,8 +2010,9 @@ namespace hlds
         // map takes about 230 MB as it is cooked, and such a program has 2 GB
         // in all on a 32-bit Windows.)
         constexpr unsigned kMostJobs = sizeof(void *) < 8 ? 3u : 6u;
-        unsigned jobs = options_.jobs > 0 ? static_cast<unsigned>(options_.jobs)
-                                          : std::min(std::max(1u, std::thread::hardware_concurrency()), kMostJobs);
+        unsigned jobs = std::min(options_.jobs > 0 ? static_cast<unsigned>(options_.jobs)
+                                                   : std::max(1u, std::thread::hardware_concurrency()),
+                                 kMostJobs);
         jobs = std::max(1u, std::min<unsigned>(jobs, static_cast<unsigned>(names.size())));
         std::atomic<std::size_t> next{0};
         std::atomic<int> failedCount{0};

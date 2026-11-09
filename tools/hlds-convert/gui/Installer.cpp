@@ -1,6 +1,8 @@
 #include "Installer.hpp"
 #include "hlds/Converter.hpp"
 
+#include <algorithm>
+
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
@@ -18,8 +20,10 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QSettings>
+#include <QSpinBox>
 #include <QStandardPaths>
 #include <QStorageInfo>
+#include <QThread>
 #include <QTimer>
 #include <QToolButton>
 #include <QUrl>
@@ -433,6 +437,26 @@ public:
         encoderBrowse_ = new QPushButton(QStringLiteral("Find ptexconv..."));
         row->addWidget(encoderBrowse_);
         inner->addLayout(row);
+        // How much of the computer the conversion takes: textures encoded at
+        // once, and maps (the most of each is the computer's threads).
+        auto *threadRow = new QHBoxLayout;
+        threadRow->addWidget(new QLabel(QStringLiteral("Threads to use")));
+        threads_ = new QSpinBox;
+        const int most = std::max(1, QThread::idealThreadCount());
+        threads_->setRange(1, most);
+        const int saved = QSettings().value(QStringLiteral("threads"), 0).toInt();
+        threads_->setValue(saved >= 1 && saved <= most ? saved : most);
+        threads_->setToolTip(QStringLiteral("Fewer leaves the computer free for other things; the conversion takes longer."));
+        threadRow->addWidget(threads_);
+        threadRow->addWidget(new QLabel(QStringLiteral("of %1").arg(most)));
+        threadRow->addStretch(1);
+        inner->addLayout(threadRow);
+        owner_->threads_ = threads_->value() == most ? 0 : threads_->value();
+        connect(threads_, qOverload<int>(&QSpinBox::valueChanged), this, [this, most](int value)
+                {
+                    owner_->threads_ = value == most ? 0 : value;
+                    QSettings().setValue(QStringLiteral("threads"), owner_->threads_);
+                });
         connect(encoderBrowse_, &QPushButton::clicked, this, [this]()
                 {
                     const QString file = QFileDialog::getOpenFileName(this, QStringLiteral("Where is ptexconv?"));
@@ -539,6 +563,7 @@ private:
     QWidget *advanced_ = nullptr;
     QCheckBox *parts_[4] = {};
     QCheckBox *textures_ = nullptr;
+    QSpinBox *threads_ = nullptr;
     QPushButton *encoderBrowse_ = nullptr;
 };
 
@@ -783,6 +808,7 @@ void Installer::start()
     job.ptexconv = ptexconv_;
     job.maps = chosenMaps();
     job.textures = textures_;
+    job.threads = threads_;
     job.language = language_;
     worker_ = new InstallWorker(std::move(job), this);
     connect(worker_, &InstallWorker::step, this, [page](int step) { page->showLines(step - 1); });

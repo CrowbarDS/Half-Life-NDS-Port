@@ -42,30 +42,48 @@ namespace hlds
 #endif
         }
 
-        /// Multi-threaded encoding
+        unsigned machineThreads()
+        {
+            return std::max(1u, std::thread::hardware_concurrency());
+        }
+
+        /// How many encoders run at once, across every map being cooked.
         class EncodeSlots
         {
         public:
-            EncodeSlots() : free_(static_cast<int>(std::max(1u, std::thread::hardware_concurrency()))) {}
             void take()
             {
                 std::unique_lock<std::mutex> lock(mutex_);
-                cv_.wait(lock, [&] { return free_ > 0; });
-                --free_;
+                cv_.wait(lock, [&] { return busy_ < limit_; });
+                ++busy_;
             }
             void give()
             {
                 {
                     const std::lock_guard<std::mutex> lock(mutex_);
-                    ++free_;
+                    --busy_;
                 }
-                cv_.notify_one();
+                cv_.notify_all();
+            }
+            void limit(unsigned threads)
+            {
+                {
+                    const std::lock_guard<std::mutex> lock(mutex_);
+                    limit_ = threads > 0 ? threads : machineThreads();
+                }
+                cv_.notify_all();
+            }
+            unsigned limit()
+            {
+                const std::lock_guard<std::mutex> lock(mutex_);
+                return limit_;
             }
 
         private:
             std::mutex mutex_;
             std::condition_variable cv_;
-            int free_;
+            unsigned limit_ = machineThreads();
+            unsigned busy_ = 0;
         };
 
         EncodeSlots &encodeSlots()
@@ -73,6 +91,20 @@ namespace hlds
             static EncodeSlots slots;
             return slots;
         }
+    } // namespace
+
+    void setEncodeThreads(unsigned threads)
+    {
+        encodeSlots().limit(threads);
+    }
+
+    unsigned encodeThreads()
+    {
+        return encodeSlots().limit();
+    }
+
+    namespace
+    {
 
 #ifdef _WIN32
         /// Run the encoder in `folder`, with no window, and say how it ended.

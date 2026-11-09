@@ -24,6 +24,7 @@ public:
         QString ptexconv; ///< empty: look for it
         QStringList maps; ///< those to install
         bool textures = true;
+        int threads = 0;  ///< threads the conversion keeps busy (ConvertOptions::jobs); 0: all
         QString language; ///< a translation beside the game (french); empty: the game's own
     };
 

@@ -67,9 +67,9 @@ namespace
                      "                         the world wears are cooked at their own size and\n"
                      "                         streamed in as they come into view; without\n"
                      "                         streaming they are shrunk until the whole map fits\n"
-                     "      --jobs <n>         maps cooked at once\n"
-                     "                         (default: threads available, up to 6;\n"
-                     "                         3 in a 32-bit build)\n"
+                     "      --jobs <n>         threads kept busy: textures encoded at once,\n"
+                     "                         and maps cooked at once (up to 6; 3 in a\n"
+                     "                         32-bit build). Default: every thread there is\n"
                      "      --hotspots         list each map's ten worst leaves as seen\n"
                      "                         (where, which way, what they cost)\n"
                      "      --group-across-leaves  let a surface span two leaves (as before\n"
@@ -300,7 +300,16 @@ namespace
             else if (args[i] == "--no-stream-textures")
                 options.streamTextures = false;
             else if (args[i] == "--jobs" && i + 1 < args.size())
-                options.jobs = std::atoi(args[++i].c_str());
+            {
+                const std::string &value = args[++i];
+                const int jobs = std::atoi(value.c_str());
+                if (jobs < 1 || value.find_first_not_of("0123456789") != std::string::npos)
+                {
+                    std::fprintf(stderr, "--jobs wants a number of threads, 1 or more (not \"%s\")\n", value.c_str());
+                    return 2;
+                }
+                options.jobs = jobs;
+            }
             else if (args[i] == "--plain-tiles")
                 hlds::setRandomTiling(false);
             else if (args[i] == "--group-across-leaves")

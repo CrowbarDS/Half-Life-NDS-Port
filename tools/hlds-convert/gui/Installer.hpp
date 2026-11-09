@@ -65,6 +65,7 @@ private:
     QString cache_;
     bool succeeded_ = false;
     bool textures_ = true;
+    int threads_ = 0; ///< threads the conversion keeps busy; 0: all of them
     bool stopping_ = false;
     int failed_ = 0;
     InstallWorker *worker_ = nullptr;

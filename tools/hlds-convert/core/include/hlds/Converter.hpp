@@ -44,7 +44,12 @@ namespace hlds
         bool compress = true; ///< LZ77 inside the archives, where it pays (NpacWriter.hpp)
         std::filesystem::path ptexconv; ///< empty: look for it
         bool textures = true;
-        int jobs = 0; /// maps cooked concurrently, one per thread
+        /// How many of the machine's threads the converter keeps busy: maps
+        /// cooked at once (no more than six, three in a 32-bit program, for
+        /// the memory each takes), and textures being encoded at once (one
+        /// ptexconv each, which is most of the work). 0: every thread the
+        /// machine has.
+        int jobs = 0;
         bool streamTextures = true; /// stream the plain textures only worn by world
         double lightScale = LightBake::kDefaultScale;
         double lightPower = LightBake::kDefaultPower;

@@ -187,9 +187,9 @@ namespace hlds
                                          job.error);
             }
         };
+        // (No more than may encode at once: a thread more would only wait.)
         const unsigned threads =
-            std::max(1u, std::min<unsigned>(std::thread::hardware_concurrency(),
-                                            static_cast<unsigned>(jobs.size())));
+            std::max(1u, std::min<unsigned>(encodeThreads(), static_cast<unsigned>(jobs.size())));
         std::vector<std::thread> pool;
         for (unsigned i = 1; i < threads; ++i)
             pool.emplace_back(worker);
