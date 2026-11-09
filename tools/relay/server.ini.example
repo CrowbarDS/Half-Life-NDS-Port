@@ -1,0 +1,8 @@
+# Where the relay for online play is. Copy this file to the card as
+# _nds/hl_nds/data/server.ini (next to settings.dat) and put the relay's
+# address in it: a name or an IPv4 address, and its UDP port.
+#
+# melonDS with its own network (not "direct mode")
+
+host = relay.example.org
+port = 27500
