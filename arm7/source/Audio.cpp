@@ -389,6 +389,12 @@ namespace hlaudio
             l->where = what;
     }
 
+    unsigned marked()
+    {
+        AudioLink *l = link;
+        return l != nullptr ? l->where : 0;
+    }
+
     void waitAndRun()
     {
         while (pending == 0)

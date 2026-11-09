@@ -13,9 +13,58 @@
 #include "Audio.hpp"
 #include "Rtcom.hpp"
 
+// libnds's tables of what each interrupt calls, by its bit (the
+// dispatcher's: interruptDispatcher.s); not in its headers.
+extern "C" VoidFn irqTable[];
+extern "C" VoidFn irqTableAUX[];
+
 namespace
 {
     volatile bool exitLoop = false;
+
+    // (Diagnostic) what the ARM7 is in, for the ARM9 to say if it stops
+    // (HlAudioLink.hpp's where): each interrupt marked as it runs, and what
+    // it broke into marked again as it ends. The DSi's wireless card's
+    // interrupt, and the FIFO's, are the libraries': called through ours.
+    constexpr int kAuxWifiCard = 11; ///< (dswifi's card.twl.c: IRQ_WIFI_SDIO_CARDIRQ)
+    constexpr int kFifoNotEmpty = 18;
+    volatile VoidFn wifiCardIrq = nullptr, fifoIrq = nullptr;
+
+    void wifiCardMarked()
+    {
+        const unsigned was = hlaudio::marked();
+        hlaudio::mark(4);
+        if (VoidFn call = wifiCardIrq)
+            call();
+        hlaudio::mark(was);
+    }
+
+    void fifoMarked()
+    {
+        const unsigned was = hlaudio::marked();
+        hlaudio::mark(5);
+        if (VoidFn call = fifoIrq)
+            call();
+        hlaudio::mark(was);
+    }
+
+    /// Whatever the libraries have put in those places since, called
+    /// through the marking ones.
+    void markHandlers()
+    {
+        const VoidFn card = irqTableAUX[kAuxWifiCard];
+        if (card != nullptr && card != wifiCardMarked)
+        {
+            wifiCardIrq = card;
+            irqTableAUX[kAuxWifiCard] = wifiCardMarked;
+        }
+        const VoidFn fifo = irqTable[kFifoNotEmpty];
+        if (fifo != nullptr && fifo != fifoMarked)
+        {
+            fifoIrq = fifo;
+            irqTable[kFifoNotEmpty] = fifoMarked;
+        }
+    }
 
     void powerButton()
     {
@@ -24,11 +73,12 @@ namespace
 
     void vblankHandler()
     {
+        const unsigned was = hlaudio::marked();
         hlaudio::mark(2);
         inputGetAndSend();
         hlaudio::mark(1);
         Wifi_Update();
-        hlaudio::mark(0);
+        hlaudio::mark(was);
     }
 } // namespace
 
@@ -76,6 +126,8 @@ int main()
     while (!exitLoop)
     {
         hlaudio::waitAndRun();
+        if (isDSiMode())
+            markHandlers();
         if (++blocks % 8 == 0)
         {
             const std::uint16_t mask = KEY_SELECT | KEY_START | KEY_L | KEY_R;

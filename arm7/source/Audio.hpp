@@ -13,4 +13,5 @@ namespace hlaudio
     /// (Diagnostic) what the ARM7 is about to do, for the ARM9 to see if it
     /// never comes back (HlAudioLink.hpp, where).
     void mark(unsigned what);
+    unsigned marked();
 } // namespace hlaudio

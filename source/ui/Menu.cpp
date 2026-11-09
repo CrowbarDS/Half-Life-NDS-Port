@@ -2689,11 +2689,11 @@ namespace hlrt
         // (Shown once, a second after it stopped; and again every 5 s.)
         if (++arm7Still_ % 300 != 60)
             return;
-        static TWL_DATA const char *const kWhere[] = {"waiting", "wifi update", "input", "sound"};
+        static TWL_DATA const char *const kWhere[] = {"waiting", "wifi update", "input", "sound", "wifi card irq", "fifo irq"};
         static TWL_DATA const char kFormat[] = "ARM7 STOPPED %ds, in: %s";
         const std::uint32_t where = arm7Audio.where();
         char first[48], second[64];
-        std::snprintf(first, sizeof(first), kFormat, arm7Still_ / 60, where < 4 ? kWhere[where] : "?");
+        std::snprintf(first, sizeof(first), kFormat, arm7Still_ / 60, where < 6 ? kWhere[where] : "?");
         hlrt::netrelay::radioCounts(second, static_cast<int>(sizeof(second)));
         Canvas &canvas = touchCanvas.canvas();
         const FontView &small = touchCanvas.font(kFontSmall);

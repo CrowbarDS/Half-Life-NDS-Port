@@ -145,7 +145,8 @@ namespace hldata
         volatile std::uint32_t musicOver; ///< 1 once the track has all been played
         volatile std::uint32_t sendWrite; ///< samples put into `send`, all told
         /// (Diagnostic) what the ARM7 is doing: 1 the wireless's update, 2 the
-        /// buttons and touch, 3 the sound's block, 0 waiting.
+        /// buttons and touch, 3 the sound's block, 4 the DSi wireless card's
+        /// interrupt, 5 the FIFO's, 0 waiting.
         volatile std::uint32_t where;
         // ARM7 writes, channels 1 and 3 read:
         alignas(32) std::int16_t outLeft[kOutRing];
