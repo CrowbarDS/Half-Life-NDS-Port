@@ -100,6 +100,11 @@ int main()
     irqInit();
     fifoInit();
 
+    // The DSi's wireless (online play) from this loop, not from interrupts:
+    // from a timer every millisecond, its card's interrupt and the FIFO's, a
+    // game sending many packets kept one of them always due again, and the
+    // sound, the buttons and the touch screen stopped for good.
+    Wifi_SetUpdateFromLoop(true);
     installWifiFIFO();
     // (libnds's own sound messages stay: the DSi's output rate and mix
     // ratio, and the sound capture the DSi's DSP takes its echo from, are
@@ -115,7 +120,8 @@ int main()
     hlaudio::install();
 
     setPowerButtonCB(powerButton);
-    // (Timer 3: the clock. The sound keeps time by timers 0, 1 and 2.)
+    // (Timer 3: the clock. The sound keeps time by timers 0 and 1; timer 2
+    // is the DSi wireless's, its update every millisecond.)
     initClockIRQTimer(3);
     irqSet(IRQ_VBLANK, vblankHandler);
     irqEnable(IRQ_VBLANK);
@@ -127,7 +133,14 @@ int main()
     {
         hlaudio::waitAndRun();
         if (isDSiMode())
+        {
             markHandlers();
+            // (A few packets each way, every block: interrupts are taken meanwhile.)
+            const unsigned was = hlaudio::marked();
+            hlaudio::mark(1);
+            Wifi_LoopUpdate();
+            hlaudio::mark(was);
+        }
         if (++blocks % 8 == 0)
         {
             const std::uint16_t mask = KEY_SELECT | KEY_START | KEY_L | KEY_R;

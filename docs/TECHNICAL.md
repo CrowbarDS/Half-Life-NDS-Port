@@ -1021,7 +1021,15 @@ Milestone 11, "levels of detail".
     console runs reads, is the program's own (`NetLink.cpp`), in memory a DS
     has. What is left costs a DS about 3.4 KB. The stack is a cooperative
     thread of the library's, run only when the program yields:
-    `swiWaitForVBlank` halts, so `NetRelay` yields each frame. Going
+    `swiWaitForVBlank` halts, so `NetRelay` yields each frame. On the ARM7
+    the DSi's wireless is driven from the program's own loop, a few packets
+    each way after each sound block (`Wifi_SetUpdateFromLoop`, in the
+    `dswifi_dl` fork), not from its 1 ms timer, card interrupt and FIFO
+    messages: with a game sending many packets one of them was always due
+    again, and the ARM7's sound, buttons and touch stopped for good. (Its
+    start-up still runs with interrupts off: it shares the I2C and clock
+    buses with the ARM7's interrupts.) The sound's own clock is timer 1
+    alone; timer 2 is the wireless's. Going
     online is a step a frame (CONNECTING), never a frozen menu. An online
     lobby offers nothing by Download Play: no guests, no SEND GAME. Not yet:
     nothing checks who a console is.

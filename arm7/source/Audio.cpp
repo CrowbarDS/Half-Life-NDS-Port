@@ -58,20 +58,12 @@ namespace hlaudio
             pending = pending + 1;
         }
 
-        /// The bus clock as one 32-bit count: timer 1 counting, timer 2 its
-        /// overflows.
-        std::uint32_t stamp()
-        {
-            std::uint16_t high = TIMER_DATA(2);
-            std::uint16_t low = TIMER_DATA(1);
-            const std::uint16_t again = TIMER_DATA(2);
-            if (again != high)
-            {
-                high = again;
-                low = TIMER_DATA(1);
-            }
-            return static_cast<std::uint32_t>(high) << 16 | low;
-        }
+        /// The bus clock, in 64s of its ticks: timer 1 alone (a 16-bit count
+        /// round in 125 ms, longer than any block takes). Not timer 2: the
+        /// DSi's wireless takes it (LIBNDS_DEFAULT_TIMER_WIFI, its update
+        /// every millisecond) once it is started.
+        constexpr std::uint32_t kStampTicks = 64;
+        std::uint16_t stamp() { return TIMER_DATA(1); }
 
         int channelOf(std::uint16_t token)
         {
@@ -329,7 +321,6 @@ namespace hlaudio
                         SCHANNEL_CR(n) = 0;
                     TIMER_CR(0) = 0;
                     TIMER_CR(1) = 0;
-                    TIMER_CR(2) = 0;
                     break;
                 case AudioOp::StopAll:
                     for (int c = 0; c < kChannelCount; ++c)
@@ -370,11 +361,8 @@ namespace hlaudio
         fifoSetValue32Handler(FIFO_USER_01, linkHandler, nullptr);
         // The bus clock, for the load figures.
         TIMER_CR(1) = 0;
-        TIMER_CR(2) = 0;
         TIMER_DATA(1) = 0;
-        TIMER_DATA(2) = 0;
-        TIMER_CR(2) = TIMER_ENABLE | TIMER_CASCADE;
-        TIMER_CR(1) = TIMER_ENABLE | TIMER_DIV_1;
+        TIMER_CR(1) = TIMER_ENABLE | TIMER_DIV_64;
         // A block every 65536 bus ticks: 64 samples at 32728 Hz.
         irqSet(IRQ_TIMER0, blockTick);
         irqEnable(IRQ_TIMER0);
@@ -406,12 +394,12 @@ namespace hlaudio
         AudioLink *l = link;
         if (l == nullptr)
             return;
-        const std::uint32_t began = stamp();
+        const std::uint16_t began = stamp();
         const std::uint32_t was = l->where;
         l->where = 3;
         run(blocks);
         l->where = was;
-        const std::uint32_t took = stamp() - began;
+        const std::uint32_t took = static_cast<std::uint32_t>(static_cast<std::uint16_t>(stamp() - began)) * kStampTicks;
         l->blocks = l->blocks + blocks;
         if (blocks > 1)
             l->late = l->late + (blocks - 1);
