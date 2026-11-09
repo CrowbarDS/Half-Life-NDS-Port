@@ -24,6 +24,13 @@ namespace hlrt::netlink
     /// What a beacon of this game says it is.
     inline constexpr std::uint32_t kGameId = 0x484C4453; // "HLDS"
 
+    /// Online: the relay over the Internet in place of the radio
+    /// (NetRelay.hpp) for everything a lobby and a match use -- host, scan,
+    /// join, the frames. Whichever was on is powered down first. (Download
+    /// Play and joinDirect are the radio's alone.)
+    void useRelay(bool on);
+    bool usingRelay();
+
     /// Leave whatever was going on and be silent. Safe at any time.
     void shutdown();
     /// ... and give the radio and the library back altogether (on leaving

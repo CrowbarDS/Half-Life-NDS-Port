@@ -58,6 +58,18 @@ namespace hlrt
         const std::vector<hldata::NetMapInfo> &mapInfo() const { return mapInfo_; }
 
         // ------------------------------------------------------------ lobby
+        /// Over the Internet through the relay (NetRelay.hpp), or over the
+        /// local wireless: for the next host() or scan(). The lobby and the
+        /// match are the same either way.
+        void setOnline(bool on);
+        bool online() const;
+        /// Why going online could not be (null if it can), and why it failed
+        /// last time.
+        const char *onlineUnavailable() const;
+        const char *onlineWhy() const;
+        /// Online once already: the local wireless needs the game started
+        /// again (NetRelay.hpp, holdsWifi).
+        bool localBlocked() const;
         bool host();  ///< be a host; false if the radio would not start
         bool scan();  ///< look for hosts
         /// The hosts found so far: up to `most` of them, each a line to

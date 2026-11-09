@@ -186,12 +186,14 @@ namespace
         put(data / "air/a.hgs", "stream");
         put(data / "saves/stray.sav", "never");
         put(data / "settings.dat", "never");
+        put(data / "server.ini", "never");
         put(data / "maps/b.npac.tmp12", "half written");
         put(root / "half-life-nds-port.nds", "rom");
         // What the player has, and an old install.
         put(out / "saves/auto.sav", "mine");
         put(out / "settings.dat", "my settings");
         put(out / "achievements.dat", "mine too");
+        put(out / "server.ini", "host = mine");
         put(out / "manifest.bin", "old list");
         put(out / "maps/old.npac", "old map");
         put(out / "common.npac", "common");
@@ -217,6 +219,7 @@ namespace
         check(!fs::exists(out / "maps/old.npac"), "the old map gone");
         check(read(out / "saves/auto.sav") == "mine", "the player's save kept");
         check(read(out / "settings.dat") == "my settings" && read(out / "achievements.dat") == "mine too", "... and settings");
+        check(read(out / "server.ini") == "host = mine", "... and the relay's address");
         check(!fs::exists(out / "saves/stray.sav"), "none of the cache's");
         check(!fs::exists(out / "manifest.bin.new"), "no temporary left");
         check(!fs::exists(out / "maps/b.npac.tmp12"), "nor one a run left behind");

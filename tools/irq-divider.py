@@ -40,20 +40,23 @@ HANDLERS = [
     "systemValueHandler",
     "systemMsgHandler",
     "wifiValue32Handler",  # (without lwIP, Wifi_Update runs in the interrupt)
+    "hlrt::netlink::(anonymous namespace)::radioWord(unsigned long, void*)",  # ... and with it, ours does
     "Wifi_DlPlayFromClientHandler",
+    "my_sys_counter",  # lwIP's clock (online play, a DSi's): a count, on timer 3
 ]
 # (What the radio's interrupt calls by a pointer, each of these: fromHost's sink
 # is the child's sinkTake, which takes a map's pieces as they arrive.)
 HANDLER_PATTERN = re.compile(r"netlink::.*(fromClient|fromHost)\(|guest::.*sinkTake\(")
 # Handlers that only some programs have (the child sends nothing).
-OPTIONAL = {"Wifi_DlPlayFromClientHandler"}
+OPTIONAL = {"Wifi_DlPlayFromClientHandler", "my_sys_counter"}
 # Who may install one. Anyone new may be installing a handler this cannot see:
 # it fails until that handler is in HANDLERS and its caller here.
 INSTALLERS = {
-    "irqSet": {"Global::Init(char const*)", "fifoInit", "ne_gxfifo_wait_room"},
+    "irqSet": {"Global::Init(char const*)", "fifoInit", "ne_gxfifo_wait_room", "timerStart"},
     "irqSetAUX": set(),
-    "timerStart": set(),
-    "fifoSetValue32Handler": {"Wifi_Deinit", "Wifi_InitDefault", "initSystem"},
+    "timerStart": {"sys_init"},
+    "fifoSetValue32Handler": {"Wifi_Deinit", "Wifi_InitDefault", "initSystem",
+                              "hlrt::netlink::(anonymous namespace)::start()"},
     "fifoSetDatamsgHandler": {"initSystem"},
     "fifoSetAddressHandler": set(),
     "Wifi_RawSetPacketHandler": set(),
@@ -64,6 +67,14 @@ INSTALLERS = {
     "hlrt::netlink::setSink(bool (*)(unsigned char const*, int))": {
         "hlrt::guest::(anonymous namespace)::demoWant", "hlrt::guest::(anonymous namespace)::ringOn",
         "hlrt::guest::(anonymous namespace)::demoGetTrack"},
+}
+# Calls a handler can make only past a test the walk cannot read, with why.
+# Not followed.
+GUARDED = {
+    # Wifi_Update gives a frame to the IP stack only while it is on
+    # (wifi_lwip_enabled), and our radioWord, the one handler that runs
+    # Wifi_Update in the interrupt, does nothing then (source/net/NetLink.cpp).
+    "Wifi_SendPacketToLwip",
 }
 UNITS = ("__wrap___aeabi_ldivmod", "__wrap___aeabi_uldivmod", "hlHwSqrt64")
 CRASH = "__assert_func"
@@ -179,7 +190,7 @@ def check(elf):
     stack = [(root, None) for root in roots]
     while stack:
         name, parent = stack.pop()
-        if name in came_from or name == CRASH:
+        if name in came_from or name == CRASH or name in GUARDED:
             continue
         came_from[name] = parent
         stack += [(callee, name) for callee in calls.get(name, ())]

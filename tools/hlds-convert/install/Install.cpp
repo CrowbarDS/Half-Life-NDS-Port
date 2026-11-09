@@ -66,10 +66,12 @@ namespace hlds::install
             return true;
         }
 
-        /// What the player made, and the converter never does.
+        /// What the player made, and the converter never does. (server.ini:
+        /// where the relay for online play is, written by the player.)
         bool playersOwn(const std::string &relative)
         {
             return relative == "settings.dat" || relative == "achievements.dat" || relative == "perf.txt" ||
+                   relative == "server.ini" ||
                    relative.rfind("saves", 0) == 0 || relative.rfind("debug_", 0) == 0;
         }
     } // namespace

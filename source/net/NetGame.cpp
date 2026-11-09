@@ -20,6 +20,7 @@
 #include "ui/TouchCanvas.hpp"
 #include "render/Camera.hpp"
 #include "net/NetLink.hpp"
+#include "net/NetRelay.hpp"
 #include "HlManifest.hpp"
 #include "HlUi.hpp"
 #include "audio/Sound.hpp"
@@ -193,6 +194,31 @@ namespace hlrt
 
     // (The profile's name is a match's: the same room.)
     static_assert(hldata::kProfileNameBytes == static_cast<std::size_t>(kNetTextBytes));
+
+    void NetGame::setOnline(bool on)
+    {
+        netlink::useRelay(on);
+    }
+
+    bool NetGame::online() const
+    {
+        return netlink::usingRelay();
+    }
+
+    const char *NetGame::onlineUnavailable() const
+    {
+        return netrelay::unavailable();
+    }
+
+    const char *NetGame::onlineWhy() const
+    {
+        return netrelay::why();
+    }
+
+    bool NetGame::localBlocked() const
+    {
+        return netrelay::holdsWifi();
+    }
 
     bool NetGame::host()
     {

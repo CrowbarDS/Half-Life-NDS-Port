@@ -1001,6 +1001,27 @@ Milestone 11, "levels of detail".
     Download Play): one console the host, up to three its clients. Every
     frame the host sends one frame all clients hear, and each client answers
     with one the host hears. Nothing else is used during a match.
+  - **Online** (a DSi's: MULTIPLAYER, ONLINE), **the relay** stands in for
+    the radio (`tools/relay`, `shared/HlRelay.hpp`, `source/net/NetRelay.cpp`).
+    A host opens a room on it, a console looking is given the list of rooms
+    in place of the beacons it would hear, and joins one; then the relay
+    passes the host's frames to each client of the room and a client's to
+    the host, saying whose, as the radio does. It never reads them: the
+    lobby and the match are the same, and `NetLink` hands its calls to
+    `NetRelay` while online, so nothing above it knows which it is. UDP,
+    over one of the console's saved Wi-Fi connections (DSi mode, so WPA
+    too: the radio's local play and Download Play are not there then, and
+    the Wi-Fi is restarted between the two). The relay's address is the
+    card's `server.ini`. The IP stack (lwIP, in the wireless library) is
+    about 90 KB: `tools/wifi_twl.py` moves it, and `NetRelay`'s own code and
+    buffers, into the DSi-only part of the program, which a DS never loads.
+    The library's flag for "the IP stack is on", which its code every
+    console runs reads, is the program's own (`NetLink.cpp`), in memory a DS
+    has. What is left costs a DS about 2.7 KB. The stack is a cooperative
+    thread of the library's, run only when the program yields:
+    `swiWaitForVBlank` halts, so `NetRelay` yields each frame. Not yet:
+    a map the client lacks is not sent online, and nothing checks who a
+    console is.
   - **A state** (sixteen bytes: where, facing, how fast, what in hand,
     standing or crouched or dead) goes whole in every frame, so a lost frame
     is replaced by the next. **An event** (a shot, a hit, a death, a pickup,

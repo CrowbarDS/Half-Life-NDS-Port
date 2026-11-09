@@ -47,6 +47,15 @@ guard = ['HLDS_GUARD_FULL'] if os.environ.get('HLDS_DEBUG') else []
 # the library's for what the divider would answer otherwise.
 HW_MATH_WRAPS = ['__aeabi_ldivmod', '__aeabi_uldivmod']
 
+# The wireless library with its IP stack, for online play (a DSi's only):
+# its Internet half moved to the DSi-only part of the program, which a DS
+# never loads (tools/wifi_twl.py). Made here, before the build is written.
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tools'))
+import wifi_twl
+WIFI_TWL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build', 'wifi_twl')
+wifi_twl.make(os.path.join(os.path.expandvars('${BLOCKSDSEXT}'), 'dswifi_dl'), WIFI_TWL_DIR)
+
 arm9 = Arm9Binary(
     sourcedirs=['source'],
     # 'thirdparty' puts yas on the include path as <yas/...>, the same spelling
@@ -62,12 +71,14 @@ arm9 = Arm9Binary(
     # (github.com/Warioware64/dswifi, installed as "dswifi_dl" beside the
     # stock one). Its headers have the stock names (dswifi9.h), so
     # ${BLOCKSDS}/libs/dswifi must NOT be among the libdirs as well: which
-    # set of headers came first would decide the build.
-    libs=['NEA', 'nds9', 'dswifi_dl9_noip'],
+    # set of headers came first would decide the build. It is the build
+    # with the IP stack (online play), as wifi_twl made it.
+    libs=['NEA', 'nds9', 'dswifi_dl9_twl'],
     libdirs=[
         '${BLOCKSDS}/libs/libnds',
         '${BLOCKSDSEXT}/dswifi_dl',
         '${BLOCKSDSEXT}/nitro-engine-advanced',
+        WIFI_TWL_DIR,
     ],
     # -D_LITTLE_ENDIAN + force-including yas's endian config first locks yas to
     # little-endian in every TU *before* any <nds.h> can define _BIG_ENDIAN

@@ -10,6 +10,7 @@
 #include <dswifi_dlplay.h>
 
 #include "HlNet.hpp"
+#include "net/NetRelay.hpp"
 
 // All of dswifi is in this file. What it took Skyjo-DS to find out, kept:
 //
@@ -22,6 +23,20 @@
 //     set again at every join.
 //   - Asking how the association stands is what keeps one going.
 
+// The library's own: what has come from the ARM7 dealt with (frames in and
+// out, the association). Not in its header.
+extern "C" void Wifi_Update(void);
+
+#ifndef HLDS_CHILD
+// The wireless library's own "its IP stack is on", which all of it tests:
+// here, where every console has it, and not in the library's glue to the IP
+// stack, which is the DSi's alone (tools/wifi_twl.py makes the library's
+// weak). A DS never turns it on.
+extern "C" {
+bool wifi_lwip_enabled = false;
+}
+#endif
+
 namespace hlrt::netlink
 {
     namespace
@@ -33,6 +48,11 @@ namespace hlrt::netlink
         constexpr int kModeWaitFrames = 90;
         constexpr const char *kSsid = "HALFLIFE";
 
+#ifndef HLDS_CHILD
+        bool relay = false; ///< online: NetRelay's, not the radio's
+#else
+        constexpr bool relay = false; ///< (a console sent the game is never online)
+#endif
         bool started = false;
         bool hosting = false;
         bool client = false;
@@ -95,6 +115,26 @@ namespace hlrt::netlink
             keep(0, base, len);
         }
 
+        /// The ARM7's word that the radio has something: dealt with at once,
+        /// in the interrupt -- what the library built without the IP stack
+        /// does itself. The one built with it (the ROM's, for online play)
+        /// leaves it to its IP stack's thread, which local play never starts:
+        /// without this, nothing came or went (a guest of Download Play was
+        /// only "A console", and was sent nothing).
+        /// (Never with the IP stack on, whose thread does it then: so the IP
+        /// stack's part of Wifi_Update, which reaches the divider through
+        /// lwIP's printf, is never run in the interrupt. tools/irq-divider.py
+        /// counts on this.)
+        void radioWord(u32 value, void *)
+        {
+#ifndef HLDS_CHILD
+            if (wifi_lwip_enabled)
+                return;
+#endif
+            if (value == 0)
+                Wifi_Update();
+        }
+
         void waitForMode()
         {
             for (int i = 0; i < kModeWaitFrames && !Wifi_LibraryModeReady(); ++i)
@@ -104,10 +144,17 @@ namespace hlrt::netlink
         {
             if (started)
                 return true;
+            // (Online before, this time the program runs: the library is in
+            // the DSi's mode for good, and has no local play.)
+#ifndef HLDS_CHILD
+            if (netrelay::holdsWifi())
+                return false;
+#endif
             if (pool == nullptr)
                 pool = static_cast<std::uint8_t *>(std::malloc(kPoolBytes));
             if (pool == nullptr || !Wifi_InitDefault(INIT_ONLY | WIFI_LOCAL_ONLY))
                 return false;
+            fifoSetValue32Handler(FIFO_DSWIFI, radioWord, nullptr);
             started = true;
             return true;
         }
@@ -137,13 +184,36 @@ namespace hlrt::netlink
         std::uint8_t dlParam[DSWIFI_DLPLAY_USER_PARAM_SIZE];
     } // namespace
 
+    void useRelay(bool on)
+    {
+#ifndef HLDS_CHILD
+        if (on == relay)
+            return;
+        // (The two are never on at once: a DSi's Internet is not in the
+        // mode the radio's local play needs.)
+        powerDown();
+        relay = on;
+#else
+        (void)on;
+#endif
+    }
+
+    bool usingRelay()
+    {
+        return relay;
+    }
+
     int failStage()
     {
+        if (relay)
+            return netrelay::failStage();
         return Wifi_GetInitFailStage();
     }
 
     void shutdown()
     {
+        if (relay)
+            return netrelay::shutdown();
         dlStop();
         if (started)
         {
@@ -160,6 +230,8 @@ namespace hlrt::netlink
 
     void powerDown()
     {
+        if (relay)
+            return netrelay::powerDown();
         if (!started)
             return;
         shutdown();
@@ -181,6 +253,8 @@ namespace hlrt::netlink
 
     bool host(const char *name, int most)
     {
+        if (relay)
+            return netrelay::host(name, most);
         if (!start())
             return false;
         if (hosting)
@@ -212,11 +286,15 @@ namespace hlrt::netlink
 
     unsigned clients()
     {
+        if (relay)
+            return netrelay::clients();
         return hosting ? (Wifi_MultiplayerGetClientMask() & (((1u << kNetPlayers) - 1) & ~1u)) : 0;
     }
 
     void hostRoom(const std::uint8_t *bytes, int size)
     {
+        if (relay)
+            return netrelay::hostRoom(bytes, size);
         if (!hosting)
             return;
         // (The beacon made again with it: what is looking for a game sees
@@ -227,6 +305,8 @@ namespace hlrt::netlink
 
     bool hostRoomAt(int index, std::uint8_t *bytes, int &size, int &rssi)
     {
+        if (relay)
+            return netrelay::hostRoomAt(index, bytes, size, rssi);
         size = 0;
         rssi = 0;
         if (!client || index < 0 || index >= Wifi_GetNumAP())
@@ -243,6 +323,8 @@ namespace hlrt::netlink
 
     int strength()
     {
+        if (relay)
+            return netrelay::strength();
         if (!client || !joined())
             return 0;
         // (The value is the answer: no buffer.)
@@ -252,18 +334,24 @@ namespace hlrt::netlink
 
     void admit(bool allow)
     {
+        if (relay)
+            return netrelay::admit(allow);
         if (hosting)
             Wifi_MultiplayerAllowNewClients(allow);
     }
 
     void kick(int c)
     {
+        if (relay)
+            return netrelay::kick(c);
         if (hosting && c >= 1 && c < kNetPlayers)
             Wifi_MultiplayerKickClientByAID(c);
     }
 
     bool scan()
     {
+        if (relay)
+            return netrelay::scan();
         if (!start())
             return false;
         shape(kNetCmdBytes);
@@ -279,11 +367,15 @@ namespace hlrt::netlink
 
     int found()
     {
+        if (relay)
+            return netrelay::found();
         return client ? Wifi_GetNumAP() : 0;
     }
 
     bool hostAt(int index, char *name, int room, int *players, int *most)
     {
+        if (relay)
+            return netrelay::hostAt(index, name, room, players, most);
         if (!client || index < 0 || index >= Wifi_GetNumAP())
             return false;
         Wifi_AccessPoint ap;
@@ -308,6 +400,8 @@ namespace hlrt::netlink
 
     bool join(int index)
     {
+        if (relay)
+            return netrelay::join(index);
         if (!client || index < 0 || index >= Wifi_GetNumAP())
             return false;
         Wifi_AccessPoint ap;
@@ -340,16 +434,22 @@ namespace hlrt::netlink
 
     bool joined()
     {
+        if (relay)
+            return netrelay::joined();
         return client && Wifi_AssocStatus() == ASSOCSTATUS_ASSOCIATED;
     }
 
     bool refused()
     {
+        if (relay)
+            return netrelay::refused();
         return client && Wifi_AssocStatus() == ASSOCSTATUS_CANNOTCONNECT;
     }
 
     void send(const void *bytes, int size)
     {
+        if (relay)
+            return netrelay::send(bytes, size);
         if (size <= 0)
             return;
         if (hosting)
@@ -360,6 +460,8 @@ namespace hlrt::netlink
 
     int take(std::uint8_t *into, int &from)
     {
+        if (relay)
+            return netrelay::take(into, from);
         if (ringHead == ringTail)
             return 0;
         const Frame &frame = slot(ringHead);
@@ -372,6 +474,8 @@ namespace hlrt::netlink
 
     unsigned dropped()
     {
+        if (relay)
+            return netrelay::dropped();
         return ringDropped;
     }
 
@@ -382,6 +486,8 @@ namespace hlrt::netlink
 
     void address(std::uint8_t out[6])
     {
+        if (relay)
+            return netrelay::address(out);
         std::memset(out, 0, 6);
         if (start())
             Wifi_GetData(WIFIGETDATA_MACADDRESS, 6, out);
@@ -530,6 +636,8 @@ namespace hlrt::netlink
 
     unsigned txRefused()
     {
+        if (relay)
+            return 0;
         return started ? Wifi_GetStats(WSTAT_TXQUEUEDREJECTED) : 0;
     }
 

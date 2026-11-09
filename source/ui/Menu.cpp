@@ -161,6 +161,9 @@ namespace hlrt
             kSeat,         ///< ... a player's place (which, by its row)
             kDlSeat,       ///< SEND THE GAME's: a console that has come for it (which, by its row)
             kStartSeat,    ///< STARTING's: a player, and how far it has got (which, by its row)
+            kNetOnline,    ///< MULTIPLAYER's: a game over the Internet, through the relay
+            kNetHostOnline, ///< ONLINE's: host one
+            kNetJoinOnline, ///< ... or look for one
         };
         struct Row
         {
@@ -188,10 +191,19 @@ namespace hlrt
         // A game between consoles (source/net/NetGame.hpp).
         const Row kMultiRows[] = {{Kind::Button, kNetHost, "HOST"},
                                   {Kind::Button, kNetJoin, "JOIN"},
+#ifndef HLDS_CHILD
+                                  {Kind::Button, kNetOnline, "ONLINE"},
+#endif
                                   {Kind::Button, kSendDemo, "SEND DEMO"},
                                   {Kind::Button, kProfile, "PROFILE"},
                                   {Kind::Button, kOptions, "OPTIONS"},
                                   {Kind::Button, kBack, "BACK"}};
+#ifndef HLDS_CHILD
+        // ONLINE: the same lobby, through the relay (source/net/NetRelay.hpp).
+        const Row kOnlineRows[] = {{Kind::Button, kNetHostOnline, "HOST ONLINE"},
+                                   {Kind::Button, kNetJoinOnline, "JOIN ONLINE"},
+                                   {Kind::Button, kBack, "BACK"}};
+#endif
         const Row kDemoRows[] = {{Kind::Button, kDemoUplink, "UPLINK"},
                                  {Kind::Button, kDemoHazard, "HAZARD COURSE"},
                                  {Kind::Button, kBack, "BACK"}};
@@ -314,6 +326,9 @@ namespace hlrt
             case 5: count = 2; return kConfirmRows;
             case 20: count = 2; return kHandRows;
             case 21: count = 3; return kDemoRows;
+#ifndef HLDS_CHILD
+            case 24: count = 3; return kOnlineRows;
+#endif
             case 23: count = 2; return kDemoChoiceRows;
             case 22: count = 2; return kServeRows;
             case 7: count = static_cast<int>(sizeof(kMultiRows) / sizeof(kMultiRows[0])); return kMultiRows;
@@ -421,7 +436,7 @@ namespace hlrt
     {
         return page_ == Page::Main || page_ == Page::Title || page_ == Page::Confirm || page_ == Page::Multiplayer ||
                page_ == Page::NetPause || page_ == Page::Difficulty || page_ == Page::NewGame || page_ == Page::Hand ||
-               page_ == Page::NetDemo || page_ == Page::NetServe || page_ == Page::DemoChoice;
+               page_ == Page::NetDemo || page_ == Page::NetServe || page_ == Page::DemoChoice || page_ == Page::NetOnline;
     }
 
     /// What of the lobby is on the screen: who is there, what they are
@@ -546,6 +561,7 @@ namespace hlrt
                                    : page_ == Page::NewGame     ? "NEW GAME"
                                    : page_ == Page::Hand        ? "WHICH HAND?"
                                    : page_ == Page::NetDemo     ? "SEND DEMO"
+                                   : page_ == Page::NetOnline   ? "ONLINE"
                                    : page_ == Page::DemoChoice  ? netDemoTitle(netGame.demo())
                                    : page_ == Page::NetServe    ? "SERVING THE DEMO"
                                                                 : question),
@@ -572,6 +588,13 @@ namespace hlrt
 #endif
         }
 #ifndef HLDS_CHILD
+        if (page_ == Page::NetOnline)
+        {
+            const FontView &small = touchCanvas.font(kFontSmall);
+            const int top = kMainLayout.top + rowCount() * kMainLayout.pitch + 8;
+            drawTextCentred(canvas, small, 128, top, "Through the relay in server.ini,", inkFor(small, kUiGrey));
+            drawTextCentred(canvas, small, 128, top + 12, "on the console's saved Wi-Fi.", inkFor(small, kUiGrey));
+        }
         if (page_ == Page::NetDemo)
         {
             const FontView &small = touchCanvas.font(kFontSmall);
@@ -810,19 +833,27 @@ namespace hlrt
             }
         }
 
-        // --- MULTIPLAYER's tiles: four, two by two, each with a picture of
+        // --- MULTIPLAYER's tiles: six, three by two, each with a picture of
         // our own (none of the console maker's), then BACK under them.
 
         /// The pictures, twelve by twelve ('#' lit, 'o' bright, '.' nothing),
         /// drawn twice the size: sending (an antenna, waves out), receiving
-        /// (an antenna, an arrow in), a demo (a console, an arrow out), a
-        /// profile (a head and shoulders), the options (a cog).
-        constexpr int kTiles = 5;
+        /// (an antenna, an arrow in), online (a globe), a demo (a console, an
+        /// arrow out), a profile (a head and shoulders), the options (a cog).
+#ifndef HLDS_CHILD
+        constexpr int kTiles = 6;
+#else
+        constexpr int kTiles = 5; // (no ONLINE: a console sent the game is never online)
+#endif
         constexpr const char *kTileIcons[kTiles][12] = {
             {"............", ".#........#.", "#..#....#..#", "#.#..##..#.#", "#.#.#oo#.#.#", "#..#.oo.#..#",
              ".#...##...#.", ".....##.....", ".....##.....", "....####....", "...######...", "............"},
             {".....##.....", ".....##.....", "...#.##.#...", "....####....", ".....##.....", "............",
              "....#..#....", "...#.oo.#...", ".....oo.....", ".....##.....", "....####....", "...######..."},
+#ifndef HLDS_CHILD
+            {"....####....", "..##.##.##..", ".#..#..#..#.", ".#..#..#..#.", "############", "#...#..#...#",
+             "#...#..#...#", "############", ".#..#..#..#.", ".#..#..#..#.", "..##.##.##..", "....####...."},
+#endif
             {"..########..", "..#oooooo#..", "..#oooooo#..", "..########..", "..#......#..", "..#.#..#.#..",
              "..########..", "............", ".....##.....", "...######...", "....####....", ".....##....."},
             {"....####....", "...######...", "...##oo##...", "...######...", "....####....", "............",
@@ -847,8 +878,8 @@ namespace hlrt
         {
             int x, y, w, h;
         };
-        /// Where MULTIPLAYER's row `row` is: a tile (the first five: three,
-        /// then two under them in the middle), or BACK.
+        /// Where MULTIPLAYER's row `row` is: a tile (the first six: three,
+        /// then three under them), or BACK.
         /// WHICH HAND?: a big button each, on its own side.
         TileBox handTile(int row) { return TileBox{8 + row * 124, 44, 116, 132}; }
         TileBox multiTile(int row)
@@ -857,7 +888,8 @@ namespace hlrt
                 return TileBox{28, 142, 200, 20};
             if (row < 3)
                 return TileBox{8 + row * 82, 28, 76, 52};
-            return TileBox{49 + (row - 3) * 82, 84, 76, 52};
+            // (Three under them; two in the middle on a console sent the game.)
+            return TileBox{(kTiles == 6 ? 8 : 49) + (row - 3) * 82, 84, 76, 52};
         }
 
         // --- The settings: a category a page, each a list of rows.
@@ -2892,7 +2924,17 @@ namespace hlrt
             openSheet(Page::NetHost);
             return;
         }
-        char why[48];
+        char why[64];
+#ifndef HLDS_CHILD
+        if (netGame.online())
+        {
+            std::snprintf(why, sizeof(why), "%s", netGame.onlineWhy());
+            page_ = Page::NetOnline;
+            draw();
+            showReason(why);
+            return;
+        }
+#endif
         std::snprintf(why, sizeof(why), "The wireless would not start (%d)", netlinkFailStage());
         page_ = Page::Multiplayer;
         draw();
@@ -3430,6 +3472,11 @@ namespace hlrt
 
     const char *Menu::whyDead(int id) const
     {
+#ifndef HLDS_CHILD
+        // (Online once, this time the game runs: the Wi-Fi is the Internet's
+        // until it is started again -- NetRelay.hpp, holdsWifi.)
+        static constexpr const char *kLocalBlocked = "Restart the game for the local wireless";
+#endif
         switch (id)
         {
         case kContinue:
@@ -3447,7 +3494,18 @@ namespace hlrt
         case kGameUplink:
             return gameThere_[2] ? nullptr : "Uplink is not on the card";
         case kSendDemo:
+#ifndef HLDS_CHILD
+            if (netGame.localBlocked())
+                return kLocalBlocked;
+#endif
             return demoThere_[0] || demoThere_[1] ? nullptr : "No demo's maps are on the card";
+#ifndef HLDS_CHILD
+        case kNetOnline:
+            return netGame.onlineUnavailable();
+        case kNetHost:
+        case kNetJoin:
+            return netGame.localBlocked() ? kLocalBlocked : nullptr;
+#endif
 #ifndef HLDS_CHILD
         case kDemoSend:
             return dlsend::available() ? nullptr : "This program has no game to send";
@@ -3615,8 +3673,8 @@ namespace hlrt
             openSheet(Page::Achievements);
             break;
         case kBack:
-            // (SEND DEMO's: where it came from.)
-            if (page_ == Page::NetDemo)
+            // (SEND DEMO's and ONLINE's: where they came from.)
+            if (page_ == Page::NetDemo || page_ == Page::NetOnline)
             {
                 page_ = Page::Multiplayer;
                 draw();
@@ -3643,8 +3701,14 @@ namespace hlrt
                 draw();
             }
             break;
+#ifndef HLDS_CHILD
+        case kNetHostOnline:
+#endif
         case kNetHost:
         {
+#ifndef HLDS_CHILD
+            netGame.setOnline(item.id == kNetHostOnline);
+#endif
             // (Maps never photographed: their pictures first, once.)
             // (And those of a map cooked again since.)
             bool missing = false;
@@ -3665,6 +3729,7 @@ namespace hlrt
             break;
         case kDemoUplink:
         case kDemoHazard:
+            netGame.setOnline(false);
             if (netGame.demoHost(item.id == kDemoUplink ? hldata::kDemoUplink : hldata::kDemoHazard))
             {
                 page_ = Page::NetServe;
@@ -3692,10 +3757,28 @@ namespace hlrt
             break;
 #endif
         case kNetJoin:
+#ifndef HLDS_CHILD
+        case kNetJoinOnline:
+            netGame.setOnline(item.id == kNetJoinOnline);
+#endif
             joinWhy[0] = 0;
             if (netGame.scan())
                 showFound();
+#ifndef HLDS_CHILD
+            else if (netGame.online())
+            {
+                page_ = Page::NetOnline;
+                draw();
+                showReason(netGame.onlineWhy());
+            }
+#endif
             break;
+#ifndef HLDS_CHILD
+        case kNetOnline:
+            page_ = Page::NetOnline;
+            draw();
+            break;
+#endif
         case kProfile:
             sheetFrom_ = Page::Multiplayer;
             openSheet(Page::Profile);

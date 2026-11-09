@@ -132,6 +132,7 @@ namespace hlrt
             DemoChoice = 23,  ///< a demo come back to: CONTINUE or RESTART
             NetServe = 22,    ///< the host serving a demo: who has got how far
             Hand = 20,        ///< a console sent the game, as it comes: which hand it is played with
+            NetOnline = 24,   ///< ONLINE: host or join a game through the relay
         };
 
         // A sheet: a page of its own, drawn and touched apart from the rows
