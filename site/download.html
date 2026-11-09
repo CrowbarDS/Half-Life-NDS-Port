@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CrowbarDS Download</title>
+  <meta name="description" content="Download the CrowbarDS converter for Windows, macOS or Linux, and set up Half-Life on your Nintendo DS or DSi.">
+  <meta name="theme-color" content="#11110f">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600&family=Barlow+Condensed:wght@600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="download.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap">
+      <a class="brand" href="./">Crowbar<span>DS</span></a>
+      <nav class="nav" aria-label="Main">
+        <a href="./">Home</a>
+        <a href="download.html" aria-current="page">Download</a>
+        <a href="https://github.com/CrowbarDS/Half-Life-NDS-Port">Source</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" style="padding-bottom:40px">
+      <div class="wrap">
+        <div class="label">Download</div>
+        <h1 style="font-size:clamp(38px,7vw,64px)">Get the converter</h1>
+        <p class="lede">One package for your computer. It has the console's ROM built in, and puts the game on your SD card from your own copy of Half-Life.</p>
+
+        <div class="status-line" id="status">
+          <span><span class="dot" id="status-dot"></span><span id="status-text">Looking up the latest release…</span></span>
+          <span id="status-version" hidden>Version <b id="version"></b></span>
+          <span id="status-date" hidden>Released <b id="date"></b></span>
+        </div>
+
+        <div class="callout warn" id="api-error" hidden>
+          <p>The release list couldn't be loaded just now. Every file is on the <a id="fallback-link" href="https://github.com/CrowbarDS/Half-Life-NDS-Port/releases/latest">GitHub Releases page</a>; the guide below tells you which one to pick.</p>
+        </div>
+
+        <div class="panel" id="picker">
+          <p class="picker-label">Your system</p>
+          <div class="picker-row" role="group" aria-label="Operating system" id="os-row">
+            <button class="seg" type="button" data-os="windows" aria-pressed="false">Windows</button>
+            <button class="seg" type="button" data-os="macos" aria-pressed="false">macOS</button>
+            <button class="seg" type="button" data-os="linux" aria-pressed="false">Linux</button>
+          </div>
+          <p class="picker-label">Processor</p>
+          <div class="picker-row" role="group" aria-label="Processor" id="arch-row"></div>
+          <p class="detected" id="detected"></p>
+
+          <div class="get">
+            <div class="get-main">
+              <h3 id="main-title">Converter</h3>
+              <p class="dim" id="main-desc"></p>
+              <div class="file" id="main-file"></div>
+              <a class="btn btn-primary" id="main-btn" href="https://github.com/CrowbarDS/Half-Life-NDS-Port/releases/latest">Download <small id="main-size"></small></a>
+            </div>
+            <div class="get-side">
+              <a class="alt" id="alt-cli" href="#"><span><span class="t">Command line only</span><span class="d" id="alt-cli-d">No window, for scripts and servers</span></span><span class="s" id="alt-cli-s"></span></a>
+              <a class="alt" id="alt-rom" href="#"><span><span class="t">ROM only</span><span class="d">For a card that already has the game converted</span></span><span class="s" id="alt-rom-s"></span></a>
+              <a class="alt" id="alt-sums" href="#"><span><span class="t">Checksums</span><span class="d">SHA-256 of every file in the release</span></span><span class="s">.txt</span></a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="before">
+      <div class="wrap">
+        <div class="label">Before you start</div>
+        <h2>What you need</h2>
+        <div class="grid grid-3">
+          <div class="panel"><h3>Your own Half-Life</h3><p class="dim">Any PC copy, such as the Steam one. The converter reads its <code>valve</code> folder. No game files come with this project.</p></div>
+          <div class="panel"><h3>An SD card</h3><p class="dim">The card your console boots homebrew from, plugged into your computer. The full game takes about 700 MB.</p></div>
+          <div class="panel"><h3>A homebrew loader</h3><p class="dim">TWiLight Menu++ on a DSi or 3DS, or a flashcart's menu. The game runs as a normal <code>.nds</code> file.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="install">
+      <div class="wrap">
+        <div class="label">Installation</div>
+        <h2>Set it up on <span id="install-os">your computer</span></h2>
+
+        <!-- Windows -->
+        <div data-guide="windows">
+          <ol class="steps">
+            <li><h3>Unzip the package</h3><p class="dim">Right-click the downloaded <code>.zip</code> and choose <b>Extract All</b>. Keep the files together: the program needs the files beside it.</p></li>
+            <li><h3>Run the converter</h3><p class="dim">Open <code>hlds-convert-gui.exe</code> in the extracted folder. If Windows SmartScreen says it protected your PC, choose <b>More info</b>, then <b>Run anyway</b>: the program isn't signed by a paid certificate.</p></li>
+            <li><h3>Choose your game and your card</h3><p class="dim">The converter looks for Half-Life and for your SD card by itself. Check both, then start. It writes the game's data and the ROM to the card.</p></li>
+            <li><h3>Play</h3><p class="dim">Eject the card safely, put it in your console, and start <code>half-life-nds-port.nds</code> from your loader.</p></li>
+          </ol>
+          <details>
+            <summary>Which processor do I have?</summary>
+            <div class="inner dim">
+              <p>Open <b>Settings &gt; System &gt; About</b> and read <b>System type</b>.</p>
+              <ul class="ticks">
+                <li><b>64-bit operating system, x64-based processor:</b> take <b>x64</b>. Almost every Windows PC is this one.</li>
+                <li><b>ARM-based processor</b> (Snapdragon laptops, Surface Pro X): take <b>ARM64</b>.</li>
+                <li><b>32-bit operating system:</b> take <b>x86 (32-bit)</b>.</li>
+              </ul>
+            </div>
+          </details>
+          <details>
+            <summary>Command line on Windows</summary>
+            <div class="inner">
+              <p class="dim">The same folder has <code>hlds-convert.exe</code>. In PowerShell, from that folder:</p>
+<pre><code>.\hlds-convert.exe cook-all "C:\Program Files (x86)\Steam\steamapps\common\Half-Life\valve" -o E:\</code></pre>
+              <p class="dim small">Replace <code>E:\</code> with your SD card's drive.</p>
+            </div>
+          </details>
+        </div>
+
+        <!-- macOS -->
+        <div data-guide="macos">
+          <ol class="steps">
+            <li><h3>Unzip the package</h3><p class="dim">Double-click the downloaded <code>.zip</code>. You get <code>hlds-convert-gui.app</code>; you can move it to Applications.</p></li>
+            <li><h3>Open it the first time</h3><p class="dim">The app isn't signed by an Apple developer account, so macOS stops a double-click. <b>Right-click</b> (or Control-click) the app and choose <b>Open</b>, then <b>Open</b> again. On recent macOS, if there is no Open button, go to <b>System Settings &gt; Privacy &amp; Security</b> and choose <b>Open Anyway</b>.</p></li>
+            <li><h3>Choose your game and your card</h3><p class="dim">The converter looks for Half-Life and for your SD card by itself. Check both, then start. It writes the game's data and the ROM to the card.</p></li>
+            <li><h3>Play</h3><p class="dim">Eject the card in Finder, put it in your console, and start <code>half-life-nds-port.nds</code> from your loader.</p></li>
+          </ol>
+          <details>
+            <summary>Apple silicon or Intel?</summary>
+            <div class="inner dim"><p>Either. The macOS package is universal: the same app runs natively on Apple silicon (M1 and later) and on Intel Macs, from macOS 12 Monterey.</p></div>
+          </details>
+          <details>
+            <summary>Command line on macOS</summary>
+            <div class="inner">
+              <p class="dim">Unpack the command-line package and run it from Terminal. The first run may need the quarantine flag removed:</p>
+<pre><code>mkdir hlds-convert &amp;&amp; tar -xzf hlds-convert-*-cli-macos-universal.tar.gz -C hlds-convert
+xattr -dr com.apple.quarantine hlds-convert
+./hlds-convert/hlds-convert cook-all ~/Library/Application\ Support/Steam/steamapps/common/Half-Life/valve -o /Volumes/SDCARD</code></pre>
+            </div>
+          </details>
+        </div>
+
+        <!-- Linux -->
+        <div data-guide="linux">
+          <ol class="steps">
+            <li><h3>Make the AppImage runnable</h3><p class="dim">In your file manager, open the file's properties and allow it to run as a program, or in a terminal:</p>
+<pre><code>chmod +x hlds-convert-*.AppImage</code></pre></li>
+            <li><h3>Run the converter</h3><p class="dim">Double-click it, or run <code>./hlds-convert-*.AppImage</code>. AppImages need FUSE 2: if it refuses to start, install <code>libfuse2</code> (<code>libfuse2t64</code> on Ubuntu 24.04 and later), or run it with <code>--appimage-extract-and-run</code>.</p></li>
+            <li><h3>Choose your game and your card</h3><p class="dim">The converter looks for Half-Life and for your mounted SD card by itself. Check both, then start. It writes the game's data and the ROM to the card.</p></li>
+            <li><h3>Play</h3><p class="dim">Unmount the card, put it in your console, and start <code>half-life-nds-port.nds</code> from your loader.</p></li>
+          </ol>
+          <details>
+            <summary>Which processor do I have?</summary>
+            <div class="inner dim"><p>Run <code>uname -m</code>. <code>x86_64</code> means x86_64; <code>aarch64</code> means ARM64 (Raspberry Pi 4 and 5 on a 64-bit system, ARM laptops).</p></div>
+          </details>
+          <details>
+            <summary>Command line on Linux</summary>
+            <div class="inner">
+              <p class="dim">The command-line package is a static program with no dependencies, good for headless machines:</p>
+<pre><code>mkdir hlds-convert &amp;&amp; tar -xzf hlds-convert-*-cli-linux-*.tar.gz -C hlds-convert
+./hlds-convert/hlds-convert cook-all ~/.steam/steam/steamapps/common/Half-Life/valve -o /media/$USER/SDCARD</code></pre>
+            </div>
+          </details>
+        </div>
+
+        <h3 style="margin-top:36px">Where things go on the card</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>What</th><th>Where</th></tr></thead>
+            <tbody>
+              <tr><td>The ROM</td><td><code>half-life-nds-port.nds</code> at the card's root, copied only if the card doesn't already have this version</td></tr>
+              <tr><td>The game's data</td><td><code>_nds/hl_nds/data/</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="faq">
+      <div class="wrap">
+        <div class="label">Good to know</div>
+        <h2>Questions</h2>
+        <details>
+          <summary>Do I need the ROM download?</summary>
+          <div class="inner dim"><p>Usually not: the converter puts the ROM on the card for you. The ROM zip is for a console whose card already has the game converted, or for copying the ROM yourself. Keep the ROM and the converter from the same release: the title screen shows the version at the bottom, and warns you if the card's data came from a different one.</p></div>
+        </details>
+        <details>
+          <summary>How do I update?</summary>
+          <div class="inner dim"><p>Download the new converter and run it again on the same card. It brings the ROM and the game's data up to the new version.</p></div>
+        </details>
+        <details>
+          <summary>How do I check a download?</summary>
+          <div class="inner">
+            <p class="dim">Compare the file's SHA-256 with the line for it in <code>SHA256SUMS.txt</code>.</p>
+<pre><code># Linux
+sha256sum -c --ignore-missing SHA256SUMS.txt
+# macOS
+shasum -a 256 -c --ignore-missing SHA256SUMS.txt
+# Windows PowerShell
+Get-FileHash .\hlds-convert-*.zip -Algorithm SHA256</code></pre>
+          </div>
+        </details>
+        <details>
+          <summary>Multiplayer without a card?</summary>
+          <div class="inner dim"><p>A console with no card can join a game by Download Play: the host, which has the ROM and the converted game, sends it over the air.</p></div>
+        </details>
+        <details>
+          <summary>Older releases</summary>
+          <div class="inner">
+            <ul class="older" id="older"><li><a href="https://github.com/CrowbarDS/Half-Life-NDS-Port/releases">All releases on GitHub</a></li></ul>
+          </div>
+        </details>
+        <details id="notes-box" hidden>
+          <summary>What's new in <span id="notes-version"></span></summary>
+          <div class="inner notes" id="notes"></div>
+        </details>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <p>This is an unofficial fan project, not affiliated with or endorsed by Valve. Half-Life is a trademark of Valve Corporation. No game files are distributed here.</p>
+      <p><a href="https://github.com/CrowbarDS/Half-Life-NDS-Port">Source code</a> · <a href="https://github.com/CrowbarDS/Half-Life-NDS-Port/issues">Report a problem</a></p>
+    </div>
+  </footer>
+</body>
+</html>

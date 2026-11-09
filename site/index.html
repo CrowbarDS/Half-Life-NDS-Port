@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CrowbarDS</title>
+  <meta name="description" content="Half-Life running natively on the Nintendo DS and DSi, with local wireless multiplayer and Download Play. Bring your own copy of the game.">
+  <meta name="theme-color" content="#11110f">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600&family=Barlow+Condensed:wght@600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap">
+      <a class="brand" href="./">Crowbar<span>DS</span></a>
+      <nav class="nav" aria-label="Main">
+        <a href="./" aria-current="page">Home</a>
+        <a href="download.html">Download</a>
+        <a href="https://github.com/CrowbarDS/Half-Life-NDS-Port">Source</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="wrap">
+        <div class="label">Unofficial fan port</div>
+        <h1>Half-Life<span class="accent">for Nintendo DS</span></h1>
+        <p class="lede">The original campaign running natively on the DS and DSi, with local wireless multiplayer and Download Play.</p>
+        <p class="note">No game files come with it. You bring your own copy of Half-Life, and the converter turns it into the files your console reads from its SD card.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="download.html">Download</a>
+          <a class="btn btn-ghost" href="#features">What's in it</a>
+        </div>
+        <div class="shots">
+          <figure class="shot"><img src="screenshots/title-top.png" width="428" height="318" alt="The title's top screen"><figcaption>Title screen</figcaption></figure>
+          <figure class="shot"><img src="screenshots/lobby-top.png" width="428" height="318" alt="People in a lobby of Black Mesa"><figcaption>A Black Mesa lobby</figcaption></figure>
+          <figure class="shot"><img src="screenshots/hall-top.png" width="428" height="318" alt="A large machine hall, with the health and armour display"><figcaption>A machine hall, with the HUD</figcaption></figure>
+        </div>
+        <p class="dim small" style="margin-top:12px">Real captures of the port, showing art from the owner's copy of the game.</p>
+      </div>
+    </section>
+
+    <section id="features">
+      <div class="wrap">
+        <div class="label">Features</div>
+        <h2>The whole game, at DS scale</h2>
+        <div class="grid grid-3" style="margin-top:24px">
+          <div class="panel">
+            <h3>The world</h3>
+            <ul class="ticks">
+              <li>The game's maps, with their lighting, textures, water and decals, drawn by the DS's 3D hardware</li>
+              <li>Movement that plays like the original: walking, climbing, swimming, ladders</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <h3>The game</h3>
+            <ul class="ticks">
+              <li>Weapons, monsters and people, with the game's AI, scripted scenes, doors, lifts, trains and breakables</li>
+              <li>Three difficulties, the Hazard Course, and Half-Life: Uplink if your copy has it</li>
+              <li>Autosave, quick save, save slots and achievements</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <h3>The console</h3>
+            <ul class="ticks">
+              <li>Music and sound, with DSi-only extras where the extra memory allows</li>
+              <li>Multiplayer over local wireless, and Download Play for consoles with no card</li>
+              <li>Touch controls for either hand, with two button layouts</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="consoles">
+      <div class="wrap">
+        <div class="label">Hardware</div>
+        <h2>Supported consoles</h2>
+        <p class="dim">One ROM covers all of them. DSi mode has more memory, so it gets richer content than DS mode.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Console</th><th>Single player</th><th>Multiplayer and Download Play</th></tr></thead>
+            <tbody>
+              <tr><td>DSi, in DSi mode</td><td class="ok">Tested on hardware</td><td class="ok">Tested on hardware</td></tr>
+              <tr><td>3DS, in DSi mode</td><td class="ok">Tested on hardware</td><td class="ok">Tested on hardware</td></tr>
+              <tr><td>DSi or 3DS, in DS mode</td><td class="ok">Tested on hardware</td><td class="ok">Tested on hardware</td></tr>
+              <tr><td>Original DS and DS Lite</td><td class="pending">Same ROM, in DS mode; not yet confirmed on hardware</td><td class="pending">Not yet confirmed on hardware</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="how">
+      <div class="wrap">
+        <div class="label">Getting started</div>
+        <h2>Three steps to Black Mesa</h2>
+        <ol class="steps" style="margin-top:24px">
+          <li><h3>Download the converter</h3><p class="dim">One package for your computer. It has the ROM built in. <a href="download.html">Pick yours on the download page.</a></p></li>
+          <li><h3>Convert your own copy of Half-Life</h3><p class="dim">The converter finds your game and your SD card, and writes the game's data and the ROM to the card.</p></li>
+          <li><h3>Start the game on your console</h3><p class="dim">Launch <code>half-life-nds-port.nds</code> from your homebrew loader, such as TWiLight Menu++.</p></li>
+        </ol>
+        <a class="btn btn-primary" href="download.html">Go to downloads</a>
+      </div>
+    </section>
+
+    <section id="controls">
+      <div class="wrap">
+        <div class="label">Controls</div>
+        <h2>Two layouts</h2>
+        <p class="dim">Choose one in OPTIONS &gt; CONTROLS, which also explains each button.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th></th><th>Classic</th><th>Modern</th></tr></thead>
+            <tbody>
+              <tr><td>Stylus drag</td><td>Look</td><td>Look</td></tr>
+              <tr><td>D-pad</td><td>Move</td><td>Move</td></tr>
+              <tr><td>A B X Y</td><td>Move, like the D-pad</td><td>A jump, B reload, X and Y change weapon</td></tr>
+              <tr><td>L</td><td>Fire</td><td>Fire</td></tr>
+              <tr><td>R</td><td>Second trigger</td><td>Second trigger</td></tr>
+              <tr><td>R + D-pad down or up</td><td></td><td>Crouch and stay crouched, or stand</td></tr>
+              <tr><td>One tap on the pad</td><td></td><td>USE</td></tr>
+              <tr><td>Two quick taps</td><td>Jump</td><td>Jump</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <ul class="ticks" style="margin-top:20px">
+          <li>Hold WALK on the touch screen to walk (Half-Life runs by default), or set it to toggle.</li>
+          <li>Touch a weapon's slot to take it, or to reload the one in your hand. Touch RELOAD, JUMP, DUCK or USE for what they say.</li>
+          <li>Start, or MENU on the touch screen, opens the pause menu. Select, or the lamp, turns on the suit's lamp.</li>
+          <li><b>Stylus hand: left</b> mirrors the touch screen and swaps the buttons over.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="multiplayer">
+      <div class="wrap grid grid-2">
+        <div>
+          <div class="label">Multiplayer</div>
+          <h2>Local wireless</h2>
+          <p>On the title screen, choose MULTIPLAYER, then HOST GAME on one console and JOIN GAME on the others. The host presses START when everyone is in.</p>
+          <p class="dim">Each console needs the ROM and a card with the game converted, or it can get the game from the host by Download Play. Tested on Nintendo DSi and Nintendo 3DS, and through Download Play in both DS mode and DSi mode.</p>
+        </div>
+        <div>
+          <div class="label">3DS</div>
+          <h2>Widescreen</h2>
+          <p>On a 3DS the game can fill the wider top screen at 16:10, seeing more to the sides at the same height.</p>
+          <ol class="dim small" style="padding-left:20px">
+            <li>Make a widescreen <code>TwlBg.cxi</code> with <a href="https://wiki.ds-homebrew.com/ds-index/rtcom">TWPatch</a>, save it as <code>sd:/_nds/TWiLightMenu/TwlBg/Widescreen.cxi</code>, and turn on external FIRMs and modules in Luma3DS.</li>
+            <li>In TWiLight Menu++, press Y on the game and set Screen Aspect Ratio to 16:10.</li>
+            <li>In the game, OPTIONS &gt; GRAPHICS &gt; Screen is auto by default, or set 4:3 or 16:10 yourself.</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section id="credits">
+      <div class="wrap">
+        <div class="label">Credits</div>
+        <h2>Made by</h2>
+        <div class="grid grid-2">
+          <ul class="ticks">
+            <li><b>Warioware64:</b> the port</li>
+            <li><b>NewGBAXL:</b> streaming textures, 60 fps character animation, save versioning</li>
+            <li><b>Teiwazik:</b> the first CI work</li>
+          </ul>
+          <ul class="ticks dim small">
+            <li><a href="https://blocksds.skylyrac.net/">BlocksDS</a> and the <a href="https://wonderful.asie.pl/">Wonderful Toolchain</a></li>
+            <li><a href="https://github.com/AntonioND/nitro-engine">Nitro Engine</a> by Antonio Niño Díaz, <a href="https://github.com/blocksds/dswifi">dswifi</a>, <a href="https://github.com/Gericom/teak-llvm">teak-llvm</a> by Gericom, <a href="https://github.com/blocksds/libteak">libteak</a></li>
+            <li><a href="https://github.com/Garhoogin/ptexconv">ptexconv</a> by Garhoogin, <a href="https://github.com/zeux/meshoptimizer">meshoptimizer</a>, <a href="https://github.com/lieff/minimp3">minimp3</a>, <a href="https://github.com/niXman/yas">yas</a>, <a href="https://www.qt.io/">Qt</a>, <a href="https://github.com/AntonioND/architectds">ArchitectDS</a></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <p>This is an unofficial fan project, not affiliated with or endorsed by Valve. Half-Life is a trademark of Valve Corporation.</p>
+      <p>The game rules and monster behaviour are adapted from the Half-Life SDK; parts of the engine code follow the structure of Xash3D FWGS. Licence details are in the <a href="https://github.com/CrowbarDS/Half-Life-NDS-Port#licence">repository</a>.</p>
+      <p>Developed with the help of AI coding assistants; every change is reviewed and tested by the author.</p>
+    </div>
+  </footer>
+</body>
+</html>
