@@ -22,6 +22,7 @@
 #include "HlLevelReader.hpp"
 #include "HlLz77Stream.hpp"
 #include "HlModel.hpp"
+#include "HlNpacIndex.hpp"
 #include "TestBspBuilder.hpp"
 #include "hlds/AtomicWrite.hpp"
 #include "hlds/Lz77.hpp"
@@ -353,8 +354,6 @@ namespace
         AirReport report;
         std::string error;
         check(packAir(stage, card, "match", maps, true, report, error), "the air archives are made");
-        if (!error.empty())
-            std::printf("test_npac: %s\n", error.c_str());
         // (A guest stream read back with the console's own reader, as it
         // would come: in pieces.)
         auto read = [&](const fs::path &file, std::vector<NpacMember> &members)
@@ -524,10 +523,68 @@ namespace
         }
         fs::remove_all(card, ec);
     }
+
+    // What a console being sent a map's archive reads of it to find what it
+    // has already (HlNpacIndex.hpp): every member, at the extent it is stored
+    // at, by its whole path -- from the archive's first bytes alone.
+    void testMemberList()
+    {
+        std::vector<NpacMember> members;
+        auto add = [&](const char *path, std::size_t bytes, unsigned seed, bool squash) {
+            NpacMember m;
+            m.path = path;
+            m.data.resize(bytes);
+            for (std::size_t i = 0; i < bytes; ++i)
+                m.data[i] = static_cast<std::uint8_t>(squash ? (i / 64) & 3 : (i * 131 + seed * 7 + (i >> 5)) & 0xFF);
+            members.push_back(m);
+        };
+        add("level.0", 508, 1, false);
+        add("level.1", 9000, 2, true);
+        add("mdl/v_9mmhandgun.hmd", 3001, 3, false);
+        add("snd/x.hsd", 10, 6, false);
+        add("snd/weapons/pl_gun3.hsd", 1500, 4, false);
+        add("snd/weapons/reload1.hsd", 777, 5, true);
+        add("tex/wall_64x64.htx", 4096, 7, false);
+        Bytes archive;
+        std::string error;
+        check(buildNpac(members, true, archive, error), "an archive to read");
+        std::vector<NpacMember> back;
+        check(readNpac(archive, back, error), "which the converter reads back");
+        const std::uint32_t head = hldata::npacHeadBytes(archive.data(), archive.size());
+        check(head > 16 && head < archive.size(), "its head: up to the members' data");
+        check(hldata::npacHeadBytes(archive.data(), head - 1) == 0 || hldata::npacHeadBytes(archive.data(), head - 1) == head,
+              "a head is found only once it has all come");
+        std::uint32_t files = 0;
+        int seen = 0;
+        bool right = true;
+        const bool read = hldata::npacMembers(archive.data(), head, files, [&](std::uint32_t id, std::uint32_t path, std::uint32_t at,
+                                                                               std::uint32_t stored, std::uint32_t packing) {
+            ++seen;
+            if (id >= back.size())
+            {
+                right = false;
+                return;
+            }
+            const NpacMember &m = back[id];
+            right = right && path == hldata::npacPathHash(m.path.c_str(), m.path.size()) && stored == m.storedBytes &&
+                    (packing & 0xFF) == m.method && at + stored <= archive.size();
+            // (Stored as it is: its bytes are the member's own.)
+            if (m.method == kNpacStored)
+                right = right && std::memcmp(archive.data() + at, m.data.data(), stored) == 0;
+        });
+        check(read && files == back.size() && seen == static_cast<int>(back.size()) && right,
+              "every member, its path, where it is stored and how");
+        // Cut short, or not an archive: nothing.
+        check(!hldata::npacMembers(archive.data(), head - 8, files, [](auto...) {}), "an index cut short is no index");
+        Bytes junk(archive.begin(), archive.begin() + head);
+        junk[0] = 'X';
+        check(!hldata::npacMembers(junk.data(), junk.size(), files, [](auto...) {}), "nor is another file");
+    }
 } // namespace
 
 int main()
 {
+    testMemberList();
     testLz77();
     testArchive();
     testAgainstEngine();
