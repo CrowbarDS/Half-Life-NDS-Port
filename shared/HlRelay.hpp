@@ -4,7 +4,8 @@
 // (tools/relay) say to each other, in UDP datagrams.
 //
 // THE RELAY stands in for the radio. A host opens a room on it; consoles
-// that look are given the list of rooms, and join one; from then on the
+// that look are given the list of rooms, and ask to join one -- the host is
+// asked whether to let each in (Knock, Answer); from then on the
 // relay passes the host's frames to every client of its room, and each
 // client's to the host, saying whose it is. It never reads a game frame:
 // what is in them is HlNet.hpp's, the same as through the air, so the lobby
@@ -26,7 +27,8 @@
 namespace hldata
 {
     inline constexpr std::uint16_t kRelayMagic = 0x5248; // "HR"
-    inline constexpr std::uint8_t kRelayVersion = 1;
+    /// (2: the host lets each in, or not.)
+    inline constexpr std::uint8_t kRelayVersion = 2;
     /// The port a relay listens on unless server.ini says another.
     inline constexpr int kRelayPort = 27500;
     inline constexpr int kRelayHeadBytes = 8;
@@ -38,6 +40,11 @@ namespace hldata
     /// relay (milliseconds): longer than a map takes to load, which says
     /// nothing all the while.
     inline constexpr std::uint32_t kRelaySilentMs = 45000;
+    /// How long a console asking to join waits for the host's answer before
+    /// it is told the host did not answer (milliseconds).
+    inline constexpr std::uint32_t kRelayKnockMs = 30000;
+    /// Consoles waiting at a room's door at once.
+    inline constexpr int kRelayKnocksMost = 8;
 
     enum class RelayKind : std::uint8_t
     {
@@ -47,7 +54,7 @@ namespace hldata
         Opened = 4,  ///< relay: your room's number (u32)
         List = 5,    ///< console: which rooms are there?
         Rooms = 6,   ///< relay: RelayRoom entries, a count first
-        Join = 7,    ///< console: let me into room (u32)
+        Join = 7,    ///< console: let me into room (u32), I am (name) -- the host is asked
         Joined = 8,  ///< relay: you are client (u8, 1..7) of it
         Refused = 9, ///< relay: you are not (u8, RelayRefuse)
         Admit = 10,  ///< host: let more in, or not (u8)
@@ -55,6 +62,8 @@ namespace hldata
         Status = 12, ///< relay to a host: which clients are there (u8, bit n for client n)
         Data = 13,   ///< a game frame: whose (u8: 0 the host, else the client), then the frame
         Bye = 14,    ///< console: I am going; relay: you are out (the host went, or sent you away)
+        Knock = 15,  ///< relay to a host: (ticket u8, name) asks to come in; said again until answered
+        Answer = 16, ///< host: (ticket u8, yes u8)
     };
 
     enum class RelayRefuse : std::uint8_t
@@ -62,6 +71,8 @@ namespace hldata
         NoRoom = 1, ///< there is no such room (any more)
         Full = 2,
         Closed = 3, ///< its host lets nobody in (a match is on)
+        Declined = 4, ///< its host said no
+        NoAnswer = 5, ///< its host said nothing in time
     };
 
     struct RelayHead
@@ -99,7 +110,7 @@ namespace hldata
     {
         if (size < kRelayHeadBytes || bytes[0] != (kRelayMagic & 0xFF) || bytes[1] != (kRelayMagic >> 8) ||
             bytes[2] != kRelayVersion || bytes[3] < static_cast<std::uint8_t>(RelayKind::Ping) ||
-            bytes[3] > static_cast<std::uint8_t>(RelayKind::Bye))
+            bytes[3] > static_cast<std::uint8_t>(RelayKind::Answer))
             return false;
         head.kind = static_cast<RelayKind>(bytes[3]);
         head.session = relayGet32(bytes + 4);
@@ -133,6 +144,60 @@ namespace hldata
         if (size < kRelayHeadBytes + 4)
             return false;
         room = relayGet32(bytes + kRelayHeadBytes);
+        return true;
+    }
+
+    /// `Join`: which room, and who asks (the name the host is shown).
+    inline int relayJoinWrite(std::uint8_t *out, std::uint32_t session, std::uint32_t room, const char *name)
+    {
+        int at = relayRoomIdWrite(out, RelayKind::Join, session, room);
+        std::memset(out + at, 0, kNetTextBytes);
+        for (int i = 0; i < kNetTextBytes - 1 && name != nullptr && name[i] != 0; ++i)
+            out[at + i] = static_cast<std::uint8_t>(name[i]);
+        return at + kNetTextBytes;
+    }
+    /// The name of a `Join` (into `name`, kNetTextBytes); "" from one without.
+    inline void relayJoinName(const std::uint8_t *bytes, int size, char *name)
+    {
+        std::memset(name, 0, kNetTextBytes);
+        if (size >= kRelayHeadBytes + 4 + kNetTextBytes)
+            std::memcpy(name, bytes + kRelayHeadBytes + 4, kNetTextBytes - 1);
+    }
+
+    /// `Knock`: a ticket for the host to answer, and who it is.
+    inline int relayKnockWrite(std::uint8_t *out, std::uint32_t session, int ticket, const char *name)
+    {
+        int at = relayHeadWrite(out, RelayKind::Knock, session);
+        out[at++] = static_cast<std::uint8_t>(ticket);
+        std::memset(out + at, 0, kNetTextBytes);
+        for (int i = 0; i < kNetTextBytes - 1 && name[i] != 0; ++i)
+            out[at + i] = static_cast<std::uint8_t>(name[i]);
+        return at + kNetTextBytes;
+    }
+    inline bool relayKnockRead(const std::uint8_t *bytes, int size, int &ticket, char *name)
+    {
+        if (size < kRelayHeadBytes + 1 + kNetTextBytes)
+            return false;
+        ticket = bytes[kRelayHeadBytes];
+        std::memcpy(name, bytes + kRelayHeadBytes + 1, kNetTextBytes);
+        name[kNetTextBytes - 1] = 0;
+        return true;
+    }
+
+    /// `Answer`: the host's to a ticket.
+    inline int relayAnswerWrite(std::uint8_t *out, std::uint32_t session, int ticket, bool yes)
+    {
+        int at = relayHeadWrite(out, RelayKind::Answer, session);
+        out[at++] = static_cast<std::uint8_t>(ticket);
+        out[at++] = yes ? 1 : 0;
+        return at;
+    }
+    inline bool relayAnswerRead(const std::uint8_t *bytes, int size, int &ticket, bool &yes)
+    {
+        if (size < kRelayHeadBytes + 2)
+            return false;
+        ticket = bytes[kRelayHeadBytes];
+        yes = bytes[kRelayHeadBytes + 1] != 0;
         return true;
     }
 

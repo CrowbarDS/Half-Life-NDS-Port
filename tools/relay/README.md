@@ -1,7 +1,9 @@
 # hlds-relay
 
 The relay that consoles playing online meet through. A host opens a room on
-it, the others are given the list of rooms and join one, and from then on the
+it, the others are given the list of rooms and ask to join one -- the host is
+asked, by name, whether to let each in, and one not answered within 30
+seconds is turned away -- and from then on the
 relay passes the host's frames to every client of the room and each client's
 to the host. It never reads a game frame: the lobby and the match are the
 same ones played over the local wireless. What the two ends say to each other

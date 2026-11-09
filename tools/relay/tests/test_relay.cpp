@@ -66,17 +66,40 @@ namespace
         return opened.size() == 1 && relayRoomIdRead(opened[0].data(), static_cast<int>(opened[0].size()), id) ? id : 0;
     }
 
-    /// Joins `n` to room `id`: its slot, or -(the reason) if refused.
-    int join(Relay &relay, int n, std::uint32_t id, std::uint32_t now, std::vector<Out> &out)
+    /// `n` asks to join room `id`, whose host is console `host`; the host
+    /// answers `answer` (yes, no; or not at all: -1). `n`'s slot, or -(the
+    /// reason) if refused; -100 if it is left waiting, -99 if nothing came.
+    int join(Relay &relay, int n, std::uint32_t id, std::uint32_t now, std::vector<Out> &out, int host = 0,
+             int answer = 1)
     {
         std::uint8_t bytes[kRelayMostBytes];
+        char name[kNetTextBytes];
+        std::snprintf(name, sizeof(name), "P%d", n);
         out.clear();
-        relay.receive(at(n), bytes, relayRoomIdWrite(bytes, RelayKind::Join, 100u + n, id), now, out);
-        const auto joined = sentTo(out, at(n), RelayKind::Joined);
-        if (joined.size() == 1)
-            return relaySmallRead(joined[0].data(), static_cast<int>(joined[0].size()));
-        const auto refused = sentTo(out, at(n), RelayKind::Refused);
-        return refused.size() == 1 ? -relaySmallRead(refused[0].data(), static_cast<int>(refused[0].size())) : -99;
+        relay.receive(at(n), bytes, relayJoinWrite(bytes, 100u + n, id, name), now, out);
+        auto result = [&]() -> int
+        {
+            const auto joined = sentTo(out, at(n), RelayKind::Joined);
+            if (joined.size() == 1)
+                return relaySmallRead(joined[0].data(), static_cast<int>(joined[0].size()));
+            const auto refused = sentTo(out, at(n), RelayKind::Refused);
+            return refused.size() == 1 ? -relaySmallRead(refused[0].data(), static_cast<int>(refused[0].size()))
+                                       : -99;
+        };
+        const int first = result();
+        if (first != -99)
+            return first;
+        const auto knocks = sentTo(out, at(host), RelayKind::Knock);
+        int ticket = 0;
+        char asked[kNetTextBytes];
+        if (knocks.size() != 1 || !relayKnockRead(knocks[0].data(), static_cast<int>(knocks[0].size()), ticket, asked) ||
+            std::strcmp(asked, name) != 0)
+            return -99;
+        if (answer < 0)
+            return -100;
+        out.clear();
+        relay.receive(at(host), bytes, relayAnswerWrite(bytes, 100u + host, ticket, answer != 0), now, out);
+        return result();
     }
 
     int list(Relay &relay, int n, RelayRoom *rooms, std::uint32_t now, std::vector<Out> &out)
@@ -227,11 +250,67 @@ namespace
 
         // A host that goes takes its room with it, its clients told.
         const std::uint32_t second = open(relay, 4, "Barney", 8, now, out);
-        join(relay, 5, second, now, out);
+        join(relay, 5, second, now, out, 4);
         out.clear();
         relay.receive(at(4), bytes, relaySmallWrite(bytes, RelayKind::Bye, 104), now, out);
         check(relay.rooms() == 0 && sentTo(out, at(5), RelayKind::Bye).size() == 1,
               "a host says goodbye: the room is closed, its client told");
+    }
+
+    void testKnocks()
+    {
+        Relay relay;
+        std::vector<Out> out;
+        std::uint32_t now = 5000;
+        const std::uint32_t id = open(relay, 0, "Gordon", 8, now, out);
+        check(join(relay, 1, id, now, out, 0, 0) == -static_cast<int>(RelayRefuse::Declined),
+              "the host says no: told so, and not in the room");
+        check(join(relay, 1, id, now, out, 0, 1) == 1, "... asking again, and the host says yes: client 1");
+
+        // Left waiting: asking again is not a second knock; the host is asked
+        // again now and then; then it is too late.
+        check(join(relay, 2, id, now, out, 0, -1) == -100, "one at the door, the host not answering yet");
+        std::uint8_t bytes[kRelayMostBytes];
+        out.clear();
+        relay.receive(at(2), bytes, relayJoinWrite(bytes, 102, id, "P2"), now + 100, out);
+        check(out.empty(), "... it asks again: the host is not asked twice for it");
+        out.clear();
+        relay.tick(now + 1200, out);
+        check(sentTo(out, at(0), RelayKind::Knock).size() == 1, "... a second later the host is asked again");
+        out.clear();
+        relay.receive(at(2), bytes, relaySmallWrite(bytes, RelayKind::Ping, 102), now + kRelayKnockMs, out);
+        relay.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Ping, 100), now + kRelayKnockMs, out);
+        out.clear();
+        relay.tick(now + kRelayKnockMs + 100, out);
+        const auto late = sentTo(out, at(2), RelayKind::Refused);
+        check(late.size() == 1 &&
+                  relaySmallRead(late[0].data(), static_cast<int>(late[0].size())) ==
+                      static_cast<int>(RelayRefuse::NoAnswer),
+              "... and after half a minute it is told the host did not answer");
+
+        // One at the door who goes: the host's late yes lets nobody in.
+        now += kRelayKnockMs + 200;
+        check(join(relay, 3, id, now, out, 0, -1) == -100, "another at the door");
+        const auto knocked = sentTo(out, at(0), RelayKind::Knock);
+        int ticket = 0;
+        char name[kNetTextBytes];
+        relayKnockRead(knocked[0].data(), static_cast<int>(knocked[0].size()), ticket, name);
+        out.clear();
+        relay.receive(at(3), bytes, relaySmallWrite(bytes, RelayKind::Bye, 103), now, out);
+        out.clear();
+        relay.receive(at(0), bytes, relayAnswerWrite(bytes, 100, ticket, true), now, out);
+        check(sentTo(out, at(3), RelayKind::Joined).empty() && lastStatus(out, 0) == 0xFFFFu,
+              "... it goes before the host says yes: nobody let in");
+
+        // A host that goes: those at its door are told there is no room.
+        check(join(relay, 4, id, now, out, 0, -1) == -100, "one more at the door");
+        out.clear();
+        relay.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Bye, 100), now, out);
+        const auto gone = sentTo(out, at(4), RelayKind::Refused);
+        check(gone.size() == 1 &&
+                  relaySmallRead(gone[0].data(), static_cast<int>(gone[0].size())) ==
+                      static_cast<int>(RelayRefuse::NoRoom),
+              "... the host goes: it is told the room is gone");
     }
 
     /// A link that loses some datagrams and delays the rest (and lets one
@@ -342,7 +421,11 @@ namespace
                         // (The host's room, once it has one: as from a list.)
                         const std::uint32_t id = consoles[0]->room;
                         if (id != 0)
-                            me.up.send(now, bytes, relayRoomIdWrite(bytes, RelayKind::Join, me.session, id));
+                        {
+                            char name[kNetTextBytes];
+                            std::snprintf(name, sizeof(name), "P%d", me.n);
+                            me.up.send(now, bytes, relayJoinWrite(bytes, me.session, id, name));
+                        }
                         continue;
                     }
                     netTick(*me.match, none, nobody, 0, 0, 0, false, 17);
@@ -376,6 +459,15 @@ namespace
                             relayRoomIdRead(datagram.data(), size, me.room);
                         else if (head.kind == RelayKind::Joined && me.slot < 0)
                             me.slot = relaySmallRead(datagram.data(), size);
+                        else if (head.kind == RelayKind::Knock && isHost(me))
+                        {
+                            // (The host lets everyone in; a knock said again is
+                            // answered again.)
+                            int ticket = 0;
+                            char name[kNetTextBytes];
+                            if (relayKnockRead(datagram.data(), size, ticket, name))
+                                me.up.send(now, bytes, relayAnswerWrite(bytes, me.session, ticket, true));
+                        }
                         else if (head.kind == RelayKind::Status && isHost(me))
                         {
                             // (As NetGame::frame takes the radio's client mask.)
@@ -482,6 +574,7 @@ int main()
 {
     testDatagrams();
     testRooms();
+    testKnocks();
     testLobbyThroughRelay();
     testIni();
     std::printf("%s (%d failed)\n", g_failures == 0 ? "PASS" : "FAIL", g_failures);

@@ -61,8 +61,57 @@ namespace hlrelay
 
     /// `peer` out of its room (as a host: the room closed, its clients told);
     /// `told`: it is told so itself.
+    void Relay::knock(const Room &room, const Knock &k, std::vector<Out> &out)
+    {
+        auto host = peers_.find(room.host);
+        if (host == peers_.end())
+            return;
+        std::uint8_t bytes[kRelayHeadBytes + 1 + kNetTextBytes];
+        say(out, host->second, bytes, relayKnockWrite(bytes, host->second.session, k.ticket, k.name));
+    }
+
+    void Relay::unknock(Peer &peer, std::vector<Out> &out, int refused)
+    {
+        auto it = rooms_.find(peer.knocking);
+        peer.knocking = 0;
+        if (it != rooms_.end())
+        {
+            for (Knock &k : it->second.knocks)
+                if (k.peer == peer.at.key())
+                    k = Knock();
+        }
+        if (refused > 0)
+        {
+            std::uint8_t bytes[kRelayHeadBytes + 1];
+            say(out, peer, bytes, relaySmallWrite(bytes, RelayKind::Refused, peer.session, refused));
+        }
+    }
+
+    void Relay::admitInto(Room &room, Peer &peer, std::uint32_t nowMs, std::vector<Out> &out)
+    {
+        std::uint8_t bytes[kRelayHeadBytes + 1];
+        int slot = -1;
+        for (int c = 1; c < kNetPlayers && room.admit && room.count() < room.open.most && slot < 0; ++c)
+            if (room.clients[c] == 0)
+                slot = c;
+        if (slot < 0)
+        {
+            const RelayRefuse why = room.admit ? RelayRefuse::Full : RelayRefuse::Closed;
+            say(out, peer, bytes, relaySmallWrite(bytes, RelayKind::Refused, peer.session, static_cast<int>(why)));
+            return;
+        }
+        room.clients[slot] = peer.at.key();
+        peer.room = room.id;
+        peer.slot = slot;
+        note(peer.at.text() + " joined room " + std::to_string(room.id) + " as client " + std::to_string(slot));
+        say(out, peer, bytes, relaySmallWrite(bytes, RelayKind::Joined, peer.session, slot));
+        status(room, nowMs, out);
+    }
+
     void Relay::leave(Peer &peer, std::vector<Out> &out, bool told)
     {
+        if (peer.knocking != 0)
+            unknock(peer, out, 0);
         auto it = rooms_.find(peer.room);
         const int slot = peer.slot;
         peer.room = 0;
@@ -83,6 +132,18 @@ namespace hlrelay
                 client->second.room = 0;
                 client->second.slot = -1;
                 say(out, client->second, bye, relaySmallWrite(bye, RelayKind::Bye, client->second.session));
+            }
+            // (Those at its door: there is no room any more.)
+            for (const Knock &k : room.knocks)
+            {
+                auto waiting = peers_.find(k.peer);
+                if (k.peer == 0 || waiting == peers_.end())
+                    continue;
+                waiting->second.knocking = 0;
+                std::uint8_t no[kRelayHeadBytes + 1];
+                say(out, waiting->second, no,
+                    relaySmallWrite(no, RelayKind::Refused, waiting->second.session,
+                                    static_cast<int>(RelayRefuse::NoRoom)));
             }
             note("room " + std::to_string(room.id) + " closed");
             rooms_.erase(it);
@@ -195,38 +256,78 @@ namespace hlrelay
             std::uint32_t id = 0;
             if (!relayRoomIdRead(bytes, size, id))
                 break;
-            // (Asked again, its answer lost: the same answer.)
+            // (Asked again, its answer lost: the same answer. Still at the
+            // door: still waiting -- the host is asked again by tick.)
             if (me->room == id && me->slot > 0)
             {
                 say(out, *me, reply, relaySmallWrite(reply, RelayKind::Joined, me->session, me->slot));
                 break;
             }
+            if (me->knocking == id)
+                break;
             if (me->room != 0)
                 leave(*me, out, false);
+            if (me->knocking != 0)
+                unknock(*me, out, 0);
             auto it = rooms_.find(id);
             RelayRefuse why = RelayRefuse::NoRoom;
-            int slot = -1;
+            Knock *free = nullptr;
             if (it != rooms_.end())
             {
                 Room &room = it->second;
                 why = !room.admit ? RelayRefuse::Closed : RelayRefuse::Full;
-                for (int c = 1; c < kNetPlayers && room.admit && room.count() < room.open.most && slot < 0; ++c)
-                    if (room.clients[c] == 0)
-                        slot = c;
+                for (Knock &k : room.knocks)
+                    if (k.peer == 0 && free == nullptr)
+                        free = &k;
+                if (!room.admit || room.count() >= room.open.most)
+                    free = nullptr;
             }
-            if (slot < 0)
+            if (free == nullptr)
             {
                 say(out, *me, reply,
                     relaySmallWrite(reply, RelayKind::Refused, me->session, static_cast<int>(why)));
                 break;
             }
+            // At the door: the host is asked.
             Room &room = it->second;
-            room.clients[slot] = from.key();
-            me->room = id;
-            me->slot = slot;
-            note(from.text() + " joined room " + std::to_string(id) + " as client " + std::to_string(slot));
-            say(out, *me, reply, relaySmallWrite(reply, RelayKind::Joined, me->session, slot));
-            status(room, nowMs, out);
+            free->peer = from.key();
+            relayJoinName(bytes, size, free->name);
+            free->ticket = room.nextTicket;
+            room.nextTicket = static_cast<std::uint8_t>(room.nextTicket == 255 ? 1 : room.nextTicket + 1);
+            free->sinceMs = free->saidMs = nowMs;
+            me->knocking = id;
+            note(from.text() + " (\"" + free->name + "\") asks to join room " + std::to_string(id));
+            knock(room, *free, out);
+            break;
+        }
+        case RelayKind::Answer:
+        {
+            auto it = rooms_.find(me->room);
+            int ticket = 0;
+            bool yes = false;
+            if (it == rooms_.end() || me->slot != 0 || !relayAnswerRead(bytes, size, ticket, yes))
+                break;
+            Room &room = it->second;
+            for (Knock &k : room.knocks)
+            {
+                if (k.peer == 0 || k.ticket != ticket)
+                    continue;
+                auto waiting = peers_.find(k.peer);
+                k = Knock();
+                if (waiting == peers_.end())
+                    break;
+                waiting->second.knocking = 0;
+                if (yes)
+                    admitInto(room, waiting->second, nowMs, out);
+                else
+                {
+                    note(waiting->second.at.text() + " not let into room " + std::to_string(room.id));
+                    say(out, waiting->second, reply,
+                        relaySmallWrite(reply, RelayKind::Refused, waiting->second.session,
+                                        static_cast<int>(RelayRefuse::Declined)));
+                }
+                break;
+            }
             break;
         }
         case RelayKind::Admit:
@@ -295,7 +396,29 @@ namespace hlrelay
             drop(key, out, true);
         }
         for (auto &[id, room] : rooms_)
+        {
             if (nowMs - room.statusMs >= kStatusMs)
                 status(room, nowMs, out);
+            // At the door: the host asked again now and then (a knock lost on
+            // the way is not waited on), until it is too late.
+            for (Knock &k : room.knocks)
+            {
+                if (k.peer == 0)
+                    continue;
+                auto waiting = peers_.find(k.peer);
+                if (waiting == peers_.end())
+                    k = Knock();
+                else if (nowMs - k.sinceMs > kRelayKnockMs)
+                {
+                    note(waiting->second.at.text() + " was not answered by room " + std::to_string(id));
+                    unknock(waiting->second, out, static_cast<int>(RelayRefuse::NoAnswer));
+                }
+                else if (nowMs - k.saidMs >= kStatusMs)
+                {
+                    k.saidMs = nowMs;
+                    knock(room, k, out);
+                }
+            }
+        }
     }
 } // namespace hlrelay

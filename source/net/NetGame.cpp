@@ -241,6 +241,16 @@ namespace hlrt
     {
         return netrelay::ready();
     }
+
+    TWL_CODE bool NetGame::knock(int &ticket, char *name)
+    {
+        return online() && netrelay::knock(ticket, name);
+    }
+
+    TWL_CODE void NetGame::answerKnock(int ticket, bool yes)
+    {
+        netrelay::answer(ticket, yes);
+    }
 #endif
 
     bool NetGame::guestsOffered() const
@@ -990,10 +1000,15 @@ namespace hlrt
                 }
             }
         }
-        if (phase_ != Phase::Scanning || !netlink::join(index))
-            return false;
         char name[kNetTextBytes];
         std::snprintf(name, sizeof(name), "%s", settings.playerName());
+#ifndef HLDS_CHILD
+        // (Online, the host is asked: by this name.)
+        if (online())
+            netrelay::setName(name);
+#endif
+        if (phase_ != Phase::Scanning || !netlink::join(index))
+            return false;
         netBegin(match_, NetMatch::Role::Client, tokenOfThisConsole(), name);
         sayProfile();
         profilesSeen_ = 0;
@@ -1657,12 +1672,21 @@ namespace hlrt
             }
             else if (netlink::refused())
             {
+#ifndef HLDS_CHILD
+                if (online())
+                {
+                    lost(netrelay::refusedText());
+                    return;
+                }
+#endif
                 lost("That game is full, or a match is on.");
                 return;
             }
             else
             {
-                if (++joinFrames_ >= 10 * 60)
+                // (Online, the host is asked first, and may take its time: the
+                // relay gives up on it after half a minute.)
+                if (++joinFrames_ >= (online() ? 35 : 10) * 60)
                     lost("That game did not answer.");
                 return;
             }

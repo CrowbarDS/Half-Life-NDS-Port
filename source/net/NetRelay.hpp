@@ -86,4 +86,14 @@ namespace hlrt::netrelay
     int take(std::uint8_t *into, int &from);
     unsigned dropped();
     void address(std::uint8_t out[6]);
+
+    // ----------------------------------------------------- at the door
+    /// A client: who it is, for the host to be shown (before join).
+    void setName(const char *name);
+    /// A client refused: why, in words.
+    const char *refusedText();
+    /// A host: one asking to come in, if there is (its ticket, and its name:
+    /// kNetTextBytes) -- the same until it is answered.
+    bool knock(int &ticket, char *name);
+    void answer(int ticket, bool yes);
 } // namespace hlrt::netrelay

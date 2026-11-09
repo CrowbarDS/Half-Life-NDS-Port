@@ -187,6 +187,11 @@ namespace hlrt
         bool sheetTouching_ = false;
         std::uint32_t sheetHeld_ = 0; ///< the buttons held a frame ago (so that only a press counts)
         int sheetAsking_ = 0;         ///< what YES does (kAsk* in Menu.cpp); 0: nothing asked
+        /// What was asked put away without YES: for "let them in?", a no.
+        void sheetUnask();
+        int admitTicket_ = 0;         ///< online: the knock "let them in?" answers
+        /// Online, the host's lobby: one asking to come in, asked about.
+        void admitFrame();
         char sheetQuestion_[40] = {};
         void openSheet(Page page);
         int &sheetChapter();

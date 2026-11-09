@@ -99,8 +99,23 @@ namespace hlrt::netrelay
             std::uint32_t joinId;
             int slot;
             bool refusedNow;
+            std::uint8_t refuseWhy; ///< RelayRefuse
             bool byeNow;
             std::uint32_t lastJoin;
+            char name[kNetTextBytes]; ///< who asks to come in, as the host is shown
+            // a host: those at the door, and what it answered last (said
+            // again if the relay asks again: the answer may have been lost)
+            struct Knocker
+            {
+                std::uint8_t ticket; ///< 0: none
+                char name[kNetTextBytes];
+            } knocks[kRelayKnocksMost];
+            struct Answered
+            {
+                std::uint8_t ticket;
+                bool yes;
+            } answered[kRelayKnocksMost];
+            int answeredNext;
             // what has come, not yet read
             struct Slot
             {
@@ -170,8 +185,8 @@ namespace hlrt::netrelay
 
         TWL_CODE void sendJoin()
         {
-            std::uint8_t bytes[kRelayHeadBytes + 4];
-            sendRaw(bytes, relayRoomIdWrite(bytes, RelayKind::Join, s.session, s.joinId));
+            std::uint8_t bytes[kRelayHeadBytes + 4 + kNetTextBytes];
+            sendRaw(bytes, relayJoinWrite(bytes, s.session, s.joinId, s.name));
             s.lastJoin = Global::vblanks();
         }
 
@@ -223,8 +238,42 @@ namespace hlrt::netrelay
                 break;
             case RelayKind::Refused:
                 if (s.role == Role::Client && s.slot < 0)
+                {
                     s.refusedNow = true;
+                    s.refuseWhy = static_cast<std::uint8_t>(relaySmallRead(bytes, size));
+                }
                 break;
+            case RelayKind::Knock:
+            {
+                int ticket = 0;
+                char name[kNetTextBytes];
+                if (s.role != Role::Host || !relayKnockRead(bytes, size, ticket, name) || ticket == 0)
+                    break;
+                // (Answered already: the answer again.)
+                for (const State::Answered &done : s.answered)
+                {
+                    if (done.ticket == ticket)
+                    {
+                        std::uint8_t again[kRelayHeadBytes + 2];
+                        sendRaw(again, relayAnswerWrite(again, s.session, ticket, done.yes));
+                        return false;
+                    }
+                }
+                State::Knocker *free = nullptr;
+                for (State::Knocker &k : s.knocks)
+                {
+                    if (k.ticket == ticket)
+                        return false; // (asked already: waiting for the host)
+                    if (k.ticket == 0 && free == nullptr)
+                        free = &k;
+                }
+                if (free != nullptr)
+                {
+                    free->ticket = static_cast<std::uint8_t>(ticket);
+                    std::memcpy(free->name, name, kNetTextBytes);
+                }
+                break;
+            }
             case RelayKind::Status:
                 if (s.role == Role::Host)
                 {
@@ -580,6 +629,9 @@ namespace hlrt::netrelay
         s.roomId = 0;
         s.clientMask = 0;
         s.admitting = true;
+        std::memset(s.knocks, 0, sizeof(s.knocks));
+        std::memset(s.answered, 0, sizeof(s.answered));
+        s.answeredNext = 0;
         sendOpen();
         return true;
     }
@@ -669,9 +721,62 @@ namespace hlrt::netrelay
         s.role = Role::Client;
         s.slot = -1;
         s.refusedNow = s.byeNow = false;
+        s.refuseWhy = 0;
         s.ringHead = s.ringTail = 0;
         sendJoin();
         return true;
+    }
+
+    TWL_CODE void setName(const char *name)
+    {
+        std::memset(s.name, 0, sizeof(s.name));
+        std::snprintf(s.name, sizeof(s.name), "%s", name);
+    }
+
+    TWL_CODE const char *refusedText()
+    {
+        static TWL_DATA const char kDeclined[] = "The host did not let you in.";
+        static TWL_DATA const char kNoAnswer[] = "The host did not answer.";
+        static TWL_DATA const char kGone[] = "That game is no longer there.";
+        static TWL_DATA const char kFull[] = "That game is full, or a match is on.";
+        switch (static_cast<RelayRefuse>(s.refuseWhy))
+        {
+        case RelayRefuse::Declined: return kDeclined;
+        case RelayRefuse::NoAnswer: return kNoAnswer;
+        case RelayRefuse::NoRoom: return kGone;
+        default: return kFull;
+        }
+    }
+
+    TWL_CODE bool knock(int &ticket, char *name)
+    {
+        pump();
+        if (!started || s.role != Role::Host)
+            return false;
+        for (const State::Knocker &k : s.knocks)
+        {
+            if (k.ticket != 0)
+            {
+                ticket = k.ticket;
+                std::memcpy(name, k.name, kNetTextBytes);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    TWL_CODE void answer(int ticket, bool yes)
+    {
+        if (!started || s.role != Role::Host)
+            return;
+        for (State::Knocker &k : s.knocks)
+            if (k.ticket == ticket)
+                k.ticket = 0;
+        s.answered[s.answeredNext].ticket = static_cast<std::uint8_t>(ticket);
+        s.answered[s.answeredNext].yes = yes;
+        s.answeredNext = (s.answeredNext + 1) % kRelayKnocksMost;
+        std::uint8_t bytes[kRelayHeadBytes + 2];
+        sendRaw(bytes, relayAnswerWrite(bytes, s.session, ticket, yes));
     }
 
     TWL_CODE bool joined()
@@ -734,6 +839,10 @@ namespace hlrt::netrelay
     const char *connectText() { return ""; }
     void connectCancel() {}
     bool ready() { return false; }
+    void setName(const char *) {}
+    const char *refusedText() { return ""; }
+    bool knock(int &, char *) { return false; }
+    void answer(int, bool) {}
     int failStage() { return 1; }
     void shutdown() {}
     void powerDown() {}

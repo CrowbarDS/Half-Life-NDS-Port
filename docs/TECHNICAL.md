@@ -1004,7 +1004,9 @@ Milestone 11, "levels of detail".
   - **Online** (a DSi's: MULTIPLAYER, ONLINE), **the relay** stands in for
     the radio (`tools/relay`, `shared/HlRelay.hpp`, `source/net/NetRelay.cpp`).
     A host opens a room on it, a console looking is given the list of rooms
-    in place of the beacons it would hear, and joins one; then the relay
+    in place of the beacons it would hear, and asks to join one: the host
+    is asked, by name, whether to let it in (the lobby's LET ... IN? YES
+    NO; no answer in half a minute is a no); then the relay
     passes the host's frames to each client of the room and a client's to
     the host, saying whose, as the radio does. It never reads them: the
     lobby and the match are the same, and `NetLink` hands its calls to
@@ -1017,7 +1019,7 @@ Milestone 11, "levels of detail".
     buffers, into the DSi-only part of the program, which a DS never loads.
     The library's flag for "the IP stack is on", which its code every
     console runs reads, is the program's own (`NetLink.cpp`), in memory a DS
-    has. What is left costs a DS about 3.0 KB. The stack is a cooperative
+    has. What is left costs a DS about 3.4 KB. The stack is a cooperative
     thread of the library's, run only when the program yields:
     `swiWaitForVBlank` halts, so `NetRelay` yields each frame. Going
     online is a step a frame (CONNECTING), never a frozen menu. An online

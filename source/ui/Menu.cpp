@@ -582,7 +582,13 @@ namespace hlrt
             const FontView &small = touchCanvas.font(kFontSmall);
             const int top = kOptionLayout.top + rowCount() * kOptionLayout.pitch + 4;
             drawTextCentred(canvas, small, 128, top,
+#ifndef HLDS_CHILD
+                            netGame.phase() == NetGame::Phase::Joining
+                                ? (netGame.online() ? "Asking the host..." : "Joining...")
+                                : "Looking for games...",
+#else
                             netGame.phase() == NetGame::Phase::Joining ? "Joining..." : "Looking for games...",
+#endif
                             inkFor(small, kUiOrange));
             if (joinWhy[0] != 0)
                 drawTextCentred(canvas, small, 128, 170, joinWhy, inkFor(small, kUiGrey));
@@ -749,7 +755,7 @@ namespace hlrt
         }
         // What YES does, once asked.
         constexpr int kAskReset = 1, kAskOverwrite = 2, kAskLoad = 3, kAskDelete = 4, kAskLeave = 5, kAskKick = 6,
-                      kAskSend = 7;
+                      kAskSend = 7, kAskAdmit = 8;
         int kickWho = -1;
 
         /// What depends on the letters' height.
@@ -1809,7 +1815,7 @@ namespace hlrt
         sheetSlide_ = sheetSlideTo_ = 0;
         sheetPressed_ = kSheetNothing;
         sheetDrag_ = 0;
-        sheetAsking_ = 0;
+        sheetUnask();
         capturing_ = -1;
         if (page == Page::Saves)
             listSaves();
@@ -2642,6 +2648,32 @@ namespace hlrt
         drawSheetBar();
     }
 
+#ifndef HLDS_CHILD
+    // (Online is a DSi's alone: in its memory.)
+    TWL_CODE void Menu::admitFrame()
+    {
+        char name[kNetTextBytes];
+        if (!netGame.knock(admitTicket_, name))
+            return;
+        static TWL_DATA const char kLetIn[] = "LET %s IN?";
+        char question[40];
+        std::snprintf(question, sizeof(question), kLetIn, name);
+        sound.ui(kUiSoundPress);
+        sheetAsk(kAskAdmit, question);
+    }
+#endif
+
+    void Menu::sheetUnask()
+    {
+#ifndef HLDS_CHILD
+        // (Not let in: anything but YES -- NO, B, another touch, the page
+        // left. The one asking is told so, and does not wait on.)
+        if (sheetAsking_ == kAskAdmit)
+            netGame.answerKnock(admitTicket_, false);
+#endif
+        sheetAsking_ = 0;
+    }
+
     /// YES to what was asked.
     Menu::Action Menu::sheetYes()
     {
@@ -2649,6 +2681,12 @@ namespace hlrt
         sheetAsking_ = 0;
         switch (what)
         {
+#ifndef HLDS_CHILD
+        case kAskAdmit:
+            netGame.answerKnock(admitTicket_, true);
+            drawSheetBar();
+            return Action::None;
+#endif
         case kAskReset:
         {
             // This page's settings as they were at first.
@@ -2882,7 +2920,7 @@ namespace hlrt
         if (page_ == Page::NetHost)
             settings.save();
         capturing_ = -1;
-        sheetAsking_ = 0;
+        sheetUnask();
         if (page_ == Page::Profile)
         {
             // (Back to the lobby, which shows it too.)
@@ -3160,7 +3198,7 @@ namespace hlrt
                     return sheetYes();
                 if (pressed & KEY_B)
                 {
-                    sheetAsking_ = 0;
+                    sheetUnask();
                     drawSheetBar();
                 }
             }
@@ -3354,7 +3392,7 @@ namespace hlrt
             else if (same && was == kSheetNo)
             {
                 sound.ui(kUiSoundPress);
-                sheetAsking_ = 0;
+                sheetUnask();
                 drawSheetBar();
             }
             else if (same && was <= kSheetBar)
@@ -3375,7 +3413,7 @@ namespace hlrt
                 const bool again = was == sheetSelected_;
                 if (sheetAsking_ != 0)
                 {
-                    sheetAsking_ = 0;
+                    sheetUnask();
                     drawSheetBar();
                 }
                 if (optionSheet())
@@ -3898,6 +3936,10 @@ namespace hlrt
             return Action::None;
         }
 #ifndef HLDS_CHILD
+        // Online: one asking to come in, and the host asked whether to let
+        // them -- on its lobby's page, when nothing else is being asked.
+        if (page_ == Page::NetHost && sheetAsking_ == 0 && netGame.online())
+            admitFrame();
         // Back in the lobby with the next map chosen: on to it, for everyone.
         if (page_ == Page::NetHost)
         {

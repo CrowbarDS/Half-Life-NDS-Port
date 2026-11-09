@@ -81,6 +81,10 @@ namespace hlrt
         int connectStep(const char *&step);
         void connectCancel();
         bool onlineReady() const;
+        /// The host: one asking to come in (online: the host decides), its
+        /// ticket and name (kNetTextBytes); the same until answered.
+        bool knock(int &ticket, char *name);
+        void answerKnock(int ticket, bool yes);
         /// Whether consoles without the game are offered it: the setting's
         /// word, and never online (nothing is sent by Download Play there).
         bool guestsOffered() const;
