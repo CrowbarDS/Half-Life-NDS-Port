@@ -30,6 +30,10 @@
 #include "HlPreview.hpp"
 #include "HlAirBank.hpp"
 #include "HlLz77Stream.hpp"
+#ifndef HLDS_CHILD
+#define HL_NPAC_CODE TWL_CODE __attribute__((noinline))
+#endif
+#include "HlNpacIndex.hpp"
 #include <dirent.h>
 #include <sys/stat.h>
 #ifdef HLDS_CHILD
@@ -46,6 +50,32 @@ namespace hlrt
     {
         /// The pieces of a stream sent a frame while a match waits for it.
         constexpr int kAirServeFrames = 4;
+        /// What is asked for (HlAirBank.hpp), the pieces a frame online:
+        /// a datagram each, through the relay to every client of the room.
+        constexpr int kOnlineFetchPieces = 4;
+        /// A client that has said nothing of the host's map for this long
+        /// (ten seconds) is not waited for: it has it, or it never will.
+        constexpr std::uint32_t kMapQuietVblanks = 600;
+        /// (mapHave_: nothing heard yet of this map.)
+        constexpr std::uint8_t kMapUnheard = 0xFF;
+#ifndef HLDS_CHILD
+        /// The host: a block of each map's archive being sent (fetchPiece).
+        struct MapReadBlock
+        {
+            bool valid;
+            std::uint32_t start, bytes;
+            std::uint8_t data[16384];
+        };
+        TWL_BSS MapReadBlock mapReadBlocks[hldata::FetchHost::kSending];
+        // (What the lobby says of the host's map: the DSi's memory too.)
+        TWL_DATA const char kMapText[] = "%s";
+        TWL_DATA const char kMapNoRoom[] = "There is not enough room on the card for the host's map.";
+        TWL_DATA const char kMapCannot[] = "The host's map could not be had.";
+        TWL_DATA const char kMapGetting[] = "Getting the host's map: %d%%. The match begins when it is here.";
+        TWL_DATA const char kMapAsking[] = "Asking the host for its map...";
+        TWL_DATA const char kMapChecking[] = "Checking the map...";
+        TWL_DATA const char kMapLater[] = "This card has not the host's map: it is sent when the match begins.";
+#endif
         /// Frames a client may be out of touch with its host before it is
         /// taken for lost: two seconds. (A console loading a map says
         /// nothing for longer than that, but stays the host's client all
@@ -359,6 +389,10 @@ namespace hlrt
             if (match_.rules.mapHash != 0 && nameHash(map.c_str()) == match_.rules.mapHash)
                 return map.c_str();
         }
+#ifndef HLDS_CHILD
+        if (mapKnown_ && mapHash_ == match_.rules.mapHash && mapName_[0] != 0)
+            return mapName_;
+#endif
         if (const char *pictured = mapCard.pictureName(match_.rules.mapHash))
             return pictured;
         return lobbyMap_.c_str();
@@ -402,6 +436,21 @@ namespace hlrt
         if (from == FetchFrom::DemoSave)
         {
             guest::demoFileCame(nullptr, 0);
+            return;
+        }
+#else
+        // (The host has not got it: nothing to be had. No answer: asked again.)
+        if (from == FetchFrom::MapCard || from == FetchFrom::MapIndex)
+        {
+            // (No answer: its index asked for again; or the rest, from where
+            // it had got to -- MapBuild keeps it.)
+            if (mapStage_ == MapStage::Getting || mapStage_ == MapStage::Index)
+                mapStage_ = none ? MapStage::None : mapStage_ == MapStage::Index ? MapStage::Want : MapStage::Build;
+            if (none)
+            {
+                mapBuild_.stop();
+                mapSay(kMapHaveCannot);
+            }
             return;
         }
 #endif
@@ -476,6 +525,13 @@ namespace hlrt
         if (!takingOn_ || !taking_.isFor(head))
             return;
         takingAskedAt_ = Global::vblanks();
+#ifndef HLDS_CHILD
+        if (head.from == FetchFrom::MapCard)
+        {
+            mapFetchFrame(head);
+            return;
+        }
+#endif
         if (taking_.needsRoom(head))
         {
             std::free(takingRoom_);
@@ -554,6 +610,14 @@ namespace hlrt
         if (from == FetchFrom::DemoSave)
         {
             guest::demoFileCame(data, raw);
+            return;
+        }
+#else
+        if (from == FetchFrom::MapIndex)
+        {
+            if (isDSiMode())
+                mapIndexCame(data, raw);
+            std::free(data);
             return;
         }
 #endif
@@ -652,7 +716,8 @@ namespace hlrt
         const bool map = phase_ == Phase::Playing || (phase_ == Phase::Lobby && played);
         // (The vote's pictures are had with or without a map.)
         const bool ofMap = taking_.from == FetchFrom::Map || taking_.from == FetchFrom::MapFull;
-        if ((!lobby && !map) || (takingOn_ && taking_.from != FetchFrom::VotePicture && taking_.from != FetchFrom::DemoSave && ofMap != map))
+        if ((!lobby && !map) || (takingOn_ && taking_.from != FetchFrom::VotePicture && taking_.from != FetchFrom::DemoSave &&
+                                 taking_.from != FetchFrom::MapCard && taking_.from != FetchFrom::MapIndex && ofMap != map))
         {
             if (takingOn_ && ofMap && filePath_[0] == '\0')
                 textureStream.fetchFailed(false);
@@ -663,6 +728,15 @@ namespace hlrt
         }
         if (map && !takingOn_)
         {
+#ifndef HLDS_CHILD
+            // The match begun, and this card without the host's map: sent now,
+            // before it is loaded (the host waits: serveNext).
+            if (mapStage_ == MapStage::Want && phase_ == Phase::Lobby)
+            {
+                mapAsk();
+                return;
+            }
+#endif
             // (Files first, one at a time; else TextureStream asks: fetchMap.)
             if (fileCount_ > 0)
             {
@@ -676,8 +750,13 @@ namespace hlrt
         const std::uint32_t now = Global::vblanks();
         if (takingOn_)
         {
+            // (A map's archive: also in frames of its own, each frame -- frame().)
             if (taking_.known && now - takingSaidAt_ >= 12)
                 fetchSayHave();
+#ifndef HLDS_CHILD
+            if (taking_.from == FetchFrom::MapCard && now - mapSaidAt_ >= 30)
+                mapSay(kMapHaveGetting);
+#endif
             // (Nothing for a while: asked again; then not.)
             if (now - takingAskedAt_ > 180)
             {
@@ -901,7 +980,7 @@ namespace hlrt
         return true;
     }
 
-    void NetGame::fetchHostFrame()
+    int NetGame::fetchHostFrame(int most)
     {
         fetch_.frame();
         // Let go of what nobody wants any more.
@@ -912,10 +991,17 @@ namespace hlrt
                 std::free(fetchData_[k]);
                 fetchData_[k] = nullptr;
             }
+            if (!fetch_.sending[k].on && fetchFile_[k] != nullptr)
+            {
+                std::fclose(fetchFile_[k]);
+                fetchFile_[k] = nullptr;
+            }
         }
-        // Not while a stream is sent. (A demo's, that someone is waiting for.)
-        if ((phase_ != Phase::Hosting && phase_ != Phase::Playing) || demoLiveNow_)
-            return;
+        // Not while a stream is sent. (A demo's, that someone is waiting for;
+        // the guests' while a match waits -- the map's archive comes after.)
+        if ((phase_ != Phase::Hosting && phase_ != Phase::Playing && phase_ != Phase::Serving) || demoLiveNow_ ||
+            (phase_ == Phase::Serving && air_.sending()))
+            return 0;
         int who = 0;
         FetchHost::Asked asked;
         while (fetch_.nextAsked(who, asked))
@@ -923,13 +1009,20 @@ namespace hlrt
             std::uint8_t *data = nullptr;
             std::uint32_t packed = 0, raw = 0, name = 0;
             fetchWho_ = who;
-            if (!fetchFind(asked, data, packed, raw, name))
+            // (The map's archive: from its file, as it is wanted -- a DSi's.)
+            const bool mapCard = asked.from == FetchFrom::MapCard;
+            const bool found = mapCard ? isDSiMode() && mapServe(who, asked)
+                               : asked.from == FetchFrom::MapIndex ? isDSiMode() && mapIndexFind(asked, data, packed, raw, name)
+                                                                   : fetchFind(asked, data, packed, raw, name);
+            if (!found)
             {
                 netSay(match_, netEvent(NetEventType::FetchNone, static_cast<int>(asked.from),
                                         static_cast<std::int16_t>(asked.what & 0xFFFF),
                                         static_cast<std::int16_t>(asked.what >> 16)));
                 continue;
             }
+            if (mapCard)
+                continue;
             const std::uint32_t crc = crc32(data, packed);
             fetch_.begin(who, asked, name, packed, raw, crc, 0);
             for (int k = 0; k < FetchHost::kSending; ++k)
@@ -948,28 +1041,38 @@ namespace hlrt
         int clients = 0;
         for (unsigned bits = present; bits != 0; bits &= bits - 1)
             ++clients;
-        const int pieces = clients <= 1 ? 3 : (clients <= 3 ? 2 : 1);
+        // (Online, nothing shares the air: as many as the link is found to
+        // take -- each is a datagram of its own.)
+        // (Serving -- a match waiting for a map -- as fast as the guests' streams.)
+        const int pieces = online() ? kOnlineFetchPieces : most > 0 ? most : clients <= 1 ? 3 : (clients <= 3 ? 2 : 1);
+        int sent = 0;
         for (int n = 0; n < pieces; ++n)
         {
             FetchHost::Sending *s = nullptr;
             std::uint32_t index = 0;
             if (!fetch_.next(s, index))
                 break;
-            const std::uint8_t *data = fetchData_[s - fetch_.sending];
-            if (data == nullptr)
-                break;
+            const int k = static_cast<int>(s - fetch_.sending);
             const std::uint32_t at = index * kFetchPiece;
             FetchHead head = s->head;
             head.index = static_cast<std::uint16_t>(index);
             head.count = s->head.packed - at < kFetchPiece ? static_cast<int>(s->head.packed - at) : kFetchPiece;
+            static TWL_BSS std::uint8_t piece[kFetchPiece];
+            const std::uint8_t *data = fetchData_[k] != nullptr ? fetchData_[k] + at
+                                       : fetchFile_[k] != nullptr && fetchPiece(k, at, piece, head.count) ? piece
+                                                                              : nullptr;
+            if (data == nullptr)
+                break;
             std::uint8_t bytes[kNetCmdBytes];
-            const int size = fetchWrite(head, data + at, bytes);
+            const int size = fetchWrite(head, data, bytes);
             if (size > 0)
             {
                 netlink::send(bytes, size);
                 ++sent_;
+                ++sent;
             }
         }
+        return sent;
     }
 
     void NetGame::fetchHostStop()
@@ -980,6 +1083,620 @@ namespace hlrt
             std::free(data);
             data = nullptr;
         }
+        for (std::FILE *&file : fetchFile_)
+        {
+            if (file != nullptr)
+                std::fclose(file);
+            file = nullptr;
+        }
+    }
+
+    /// `count` bytes from `at` of what a map's archive sends as: its head,
+    /// then its file.
+    HL_TWL_CODE bool NetGame::fetchPiece(int k, std::uint32_t at, std::uint8_t *to, int count)
+    {
+        std::FILE *file = fetchFile_[k];
+        if (file == nullptr)
+            return false;
+        int done = 0;
+        for (; done < count && at + static_cast<std::uint32_t>(done) < kMapCardHeadBytes; ++done)
+            to[done] = static_cast<std::uint8_t>(fetchName_[k][at + static_cast<std::uint32_t>(done)]);
+        if (done == count)
+            return true;
+        // From the file through a block of it kept here: a read of the card
+        // costs far more than its length, and the pieces go mostly in order.
+        // (A piece across the block's end: the next block, and the rest.)
+        std::uint32_t from = at + static_cast<std::uint32_t>(done) - kMapCardHeadBytes;
+        while (done < count)
+        {
+            MapReadBlock &block = mapReadBlocks[k];
+            if (!block.valid || from < block.start || from >= block.start + block.bytes)
+            {
+                block.valid = false;
+                block.start = from - from % sizeof(block.data);
+                if (std::fseek(file, static_cast<long>(block.start), SEEK_SET) != 0)
+                    return false;
+                block.bytes = static_cast<std::uint32_t>(std::fread(block.data, 1, sizeof(block.data), file));
+                if (block.bytes == 0 || from >= block.start + block.bytes)
+                    return false;
+                block.valid = true;
+            }
+            const std::uint32_t inBlock = from - block.start;
+            const std::uint32_t take = block.bytes - inBlock < static_cast<std::uint32_t>(count - done)
+                                           ? block.bytes - inBlock
+                                           : static_cast<std::uint32_t>(count - done);
+            std::memcpy(to + done, block.data + inBlock, take);
+            done += static_cast<int>(take);
+            from += take;
+        }
+        return true;
+    }
+
+    // ------------------------------------------- the host's map, sent (MapShare.hpp)
+
+    /// The host's map's archive, asked for: begun, from its file. False: not
+    /// this lobby's map, or not on the card.
+    HL_TWL_CODE bool NetGame::mapServe(int who, const FetchHost::Asked &asked)
+    {
+        const char *name = nullptr;
+        for (const std::string &map : maps_)
+        {
+            if (nameHash(map.c_str()) == asked.what)
+                name = map.c_str();
+        }
+        if ((phase_ != Phase::Serving && phase_ != Phase::Hosting) || !mapKnown_ || asked.what != mapHash_ || name == nullptr)
+            return false;
+        char path[160];
+        static TWL_DATA const char kArchive[] = "%smaps/%s.npac";
+        static TWL_DATA const char kRead[] = "rb";
+        std::snprintf(path, sizeof(path), kArchive, global.dataDir().c_str(), name);
+        std::FILE *file = std::fopen(path, kRead);
+        if (file == nullptr)
+            return false;
+        std::setvbuf(file, nullptr, _IONBF, 0);
+        fetch_.begin(who, asked, asked.what, mapBytes_, mapBytes_, mapCrc_, 0);
+        for (int k = 0; k < FetchHost::kSending && file != nullptr; ++k)
+        {
+            if (fetch_.sending[k].on && fetch_.sending[k].head.what == asked.what && fetch_.sending[k].head.from == asked.from &&
+                fetchData_[k] == nullptr && fetchFile_[k] == nullptr)
+            {
+                fetchFile_[k] = file;
+                file = nullptr;
+                mapReadBlocks[k].valid = false;
+                mapCardHead(name, reinterpret_cast<std::uint8_t *>(fetchName_[k]));
+            }
+        }
+        if (file != nullptr)
+            std::fclose(file);
+        return true;
+    }
+
+    /// The host's map's index, asked for: its name, then the archive up to
+    /// its members' data.
+    HL_TWL_CODE bool NetGame::mapIndexFind(const FetchHost::Asked &asked, std::uint8_t *&data, std::uint32_t &packed,
+                                           std::uint32_t &raw, std::uint32_t &name)
+    {
+        const char *map = nullptr;
+        for (const std::string &one : maps_)
+        {
+            if (nameHash(one.c_str()) == asked.what)
+                map = one.c_str();
+        }
+        if ((phase_ != Phase::Serving && phase_ != Phase::Hosting) || !mapKnown_ || asked.what != mapHash_ || map == nullptr ||
+            !mapshare::indexFor(mapHash_))
+            return false;
+        constexpr std::uint32_t kMost = 64 * 1024;
+        data = static_cast<std::uint8_t *>(std::malloc(kMost));
+        const std::uint32_t bytes = data != nullptr ? mapshare::indexBlob(data, kMost, map) : 0;
+        if (bytes == 0)
+        {
+            std::free(data);
+            data = nullptr;
+            return false;
+        }
+        packed = raw = bytes;
+        name = asked.what;
+        return true;
+    }
+
+    /// A client's word of a map's archive coming (kNetFrameFetchHave).
+    HL_TWL_CODE void NetGame::mapHaveHeard(int from, const std::uint8_t *bytes, int size)
+    {
+        std::uint8_t id = 0;
+        std::uint32_t base = 0;
+        std::uint64_t bits = 0;
+        if (fetchHaveRead(bytes, size, id, base, bits))
+            fetch_.have(from, id, base, bits);
+    }
+
+    /// ... and a client's, in place of the game's frame (0: none yet).
+    HL_TWL_CODE int NetGame::mapHaveReply(std::uint8_t *reply)
+    {
+        return taking_.known ? fetchHaveWrite(taking_.id, taking_.base, taking_.have, reply) : 0;
+    }
+
+    HL_TWL_CODE void NetGame::mapHeard(const NetEvent &event)
+    {
+        if (event.type == NetEventType::MapHave && isHost() && event.from > 0 && event.from < kNetPlayers)
+        {
+            // (Of the map the lobby is for, not one before it.)
+            if ((static_cast<std::uint16_t>(event.v[1]) | static_cast<std::uint32_t>(static_cast<std::uint16_t>(event.v[2])) << 16) ==
+                mapHash_)
+            {
+                mapHave_[event.from] = event.a;
+                mapPermille_[event.from] = static_cast<std::uint16_t>(event.v[0]);
+                mapHeardAt_[event.from] = Global::vblanks();
+            }
+            return;
+        }
+        if (event.type == NetEventType::MapSum && !isHost())
+        {
+            // (Heard whenever; seen to in the lobby: mapClientFrame.)
+            for (int k = 0; k < 3; ++k)
+                mapOffer_[k] = static_cast<std::uint16_t>(event.v[2 * k]) |
+                               static_cast<std::uint32_t>(static_cast<std::uint16_t>(event.v[2 * k + 1])) << 16;
+            mapOfferNew_ = true;
+        }
+    }
+
+    /// A match begins on the map of `hash`: as the host said it was, the
+    /// card's own or one it sent (played from where it was put) -- in
+    /// pendingMap_. 0: the host said nothing of it; 1: there; 2: not had;
+    /// 3: not had, for want of room.
+    HL_TWL_CODE int NetGame::mapForStart(std::uint32_t hash)
+    {
+        if (!mapKnown_ || mapHash_ != hash)
+            return 0;
+        // (Still finding out, or still to be sent: when it has it.)
+        if (mapStage_ != MapStage::None)
+            return 4;
+        if (mapSays_ != kMapHaveYes || mapName_[0] == 0)
+            return mapSays_ == kMapHaveNoRoom ? 3 : 2;
+        pendingMap_ = mapName_;
+        if (mapSent_)
+        {
+            char path[160];
+            mapshare::receivedPath(path, sizeof(path), mapName_, mapCrc_);
+            global.setMapFile(mapName_, path);
+        }
+        return 1;
+    }
+
+    HL_TWL_CODE void NetGame::mapHostFrame()
+    {
+        const std::uint32_t now = Global::vblanks();
+        // The lobby's map: what it comes to, found once, then said.
+        const std::uint32_t hash = match_.rules.demo == 0 ? match_.rules.mapHash : 0;
+        if (hash != mapHash_)
+        {
+            mapSum_.stop();
+            mapHash_ = hash;
+            mapKnown_ = false;
+            mapSaidTo_ = 0;
+            for (int c = 0; c < kNetPlayers; ++c)
+            {
+                mapHave_[c] = kMapUnheard;
+                mapPermille_[c] = 0;
+                mapHeardAt_[c] = now;
+            }
+            for (const std::string &map : maps_)
+            {
+                if (hash == 0 || nameHash(map.c_str()) != hash)
+                    continue;
+                const std::string path = global.dataDir() + "maps/" + map + ".npac";
+                const std::uint32_t bytes = mapshare::fileBytes(path.c_str());
+                std::uint32_t crc = 0;
+                // (Known already, with what each member comes to -- what its
+                // index is sent with: else read again.)
+                if (bytes != 0 && mapshare::knownSum(hash, bytes, crc) && mapshare::indexFor(hash))
+                {
+                    mapCrc_ = crc;
+                    mapBytes_ = bytes + kMapCardHeadBytes;
+                    mapKnown_ = true;
+                }
+                else if (bytes != 0)
+                    mapSum_.begin(path.c_str(), map.c_str(), hash);
+            }
+        }
+        if (mapSum_.busy() && mapSum_.step() && mapSum_.good)
+        {
+            mapCrc_ = mapSum_.crc;
+            mapBytes_ = mapSum_.bytes;
+            mapKnown_ = true;
+            mapshare::rememberSum(mapHash_, mapBytes_ - kMapCardHeadBytes, mapCrc_);
+        }
+        if (!mapKnown_)
+            return;
+        // Said to whoever has not heard it. (Those sent the game have no card:
+        // it is nothing to them.)
+        const unsigned here = netlink::clients();
+        mapSaidTo_ &= here;
+        if ((here & ~mapSaidTo_) != 0)
+        {
+            netSay(match_, netEvent(NetEventType::MapSum, 0, static_cast<std::int16_t>(mapHash_ & 0xFFFF),
+                                    static_cast<std::int16_t>(mapHash_ >> 16), static_cast<std::int16_t>(mapCrc_ & 0xFFFF),
+                                    static_cast<std::int16_t>(mapCrc_ >> 16), static_cast<std::int16_t>(mapBytes_ & 0xFFFF),
+                                    static_cast<std::int16_t>(mapBytes_ >> 16)));
+            mapSaidTo_ = here;
+        }
+    }
+
+    HL_TWL_CODE void NetGame::mapSay(std::uint8_t state)
+    {
+        mapSays_ = state;
+        mapSaidAt_ = Global::vblanks();
+        // (How far: of what comes from the host.)
+        const int permille = state == kMapHaveGetting && mapStage_ == MapStage::Getting ? mapBuild_.percent() * 10 : 0;
+        netSay(match_, netEvent(NetEventType::MapHave, state, static_cast<std::int16_t>(permille),
+                                static_cast<std::int16_t>(mapHash_ & 0xFFFF), static_cast<std::int16_t>(mapHash_ >> 16)));
+    }
+
+    HL_TWL_CODE void NetGame::mapForget()
+    {
+        mapSum_.stop();
+        if (takingOn_ && (taking_.from == FetchFrom::MapCard || taking_.from == FetchFrom::MapIndex))
+            fetchDrop();
+        mapBuild_.stop();
+        mapWhole_ = false;
+        mapStage_ = MapStage::None;
+        mapHash_ = mapCrc_ = mapBytes_ = 0;
+        mapKnown_ = false;
+        mapSaidTo_ = 0;
+        mapSays_ = kMapHaveYes;
+        mapName_[0] = 0;
+        mapSent_ = false;
+        mapTries_ = 0;
+        mapStartWait_ = false;
+    }
+
+    HL_TWL_CODE void NetGame::mapOffered(std::uint32_t hash, std::uint32_t crc, std::uint32_t bytes)
+    {
+        // (Said again for someone who came since: as it was.)
+        if (mapKnown_ && hash == mapHash_ && crc == mapCrc_ && bytes == mapBytes_)
+            return;
+        mapForget();
+        mapHash_ = hash;
+        mapCrc_ = crc;
+        mapBytes_ = bytes;
+        mapKnown_ = true;
+        // Sent before: that one.
+        if (mapshare::received(hash, crc, mapName_))
+        {
+            mapSent_ = true;
+            mapSay(kMapHaveYes);
+            return;
+        }
+        mapName_[0] = 0;
+        // The card's own, if it is the host's: what it comes to, to be sure.
+        for (const std::string &map : maps_)
+        {
+            if (nameHash(map.c_str()) != hash || map.size() >= sizeof(mapName_))
+                continue;
+            const std::string path = global.dataDir() + "maps/" + map + ".npac";
+            const std::uint32_t own = mapshare::fileBytes(path.c_str());
+            if (own == 0 || own + kMapCardHeadBytes != bytes)
+                break; // (another length: another map)
+            std::snprintf(mapName_, sizeof(mapName_), "%s", map.c_str());
+            std::uint32_t known = 0;
+            if (mapshare::knownSum(hash, own, known))
+            {
+                if (known == crc)
+                {
+                    mapSay(kMapHaveYes);
+                    return;
+                }
+                break;
+            }
+            if (mapSum_.begin(path.c_str(), map.c_str()))
+            {
+                mapStage_ = MapStage::Own;
+                mapSay(kMapHaveChecking);
+                return;
+            }
+            break;
+        }
+        mapName_[0] = 0;
+        // Else, sent when the match begins.
+        mapNeed();
+    }
+
+    HL_TWL_CODE void NetGame::mapClientFrame()
+    {
+        if (mapOfferNew_ && !starting_)
+        {
+            mapOfferNew_ = false;
+            mapOffered(mapOffer_[0], mapOffer_[1], mapOffer_[2]);
+        }
+        // Its own, found to be the host's or not.
+        if (mapStage_ == MapStage::Own && mapSum_.step())
+        {
+            const bool same = mapSum_.good && mapSum_.crc == mapCrc_ && mapSum_.bytes == mapBytes_;
+            if (mapSum_.good)
+                mapshare::rememberSum(mapHash_, mapSum_.bytes - kMapCardHeadBytes, mapSum_.crc);
+            mapStage_ = MapStage::None;
+            if (same)
+                mapSay(kMapHaveYes);
+            else
+            {
+                // (Another version of it: the host's is sent when the match
+                // begins, and kept apart.)
+                mapName_[0] = 0;
+                mapNeed();
+            }
+        }
+        // What this card has of it, found and copied; then the rest asked for.
+        if (mapStage_ == MapStage::Build)
+        {
+            const MapBuild::Stage build = mapBuild_.step();
+            if (build == MapBuild::Stage::Failed)
+            {
+                mapBuild_.stop();
+                mapStage_ = MapStage::None;
+                mapSay(kMapHaveNoRoom);
+            }
+            else if (build == MapBuild::Stage::Fetching && !takingOn_)
+            {
+                if (mapBuild_.complete())
+                    mapCheck();
+                else
+                {
+                    fetchAsk(FetchFrom::MapCard, mapHash_);
+                    mapStage_ = MapStage::Getting;
+                    mapGotAt_ = Global::vblanks();
+                }
+            }
+        }
+        // All of it here, and what it comes to found: kept -- or, wrong, all
+        // of it from the host (what was copied may have been another version).
+        if (mapStage_ == MapStage::Check && mapSum_.step())
+        {
+            const bool same = mapSum_.good && mapSum_.crc == mapCrc_ && mapSum_.bytes == mapBytes_;
+            mapStage_ = MapStage::None;
+            if (same && mapshare::keep(mapName_, mapCrc_))
+            {
+                mapSent_ = true;
+                mapSay(kMapHaveYes);
+            }
+            else
+            {
+                mapBuild_.stop();
+                mapName_[0] = 0;
+                if (!mapWhole_)
+                {
+                    mapWhole_ = true;
+                    mapNeed();
+                }
+                else if (++mapTries_ < 3)
+                    mapNeed();
+                else
+                    mapSay(kMapHaveCannot);
+            }
+        }
+        // The match begun, waiting for this: on with it, or out.
+        if (mapStartWait_ && starting_ && mapStage_ == MapStage::None)
+        {
+            mapStartWait_ = false;
+            const int said = mapForStart(mapHash_);
+            if (said == 1)
+                startPending_ = true;
+            else if (said == 2 || said == 3)
+            {
+                match_.passedCount = 0;
+                leave();
+                ended_ = said == 3 ? kMapNoRoom : kMapCannot;
+                return;
+            }
+        }
+        // (What it says, again now and then until it has it: the host may
+        // have missed it in a change of map.)
+        if (mapKnown_ && mapSays_ != kMapHaveYes && mapStage_ != MapStage::Getting &&
+            Global::vblanks() - mapSaidAt_ >= 60)
+            mapSay(mapSays_);
+    }
+
+    /// The host's map is not on this card as the host has it: sent when the
+    /// match begins, if there is room for it.
+    HL_TWL_CODE void NetGame::mapNeed()
+    {
+        if (!mapshare::room(mapBytes_))
+        {
+            mapStage_ = MapStage::None;
+            mapSay(kMapHaveNoRoom);
+            return;
+        }
+        mapStage_ = MapStage::Want;
+        mapSay(kMapHaveGetting);
+    }
+
+    /// The host, a match begun: how many consoles with cards are still being
+    /// sent its map (or not yet heard from of it), and how far the slowest is.
+    HL_TWL_CODE bool NetGame::mapWaiting(int &consoles, int &percent) const
+    {
+        consoles = 0;
+        percent = 100;
+        if (match_.rules.demo != 0 || mapHash_ == 0)
+            return false;
+        const unsigned here = netlink::clients() & ~guests_;
+        const std::uint32_t now = Global::vblanks();
+        for (int c = 1; c < kNetPlayers; ++c)
+        {
+            if (!((here >> c) & 1) || now - mapHeardAt_[c] >= kMapQuietVblanks)
+                continue;
+            const std::uint8_t has = mapHave_[c];
+            if (!mapKnown_ || has == kMapHaveGetting || has == kMapHaveChecking || has == kMapUnheard)
+            {
+                ++consoles;
+                const int at = has == kMapHaveGetting ? mapPermille_[c] / 10 : 0;
+                percent = at < percent ? at : percent;
+            }
+        }
+        return consoles > 0;
+    }
+
+    HL_TWL_CODE void NetGame::mapFetchFrame(const FetchHead &head)
+    {
+        if (mapStage_ != MapStage::Getting)
+            return;
+        if (taking_.needsRoom(head))
+        {
+            // (Of another map than the one said: not this.)
+            if (head.packed != mapBytes_ || head.crc != mapCrc_)
+                return;
+            taking_.begin(head);
+        }
+        if (head.id != taking_.id)
+            return;
+        // Where it goes; then what the host is told it has (what was copied,
+        // and what has come).
+        if (!mapBuild_.piece(head.index, head.data, head.count))
+        {
+            fetchDrop();
+            mapBuild_.stop();
+            mapStage_ = MapStage::None;
+            mapSay(kMapHaveNoRoom);
+            return;
+        }
+        mapBuild_.have(taking_.base, taking_.have);
+        if (!mapBuild_.complete())
+            return;
+        fetchSayHave();
+        takingOn_ = false;
+        mapCheck();
+    }
+
+    /// The match begun: its index asked for (what of it this card has is
+    /// copied, the rest sent) -- or, what was copied having been found
+    /// wrong, all of it.
+    HL_TWL_CODE void NetGame::mapAsk()
+    {
+        if (!mapWhole_)
+        {
+            fetchAsk(FetchFrom::MapIndex, mapHash_);
+            mapStage_ = MapStage::Index;
+            return;
+        }
+        if (!mapBuild_.beginWhole(mapBytes_))
+        {
+            mapStage_ = MapStage::None;
+            mapSay(kMapHaveCannot);
+            return;
+        }
+        mapStage_ = MapStage::Build;
+    }
+
+    HL_TWL_CODE void NetGame::mapIndexCame(std::uint8_t *data, std::uint32_t bytes)
+    {
+        if (mapStage_ != MapStage::Index)
+            return;
+        char name[kMapCardHeadBytes];
+        if (!mapCardName(data, name) || nameHash(name) != mapHash_ || !mapBuild_.begin(data, bytes, mapBytes_))
+        {
+            // (Not an archive to be read: all of it sent, as it is.)
+            mapWhole_ = true;
+            mapAsk();
+            return;
+        }
+        mapStage_ = MapStage::Build;
+    }
+
+    /// All of it here: closed, and what it comes to found.
+    HL_TWL_CODE void NetGame::mapCheck()
+    {
+        char part[160];
+        mapshare::partPath(part, sizeof(part));
+        if (!mapBuild_.close() || !mapBuild_.name(mapName_) || nameHash(mapName_) != mapHash_ || !mapSum_.begin(part, mapName_))
+        {
+            mapBuild_.stop();
+            mapName_[0] = 0;
+            mapStage_ = MapStage::None;
+            mapSay(kMapHaveCannot);
+            return;
+        }
+        mapStage_ = MapStage::Check;
+        mapSay(kMapHaveChecking);
+    }
+
+    HL_TWL_CODE bool NetGame::mapReceivingTwl(int &percent, char *step, char *note) const
+    {
+        if (!mapStartWait_ || !starting_ || mapStage_ == MapStage::None)
+            return false;
+        static TWL_DATA const char kAsking[] = "Asking the host for its map", kOwn[] = "Checking this card's map",
+                                   kFinding[] = "Looking for %s on this card", kCopying[] = "Copying %s from this card",
+                                   kReceiving[] = "Receiving %s", kChecking[] = "Checking %s", kFrom[] = "%lu KB from the host",
+                                   kFromRate[] = "%lu KB from the host, %d KB a second", kHosts[] = "the host's map";
+        char name[kMapCardHeadBytes];
+        const char *named = mapBuild_.name(name) ? name : kHosts;
+        percent = 0;
+        note[0] = 0;
+        const MapBuild::Stage build = mapBuild_.stage();
+        if (mapStage_ == MapStage::Own)
+            std::snprintf(step, 64, kOwn);
+        else if (mapStage_ == MapStage::Want || mapStage_ == MapStage::Index)
+            std::snprintf(step, 64, kAsking);
+        else if (mapStage_ == MapStage::Check)
+        {
+            std::snprintf(step, 64, kChecking, named);
+            percent = mapBytes_ == 0 ? 0 : static_cast<int>(static_cast<std::uint64_t>(mapSum_.bytes) * 100u / mapBytes_);
+        }
+        else if (mapStage_ == MapStage::Build && build == MapBuild::Stage::Finding)
+        {
+            std::snprintf(step, 64, kFinding, named);
+            percent = mapBuild_.percent();
+        }
+        else if (mapStage_ == MapStage::Build && build == MapBuild::Stage::Copying)
+        {
+            std::snprintf(step, 64, kCopying, named);
+            percent = mapBuild_.percent();
+        }
+        else
+        {
+            std::snprintf(step, 64, kReceiving, named);
+            percent = mapBuild_.percent();
+        }
+        // What comes from the host, and how fast.
+        if (mapStage_ == MapStage::Getting || (mapStage_ == MapStage::Build && build != MapBuild::Stage::Finding))
+        {
+            const unsigned long kb = (mapBuild_.toCome() + 1023) / 1024;
+            const std::uint32_t frames = Global::vblanks() - mapGotAt_;
+            const int rate = mapStage_ == MapStage::Getting && frames >= 60
+                                 ? static_cast<int>(static_cast<std::uint64_t>(mapBuild_.come()) * 60u / 1024u / frames)
+                                 : 0;
+            if (rate > 0)
+                std::snprintf(note, 64, kFromRate, kb, rate);
+            else
+                std::snprintf(note, 64, kFrom, kb);
+        }
+        return true;
+    }
+
+    bool NetGame::mapLine(char *line, int room) const
+    {
+        return isDSiMode() && mapLineTwl(line, room);
+    }
+
+    bool NetGame::mapReceiving(int &percent, char *step, char *note) const
+    {
+        return isDSiMode() && mapReceivingTwl(percent, step, note);
+    }
+
+    HL_TWL_CODE bool NetGame::mapLineTwl(char *line, int room) const
+    {
+        // (A client's: the host says what it is sending on its STARTING page.)
+        if (phase_ != Phase::Lobby || !mapKnown_ || mapSays_ == kMapHaveYes)
+            return false;
+        if (mapSays_ == kMapHaveNoRoom)
+            std::snprintf(line, static_cast<std::size_t>(room), kMapText, kMapNoRoom);
+        else if (mapSays_ == kMapHaveCannot)
+            std::snprintf(line, static_cast<std::size_t>(room), kMapText, kMapCannot);
+        else if (mapStage_ == MapStage::Getting)
+            std::snprintf(line, static_cast<std::size_t>(room), kMapGetting, mapBuild_.percent());
+        else if (mapStage_ == MapStage::Index || mapStage_ == MapStage::Build || (mapStage_ == MapStage::Want && starting_))
+            std::snprintf(line, static_cast<std::size_t>(room), kMapText, kMapAsking);
+        else if (mapStage_ == MapStage::Want)
+            std::snprintf(line, static_cast<std::size_t>(room), kMapText, kMapLater);
+        else
+            std::snprintf(line, static_cast<std::size_t>(room), kMapText, kMapChecking);
+        return true;
     }
 #endif
 
@@ -1089,6 +1806,11 @@ namespace hlrt
         pictureNext_ = 0;
 #ifndef HLDS_CHILD
         fetchHostStop();
+        // (Out of the game: the host's map, and where a map sent was played from.)
+        if (isDSiMode())
+            mapForget();
+        mapOfferNew_ = false;
+        global.clearMapFile();
 #endif
         for (std::uint32_t &at : kickAt_)
             at = 0;
@@ -1322,8 +2044,18 @@ namespace hlrt
             }
             serveCharacters_ += wanted ? 1 : 0;
         }
-        // Sent (or nobody to send it to): this console's own map now.
+        // Sent (or nobody to send it to): those with cards that have not the
+        // map are sent it next (the frame sees to it), then this console's own.
         serveStage_ = 3;
+        serveCards();
+    }
+
+    void NetGame::serveCards()
+    {
+        int consoles = 0, percent = 0;
+        if (phase_ != Phase::Serving || serveStage_ != 3 || air_.sending() || (isDSiMode() && mapWaiting(consoles, percent)))
+            return;
+        serveStage_ = 4;
         phase_ = Phase::Hosting;
         startPending_ = true;
     }
@@ -1407,6 +2139,12 @@ namespace hlrt
 
     bool NetGame::sending(const char *&what, int &consoles, int &percent) const
     {
+        // (The host's map, to the consoles with cards that have not got it.)
+        if (!air_.sending() && phase_ == Phase::Serving && serveStage_ == 3 && isDSiMode() && mapWaiting(consoles, percent))
+        {
+            what = pendingMap_.c_str();
+            return true;
+        }
         if (!air_.sending())
             return false;
         // (A map's picture is not worth saying: it is a second's.)
@@ -1465,7 +2203,9 @@ namespace hlrt
             return 2;
         }
         const AirSender::Want &want = air_.wants[p];
-        if (air_.sending() && want.on && !want.done)
+        if (phase_ == Phase::Serving && !air_.sending() && mapHave_[p] == kMapHaveGetting)
+            std::snprintf(line, static_cast<std::size_t>(room), "receiving %d%%", mapPermille_[p] / 10);
+        else if (air_.sending() && want.on && !want.done)
             std::snprintf(line, static_cast<std::size_t>(room), "receiving %d%%",
                           air_.pieces() == 0 ? 0 : static_cast<int>(want.base * 100 / air_.pieces()));
         else
@@ -1477,6 +2217,8 @@ namespace hlrt
     void NetGame::start(const std::string &, int, int, int) {}
     void NetGame::cancelStart() {}
     int NetGame::startStatus(int, char *, int) const { return 0; }
+    bool NetGame::mapLine(char *, int) const { return false; }
+    bool NetGame::mapReceiving(int &, char *, char *) const { return false; }
     bool NetGame::sending(const char *&, int &, int &) const { return false; }
     int NetGame::guests() const { return 0; }
     void NetGame::radioLine(char *line, int room) { std::snprintf(line, static_cast<std::size_t>(room), "%s", ""); }
@@ -1708,7 +2450,13 @@ namespace hlrt
             {
                 const unsigned bit = 1u << c;
                 if ((now & bit) && !(clientsWere_ & bit))
+                {
                     netHostJoin(match_.host, c);
+#ifndef HLDS_CHILD
+                    mapHave_[c] = kMapUnheard;
+                    mapHeardAt_[c] = Global::vblanks();
+#endif
+                }
                 else if (!(now & bit) && (clientsWere_ & bit))
                 {
 #ifndef HLDS_CHILD
@@ -1785,6 +2533,14 @@ namespace hlrt
             if (size > 3 && bytes[3] == kNetFrameDemoAck)
             {
                 guest::demoAck(bytes, size);
+                continue;
+            }
+#endif
+#ifndef HLDS_CHILD
+            if (size > 3 && bytes[3] == kNetFrameFetchHave)
+            {
+                if (isHost() && isDSiMode())
+                    mapHaveHeard(from, bytes, size);
                 continue;
             }
 #endif
@@ -1875,15 +2631,33 @@ namespace hlrt
                     if (airSend((ticks_ & 7) == 0 ? kAirServeFrames - 1 : kAirServeFrames) == 0 && (ticks_ & 7) != 0)
                         send();
                 }
+                else if (phase_ == Phase::Serving && serveStage_ == 3)
+                {
+                    // The map's archive, to cards without it, as the guests'
+                    // streams are sent: the game's frame now and then, and
+                    // one whenever there is nothing else, to be answered.
+                    if ((++ticks_ & 7) == 0)
+                        send();
+                    if (fetchHostFrame((ticks_ & 7) == 0 ? kAirServeFrames - 1 : kAirServeFrames) == 0 && (ticks_ & 7) != 0)
+                        send();
+                }
                 else if (!(air_.sending() && (++ticks_ & 1) && airSend(1) > 0))
                     send();
-                fetchHostFrame();
+                if (!(phase_ == Phase::Serving && serveStage_ == 3))
+                    fetchHostFrame();
+                if ((phase_ == Phase::Hosting || phase_ == Phase::Serving) && isDSiMode())
+                    mapHostFrame();
+                serveCards();
 #endif
             }
             else
             {
                 // A client: what a stream's frame asked to be answered, in
                 // place of the game's; and on with what it asks for.
+#ifndef HLDS_CHILD
+                if (phase_ == Phase::Lobby && isDSiMode())
+                    mapClientFrame();
+#endif
                 fetchTick();
                 std::uint8_t reply[kNetReplyBytes];
                 int size = 0;
@@ -1898,6 +2672,12 @@ namespace hlrt
                 // game says -- which is how what is asked for gets through.)
                 else if (match_.rules.demo != 0 && (++ticks_ & 7) != 0)
                     size = guest::demoAnswer(reply);
+#endif
+#ifndef HLDS_CHILD
+                // A map's archive coming: what it has, a frame of its own (the
+                // game's every eighth frame, for its events).
+                if (takingOn_ && taking_.from == FetchFrom::MapCard && (++ticks_ & 7) != 0)
+                    size = mapHaveReply(reply);
 #endif
                 if (size > 0)
                     netlink::send(reply, size);
@@ -2003,6 +2783,24 @@ namespace hlrt
                 fetch_.again(event.from, event.a);
                 continue;
             }
+            if (event.type == NetEventType::MapHave || event.type == NetEventType::MapSum)
+            {
+                if (isDSiMode())
+                    mapHeard(event);
+                else if (event.type == NetEventType::MapSum && !isHost())
+                {
+                    // (A DS: nothing is sent to it -- that is the DSi's memory.
+                    // It has the map by its name, or not: said, so that it is
+                    // not waited for.)
+                    const std::uint32_t hash = static_cast<std::uint16_t>(event.v[0]) |
+                                               static_cast<std::uint32_t>(static_cast<std::uint16_t>(event.v[1])) << 16;
+                    bool own = false;
+                    for (const std::string &map : maps_)
+                        own = own || nameHash(map.c_str()) == hash;
+                    netSay(match_, netEvent(NetEventType::MapHave, own ? kMapHaveYes : kMapHaveCannot, 0, event.v[0], event.v[1]));
+                }
+                continue;
+            }
 #endif
             if (event.type == NetEventType::FetchNone && !isHost())
             {
@@ -2043,18 +2841,30 @@ namespace hlrt
                 (void)hash;
                 continue;
 #endif
+#ifndef HLDS_CHILD
+                // The host's map, as it said it was (a DSi's: mapForStart); else
+                // the card's of its name.
+                global.clearMapFile();
+                const int said = isDSiMode() ? mapForStart(hash) : 0;
+                // (Still being checked, or to be sent: loaded once it is here --
+                // mapClientFrame.)
+                mapStartWait_ = said == 4;
+                if (said == 4)
+                    continue;
                 for (const std::string &map : maps_)
                 {
-                    if (nameHash(map.c_str()) == hash)
+                    if (said == 0 && nameHash(map.c_str()) == hash)
                         pendingMap_ = map;
                 }
                 if (pendingMap_.empty())
                 {
                     match_.passedCount = 0;
                     leave();
-                    ended_ = "This card has not the host's map.";
+                    ended_ = said == 3 ? "There is not enough room on the card for the host's map."
+                                       : "This card has not the host's map.";
                     return;
                 }
+#endif
                 startPending_ = true;
             }
             else if (event.type == NetEventType::Bye && !isHost() && event.from == 0)

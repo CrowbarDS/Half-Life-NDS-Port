@@ -4,6 +4,8 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <string>
 #include <vector>
 
 #include "HlAirBank.hpp"
@@ -220,6 +222,99 @@ int main()
         NetHost host;
         netHostJoin(host, 1);
         check(netHostRead(host, 1, reply, size) && host.clients[1].in.count == kNetClientEvents, "and all of it is heard");
+    }
+    {
+        // A map's archive, as a card has it (FetchFrom::MapCard): its name
+        // first, then the file -- each piece put where it goes as it comes
+        // (a file on the card, here a buffer written at offsets), pieces lost,
+        // late, and heard twice.
+        const Bytes archive = made(50000, 9);
+        std::uint8_t named[kMapCardHeadBytes];
+        mapCardHead("boot_camp", named);
+        Bytes sent(named, named + kMapCardHeadBytes);
+        sent.insert(sent.end(), archive.begin(), archive.end());
+        const std::uint32_t crc = crc32(sent.data(), static_cast<std::uint32_t>(sent.size()));
+        FetchHead head;
+        head.id = 3;
+        head.from = FetchFrom::MapCard;
+        head.what = nameHash("boot_camp");
+        head.packed = head.raw = static_cast<std::uint32_t>(sent.size());
+        head.crc = crc;
+        FetchTaking taking;
+        taking.want(FetchFrom::MapCard, head.what);
+        check(taking.needsRoom(head), "a map's first piece begins it");
+        taking.begin(head);
+        std::uint8_t name[kMapCardHeadBytes] = {};
+        Bytes file(archive.size(), 0);
+        const int pieces = fetchPieces(head.packed);
+        for (int round = 0; round < 40 && !taking.whole(); ++round)
+        {
+            for (int i = 0; i < pieces; ++i)
+            {
+                if (std::rand() % 100 < 30)
+                    continue;
+                const std::uint32_t at = static_cast<std::uint32_t>(i) * kFetchPiece;
+                head.index = static_cast<std::uint16_t>(i);
+                head.count = head.packed - at < kFetchPiece ? static_cast<int>(head.packed - at) : kFetchPiece;
+                head.data = sent.data() + at;
+                for (int twice = 0; twice < 2; ++twice)
+                {
+                    std::uint32_t where = 0;
+                    if (!taking.fits(head, where))
+                        continue;
+                    check(where == at, "a piece goes where it was sent from");
+                    for (int b = 0; b < head.count; ++b)
+                    {
+                        const std::uint32_t to = where + static_cast<std::uint32_t>(b);
+                        if (to < kMapCardHeadBytes)
+                            name[to] = head.data[b];
+                        else
+                            file[to - kMapCardHeadBytes] = head.data[b];
+                    }
+                    taking.mark(head);
+                }
+            }
+        }
+        check(taking.whole() && file == archive, "the archive comes whole, in its file");
+        char got[kMapCardHeadBytes];
+        check(mapCardName(name, got) && std::string(got) == "boot_camp", "and the name it is to be kept as");
+        std::uint32_t running = crc32Update(kCrcStart, name, kMapCardHeadBytes);
+        running = crc32Update(running, file.data(), file.size());
+        check(crc32Finish(running) == crc, "what it came to is what the host said");
+        const std::uint8_t bad[kMapCardHeadBytes] = {'.', '.', '/', 'x'};
+        const std::uint8_t upper[kMapCardHeadBytes] = {'M', 'a', 'p'};
+        std::uint8_t unended[kMapCardHeadBytes];
+        std::memset(unended, 'a', sizeof(unended));
+        const std::uint8_t empty[kMapCardHeadBytes] = {};
+        check(!mapCardName(bad, got) && !mapCardName(upper, got) && !mapCardName(unended, got) && !mapCardName(empty, got),
+              "a name no card file may have is refused");
+    }
+    {
+        // One that begins again part-way (it gave up waiting, and asks anew):
+        // sent its start again, not left waiting for it for ever.
+        FetchHost host;
+        check(host.ask(1, FetchFrom::MapCard, 9), "asks");
+        int who = 0;
+        FetchHost::Asked asked;
+        check(host.nextAsked(who, asked), "its turn");
+        host.begin(who, asked, 9, 60000, 60000, 0, 0);
+        host.have(1, host.sending[0].head.id, 50, 0);
+        check(host.ask(1, FetchFrom::MapCard, 9), "asks again");
+        FetchHost::Sending *s = nullptr;
+        std::uint32_t index = 99;
+        check(host.next(s, index) && index == 0, "and is sent it from its start");
+    }
+    {
+        std::uint8_t bytes[kNetReplyBytes];
+        const int size = fetchHaveWrite(7, 4000, 0x8000000000000001ull, bytes);
+        std::uint8_t id = 0;
+        std::uint32_t base = 0;
+        std::uint64_t bits = 0;
+        check(size > 0 && size <= 32 && fetchHaveRead(bytes, size, id, base, bits) && id == 7 && base == 4000 &&
+                  bits == 0x8000000000000001ull,
+              "what a client has of a map's archive: a small frame, read back");
+        bytes[3] = kNetFrameFetchData;
+        check(!fetchHaveRead(bytes, size, id, base, bits), "a frame of another kind is not one");
     }
     if (g_failures == 0)
         std::printf("test_airfetch: ok\n");

@@ -1024,8 +1024,40 @@ Milestone 11, "levels of detail".
     `swiWaitForVBlank` halts, so `NetRelay` yields each frame. Going
     online is a step a frame (CONNECTING), never a frozen menu. An online
     lobby offers nothing by Download Play: no guests, no SEND GAME. Not yet:
-    a map the client lacks is not sent online, and nothing checks who a
-    console is.
+    nothing checks who a console is.
+  - **The host's map, sent** (`source/net/MapShare.cpp`), on the radio and
+    online alike, to a client with a card that has not got it, or has
+    another version of it. Maps go by their name's hash, so the host says
+    what its map's archive comes to (MapSum: a crc32 of the map's name and
+    its `maps/<map>.npac`, worked out a slice a frame in its lobby, with
+    each member's own crc32 as it goes by); a client checks its own the same
+    way, or finds it among those it was sent before
+    (`maps/net/<map>-<crc>.npac`), and says what it has (MapHave). It is
+    sent when the match begins, as the game is sent to the consoles given
+    it by Download Play: the host stays on its STARTING page ("Sending
+    <map> to 1 console: 45%", each player's "receiving") until nobody is
+    still getting it -- one silent ten seconds is not waited for -- and
+    loads its own after; the client shows what a console given the game
+    shows. Most of an archive is not the map's own: the weapons', the
+    players' and the monsters' models and sounds are in every map's (bounce
+    is 2.4 MB, 2 MB of it found on any card). So the client is sent the
+    archive's index first (`FetchFrom::MapIndex`: its tables, read by
+    `shared/HlNpacIndex.hpp`, and each member's crc32); reads the indexes
+    of the archives on its own card, its own version of that map first;
+    copies each member found with the same path, length and packing, and
+    keeps it if it comes to the host's crc32 (another map's `level.0` is the
+    same length, not the same level); and asks the host for the rest, as
+    anything else is asked for (`FetchFrom::MapCard`), its FetchHave saying
+    it has the pieces it copied, so that the host's window passes them by.
+    What comes is written where it goes, through a buffer, and all of it is
+    checked once it is whole: wrong, it is sent again whole. A client
+    answers each piece with a small frame of its own (`kNetFrameFetchHave`,
+    in place of the game's, as a guest does) rather than an event, which
+    would wait behind the game's. What was sent is never put over the
+    player's own map: it is played from where it was put
+    (`Global::setMapFile`), and kept, one version a map, so the next time
+    nothing is sent. A DSi's alone: the code and its tables are in the
+    DSi's memory, and a DS goes by the map's name as before.
   - **A state** (sixteen bytes: where, facing, how fast, what in hand,
     standing or crouched or dead) goes whole in every frame, so a lost frame
     is replaced by the next. **An event** (a shot, a hit, a death, a pickup,

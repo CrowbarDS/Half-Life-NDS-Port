@@ -46,7 +46,7 @@ namespace hldata
     /// frame of another game, or of another build of this one, is not read.
     /// (Version 2: eight players, profiles, the rules, teams, sprays.)
     inline constexpr std::uint16_t kNetMagic = 0x4C48; // "HL"
-    inline constexpr std::uint8_t kNetVersion = 7;
+    inline constexpr std::uint8_t kNetVersion = 8;
 
     // ------------------------------------------------------------ the state
 
@@ -129,7 +129,12 @@ namespace hldata
         DemoHello, ///< client: `a` 0 who it is, 1 its progress let go of: the console v[0..1]
         DemoHave,  ///< host: to player `a`, v[0] 1 if its progress is held
         DemoWant, ///< client: `a` 1 wanted now, 0 for later: the demo's map of hash v[0..1], from piece v[2..3]
+        MapSum,   ///< host: its map, hash v[0..1], sends as FetchFrom::MapCard: v[2..3] its crc32, v[4..5] its bytes
+        MapHave,  ///< client: of the host's map (hash v[1..2]), `a` kMapHave*; v[0] per mille of it received
     };
+    /// What a client says of the host's map (MapHave's `a`).
+    inline constexpr std::uint8_t kMapHaveChecking = 0, kMapHaveGetting = 1, kMapHaveYes = 2, kMapHaveNoRoom = 3,
+                                  kMapHaveCannot = 4;
 
     /// The rules' flags (Rules' v[1]): the game's mp_weaponstay,
     /// mp_falldamage 1, mp_friendlyfire, mp_flashlight, its autoaim; and

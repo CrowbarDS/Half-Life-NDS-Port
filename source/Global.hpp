@@ -94,8 +94,29 @@ public:
 #else
     std::string dataDir() const { return fatDeviceCPP + "_nds/hl_nds/data/"; }
 #endif
-    /// A map's archive: maps/<name>.npac.
-    std::string mapArchive(const std::string &name) const { return dataDir() + "maps/" + name + ".npac"; }
+    /// A map's archive: maps/<name>.npac -- or, a map a host sent for a
+    /// match (net/MapShare.hpp), the file it was put in.
+    std::string mapArchive(const std::string &name) const
+    {
+#ifndef HLDS_CHILD
+        if (!mapFileName_.empty() && name == mapFileName_)
+            return mapFile_;
+#endif
+        return dataDir() + "maps/" + name + ".npac";
+    }
+#ifndef HLDS_CHILD
+    /// The map `name` is to be read from `path`; clearMapFile: none is.
+    void setMapFile(const char *name, const char *path)
+    {
+        mapFileName_ = name;
+        mapFile_ = path;
+    }
+    void clearMapFile()
+    {
+        mapFileName_.clear();
+        mapFile_.clear();
+    }
+#endif
     /// Inside the archive of the map being played: "level.0", "tex/...",
     /// "spr/...", "mdl/...", "snd/...".
 #ifdef HLDS_CHILD
@@ -155,6 +176,9 @@ public:
 private:
     bool videoReady_ = false;
     std::string mapMounted_; ///< the map whose archive is the "map" drive, if any
+#ifndef HLDS_CHILD
+    std::string mapFileName_, mapFile_; ///< (setMapFile)
+#endif
 };
 
 extern Global global;

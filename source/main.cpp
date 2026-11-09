@@ -827,6 +827,37 @@ namespace
         return LoadResult::Ok;
     }
 
+#ifndef HLDS_CHILD
+    /// A match begun, and this card without the host's map as the host has
+    /// it: it is sent first, and shown as a console sent the game is shown
+    /// its map. False if nothing is being sent.
+    HL_TWL_CODE bool receiveHostMapTwl()
+    {
+        static TWL_DATA const char kTitle[] = "JOINING THE MATCH";
+        int percent = 0;
+        char step[64], note[64];
+        if (!hlrt::netGame.mapReceiving(percent, step, note))
+            return false;
+        int shown = -1;
+        char shownStep[64] = "", shownNote[64] = "";
+        do
+        {
+            if (percent != shown || std::strcmp(step, shownStep) != 0 || std::strcmp(note, shownNote) != 0)
+            {
+                shown = percent;
+                std::memcpy(shownStep, step, sizeof(shownStep));
+                std::memcpy(shownNote, note, sizeof(shownNote));
+                hlrt::bottomScreen.showProgress(kTitle, step, note, percent, 100, false, true);
+            }
+            swiWaitForVBlank();
+            hlrt::sound.frame();
+            hlrt::netGame.frame();
+        } while (hlrt::netGame.mapReceiving(percent, step, note));
+        return true;
+    }
+    bool receiveHostMap() { return isDSiMode() && receiveHostMapTwl(); }
+#endif
+
     /// A match's map loaded, on any console: the others told (a client says
     /// it is ready), and the word to begin waited for, behind the curtain,
     /// the radio heard all the while -- then the match begins on all of
@@ -1839,6 +1870,13 @@ int main(int argc, char *argv[])
                 hlrt::sound.quit();
                 std::exit(0);
             }
+#ifndef HLDS_CHILD
+            // A match begun before this card had the host's map: it first.
+            // (Then loaded below -- or, given up, the lobby again; out of the
+            // game, the menu says why.)
+            if (receiveHostMap() && hlrt::netGame.on() && !hlrt::netGame.startDue())
+                hlrt::menu.openLobby();
+#endif
             // A match: its host has said which map (on the host's own
             // console as on the others).
             std::string map;

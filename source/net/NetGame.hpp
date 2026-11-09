@@ -21,6 +21,7 @@
 #include "HlNetAir.hpp"
 #include "HlNetGame.hpp"
 #include "HlNetMaps.hpp"
+#include "net/MapShare.hpp"
 
 namespace hlrt
 {
@@ -153,6 +154,18 @@ namespace hlrt
         /// STARTING page, while it sends): exchanges sent and done, done
         /// again, refused for a full queue.
         void radioLine(char *line, int room);
+        /// The host's map, sent to a client without it when the match
+        /// begins (net/MapShare.hpp): a client's line for its lobby -- that
+        /// it will be sent, how far it has come, or why it cannot be (false:
+        /// it has it). (The host's: sending(), as for consoles given the game.)
+        bool mapLine(char *line, int room) const;
+        /// A client, a match begun and this card without the host's map: it
+        /// is being sent -- how far, how big, how fast (KB a second), and its
+        /// name (kMapCardHeadBytes) -- for the screen a console sent the game
+        /// shows (main.cpp).
+        bool mapReceiving(int &percent, char *step, char *note) const;
+        /// A match's map is to be loaded now (startAsked will say which).
+        bool startDue() const { return startPending_; }
 #ifdef HLDS_CHILD
         /// A console that was sent the game: a stream the host has begun
         /// sending it, to be taken now (GuestLoad's receiveAir, or a map
@@ -370,8 +383,71 @@ namespace hlrt
         std::uint8_t *fetchData_[hldata::FetchHost::kSending] = {};
         bool fetchFind(const hldata::FetchHost::Asked &asked, std::uint8_t *&data, std::uint32_t &packed, std::uint32_t &raw,
                        std::uint32_t &name);
-        void fetchHostFrame();
+        /// What is asked for, sent: `most` pieces this frame (0: as the air
+        /// has room for). How many were.
+        int fetchHostFrame(int most = 0);
         void fetchHostStop();
+        // A map's archive sent from the card (FetchFrom::MapCard), read
+        // from its file a piece at a time.
+        std::FILE *fetchFile_[hldata::FetchHost::kSending] = {};
+        char fetchName_[hldata::FetchHost::kSending][hldata::kMapCardHeadBytes] = {};
+        bool fetchPiece(int k, std::uint32_t at, std::uint8_t *to, int count);
+
+        // The host's map, as MapShare.hpp has it. The host: what it is
+        // found to come to (said by MapSum), and what each client says it
+        // has of it.
+        MapSum mapSum_;
+        std::uint32_t mapHash_ = 0, mapCrc_ = 0, mapBytes_ = 0;
+        bool mapKnown_ = false;
+        unsigned mapSaidTo_ = 0;
+        std::uint8_t mapHave_[hldata::kNetPlayers] = {};
+        std::uint16_t mapPermille_[hldata::kNetPlayers] = {};
+        std::uint32_t mapHeardAt_[hldata::kNetPlayers] = {};
+        void mapHostFrame();
+        // A client: what the host said of its map, and what this console
+        // has of it -- its own, or one sent (mapName_, kept at mapFile_).
+        enum class MapStage : std::uint8_t
+        {
+            None,     ///< nothing said, or nothing to do
+            Own,      ///< finding what its own maps/<map>.npac comes to
+            Want,     ///< to be asked for (the match begun)
+            Index,    ///< its index, being sent
+            Build,    ///< what this card has of it, found and copied (MapBuild)
+            Getting,  ///< the rest, being sent
+            Check,    ///< all of it here: what it comes to
+        };
+        MapBuild mapBuild_;
+        bool mapWhole_ = false; ///< (what was copied was found wrong: all of it from the host)
+        MapStage mapStage_ = MapStage::None;
+        std::uint8_t mapSays_ = hldata::kMapHaveYes;
+        char mapName_[hldata::kMapCardHeadBytes] = {};
+        bool mapSent_ = false; ///< (mapName_ is one sent, not the card's own)
+        int mapTries_ = 0;
+        std::uint32_t mapOffer_[3] = {}; ///< (the last MapSum heard: hash, crc, bytes)
+        bool mapOfferNew_ = false;
+        bool mapStartWait_ = false; ///< (a match begun before this had the host's map)
+        std::uint32_t mapSaidAt_ = 0;
+        void mapOffered(std::uint32_t hash, std::uint32_t crc, std::uint32_t bytes);
+        void mapClientFrame();
+        void mapSay(std::uint8_t state);
+        void mapFetchFrame(const hldata::FetchHead &head);
+        void mapForget();
+        bool mapLineTwl(char *line, int room) const;
+        bool mapServe(int who, const hldata::FetchHost::Asked &asked);
+        void mapHeard(const hldata::NetEvent &event);
+        int mapForStart(std::uint32_t hash);
+        void mapNeed();
+        bool mapWaiting(int &consoles, int &percent) const;
+        void serveCards();
+        bool mapReceivingTwl(int &percent, char *step, char *note) const;
+        std::uint32_t mapGotAt_ = 0;
+        void mapIndexCame(std::uint8_t *data, std::uint32_t bytes);
+        bool mapIndexFind(const hldata::FetchHost::Asked &asked, std::uint8_t *&data, std::uint32_t &packed, std::uint32_t &raw,
+                          std::uint32_t &name);
+        void mapAsk();
+        void mapHaveHeard(int from, const std::uint8_t *bytes, int size);
+        int mapHaveReply(std::uint8_t *reply);
+        void mapCheck();
 #endif
         // The vote's pictures: had as they are wanted, a few kept.
         std::uint8_t *voteData_[hldata::NetVotePictures::kPlaces] = {};

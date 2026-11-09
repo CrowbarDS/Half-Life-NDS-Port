@@ -97,8 +97,42 @@ namespace hldata
         PictureFull,
         DemoSave,  ///< the file of this console's demo progress (HlDemoSave.hpp)
         VotePicture, ///< the small picture of the `what`-th map of the vote
+        MapCard,   ///< a map's archive as a card has it (maps/<map>.npac), by its name's hash: mapCardHead, then the file
+        MapIndex,  ///< ... its start: mapCardHead, then the archive up to its members' data (HlNpacIndex.hpp)
     };
+    /// What a MapCard sending begins with: the map's name, nul-padded, so a
+    /// console that has not got the map learns what it is called.
+    inline constexpr int kMapCardHeadBytes = 24;
+    inline void mapCardHead(const char *name, std::uint8_t *out)
+    {
+        std::memset(out, 0, kMapCardHeadBytes);
+        for (int i = 0; i < kMapCardHeadBytes - 1 && name[i] != 0; ++i)
+            out[i] = static_cast<std::uint8_t>(name[i]);
+    }
+    /// The name a MapCard head says, if it is one a file may be called on a
+    /// card (a..z, 0..9, _ and -; nul-ended): else false.
+    inline bool mapCardName(const std::uint8_t *head, char *out)
+    {
+        int length = 0;
+        while (length < kMapCardHeadBytes && head[length] != 0)
+        {
+            const char c = static_cast<char>(head[length]);
+            if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-'))
+                return false;
+            out[length] = c;
+            ++length;
+        }
+        if (length == 0 || length >= kMapCardHeadBytes)
+            return false;
+        out[length] = 0;
+        return true;
+    }
     inline constexpr std::uint8_t kNetFrameFetchData = 6;
+    /// A client: of sending `id`, the first piece it lacks and the bits of
+    /// those past it (as FetchHave says) -- a frame of its own, in place of
+    /// the game's, while a map's archive comes: each says all, so one lost
+    /// or late is nothing, and none waits behind the game's events.
+    inline constexpr std::uint8_t kNetFrameFetchHave = 9;
     inline constexpr int kFetchPiece = 600;
     /// Pieces a FetchHave can say of past the first it lacks.
     inline constexpr int kFetchWindow = 64;
@@ -161,6 +195,31 @@ namespace hldata
         return true;
     }
 
+    inline int fetchHaveWrite(std::uint8_t id, std::uint32_t base, std::uint64_t bits, std::uint8_t *bytes,
+                              int size = kNetReplyBytes)
+    {
+        detail::NetOut out{bytes, bytes + size};
+        out.u16(kNetMagic);
+        out.u8(kNetVersion);
+        out.u8(kNetFrameFetchHave);
+        out.u8(id);
+        out.u32(base);
+        out.u32(static_cast<std::uint32_t>(bits));
+        out.u32(static_cast<std::uint32_t>(bits >> 32));
+        return out.ok ? static_cast<int>(out.at - bytes) : 0;
+    }
+    inline bool fetchHaveRead(const std::uint8_t *bytes, int size, std::uint8_t &id, std::uint32_t &base, std::uint64_t &bits)
+    {
+        detail::NetIn in{bytes, bytes + size};
+        if (in.u16() != kNetMagic || in.u8() != kNetVersion || in.u8() != kNetFrameFetchHave)
+            return false;
+        id = static_cast<std::uint8_t>(in.u8());
+        base = in.u32();
+        bits = in.u32();
+        bits |= static_cast<std::uint64_t>(in.u32()) << 32;
+        return in.ok;
+    }
+
     /// The host's side: who wants what. It finds what is asked for, and reads
     /// the pieces this names.
     struct FetchHost
@@ -200,16 +259,16 @@ namespace hldata
         {
             if (who < 1 || who >= kPlayers)
                 return false;
-            // Already being sent: it listens in, from where it has got to.
+            // Already being sent: it listens in. (From the start: one that
+            // asks again has begun again -- from where it had got to, its
+            // next FetchHave says, and that is believed. Kept where it was, a
+            // console that had begun again would never be sent its start.)
             for (Sending &s : sending)
             {
                 if (s.on && s.head.from == from && s.head.what == what)
                 {
-                    if (!s.wants[who].on)
-                    {
-                        s.wants[who] = Want();
-                        s.wants[who].on = true;
-                    }
+                    s.wants[who] = Want();
+                    s.wants[who].on = true;
                     return true;
                 }
             }
@@ -392,12 +451,27 @@ namespace hldata
             const std::uint32_t past = index - w.base - 1;
             return past < kFetchWindow && !((w.have >> past) & 1);
         }
+        /// One someone lacks, going round from the lowest any lacks to the
+        /// window past it (not round all of it: what is past the window is
+        /// wanted by nobody yet, and before it, had).
         static bool pick(Sending &s, std::uint32_t &index)
         {
-            for (int tries = 0; tries < s.pieces; ++tries)
+            std::uint32_t from = static_cast<std::uint32_t>(s.pieces);
+            for (const Want &w : s.wants)
+            {
+                if (w.on && w.base < from)
+                    from = w.base;
+            }
+            const std::uint32_t all = static_cast<std::uint32_t>(s.pieces);
+            if (from >= all)
+                return false;
+            const std::uint32_t end = from + kFetchWindow + 1 < all ? from + kFetchWindow + 1 : all;
+            if (s.cursor < from || s.cursor >= end)
+                s.cursor = from;
+            for (std::uint32_t tries = 0; tries < end - from; ++tries)
             {
                 const std::uint32_t at = s.cursor;
-                s.cursor = static_cast<int>(s.cursor + 1) >= s.pieces ? 0 : s.cursor + 1;
+                s.cursor = at + 1 >= end ? from : at + 1;
                 for (const Want &w : s.wants)
                 {
                     if (lacks(w, at))
@@ -460,17 +534,32 @@ namespace hldata
         /// A piece, into `room`.
         void piece(const FetchHead &head, std::uint8_t *room)
         {
+            std::uint32_t at = 0;
+            if (fits(head, at))
+            {
+                std::memcpy(room + at, head.data, static_cast<std::size_t>(head.count));
+                mark(head);
+            }
+        }
+        /// A piece wanted and as long as it should be: where it goes (from
+        /// the start of what is sent). The caller puts it there, then marks
+        /// it -- if it could (a file that would not take it: not marked, and
+        /// it comes again).
+        bool fits(const FetchHead &head, std::uint32_t &at) const
+        {
             const std::uint32_t index = head.index;
             if (!known || head.id != id || static_cast<int>(index) >= pieces || index < base)
-                return;
-            const std::uint32_t at = index * kFetchPiece;
+                return false;
+            at = index * kFetchPiece;
             const int expect = packed - at < kFetchPiece ? static_cast<int>(packed - at) : kFetchPiece;
             if (head.count != expect)
-                return;
+                return false;
             const std::uint32_t past = index - base;
-            if (past > kFetchWindow || (past > 0 && ((have >> (past - 1)) & 1)))
-                return;
-            std::memcpy(room + at, head.data, static_cast<std::size_t>(expect));
+            return past <= kFetchWindow && (past == 0 || !((have >> (past - 1)) & 1));
+        }
+        void mark(const FetchHead &head)
+        {
+            const std::uint32_t past = head.index - base;
             if (past > 0)
             {
                 have |= std::uint64_t(1) << (past - 1);

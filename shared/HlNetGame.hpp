@@ -967,6 +967,8 @@ namespace hldata
             case NetEventType::DemoWant:
             case NetEventType::DemoHello:
             case NetEventType::DemoHave:
+            case NetEventType::MapSum:
+            case NetEventType::MapHave:
                 if (match.passedCount < NetMatch::kMostNotices)
                     match.passed[match.passedCount++] = event;
                 break;

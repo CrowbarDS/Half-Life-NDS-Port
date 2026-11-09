@@ -457,6 +457,11 @@ namespace hlrt
         int consoles = 0, percent = 0;
         if (netGame.sending(what, consoles, percent))
             sum = sum * 131u + static_cast<unsigned>(consoles * 101 + percent) + static_cast<unsigned char>(what[0]);
+        // (The host's map, being sent: how far.)
+        char line[96];
+        if (netGame.mapLine(line, sizeof(line)))
+            for (const char *c = line; *c != 0; ++c)
+                sum = sum * 31u + static_cast<unsigned char>(*c);
         for (int p = 0; p < kNetPlayers; ++p)
         {
             sum = sum * 7u + static_cast<unsigned>(netGame.bars(p) + 1);
@@ -2257,6 +2262,13 @@ namespace hlrt
                                   consoles == 1 ? "" : "s", percent,
                                   netGame.phase() == NetGame::Phase::Serving ? " The match begins when they have it."
                                                                              : "");
+                drawWrapped(canvas, small, x, y, g.line, 0, kLast, said, inkFor(small, kUiWhite), kWidth);
+                return;
+            }
+            // The host's map, not on this card as the host has it: when it is
+            // sent, and how far it has come.
+            if (!chosen && netGame.mapLine(said, sizeof(said)))
+            {
                 drawWrapped(canvas, small, x, y, g.line, 0, kLast, said, inkFor(small, kUiWhite), kWidth);
                 return;
             }
