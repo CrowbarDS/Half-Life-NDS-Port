@@ -24,8 +24,11 @@ namespace
 
     void vblankHandler()
     {
+        hlaudio::mark(2);
         inputGetAndSend();
+        hlaudio::mark(1);
         Wifi_Update();
+        hlaudio::mark(0);
     }
 } // namespace
 

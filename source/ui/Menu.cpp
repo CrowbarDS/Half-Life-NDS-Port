@@ -13,6 +13,7 @@
 #include "Global.hpp"
 #include "Guard.hpp"
 #include "Settings.hpp"
+#include "audio/Arm7Audio.hpp"
 #include "audio/DspAudio.hpp"
 #include "game/Input.hpp"
 #include "audio/Sound.hpp"
@@ -2663,6 +2664,33 @@ namespace hlrt
     }
 #endif
 
+#ifndef HLDS_CHILD
+    TWL_CODE void Menu::arm7Watch()
+    {
+        const std::uint32_t blocks = arm7Audio.blocksDone();
+        if (blocks != arm7Blocks_)
+        {
+            arm7Blocks_ = blocks;
+            arm7Still_ = 0;
+            return;
+        }
+        // (Shown once, a second after it stopped; and again every 5 s.)
+        if (++arm7Still_ % 300 != 60)
+            return;
+        static TWL_DATA const char *const kWhere[] = {"waiting", "wifi update", "input", "sound"};
+        static TWL_DATA const char kFormat[] = "ARM7 STOPPED %ds, in: %s";
+        const std::uint32_t where = arm7Audio.where();
+        char first[48], second[64];
+        std::snprintf(first, sizeof(first), kFormat, arm7Still_ / 60, where < 4 ? kWhere[where] : "?");
+        hlrt::netrelay::radioCounts(second, static_cast<int>(sizeof(second)));
+        Canvas &canvas = touchCanvas.canvas();
+        const FontView &small = touchCanvas.font(kFontSmall);
+        canvas.fill(0, 146, 256, 2 * (small.height() + 3) + 2, kUiBack);
+        drawTextCentred(canvas, small, 128, 147, first, inkFor(small, kUiOrange));
+        drawTextCentred(canvas, small, 128, 147 + small.height() + 3, second, inkFor(small, kUiOrange));
+    }
+#endif
+
     void Menu::sheetUnask()
     {
 #ifndef HLDS_CHILD
@@ -3936,6 +3964,9 @@ namespace hlrt
             return Action::None;
         }
 #ifndef HLDS_CHILD
+        // (Diagnostic) online: the ARM7 watched.
+        if (netGame.online())
+            arm7Watch();
         // Online: one asking to come in, and the host asked whether to let
         // them -- on its lobby's page, when nothing else is being asked.
         if (page_ == Page::NetHost && sheetAsking_ == 0 && netGame.online())

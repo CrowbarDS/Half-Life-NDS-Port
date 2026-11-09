@@ -85,6 +85,10 @@ namespace hlrt
         /// samples have been put into it, all told.
         const volatile std::int16_t *send() const { return link_ != nullptr ? link_->send : nullptr; }
         std::uint32_t sendWritten() const { return link_ != nullptr ? link_->sendWrite : 0; }
+        /// (Diagnostic) the ARM7's blocks so far, and what it last said it
+        /// was doing (HlAudioLink.hpp, where).
+        std::uint32_t blocksDone() const { return link_ != nullptr ? link_->blocks : 0; }
+        std::uint32_t where() const { return link_ != nullptr ? link_->where : 0; }
 
         /// A DSi's speakers (DSi games only, run as one): whether there are
         /// any; their rate in kHz (32 or 47, changed only while nothing is

@@ -10,4 +10,7 @@ namespace hlaudio
     /// Waits for the next block (2 ms) and does it: the ARM9's commands, the
     /// sounds that ended, the music, the counters.
     void waitAndRun();
+    /// (Diagnostic) what the ARM7 is about to do, for the ARM9 to see if it
+    /// never comes back (HlAudioLink.hpp, where).
+    void mark(unsigned what);
 } // namespace hlaudio

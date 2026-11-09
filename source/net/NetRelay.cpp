@@ -779,6 +779,17 @@ namespace hlrt::netrelay
         sendRaw(bytes, relayAnswerWrite(bytes, s.session, ticket, yes));
     }
 
+    TWL_CODE void radioCounts(char *out, int room)
+    {
+        static TWL_DATA const char kFormat[] = "rx %lu lost %lu tx %lu rej %lu a7 %lu";
+        std::snprintf(out, static_cast<std::size_t>(room), kFormat,
+                      static_cast<unsigned long>(Wifi_GetStats(WSTAT_RXQUEUEDPACKETS)),
+                      static_cast<unsigned long>(Wifi_GetStats(WSTAT_RXQUEUEDLOST)),
+                      static_cast<unsigned long>(Wifi_GetStats(WSTAT_TXQUEUEDPACKETS)),
+                      static_cast<unsigned long>(Wifi_GetStats(WSTAT_TXQUEUEDREJECTED)),
+                      static_cast<unsigned long>(Wifi_GetStats(WSTAT_ARM7_UPDATES)));
+    }
+
     TWL_CODE bool joined()
     {
         pump();
@@ -843,6 +854,11 @@ namespace hlrt::netrelay
     const char *refusedText() { return ""; }
     bool knock(int &, char *) { return false; }
     void answer(int, bool) {}
+    void radioCounts(char *out, int room)
+    {
+        if (room > 0)
+            out[0] = 0;
+    }
     int failStage() { return 1; }
     void shutdown() {}
     void powerDown() {}

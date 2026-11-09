@@ -96,4 +96,7 @@ namespace hlrt::netrelay
     /// kNetTextBytes) -- the same until it is answered.
     bool knock(int &ticket, char *name);
     void answer(int ticket, bool yes);
+
+    /// (Diagnostic) the wireless library's own counts, in a line.
+    void radioCounts(char *out, int room);
 } // namespace hlrt::netrelay

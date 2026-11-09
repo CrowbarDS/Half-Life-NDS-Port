@@ -192,6 +192,11 @@ namespace hlrt
         int admitTicket_ = 0;         ///< online: the knock "let them in?" answers
         /// Online, the host's lobby: one asking to come in, asked about.
         void admitFrame();
+        /// (Diagnostic) online: the ARM7 watched; stopped a second, what it
+        /// was doing said on the screen.
+        void arm7Watch();
+        std::uint32_t arm7Blocks_ = 0;
+        int arm7Still_ = 0;
         char sheetQuestion_[40] = {};
         void openSheet(Page page);
         int &sheetChapter();

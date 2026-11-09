@@ -382,6 +382,13 @@ namespace hlaudio
         TIMER_CR(0) = TIMER_ENABLE | TIMER_DIV_1 | TIMER_IRQ_REQ;
     }
 
+    void mark(unsigned what)
+    {
+        AudioLink *l = link;
+        if (l != nullptr)
+            l->where = what;
+    }
+
     void waitAndRun()
     {
         while (pending == 0)
@@ -394,7 +401,10 @@ namespace hlaudio
         if (l == nullptr)
             return;
         const std::uint32_t began = stamp();
+        const std::uint32_t was = l->where;
+        l->where = 3;
         run(blocks);
+        l->where = was;
         const std::uint32_t took = stamp() - began;
         l->blocks = l->blocks + blocks;
         if (blocks > 1)
