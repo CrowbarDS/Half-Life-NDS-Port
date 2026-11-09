@@ -50,7 +50,7 @@ Auto works only with a TwlBg made by TWPatch, which can be asked through its rtc
 
 ## Quick start
 
-1. **Get the release.** Download the converter for your system from the [Releases](https://github.com/CrowbarDS/Half-Life-NDS-Port/releases) page. It has the ROM built in. The ROM zip is there too, for a console that only needs the ROM. `SHA256SUMS.txt` lists each file's checksum.
+1. **Get the release.** Download the converter for your system from the [download page](https://crowbards.github.io/Half-Life-NDS-Port/download.html), which picks the right file and explains the installation, or from the [Releases](https://github.com/CrowbarDS/Half-Life-NDS-Port/releases) page. It has the ROM built in. The ROM zip is there too, for a console that only needs the ROM. `SHA256SUMS.txt` lists each file's checksum.
 2. **Run the converter on your own Half-Life copy.** Open the installer, which finds your game and your SD card, or use the command line:
 
    ```sh
