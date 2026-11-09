@@ -127,7 +127,7 @@ namespace hlrt
         rules.flags = static_cast<std::uint16_t>(
             (settings.weaponsStay ? kRuleWeaponsStay : 0) | (settings.fallDamage != 0 ? kRuleRealisticFall : 0) |
             (settings.friendlyFire ? kRuleFriendlyFire : 0) | (settings.flashlight ? kRuleFlashlight : 0) |
-            (settings.hostAutoaim ? kRuleAutoaim : 0) | (settings.allowGuests ? kRuleGuests : 0));
+            (settings.hostAutoaim ? kRuleAutoaim : 0) | (guestsOffered() ? kRuleGuests : 0));
         rules.most = settings.maxPlayers;
         rules.frags = static_cast<std::uint8_t>(settings.fragLimit);
         rules.minutes = static_cast<std::uint8_t>(settings.minuteLimit);
@@ -151,7 +151,7 @@ namespace hlrt
         NetRoomInfo room;
         room.mode = rules.mode;
         room.most = match_.rules.most;
-        room.guests = settings.allowGuests;
+        room.guests = guestsOffered();
         if (match_.rules.demo != 0)
         {
             room.mode = static_cast<std::uint8_t>(kNetModeDemoBase + match_.rules.demo - kDemoHazard);
@@ -200,10 +200,12 @@ namespace hlrt
         netlink::useRelay(on);
     }
 
+#ifndef HLDS_CHILD
     bool NetGame::online() const
     {
         return netlink::usingRelay();
     }
+#endif
 
     const char *NetGame::onlineUnavailable() const
     {
@@ -240,6 +242,11 @@ namespace hlrt
         return netrelay::ready();
     }
 #endif
+
+    bool NetGame::guestsOffered() const
+    {
+        return settings.allowGuests && !online();
+    }
 
     bool NetGame::localBlocked() const
     {
@@ -2852,7 +2859,7 @@ namespace hlrt
     {
         voteLetGo();
         int candidates[64];
-        const int count = netNextCandidates(mapInfo_, nameHash(pendingMap_.c_str()), settings.allowGuests, guestRoom(),
+        const int count = netNextCandidates(mapInfo_, nameHash(pendingMap_.c_str()), guestsOffered(), guestRoom(),
                                             candidates, 64);
         if (count == 0)
         {
@@ -2916,7 +2923,7 @@ namespace hlrt
         if (match_.rules.nextMode != kNextRotation)
             return;
         const int at = netNextRotation(mapInfo_, settings.rotation, settings.rotationCount, nameHash(pendingMap_.c_str()),
-                                       settings.allowGuests, guestRoom());
+                                       guestsOffered(), guestRoom());
         if (at < 0)
         {
             nextNone_ = true;

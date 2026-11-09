@@ -1019,7 +1019,9 @@ Milestone 11, "levels of detail".
     console runs reads, is the program's own (`NetLink.cpp`), in memory a DS
     has. What is left costs a DS about 3.0 KB. The stack is a cooperative
     thread of the library's, run only when the program yields:
-    `swiWaitForVBlank` halts, so `NetRelay` yields each frame. Not yet:
+    `swiWaitForVBlank` halts, so `NetRelay` yields each frame. Going
+    online is a step a frame (CONNECTING), never a frozen menu. An online
+    lobby offers nothing by Download Play: no guests, no SEND GAME. Not yet:
     a map the client lacks is not sent online, and nothing checks who a
     console is.
   - **A state** (sixteen bytes: where, facing, how fast, what in hand,

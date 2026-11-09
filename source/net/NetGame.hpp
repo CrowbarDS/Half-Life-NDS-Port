@@ -62,7 +62,11 @@ namespace hlrt
         /// local wireless: for the next host() or scan(). The lobby and the
         /// match are the same either way.
         void setOnline(bool on);
+#ifdef HLDS_CHILD
+        bool online() const { return false; } ///< (a console sent the game never is)
+#else
         bool online() const;
+#endif
         /// Why going online could not be (null if it can), and why it failed
         /// last time.
         const char *onlineUnavailable() const;
@@ -77,6 +81,9 @@ namespace hlrt
         int connectStep(const char *&step);
         void connectCancel();
         bool onlineReady() const;
+        /// Whether consoles without the game are offered it: the setting's
+        /// word, and never online (nothing is sent by Download Play there).
+        bool guestsOffered() const;
         bool host();  ///< be a host; false if the radio would not start
         bool scan();  ///< look for hosts
         /// The hosts found so far: up to `most` of them, each a line to

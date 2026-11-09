@@ -1149,6 +1149,9 @@ namespace hlrt
             if (page == kPageHost && chapter == kHostMatch)
             {
                 count = static_cast<int>(sizeof(kHostRows) / sizeof(kHostRows[0]));
+                // (Online: no Download Play there -- its row, the last, not shown.)
+                if (netGame.online())
+                    --count;
                 return kHostRows;
             }
 #ifndef HLDS_CHILD
@@ -1180,7 +1183,7 @@ namespace hlrt
         bool hostMapFits()
         {
             const int at = hostIndex();
-            return !settings.allowGuests || at < 0 ||
+            return !netGame.guestsOffered() || at < 0 ||
                    netMapOffered(netGame.mapInfo()[static_cast<std::size_t>(at)], true, netGame.guestRoom());
         }
         void setHostMap(int index)
@@ -1630,7 +1633,7 @@ namespace hlrt
                 return true;
             case kNetMap:
             {
-                const int next = netMapStep(netGame.mapInfo(), hostIndex(), step, settings.allowGuests, netGame.guestRoom());
+                const int next = netMapStep(netGame.mapInfo(), hostIndex(), step, netGame.guestsOffered(), netGame.guestRoom());
                 if (next < 0)
                     return false;
                 setHostMap(next);
@@ -3008,7 +3011,7 @@ namespace hlrt
     bool Menu::canSend() const
     {
 #ifndef HLDS_CHILD
-        return settings.allowGuests && dlsend::available();
+        return netGame.guestsOffered() && dlsend::available();
 #else
         return false;
 #endif
@@ -3903,7 +3906,7 @@ namespace hlrt
                 showReason("No map could come next: choose one.");
             if (netGame.nextDue(next))
             {
-                bool fits = !settings.allowGuests;
+                bool fits = !netGame.guestsOffered();
                 for (const NetMapInfo &map : netGame.mapInfo())
                 {
                     if (map.name == next)
@@ -4137,7 +4140,7 @@ namespace hlrt
                 netShown_ = netSignature();
                 // (A console sent the game come, gone, or said what it has
                 // room for: a map it cannot hold gives way to one it can.)
-                if (page_ == Page::NetHost && settings.allowGuests && !hostMapFits())
+                if (page_ == Page::NetHost && netGame.guestsOffered() && !hostMapFits())
                 {
                     const int kept = netMapKept(netGame.mapInfo(), hostIndex(), true, netGame.guestRoom());
                     if (kept >= 0)
