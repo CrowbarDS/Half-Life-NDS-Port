@@ -44,6 +44,17 @@ namespace
     /// What the relay sent `to` among `out`, of `kind`.
     std::vector<std::vector<std::uint8_t>> sentTo(const std::vector<Out> &out, const Address &to, RelayKind kind);
 
+    /// Whether all the relay said among `out` is Unknown (its head alone), and
+    /// there is `count` of it.
+    bool onlyUnknown(const std::vector<Out> &out, std::size_t count)
+    {
+        for (const Out &one : out)
+            if (one.bytes.size() != static_cast<std::size_t>(kRelayHeadBytes) ||
+                one.bytes[3] != static_cast<std::uint8_t>(RelayKind::Unknown))
+                return false;
+        return out.size() == count;
+    }
+
     /// Each test console's session, by relay.
     std::map<std::pair<const Relay *, int>, std::uint32_t> g_sessions;
     std::uint32_t g_nonce = 0x5000;
@@ -280,8 +291,8 @@ namespace
         relay.receive(at(2), bytes, relaySmallWrite(bytes, RelayKind::Ping, 999), now, out);
         relay.receive(at(2), bytes, relaySmallWrite(bytes, RelayKind::Bye, 999), now, out);
         relay.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Bye, 998), now, out);
-        check(out.empty() && relay.peers() == 2 && relay.rooms() == 1,
-              "a datagram in another session than the console's there: nothing done, nothing said");
+        check(onlyUnknown(out, 1) && out[0].to == at(2) && relay.peers() == 2 && relay.rooms() == 1,
+              "a datagram in another session than the console's there: nothing done; told it is not known, once");
 
         // A console started again at the same address comes in again: it is
         // a new one.
@@ -912,11 +923,11 @@ namespace
                     said += static_cast<int>(one.bytes.size());
                 small = small && said <= size;
                 if (kind != static_cast<int>(RelayKind::Hello))
-                    quiet = quiet && out.empty();
+                    quiet = quiet && onlyUnknown(out, out.size());
             }
         }
         check(quiet && relay.peers() == 0,
-              "a console not known: nothing answered but a Hello, and nothing kept (an Enter needs a good cookie)");
+              "a console not known: nothing answered but a Hello (and Unknown), and nothing kept (an Enter needs a good cookie)");
         check(small, "... and no answer bigger than what it was sent, whatever it was");
 
         // The cookie.
@@ -973,8 +984,8 @@ namespace
         relay.receive(at(1), bytes, relaySmallWrite(bytes, RelayKind::Ping, session), now + window, out);
         check(sentTo(out, at(1), RelayKind::Pong).size() == 1, "... and from then on, in its session, it is answered");
         out.clear();
-        relay.receive(at(1), bytes, relaySmallWrite(bytes, RelayKind::Ping, nonce), now + window, out);
-        check(out.empty(), "... not in another");
+        relay.receive(at(1), bytes, relaySmallWrite(bytes, RelayKind::Ping, nonce), now + window + 2000, out);
+        check(onlyUnknown(out, 1), "... not in another (told it is not known)");
 
         // Another relay (or this one started again): another secret, other
         // cookies and sessions.
@@ -1283,6 +1294,38 @@ namespace
         return byes.size() == 1 ? relaySmallRead(byes[0].data(), static_cast<int>(byes[0].size())) : -1;
     }
 
+    void testUnknown()
+    {
+        g_sessions.clear();
+        Relay relay;
+        std::vector<Out> out;
+        std::uint8_t bytes[kRelayMostBytes];
+        std::uint32_t now = 400000;
+        relay.receive(at(1), bytes, relaySmallWrite(bytes, RelayKind::Ping, 0x77u), now, out);
+        RelayHead head;
+        check(out.size() == 1 && out[0].to == at(1) && out[0].bytes.size() == static_cast<std::size_t>(kRelayHeadBytes) &&
+                  relayHeadRead(out[0].bytes.data(), kRelayHeadBytes, head) && head.kind == RelayKind::Unknown &&
+                  head.session == 0x77u && relay.peers() == 0,
+              "a console's Ping from where none is known: told so, in its own session, its head alone; nothing kept");
+        out.clear();
+        relay.receive(at(1), bytes, relaySmallWrite(bytes, RelayKind::Ping, 0x77u), now + 999, out);
+        check(out.empty(), "... said again within the second: not told again");
+        relay.receive(at(1), bytes, relaySmallWrite(bytes, RelayKind::Ping, 0x77u), now + 1000, out);
+        check(out.size() == 1, "... a second later, told again");
+        bool none = true;
+        const RelayKind relayOnly[] = {RelayKind::Pong, RelayKind::Opened, RelayKind::Rooms, RelayKind::Joined,
+                                       RelayKind::Refused, RelayKind::Status, RelayKind::Knock, RelayKind::Bye,
+                                       RelayKind::Challenge, RelayKind::Welcome, RelayKind::Unknown};
+        int n = 10;
+        for (RelayKind kind : relayOnly)
+        {
+            out.clear();
+            relay.receive(at(n++), bytes, relaySmallWrite(bytes, kind, 1), now, out);
+            none = none && out.empty();
+        }
+        check(none, "... but what only a relay says (or a Bye): never answered (no two relays answering for ever)");
+    }
+
     void testByeReasons()
     {
         g_sessions.clear();
@@ -1307,7 +1350,7 @@ namespace
                   "... and its clients let go with it (they come in again for whatever they do next)");
             out.clear();
             relay.receive(at(1), bytes, relaySmallWrite(bytes, RelayKind::Ping, comeIn(relay, 1, now)), now, out);
-            check(out.empty(), "... one of them still in its old session: not known");
+            check(onlyUnknown(out, 1), "... one of them still in its old session: told it is not known");
         }
         g_sessions.clear();
         {
@@ -1394,6 +1437,7 @@ int main()
     testLimits();
     testOutBudget();
     testByeReasons();
+    testUnknown();
     std::printf("%s (%d failed)\n", g_failures == 0 ? "PASS" : "FAIL", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

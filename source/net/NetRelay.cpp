@@ -56,6 +56,15 @@ namespace hlrt::netrelay
         constexpr std::uint32_t kAnswerFrames = 5 * 60; ///< for the relay to answer
         constexpr int kRingSlots = 24;
         constexpr int kHeardSlots = 12; ///< voice packets come, not yet read
+        /// Nothing from the relay for this long, while listening: it is taken
+        /// for gone (it answers a Ping each second).
+        constexpr std::uint32_t kRelayQuietFrames = 10 * 60;
+        /// Coming in, not answered for this long: given up.
+        constexpr std::uint32_t kEnterFrames = 10 * 60;
+        // Why it was let go, apart from the relay's own reasons (RelayBye).
+        constexpr std::uint8_t kByeForgotten = 250; ///< the relay does not know it (Unknown)
+        constexpr std::uint8_t kByeNoAnswer = 251;  ///< nothing heard from the relay
+        constexpr std::uint8_t kByeWifi = 252;      ///< the console's Wi-Fi connection went
 
         enum class Role : std::uint8_t
         {
@@ -93,6 +102,13 @@ namespace hlrt::netrelay
             std::uint8_t entering; ///< 0: not coming in; 1: saying Hello; 2: Enter
             std::uint8_t enterTries;
             std::uint32_t lastEnter;
+            std::uint32_t enterSince;
+            /// When the relay was last heard (in its session), and when the
+            /// Wi-Fi was last looked at, and how many times in a row it was down.
+            std::uint32_t lastHeard;
+            std::uint32_t lastPing;
+            std::uint32_t lastWifiLook;
+            std::uint8_t wifiDown;
             std::uint8_t cookie[kRelayCookieBytes];
             std::uint8_t token[kRelayTokenBytes];
             /// The relay's version, if it answered that it speaks another; 0: not.
@@ -248,7 +264,19 @@ namespace hlrt::netrelay
             s.in = false;
             s.entering = 1;
             s.enterTries = 0;
+            s.enterSince = Global::vblanks();
             sendEntering();
+        }
+
+        /// No longer known to the relay, or no longer reaching it: `why`
+        /// kept for the menu (letGo).
+        TWL_CODE void letGoNow(std::uint8_t why)
+        {
+            s.byeWhy = why;
+            s.in = false;
+            s.entering = 0;
+            if (s.role == Role::Client)
+                s.byeNow = true;
         }
 
         /// Coming in: said again until answered (each half a second). An Enter
@@ -320,6 +348,7 @@ namespace hlrt::netrelay
                 return false;
             if (!s.in && head.kind != RelayKind::Challenge && head.kind != RelayKind::Welcome)
                 return false;
+            s.lastHeard = Global::vblanks();
             switch (head.kind)
             {
             case RelayKind::Challenge:
@@ -338,6 +367,7 @@ namespace hlrt::netrelay
                     s.session = session;
                     s.entering = 0;
                     s.in = true;
+                    s.wifiDown = 0;
                     sayRole();
                 }
                 break;
@@ -436,6 +466,11 @@ namespace hlrt::netrelay
                 s.heardTail = next;
                 break;
             }
+            case RelayKind::Unknown:
+                // The relay does not know it: started again, or it let it go
+                // without its hearing.
+                letGoNow(kByeForgotten);
+                break;
             case RelayKind::Bye:
             {
                 // Let go: no longer known to the relay (whatever it does
@@ -484,10 +519,39 @@ namespace hlrt::netrelay
             const std::uint32_t now = Global::vblanks();
             if (now == s.lastPump)
                 return;
+            // (Not listening for a while -- a map loading, nothing asked of
+            // the relay: the relay's silence meanwhile is not counted.)
+            if (now - s.lastPump > 60)
+                s.lastHeard = now;
             s.lastPump = now;
             drain();
+            if (s.in)
+            {
+                // The relay answers a Ping each second: nothing for long
+                // while listening, it is gone. And the console's own Wi-Fi.
+                if (now - s.lastHeard >= kRelayQuietFrames)
+                    letGoNow(kByeNoAnswer);
+                else if (now - s.lastWifiLook >= 60)
+                {
+                    s.lastWifiLook = now;
+                    s.wifiDown = Wifi_AssocStatus() == ASSOCSTATUS_ASSOCIATED ? 0 : s.wifiDown + 1;
+                    if (s.wifiDown >= 2)
+                        letGoNow(kByeWifi);
+                }
+            }
+            // (Looking for games: let go, it looks again -- a relay started
+            // again is back in the list once it is there.)
+            if (!s.in && s.role == Role::Scan && s.byeWhy != 0)
+            {
+                s.byeWhy = 0;
+                s.roomCount = 0;
+                beginEnter();
+            }
             if (!s.in)
             {
+                // Coming in not answered for long: given up (a host, a client).
+                if (s.entering != 0 && s.role != Role::Scan && now - s.enterSince >= kEnterFrames)
+                    letGoNow(kByeNoAnswer);
                 stepEnter(now);
                 return;
             }
@@ -513,9 +577,15 @@ namespace hlrt::netrelay
             default:
                 break;
             }
-            // (Something every second at least, or the relay lets it go.)
-            if (now - s.lastSent >= 60)
+            // (A Ping each second, whatever else is sent: the relay lets go
+            // of a console it does not hear, and its Pong is what says the
+            // relay is there -- a client hears nothing else while its host
+            // loads a map.)
+            if (now - s.lastPing >= 60)
+            {
                 sendSmall(RelayKind::Ping);
+                s.lastPing = now;
+            }
         }
 
         TWL_CODE void closeSocket()
@@ -638,7 +708,7 @@ namespace hlrt::netrelay
                 else if (s.in)
                 {
                     started = true;
-                    s.lastPump = s.lastSent = now;
+                    s.lastPump = s.lastSent = s.lastHeard = s.lastPing = s.lastWifiLook = now;
                     failCode = 0;
                     whyText[0] = 0;
                     phase = Connect::Ready;
@@ -949,6 +1019,9 @@ namespace hlrt::netrelay
         static TWL_DATA const char kExpired[] = "The room closed: nobody joined it for a long time.";
         static TWL_DATA const char kStopping[] = "The relay was stopped (restarted or updated).";
         static TWL_DATA const char kOther[] = "The relay let this console go.";
+        static TWL_DATA const char kForgot[] = "The relay was restarted, or lost this console.";
+        static TWL_DATA const char kQuiet[] = "The relay stopped answering.";
+        static TWL_DATA const char kWifi[] = "The Wi-Fi connection was lost.";
         if (!started || s.byeWhy == 0)
             return nullptr;
         switch (static_cast<RelayBye>(s.byeWhy))
@@ -959,6 +1032,13 @@ namespace hlrt::netrelay
         case RelayBye::Silent: return kSilent;
         case RelayBye::RoomExpired: return kExpired;
         case RelayBye::RelayStopping: return kStopping;
+        default: break;
+        }
+        switch (s.byeWhy)
+        {
+        case kByeForgotten: return kForgot;
+        case kByeNoAnswer: return kQuiet;
+        case kByeWifi: return kWifi;
         default: return kOther;
         }
     }

@@ -81,8 +81,29 @@ namespace hldata
         Challenge = 19, ///< relay: the cookie (kRelayCookieBytes) to send back
         Enter = 20,     ///< console, its nonce for session: the cookie, and a token (0: none) (kRelayEnterBytes)
         Welcome = 21,   ///< relay, to the nonce: your session (u32), and your token (u64)
+        Unknown = 22,   ///< relay: I do not know you (in that session, at that address): its head alone
     };
-    inline constexpr RelayKind kRelayLastKind = RelayKind::Welcome;
+    inline constexpr RelayKind kRelayLastKind = RelayKind::Unknown;
+    /// Whether a console says `kind` (not only the relay): what the relay
+    /// answers with Unknown if it does not know who says it.
+    inline bool relayConsoleSays(RelayKind kind)
+    {
+        switch (kind)
+        {
+        case RelayKind::Ping:
+        case RelayKind::Open:
+        case RelayKind::List:
+        case RelayKind::Join:
+        case RelayKind::Admit:
+        case RelayKind::Kick:
+        case RelayKind::Data:
+        case RelayKind::Answer:
+        case RelayKind::Voice:
+            return true;
+        default:
+            return false;
+        }
+    }
 
     /// `Admit`'s byte: bit 0, more are let in; bit 1, they may talk (Voice is
     /// passed on). A host says it again with its room, now and then.

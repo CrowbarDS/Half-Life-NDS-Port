@@ -47,6 +47,14 @@ its host left or stopped answering, its host sent it away, it said nothing
 for too long, or the relay is stopping (Ctrl-C, or `systemctl stop`) -- and
 the console goes back to the menu saying so.
 
+A console the relay does not know -- one let go without hearing it, or any
+after the relay was started again (it then knows nobody) -- is told so
+(`Unknown`, at most once a second to an address), and goes back to the menu
+saying the relay was restarted. A console that hears nothing from the relay
+for ten seconds while it is listening (it pings each second), or whose Wi-Fi
+connection goes, goes back to the menu too. One looking for games just looks
+again.
+
 ## Limits
 
 What a game needs, with room to spare; what is over is let fall (and

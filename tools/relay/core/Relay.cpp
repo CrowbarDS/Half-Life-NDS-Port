@@ -161,7 +161,7 @@ namespace hlrelay
         note(shown(at) + " over its limit (" + why + "): what is over is let fall");
     }
 
-    bool Relay::sayVersion(const Address &from, std::uint32_t nowMs)
+    bool Relay::mayAnswer(const Address &from, std::uint32_t nowMs)
     {
         if (nowMs - versionSecondMs_ >= 1000)
         {
@@ -391,7 +391,7 @@ namespace hlrelay
         if (relayOtherVersion(bytes, size))
         {
             ++drops_.otherVersion;
-            if (sayVersion(from, nowMs))
+            if (mayAnswer(from, nowMs))
             {
                 std::uint8_t version[kRelayHeadBytes];
                 say(out, from, version, relayVersionWrite(version, relayGet32(bytes + 4)));
@@ -436,7 +436,15 @@ namespace hlrelay
         Peer *me = peer(from);
         if (me == nullptr || me->session != head.session)
         {
+            // (Told so, now and then: a console that was let go without
+            // hearing it, or whose relay was started again, or whose router
+            // gave it another port, knows to come in again.)
             ++drops_.unknown;
+            if (relayConsoleSays(head.kind) && mayAnswer(from, nowMs))
+            {
+                std::uint8_t unknown[kRelayHeadBytes];
+                say(out, from, unknown, relaySmallWrite(unknown, RelayKind::Unknown, head.session));
+            }
             return;
         }
         me->heardMs = nowMs;
