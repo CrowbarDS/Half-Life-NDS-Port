@@ -13,6 +13,7 @@
 #include "HlNetGame.hpp"
 #include "HlRelay.hpp"
 #include "Relay.hpp"
+#include "Serve.hpp"
 
 using namespace hldata;
 using hlrelay::Address;
@@ -640,6 +641,80 @@ namespace
                   iniNumber(bad, sizeof(bad) - 1, "port2", 7, 1, 65535) == 7,
               "... a number out of range, or not one: the default");
     }
+
+    /// A socket that holds what has come, and says sending failed when told to.
+    struct PretendSocket : hlrelay::Socket
+    {
+        std::deque<std::pair<Address, std::vector<std::uint8_t>>> waiting;
+        std::vector<Out> sent;
+        bool failing = false;
+        int receive(Address &from, std::uint8_t *bytes, int room) override
+        {
+            if (waiting.empty())
+                return 0;
+            const auto &one = waiting.front();
+            const int size = static_cast<int>(one.second.size()) < room ? static_cast<int>(one.second.size()) : room;
+            from = one.first;
+            std::memcpy(bytes, one.second.data(), static_cast<std::size_t>(size));
+            waiting.pop_front();
+            return size;
+        }
+        bool send(const Address &to, const std::uint8_t *bytes, int size) override
+        {
+            if (failing)
+                return false;
+            sent.push_back({to, std::vector<std::uint8_t>(bytes, bytes + size)});
+            return true;
+        }
+    };
+
+    void testServeRound()
+    {
+        using hlrelay::Serve;
+        Relay relay;
+        PretendSocket socket;
+        std::uint32_t now = 1000;
+        Serve serve(relay, socket, now);
+        std::vector<Out> out;
+        const std::uint32_t id = open(relay, 0, "Gordon", 8, now, out);
+        out.clear();
+
+        // A flood: more than a round reads.
+        std::uint8_t ping[kRelayHeadBytes];
+        const int pingSize = relaySmallWrite(ping, RelayKind::Ping, 0x1000u);
+        for (int i = 0; i < Serve::kMostPerRound * 3 + 10; ++i)
+            socket.waiting.push_back({at(1), std::vector<std::uint8_t>(ping, ping + pingSize)});
+        now += Relay::kStatusMs; // (the host is due to be told who is there)
+        const bool more = serve.round(now);
+        check(more && serve.received == static_cast<std::uint64_t>(Serve::kMostPerRound) &&
+                  socket.waiting.size() == static_cast<std::size_t>(Serve::kMostPerRound * 2 + 10),
+              "a flood: one round reads no more than its share, and says more may be waiting");
+        check(!sentTo(socket.sent, at(0), RelayKind::Status).empty(),
+              "... and the relay's clock still ran in it (the host told who is there)");
+        check(serve.sent == socket.sent.size() && serve.sendFailed == 0, "... what it had to say, sent and counted");
+
+        // Rounds until it has read everything: each one ends.
+        int rounds = 1;
+        while (serve.round(now) && rounds < 100)
+            ++rounds;
+        check(socket.waiting.empty() && rounds == 3 && serve.fullRounds == 3,
+              "... the rest read in the rounds after, the last not full");
+
+        // The clock: not before its time.
+        socket.sent.clear();
+        serve.round(now + Serve::kTickMs - 1);
+        check(socket.sent.empty(), "nothing come and the clock not due: nothing said");
+        serve.round(now + Serve::kTickMs + 1000);
+        check(!sentTo(socket.sent, at(0), RelayKind::Status).empty(), "... once due, the clock runs");
+
+        // A send that fails is counted, not retried.
+        socket.failing = true;
+        socket.waiting.push_back({at(1), std::vector<std::uint8_t>(ping, ping + pingSize)});
+        const std::uint64_t failedBefore = serve.sendFailed;
+        serve.round(now + 2 * Serve::kTickMs + 1000);
+        check(serve.sendFailed > failedBefore && relay.rooms() == 1 && id != 0,
+              "a send that fails is counted, and the relay goes on");
+    }
 } // namespace
 
 int main()
@@ -650,6 +725,7 @@ int main()
     testVoice();
     testLobbyThroughRelay();
     testIni();
+    testServeRound();
     std::printf("%s (%d failed)\n", g_failures == 0 ? "PASS" : "FAIL", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

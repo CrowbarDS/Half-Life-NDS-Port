@@ -18,6 +18,7 @@
 #include <string>
 
 #include "Relay.hpp"
+#include "Serve.hpp"
 
 namespace
 {
@@ -29,6 +30,37 @@ namespace
         using namespace std::chrono;
         return static_cast<std::uint32_t>(duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
     }
+
+    /// The relay's UDP socket, as Serve reads and sends through it.
+    class PosixSocket : public hlrelay::Socket
+    {
+    public:
+        explicit PosixSocket(int fd) : fd_(fd) {}
+        int receive(hlrelay::Address &from, std::uint8_t *bytes, int room) override
+        {
+            sockaddr_in at = {};
+            socklen_t atSize = sizeof(at);
+            const ssize_t size = ::recvfrom(fd_, bytes, static_cast<std::size_t>(room), MSG_DONTWAIT,
+                                            reinterpret_cast<sockaddr *>(&at), &atSize);
+            if (size <= 0)
+                return 0;
+            from.ip = ntohl(at.sin_addr.s_addr);
+            from.port = ntohs(at.sin_port);
+            return static_cast<int>(size);
+        }
+        bool send(const hlrelay::Address &to, const std::uint8_t *bytes, int size) override
+        {
+            sockaddr_in at = {};
+            at.sin_family = AF_INET;
+            at.sin_addr.s_addr = htonl(to.ip);
+            at.sin_port = htons(to.port);
+            return ::sendto(fd_, bytes, static_cast<std::size_t>(size), MSG_DONTWAIT,
+                            reinterpret_cast<sockaddr *>(&at), sizeof(at)) == size;
+        }
+
+    private:
+        int fd_;
+    };
 
     void usage()
     {
@@ -103,44 +135,15 @@ int main(int argc, char **argv)
         std::fflush(stdout);
     }
 
-    std::vector<hlrelay::Out> out;
-    std::uint8_t bytes[2048];
-    std::uint32_t lastTick = nowMs();
+    PosixSocket socket(sock);
+    hlrelay::Serve serve(relay, socket, nowMs());
+    bool more = false;
     while (!g_stop)
     {
+        // (More may be waiting after a full round: no wait then.)
         pollfd fd = {sock, POLLIN, 0};
-        const int ready = ::poll(&fd, 1, 100);
-        if (ready > 0 && (fd.revents & POLLIN))
-        {
-            for (;;)
-            {
-                sockaddr_in from = {};
-                socklen_t fromSize = sizeof(from);
-                const ssize_t size = ::recvfrom(sock, bytes, sizeof(bytes), MSG_DONTWAIT,
-                                                reinterpret_cast<sockaddr *>(&from), &fromSize);
-                if (size <= 0)
-                    break;
-                hlrelay::Address at;
-                at.ip = ntohl(from.sin_addr.s_addr);
-                at.port = ntohs(from.sin_port);
-                relay.receive(at, bytes, static_cast<int>(size), nowMs(), out);
-            }
-        }
-        const std::uint32_t now = nowMs();
-        if (now - lastTick >= 100)
-        {
-            relay.tick(now, out);
-            lastTick = now;
-        }
-        for (const hlrelay::Out &one : out)
-        {
-            sockaddr_in to = {};
-            to.sin_family = AF_INET;
-            to.sin_addr.s_addr = htonl(one.to.ip);
-            to.sin_port = htons(one.to.port);
-            ::sendto(sock, one.bytes.data(), one.bytes.size(), 0, reinterpret_cast<sockaddr *>(&to), sizeof(to));
-        }
-        out.clear();
+        ::poll(&fd, 1, more ? 0 : static_cast<int>(hlrelay::Serve::kTickMs));
+        more = serve.round(nowMs());
     }
     ::close(sock);
     return 0;
