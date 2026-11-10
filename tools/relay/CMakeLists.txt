@@ -37,6 +37,12 @@ endif()
 add_executable(hlds-relay main.cpp)
 target_link_libraries(hlds-relay PRIVATE hlds_relay_core)
 
+# Rooms of make-believe consoles playing through a relay over UDP: how much
+# it keeps up with (loadtest/loadtest.cpp; README's "Load test").
+add_executable(hlds-relay-loadtest loadtest/loadtest.cpp)
+target_include_directories(hlds-relay-loadtest PRIVATE "${REPO_ROOT}/shared" "${REPO_ROOT}/thirdparty")
+target_compile_definitions(hlds-relay-loadtest PRIVATE _LITTLE_ENDIAN)
+
 # The relay under libFuzzer, for long runs by hand (clang only; not a ctest):
 #   CXX=clang++ cmake -S tools/relay -B build/relay-fuzz -DHLDS_RELAY_LIBFUZZER=ON
 #   cmake --build build/relay-fuzz --target relay_libfuzzer
@@ -64,4 +70,9 @@ if(HLDS_BUILD_TESTS)
         target_link_libraries(${test_name} PRIVATE hlds_relay_core)
         add_test(NAME ${test_name} COMMAND ${test_name})
     endforeach()
+    # (A short one, the relay started by the test itself: that it serves two
+    # full rooms over real UDP, a map being sent in one go, with little lost.)
+    add_test(NAME relay_loadtest_smoke
+             COMMAND hlds-relay-loadtest --spawn $<TARGET_FILE:hlds-relay> --rooms 2 --players 8 --seconds 3 --map
+                     --most-loss 2)
 endif()

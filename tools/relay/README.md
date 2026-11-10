@@ -167,6 +167,93 @@ mkdir -p build/relay-fuzz/corpus
 build/relay-fuzz/relay_libfuzzer build/relay-fuzz/corpus -max_total_time=600
 ```
 
+## Load test
+
+`hlds-relay-loadtest` plays rooms of make-believe consoles through a relay
+over real UDP, as the game does. Each console has an address of its own on
+the loopback (`127.1.<room>.<n>`), so the limits for one address do not get
+in the way. In each room the host sends a frame of 720 bytes each 60th of a
+second and each client one of 220, with a ping each second. With `--map`
+the host also sends four map pieces of 620 bytes with each frame, as it
+does sending a map. Each frame says when it was sent and its number: the
+tool reports what was lost, how late what came was, and the relay's CPU.
+
+```sh
+build/relay/hlds-relay --port 27500 &
+build/relay/hlds-relay-loadtest --relay 127.0.0.1:27500 --relay-pid $! --rooms 30 --players 8 --seconds 30
+build/relay/hlds-relay-loadtest --spawn build/relay/hlds-relay --rooms 8 --map     # (it starts its own relay)
+build/relay/hlds-relay-loadtest --spawn build/relay/hlds-relay --rooms 8 --flood 20000
+```
+
+| option | |
+|---|---|
+| `--relay HOST:PORT` | where the relay is (127.0.0.1:27500) |
+| `--spawn PATH` | start this relay on a port of its own, and stop it after |
+| `--rooms N`, `--players P` | how many rooms (up to 250), and consoles in each (2 to 8) |
+| `--seconds S` | how long, after three seconds to come in and join |
+| `--map` | hosts send a map as they play |
+| `--flood PPS` | strangers' datagrams a second on top (pings in made-up sessions, Hellos, noise) |
+| `--relay-pid PID` | the relay's process, to read its CPU |
+| `--most-loss PERCENT` | fail above this loss (5) |
+
+`ctest` runs a short one (two full rooms, a map being sent, three seconds).
+
+Measured 2026-11-10, relay and test on one laptop (Intel Core i7-1165G7, loopback):
+
+| load | out | lost | late, 99 in 100 | relay CPU |
+|---|---|---|---|---|
+| 30 rooms of 8, a match | 11.8 MB/s | 0 | 3.4 ms | 29% of a core |
+| 30 rooms of 8, every host sending a map | 42.7 MB/s | 0 (\*) | 7.7 ms | 52% |
+| 8 rooms of 8, and 20,000 strangers' datagrams a second | 3.1 MB/s | 0 | 3.9 ms | 17% |
+
+(\*) With `--limit out-bytes-per-s=200000000`. At the default of 12 MB/s,
+the relay sends no more than that and lets the rest fall: about eight rooms
+can send a map at once.
+
+A small VM is slower than this PC, and its link and its provider's traffic
+allowance decide more than its CPU: run the load test against it from
+outside before opening it to players.
+
+## A bad network, by hand (`tc netem`)
+
+Linux can make a network interface slow and lossy on purpose (as root).
+To try the relay and the consoles on a bad Internet connection, at home:
+
+```sh
+# On the PC running the relay, on the interface the DSi reaches it by
+# (ip link shows the names: wlan0, enp3s0...). What goes OUT of it: the
+# relay's datagrams to the consoles.
+sudo tc qdisc add dev wlan0 root netem delay 80ms 20ms distribution normal loss 2%
+
+# Change it as it runs (worse):
+sudo tc qdisc change dev wlan0 root netem delay 150ms 40ms loss 5% duplicate 1% reorder 5%
+
+# And ALWAYS take it off afterwards (it stays until then, for everything):
+sudo tc qdisc del dev wlan0 root
+```
+
+- `delay 80ms 20ms distribution normal`: each datagram 80 ms late, give or
+  take 20, as over a long way.
+- `loss 2%`: 2 in 100 lost.
+- `duplicate`, `reorder`: some sent twice, some overtaken.
+
+It only touches what goes out of that interface. To do the same to what
+comes in as well, run it on the router, or on both ends.
+
+With the load test, all on the one PC: the loopback (`dev lo`) carries
+both ways, so each figure counts twice, and every program using the
+loopback is slowed too while it is on:
+
+```sh
+sudo tc qdisc add dev lo root netem delay 40ms 10ms loss 1%
+build/relay/hlds-relay-loadtest --spawn build/relay/hlds-relay --rooms 4 --most-loss 10
+sudo tc qdisc del dev lo root
+```
+
+What to look for: on the consoles, a match that goes on (with some
+stutter) at 150 ms and 5% loss; on the relay, no `went quiet` for a console
+that is still there.
+
 ## The console's side
 
 The card says where the relay is, in `_nds/hl_nds/data/server.ini` (see
