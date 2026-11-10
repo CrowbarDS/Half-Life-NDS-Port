@@ -59,6 +59,7 @@ namespace hlrelay
     private:
         struct Peer
         {
+            std::uint32_t id = 0; ///< its number here, for as long as it is known (never 0)
             Address at;
             std::uint32_t session = 0;
             std::uint32_t heardMs = 0;
@@ -71,7 +72,7 @@ namespace hlrelay
         /// A console at a room's door, waiting for its host's answer.
         struct Knock
         {
-            std::uint64_t peer = 0; ///< 0: none
+            std::uint32_t peer = 0; ///< its console's id; 0: none
             char name[hldata::kNetTextBytes] = {};
             std::uint8_t ticket = 0;
             std::uint32_t sinceMs = 0, saidMs = 0;
@@ -79,11 +80,11 @@ namespace hlrelay
         struct Room
         {
             std::uint32_t id = 0;
-            std::uint64_t host = 0; ///< its host's key
+            std::uint32_t host = 0; ///< its host's id
             hldata::RelayOpen open;
             bool admit = true;
             bool voice = false; ///< its host lets them talk
-            std::uint64_t clients[hldata::kNetPlayers] = {}; ///< by slot (0 unused); 0: nobody
+            std::uint32_t clients[hldata::kNetPlayers] = {}; ///< ids by slot (0 unused); 0: nobody
             std::uint32_t statusMs = 0;
             Knock knocks[hldata::kRelayKnocksMost];
             std::uint8_t nextTicket = 1;
@@ -91,7 +92,10 @@ namespace hlrelay
             unsigned mask() const;
         };
 
+        /// The console at `at`, if the relay knows one there.
         Peer *peer(const Address &at);
+        /// A console by its number; null if there is none.
+        Peer *byId(std::uint32_t id);
         void leave(Peer &peer, std::vector<Out> &out, bool told);
         /// `peer` no longer at a door: its knock forgotten (and, `refused`,
         /// it is told why).
@@ -99,13 +103,18 @@ namespace hlrelay
         void knock(const Room &room, const Knock &knock, std::vector<Out> &out);
         /// `peer` let into `room`, or told why not.
         void admitInto(Room &room, Peer &peer, std::uint32_t nowMs, std::vector<Out> &out);
-        void drop(std::uint64_t key, std::vector<Out> &out, bool told);
+        void drop(std::uint32_t id, std::vector<Out> &out, bool told);
         void status(Room &room, std::uint32_t nowMs, std::vector<Out> &out);
         void say(std::vector<Out> &out, const Peer &to, const std::uint8_t *bytes, int size);
         void note(const std::string &line);
 
-        std::map<std::uint64_t, Peer> peers_;
+        // The consoles by id, and which is at each address. (Rooms and knocks
+        // name a console by its id, so that it may come from another address
+        // and keep its place.)
+        std::map<std::uint32_t, Peer> peers_;
+        std::map<std::uint64_t, std::uint32_t> at_;
         std::map<std::uint32_t, Room> rooms_;
         std::uint32_t nextRoom_ = 1;
+        std::uint32_t nextPeer_ = 1;
     };
 } // namespace hlrelay
