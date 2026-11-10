@@ -86,7 +86,9 @@ namespace hlrt::voice
             s.read = 0;
             s.encoder = hldata::VoiceEncoder{};
             s.on = true;
-            soundMicPowerOn();
+            // (The ARM7 powers the microphone itself: libnds's
+            // soundMicPowerOn holds its interrupts off for 20 ms, and the
+            // sound stutters.)
             arm7Audio.micOn(&ring.r);
         }
 
@@ -95,23 +97,42 @@ namespace hlrt::voice
             if (!s.on)
                 return;
             arm7Audio.micOff();
-            soundMicPowerOff();
             s.on = false;
         }
 
-        /// What was heard, a packet at a time.
+        /// What was heard, a packet at a time. At the DSi's faster output
+        /// rate the microphone's 11901 Hz is brought down to two thirds of
+        /// it, 7934 Hz (two samples of every three: the first, and the mean
+        /// of the other two), so that a voice costs the same whichever rate
+        /// the console plays at.
         HL_TWL_CODE void cutPackets()
         {
             hldata::VoiceMicRing &r = seen();
             const std::uint32_t write = r.write;
+            const std::uint32_t heardRate = r.rate;
+            const bool fast = heardRate > 10000;
+            const std::uint32_t need = fast ? kVoiceSamples * 3 / 2 : kVoiceSamples;
+            const std::uint16_t rate = static_cast<std::uint16_t>(fast ? heardRate * 2 / 3 : heardRate);
             // (Too far behind: the oldest let go of, what is newest kept.)
-            if (write - s.read > kVoiceMicRing - kVoiceSamples)
-                s.read = write - kVoiceSamples;
-            while (write - s.read >= static_cast<std::uint32_t>(kVoiceSamples) && r.rate != 0)
+            if (write - s.read > kVoiceMicRing - need)
+                s.read = write - need;
+            while (write - s.read >= need && heardRate != 0)
             {
-                for (int i = 0; i < kVoiceSamples; ++i)
-                    s.cut[i] = r.samples[(s.read + static_cast<std::uint32_t>(i)) % kVoiceMicRing];
-                s.read += kVoiceSamples;
+                auto at = [&](std::uint32_t i) -> int { return r.samples[(s.read + i) % kVoiceMicRing]; };
+                if (fast)
+                {
+                    for (std::uint32_t k = 0; k < kVoiceSamples / 2; ++k)
+                    {
+                        s.cut[2 * k] = static_cast<std::int16_t>(at(3 * k));
+                        s.cut[2 * k + 1] = static_cast<std::int16_t>((at(3 * k + 1) + at(3 * k + 2)) >> 1);
+                    }
+                }
+                else
+                {
+                    for (std::uint32_t i = 0; i < kVoiceSamples; ++i)
+                        s.cut[i] = static_cast<std::int16_t>(at(i));
+                }
+                s.read += need;
                 // (No room: the oldest waiting goes -- what is late is not worth sending.)
                 if (s.count == kPackets)
                 {
@@ -120,7 +141,7 @@ namespace hlrt::voice
                 }
                 Packet &p = s.packets[(s.head + s.count) % kPackets];
                 hldata::voiceEncode(s.encoder, s.cut, kVoiceSamples, p.bytes);
-                p.rate = static_cast<std::uint16_t>(r.rate);
+                p.rate = rate;
                 ++s.count;
             }
         }

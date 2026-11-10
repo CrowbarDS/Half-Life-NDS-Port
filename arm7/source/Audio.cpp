@@ -231,33 +231,99 @@ namespace hlaudio
 
         /// What the microphone hears (MicOn), or null.
         VoiceMicRing *volatile micRing = nullptr;
+        /// Samples still to be let go: what the converter says while it
+        /// settles, the first 20 ms after it is powered.
+        volatile int micSettle = 0;
+        constexpr std::uint16_t kMicRun = MICCNT_ENABLE | MICCNT_FORMAT_NORMAL | MICCNT_FREQ_DIV(3) |
+                                          MICCNT_ENABLE_IRQ | MICCNT_ENABLE_IRQ2; // (the IRQ at half-full)
+        /// The converter's gain: 27.5 dB, as GBATEK suggests (a DSi's own
+        /// microphone at libnds's 33.5 clips on a voice near it).
+        constexpr std::uint8_t kMicGain = 55;
 
-        /// The microphone's samples since the last block, into its ring (a
-        /// block's are 16 or 24: the FIFO holds more).
-        void micDrain()
+        /// What the microphone's FIFO holds, into its ring. Its interrupt
+        /// (half-full: eight words) -- the FIFO holds only 16 words, 2.7 ms
+        /// at the faster rate, less than a block can be late by.
+        void micTake()
         {
             VoiceMicRing *ring = micRing;
             if (ring == nullptr)
                 return;
             std::uint32_t write = ring->write;
-            for (int n = 0; n < 32 && !(REG_MICCNT & MICCNT_EMPTY); ++n)
+            int settle = micSettle;
+            for (int n = 0; n < 16 && !(REG_MICCNT & MICCNT_EMPTY); ++n)
             {
                 const std::uint32_t pair = REG_MICDATA;
+                if (settle > 0)
+                {
+                    settle -= 2;
+                    continue;
+                }
                 ring->samples[write % kVoiceMicRing] = static_cast<std::int16_t>(pair & 0xFFFF);
                 ring->samples[(write + 1) % kVoiceMicRing] = static_cast<std::int16_t>(pair >> 16);
                 write += 2;
             }
-            // (Too long away: what was lost is lost, and it goes on.)
-            if (REG_MICCNT & MICCNT_OVERRUN)
-                REG_MICCNT = static_cast<std::uint16_t>(REG_MICCNT | MICCNT_CLEAR_FIFO);
+            micSettle = settle;
             ring->write = write;
+        }
+
+        /// Each block: the FIFO overrun (its interrupt held off too long),
+        /// it has stopped -- it is cleared and started again, which it
+        /// takes only while off.
+        void micKeep()
+        {
+            if (micRing == nullptr || !(REG_MICCNT & MICCNT_OVERRUN))
+                return;
+            const int ime = enterCriticalSection();
+            micTake();
+            REG_MICCNT = 0;
+            REG_MICCNT = MICCNT_CLEAR_FIFO;
+            REG_MICCNT = kMicRun;
+            leaveCriticalSection(ime);
+        }
+
+        /// The microphone's converter powered (what libnds's micSetAmp does,
+        /// but without waiting 20 ms for it with the interrupts off: what it
+        /// says meanwhile is let go instead). Briefly with the interrupts
+        /// off: the touch screen is read through the same codec, in the
+        /// vertical blank.
+        void micPower(bool on)
+        {
+            const int ime = enterCriticalSection();
+            if (on)
+            {
+                // The converter's clock dividers set as the output's, as the
+                // firmware leaves them. libnds's change to 47 kHz powers them
+                // down, which is meant to have the converter share the
+                // output's clock -- but on a DSi it then gives a new sample
+                // only every tenth or so (seen 2026-11-10: each value held
+                // ten times over, a buzz in place of the voice; a 3DS's
+                // codec does not mind).
+                const std::uint8_t ndac = cdcReadReg(CDC_CONTROL, CDC_CONTROL_DAC_NDAC);
+                const std::uint8_t mdac = cdcReadReg(CDC_CONTROL, CDC_CONTROL_DAC_MDAC);
+                cdcWriteReg(CDC_CONTROL, CDC_CONTROL_ADC_NADC, static_cast<std::uint8_t>(ndac | 0x80));
+                cdcWriteReg(CDC_CONTROL, CDC_CONTROL_ADC_MADC, static_cast<std::uint8_t>(mdac | 0x80));
+                cdcWriteReg(CDC_SOUND, CDC_SOUND_MIC_BIAS, 0x03);
+                cdcWriteReg(CDC_CONTROL, CDC_CONTROL_ADC_MIC, 0x80);
+                cdcWriteReg(CDC_CONTROL, CDC_CONTROL_ADC_VOL_FINE, 0x00);
+                cdcWriteReg(CDC_SOUND, CDC_SOUND_MIC_GAIN, kMicGain);
+            }
+            else
+            {
+                cdcWriteReg(CDC_CONTROL, CDC_CONTROL_ADC_VOL_FINE, 0x80);
+                cdcWriteReg(CDC_CONTROL, CDC_CONTROL_ADC_MIC, 0x00);
+                cdcWriteReg(CDC_SOUND, CDC_SOUND_MIC_BIAS, 0x00);
+            }
+            leaveCriticalSection(ime);
         }
 
         void micStop()
         {
-            if (isDSiMode())
-                REG_MICCNT = 0;
+            if (!isDSiMode() || micRing == nullptr)
+                return;
+            irqDisableAUX(IRQ_MICEXT);
+            REG_MICCNT = 0;
             micRing = nullptr;
+            micPower(false);
         }
 
         void run(std::uint32_t blocks)
@@ -360,11 +426,16 @@ namespace hlaudio
                         // A quarter of the output's rate: 8182 Hz, or 11901
                         // at the DSi's higher one.
                         VoiceMicRing *ring = reinterpret_cast<VoiceMicRing *>(command.a);
+                        if (micRing == nullptr)
+                            micPower(true);
                         REG_MICCNT = 0;
                         REG_MICCNT = MICCNT_CLEAR_FIFO;
                         ring->rate = ((REG_SNDEXTCNT & SNDEXTCNT_FREQ_47KHZ) ? 47605u : 32728u) / 4u;
+                        micSettle = 640; // (54 ms at 11901 Hz, 78 at 8182: the converter settling, the button's click)
                         micRing = ring;
-                        REG_MICCNT = MICCNT_ENABLE | MICCNT_FORMAT_NORMAL | MICCNT_FREQ_DIV(3);
+                        irqSetAUX(IRQ_MICEXT, micTake);
+                        irqEnableAUX(IRQ_MICEXT);
+                        REG_MICCNT = kMicRun;
                     }
                     break;
                 case AudioOp::MicOff:
@@ -446,7 +517,7 @@ namespace hlaudio
         const std::uint32_t was = l->where;
         l->where = 3;
         run(blocks);
-        micDrain();
+        micKeep();
         l->where = was;
         const std::uint32_t took = static_cast<std::uint32_t>(static_cast<std::uint16_t>(stamp() - began)) * kStampTicks;
         l->blocks = l->blocks + blocks;
