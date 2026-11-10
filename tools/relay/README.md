@@ -466,8 +466,13 @@ host = relay.example.org
 port = 27500
 ```
 
-Without the file, MULTIPLAYER's ONLINE tile is greyed out and says why. The
-converter's installer never writes or removes it.
+Without the file, MULTIPLAYER's ONLINE tile is greyed out and says why.
+
+The converter writes it when it installs the game on a card that has none,
+saying the project's own relay (`hlds::install::kRelayHost`, in
+`tools/hlds-convert/install/Install.hpp`). A card that already has one keeps
+it, whatever it says: to play through another relay, edit the file, and the
+converter leaves it alone from then on.
 
 ## Testing on one PC
 

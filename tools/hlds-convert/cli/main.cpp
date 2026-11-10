@@ -12,6 +12,7 @@
 
 #include "HlUi.hpp"
 #include "BundledRom.hpp"
+#include "Install.hpp"
 #include "RomHeader.hpp"
 #include "HlLevelReader.hpp"
 #include "hlds/TextureFamily.hpp"
@@ -49,7 +50,8 @@ namespace
                      "      <card root>/_nds/hl_nds/data/: one archive a map in maps/, one for\n"
                      "      what every map shares, the music and the manifest. The console's\n"
                      "      program built into this converter (a release's) goes to the card's\n"
-                     "      root, if the one there is not that one.\n"
+                     "      root, if the one there is not that one; and server.ini, which says\n"
+                     "      where the relay for online play is, unless the card has one.\n"
                      "      --device <console> the console the card is for, which the program is\n"
                      "                         made for: dsi, 3ds, ds (a DS, DS Lite or DS\n"
                      "                         flashcard) or emulator. Default ds, which every\n"
@@ -485,6 +487,19 @@ namespace
         // The program the data is for, if one is built in, made for the console.
         if (!install::bundledRom().empty() && putConsoleProgram(options.cardRoot, device, deviceTold) != 0)
             return 1;
+        // Where the relay for online play is, unless the card says already.
+        {
+            std::string why;
+            const install::IniPut ini = install::putServerIni(options.cardRoot, why);
+            if (ini == install::IniPut::Failed)
+            {
+                std::fprintf(stderr, "error: server.ini: %s\n", why.c_str());
+                return 1;
+            }
+            std::printf("online play: %s\n", ini == install::IniPut::Written
+                                                  ? "server.ini says the project's relay"
+                                                  : "the card's own server.ini is kept");
+        }
         return failed == 0 ? 0 : 1;
     }
 

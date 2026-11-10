@@ -486,4 +486,26 @@ namespace hlds::install
         }
         return RomPut::Written;
     }
+    IniPut putServerIni(const fs::path &card, std::string &why)
+    {
+        const fs::path file = card / "_nds" / "hl_nds" / "data" / "server.ini";
+        std::error_code ec;
+        if (fs::exists(file, ec))
+            return IniPut::Kept;
+        fs::create_directories(file.parent_path(), ec);
+        std::ofstream out(file, std::ios::binary | std::ios::trunc);
+        out << "# Where the relay for online play is: the project's own, put here by the\n"
+               "# converter. To play through another, change it (the converter never writes\n"
+               "# over this file once it is here).\n"
+               "host = "
+            << kRelayHost << "\nport = " << kRelayPort << "\n";
+        if (!out.flush())
+        {
+            why = "cannot write " + file.string();
+            out.close();
+            fs::remove(file, ec);
+            return IniPut::Failed;
+        }
+        return IniPut::Written;
+    }
 } // namespace hlds::install

@@ -220,6 +220,18 @@ bool InstallWorker::copy(QString &why)
         why = QString::fromStdString(error);
         return false;
     }
+    // Where the relay for online play is, unless the card says already.
+    {
+        std::string iniWhy;
+        const hlds::install::IniPut ini = hlds::install::putServerIni(toPath(job_.card), iniWhy);
+        if (ini == hlds::install::IniPut::Failed)
+        {
+            why = QString::fromStdString(iniWhy);
+            return false;
+        }
+        emit logLine(ini == hlds::install::IniPut::Written ? QStringLiteral("Online play: the project's relay")
+                                                           : QStringLiteral("Online play: the card's own server.ini is kept"));
+    }
 #ifndef Q_OS_WIN
     // All of it on the card itself, not waiting in the system's memory.
     ::sync();

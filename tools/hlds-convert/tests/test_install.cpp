@@ -360,6 +360,22 @@ namespace
               "a card's program made for another console is written again, not left as it was");
     }
 
+    /// Where the relay is: written when the card has nothing, never over
+    /// what it has.
+    void testServerIni(const fs::path &root)
+    {
+        const fs::path file = root / "card" / "_nds" / "hl_nds" / "data" / "server.ini";
+        std::string why;
+        const std::string want = std::string("host = ") + kRelayHost + "\nport = " + std::to_string(kRelayPort) + "\n";
+        check(putServerIni(root / "card", why) == IniPut::Written && read(file).find(want) != std::string::npos,
+              "a card with no server.ini is given the project's relay");
+        put(file, "host = my.own.relay\n");
+        check(putServerIni(root / "card", why) == IniPut::Kept && read(file) == "host = my.own.relay\n",
+              "... and one that says another relay is kept as it is");
+        put(root / "blocked", "a file, not a folder");
+        check(putServerIni(root / "blocked", why) == IniPut::Failed && !why.empty(), "a card that cannot be written says why");
+    }
+
     void testParts()
     {
         check(partOfMap("t0a0b1") == Part::HazardCourse, "Hazard Course");
@@ -384,6 +400,7 @@ int main()
     testCopy(root / "c");
     testRomPut(root / "r");
     testRomFor(root / "h");
+    testServerIni(root / "s");
     testParts();
     fs::remove_all(root, ec);
     if (failures == 0)

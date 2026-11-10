@@ -122,4 +122,20 @@ namespace hlds::install
     /// the next run carries on. False, and why, if it did not finish.
     bool runCopy(const CopyPlan &plan, const CopyProgress &progress, const std::atomic<bool> *cancel,
                  std::string &why);
+    // ------------------------------------------------------------- online
+    /// The project's relay for online play (tools/relay), which a card is
+    /// given unless it says another.
+    inline constexpr const char *kRelayHost = "164.132.255.209";
+    inline constexpr int kRelayPort = 27500;
+
+    enum class IniPut
+    {
+        Kept,    ///< the card says where its relay is already: left as it is
+        Written, ///< there was none: the project's, now
+        Failed,
+    };
+    /// `<card>/_nds/hl_nds/data/server.ini`, saying where the relay is (the
+    /// console's ONLINE needs it), unless the card has one: one that says
+    /// another relay is the player's own choice, and is never written over.
+    IniPut putServerIni(const std::filesystem::path &card, std::string &why);
 } // namespace hlds::install
