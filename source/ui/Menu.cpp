@@ -170,6 +170,7 @@ namespace hlrt
             kNetJoinOnline, ///< ... or look for one
             kNetCancelConnect, ///< CONNECTING's: give up going online
             kChat,             ///< the match's pause page: CHAT
+            kNetIdle,          ///< HOST's MATCH: players doing nothing sent away after
         };
         struct Row
         {
@@ -1065,6 +1066,7 @@ namespace hlrt
                                  {Kind::Value, kNetAim, "Autoaim"},
 #ifndef HLDS_CHILD
                                  {Kind::Value, kNetVoice, "Voice chat"},
+                                 {Kind::Value, kNetIdle, "Idle players"},
 #endif
                                  {Kind::Value, kNetSkill, "Difficulty"},
                                  {Kind::Value, kNetGuests, "Download Play players"}};
@@ -1362,6 +1364,12 @@ namespace hlrt
             case kNetAim: std::snprintf(out, size, "%s", settings.hostAutoaim ? "on" : "off"); break;
 #ifndef HLDS_CHILD
             case kNetVoice: std::snprintf(out, size, "%s", settings.hostVoice ? "on" : "off"); break;
+            case kNetIdle:
+                if (settings.hostIdleMinutes == 0)
+                    std::snprintf(out, size, "kept");
+                else
+                    std::snprintf(out, size, "out after %d min", settings.hostIdleMinutes);
+                break;
 #endif
             case kNetGuests: std::snprintf(out, size, "%s", settings.allowGuests ? "let in" : "not let in"); break;
             case kNetTeam:
@@ -1545,6 +1553,7 @@ namespace hlrt
             case kNetAim: return "Whether the guns' aim bends towards a player near it.";
 #ifndef HLDS_CHILD
             case kNetVoice: return "Online: whether the players may talk, holding TALK (in SPRAY's place) or its button.";
+            case kNetIdle: return "Whether a player who neither moves, turns nor changes weapon is sent away, and after how long.";
 #endif
             case kNetSkill: return "How hard the map's chargers and anything of its own are, on every console.";
             case kNetGuests:
@@ -1781,6 +1790,15 @@ namespace hlrt
             case kNetAim: settings.hostAutoaim = !settings.hostAutoaim; netGame.hostChanged(); return true;
 #ifndef HLDS_CHILD
             case kNetVoice: settings.hostVoice = !settings.hostVoice; netGame.hostChanged(); return true;
+            case kNetIdle:
+            {
+                constexpr int kSteps = static_cast<int>(sizeof(kIdleSteps));
+                int at = 0;
+                for (int i = 0; i < kSteps; ++i)
+                    at = kIdleSteps[i] == settings.hostIdleMinutes ? i : at;
+                settings.hostIdleMinutes = kIdleSteps[(at + kSteps + (step < 0 ? -1 : 1)) % kSteps];
+                return true;
+            }
 #endif
             case kNetGuests:
                 if (hostDead(id) != nullptr)

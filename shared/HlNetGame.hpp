@@ -43,7 +43,8 @@ namespace hldata
     /// A host's Bye, its first value: nothing, it has left; to one console,
     /// it will not have it (the game is full, or it has let it go); to all,
     /// it is off to send the game, and will be back.
-    inline constexpr int kNetRefuseFull = 1, kNetRefuseKicked = 2, kNetByeBackSoon = 3, kNetRefuseLate = 4, kNetRefuseNoRoom = 5;
+    inline constexpr int kNetRefuseFull = 1, kNetRefuseKicked = 2, kNetByeBackSoon = 3, kNetRefuseLate = 4, kNetRefuseNoRoom = 5,
+                         kNetRefuseIdle = 6; ///< (sent away for doing nothing: the host's setting)
 
     inline constexpr int kNetSprayWaitMs = 30000; ///< a spray, then none until this long after (decalfrequency)
     inline constexpr int kNetSprayReach = 128;    ///< how far off a wall may be sprayed
@@ -1030,7 +1031,8 @@ namespace hldata
             case NetEventType::Bye:
                 // (The host's to a client it will not have: for that one
                 // alone, and the match goes on for the rest.)
-                if (from == 0 && (event.v[0] == kNetRefuseFull || event.v[0] == kNetRefuseKicked || event.v[0] == kNetRefuseLate || event.v[0] == kNetRefuseNoRoom))
+                if (from == 0 && (event.v[0] == kNetRefuseFull || event.v[0] == kNetRefuseKicked || event.v[0] == kNetRefuseLate ||
+                                  event.v[0] == kNetRefuseNoRoom || event.v[0] == kNetRefuseIdle))
                 {
                     if (event.a != match.me || match.me == 0)
                         break;
@@ -1099,6 +1101,39 @@ namespace hldata
     /// Become the host, or a client. A client is told by the host which
     /// player it is; `token` is what it calls itself until then (anything
     /// but 0, and not what another client is likely to choose).
+    /// (The host's.) Whether a player is doing nothing: neither moving,
+    /// turning nor changing weapon, as its frames say. A player is idle once
+    /// that has lasted the host's minutes (Settings: hostIdleMinutes).
+    struct NetIdleWatch
+    {
+        std::int16_t pos[3] = {0, 0, 0};
+        std::uint16_t yaw = 0;
+        std::int8_t pitch = 0;
+        std::uint8_t weapon = 0;
+        std::uint32_t since = 0; ///< when it last did something (or was not counted)
+
+        /// The player as last heard, at `now` (any clock, in `most`'s
+        /// units); `counting`: whether it is to be counted now (in a match,
+        /// its map loaded). True once it has done nothing for `most` (0:
+        /// never).
+        bool step(const NetPlayer &p, bool counting, std::uint32_t now, std::uint32_t most)
+        {
+            const bool same = pos[0] == p.pos[0] && pos[1] == p.pos[1] && pos[2] == p.pos[2] && yaw == p.yaw &&
+                              pitch == p.pitch && weapon == p.weapon;
+            if (!counting || most == 0 || !same)
+            {
+                for (int i = 0; i < 3; ++i)
+                    pos[i] = p.pos[i];
+                yaw = p.yaw;
+                pitch = p.pitch;
+                weapon = p.weapon;
+                since = now;
+                return false;
+            }
+            return now - since >= most;
+        }
+    };
+
     inline void netBegin(NetMatch &match, NetMatch::Role role, std::uint16_t token, const char *name)
     {
         renew(match);

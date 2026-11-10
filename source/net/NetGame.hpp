@@ -489,6 +489,11 @@ namespace hlrt
         static constexpr std::uint32_t kReadyVblanks = 30 * 60;
         void dropLate(int p); ///< (not let go for good, as kick: it never said it was ready)
 #ifndef HLDS_CHILD
+        // (The host's.) Players doing nothing in a match: sent away after
+        // the host's setting (Settings::hostIdleMinutes). What each was last
+        // seen doing, and since when it has not changed.
+        hldata::NetIdleWatch idle_[hldata::kNetPlayers];
+        void idleCheck();
         // (The host's.) What it sends the consoles it gave the game to.
         hldata::AirSender air_;
         // What comes after the match.

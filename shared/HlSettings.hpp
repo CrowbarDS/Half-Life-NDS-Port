@@ -48,6 +48,16 @@ namespace hldata
 
     /// What a vote's time may be set to.
     inline constexpr std::uint8_t kVoteSteps[] = {5, 10, 15, 20, 30, 45, 60, 90, 120, 150};
+    /// How long a player may do nothing in a match hosted before the host
+    /// sends them away, in minutes (0: never).
+    inline constexpr std::uint8_t kIdleSteps[] = {0, 2, 5, 10};
+    inline constexpr bool idleStep(std::uint8_t minutes)
+    {
+        for (const std::uint8_t step : kIdleSteps)
+            if (step == minutes)
+                return true;
+        return false;
+    }
 
     /// The top screen's shape: as the console shows it (a 3DS with
     /// TWPatch's wide TwlBg stretches it to 16:10), 4:3, or 16:10.
@@ -177,6 +187,9 @@ namespace hldata
         /// A match hosted online: its players may talk (kRuleVoice). Off
         /// unless asked for.
         std::uint8_t hostVoice = 0;
+        /// A match hosted: a player who does nothing for this many minutes
+        /// is sent away (kIdleSteps; 0: never).
+        std::uint8_t hostIdleMinutes = 0;
 
         /// What a file of version 8 held: all but the controls.
         template <class Ar>
@@ -227,6 +240,25 @@ namespace hldata
         }
         template <class Ar>
         void serialize(Ar &ar)
+        {
+            // (Version 26's, then what is new, written out rather than
+            // called: so shaped, the compiler keeps one copy of it, where
+            // the console sent the game has no room for two.)
+            serializeTwentyFive(ar);
+            for (int a = kActionsBeforeTalk; a < kActionCount; ++a)
+                ar &keys[a];
+            ar &hostVoice;
+#ifndef HLDS_CHILD
+            // (A console sent the game has no card: it never reads nor
+            // writes a settings file, and hosts nothing -- what it does not
+            // read, it has no room for.)
+            ar &hostIdleMinutes;
+#endif
+        }
+        /// ... and of version 26: idle players never sent away (read as
+        /// never, the default).
+        template <class Ar>
+        void serializeTwentySix(Ar &ar)
         {
             serializeTwentyFive(ar);
             for (int a = kActionsBeforeTalk; a < kActionCount; ++a)
@@ -339,8 +371,9 @@ namespace hldata
     inline constexpr std::uint8_t kQualityStandard = 0, kQualityHigh = 1, kQualityChoices = 2;
 
     inline constexpr char kSettingsMagic[4] = {'H', 'L', 'S', 'T'};
-    inline constexpr std::uint16_t kSettingsVersion = 26;
-    /// The versions before, which are still read: 25 had no TALK, nor
+    inline constexpr std::uint16_t kSettingsVersion = 27;
+    /// The versions before, which are still read: 26 never sent idle players
+    /// away (read as never); 25 had no TALK, nor
     /// talking in a match hosted; 24 had no screen shape
     /// (read as auto); 23 had no buttons that
     /// look, nor the BUTTONS ONLY layout; 22 always showed the map's
@@ -354,6 +387,7 @@ namespace hldata
     /// 11 had no achievements' pop-ups to turn off; 10 had no autoaim; 9 had
     /// the layouts but no aim speed, custom buttons or stylus pressure; 8 no
     /// controls to choose.
+    inline constexpr std::uint16_t kSettingsVersionTwentySix = 26;
     inline constexpr std::uint16_t kSettingsVersionTwentyFive = 25;
     inline constexpr std::uint16_t kSettingsVersionTwentyFour = 24;
     inline constexpr std::uint16_t kSettingsVersionTwentyThree = 23;
@@ -454,6 +488,8 @@ namespace hldata
         // versions before: what it does not read, it has no room for.)
         else if (version == kSettingsVersionTwentyFive)
             data.serializeTwentyFive(ar);
+        else if (version == kSettingsVersionTwentySix)
+            data.serializeTwentySix(ar);
 #endif
         else
             ar &data;
@@ -480,7 +516,8 @@ namespace hldata
             return false;
         std::memcpy(&header, bytes, sizeof(header));
         if (std::memcmp(header.magic, kSettingsMagic, sizeof(header.magic)) != 0 ||
-            (header.version != kSettingsVersion && header.version != kSettingsVersionTwentyFive &&
+            (header.version != kSettingsVersion && header.version != kSettingsVersionTwentySix &&
+             header.version != kSettingsVersionTwentyFive &&
              header.version != kSettingsVersionTwentyFour &&
              header.version != kSettingsVersionTwentyThree &&
              header.version != kSettingsVersionTwentyTwo &&
@@ -553,6 +590,12 @@ namespace hldata
             read.nextMode >= kNextChoices || read.rotationCount > kRotationMost ||
             read.voteSeconds < kChatLeast || read.voteSeconds > kVoteMost)
             return false;
+#ifndef HLDS_CHILD
+        // (A console sent the game hosts nothing, and reads no file: what it
+        // does not check, it has no room for.)
+        if (!idleStep(read.hostIdleMinutes))
+            return false;
+#endif
         out = read;
         return true;
     }

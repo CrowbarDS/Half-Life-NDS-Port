@@ -1796,8 +1796,48 @@ namespace
     }
 } // namespace
 
+namespace
+{
+    void testIdle()
+    {
+        NetIdleWatch w;
+        NetPlayer p;
+        p.pos[0] = 100;
+        p.yaw = 2000;
+        const std::uint32_t most = 300; // (five minutes, in seconds here)
+        check(!w.step(p, true, 0, most) && !w.step(p, true, most - 1, most), "idle: not before its time");
+        check(w.step(p, true, most, most), "... a player doing nothing for the host's time: idle");
+        NetIdleWatch turns;
+        turns.step(p, true, 0, most);
+        p.yaw = 2001;
+        check(!turns.step(p, true, most, most) && !turns.step(p, true, 2 * most - 1, most) && turns.step(p, true, 2 * most, most),
+              "... one that turns, even a little: counted again from then");
+        NetIdleWatch moves;
+        moves.step(p, true, 0, most);
+        p.pos[2] = 4;
+        check(!moves.step(p, true, most, most), "... one that moves: not idle");
+        NetIdleWatch arms;
+        arms.step(p, true, 0, most);
+        p.weapon = 3;
+        check(!arms.step(p, true, most, most), "... one that changes weapon: not idle");
+        NetIdleWatch loading;
+        loading.step(p, true, 0, most);
+        check(!loading.step(p, false, most * 3, most) && !loading.step(p, true, most * 3 + 1, most) &&
+                  loading.step(p, true, most * 4, most),
+              "... not counted while it is not to be (lobby, scores, loading): from when it is again");
+        NetIdleWatch never;
+        never.step(p, true, 0, 0);
+        check(!never.step(p, true, 1000000, 0), "... the host's setting off: never idle");
+        NetIdleWatch wraps;
+        wraps.step(p, true, 0xFFFFFF00u, most);
+        check(!wraps.step(p, true, 0xFFFFFF00u + most - 1, most) && wraps.step(p, true, 0xFFFFFF00u + most, most),
+              "... and the clock going round is no trouble");
+    }
+} // namespace
+
 int main()
 {
+    testIdle();
     testPacking();
     testEvents();
     testFile();

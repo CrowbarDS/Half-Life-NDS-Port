@@ -72,6 +72,9 @@ void Settings::load()
         flashlight = data.flashlight != 0;
         hostAutoaim = data.hostAutoaim != 0;
         hostVoice = data.hostVoice != 0;
+#ifndef HLDS_CHILD
+        hostIdleMinutes = data.hostIdleMinutes;
+#endif
         maxPlayers = data.maxPlayers;
         allowGuests = data.allowGuests != 0;
         chatSeconds = data.chatSeconds;
@@ -216,6 +219,9 @@ bool Settings::save() const
     data.flashlight = flashlight ? 1 : 0;
     data.hostAutoaim = hostAutoaim ? 1 : 0;
     data.hostVoice = hostVoice ? 1 : 0;
+#ifndef HLDS_CHILD
+    data.hostIdleMinutes = hostIdleMinutes;
+#endif
     data.maxPlayers = maxPlayers;
     data.allowGuests = allowGuests ? 1 : 0;
     data.chatSeconds = chatSeconds;

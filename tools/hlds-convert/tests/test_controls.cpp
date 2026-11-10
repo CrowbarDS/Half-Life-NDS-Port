@@ -798,6 +798,34 @@ namespace
         data.keys[kActionTalk] = 0;
         check(written.size() <= sizeof(SettingsHeader) + kSettingsMostBytes, "the settings still fit their most");
 
+        data.hostIdleMinutes = 5;
+        written = writeSettings(data);
+        check(readSettings(written.data(), written.size(), back) && back.hostIdleMinutes == 5,
+              "idle players sent away after five minutes: kept");
+        SettingsData before26;
+        before26.hostVoice = 1;
+        before26.hostIdleMinutes = 10; // (not in that version)
+        yas::mem_ostream os26;
+        yas::binary_oarchive<yas::mem_ostream, flags> oa26(os26);
+        before26.serializeTwentySix(oa26);
+        const auto buf26 = os26.get_intrusive_buffer();
+        SettingsHeader header26{};
+        std::memcpy(header26.magic, kSettingsMagic, sizeof(header26.magic));
+        header26.version = kSettingsVersionTwentySix;
+        header26.payloadBytes = static_cast<std::uint16_t>(buf26.size);
+        header26.crc32 = crc32(reinterpret_cast<const std::uint8_t *>(buf26.data), static_cast<std::uint32_t>(buf26.size));
+        std::vector<std::uint8_t> file26(sizeof(header26) + buf26.size);
+        std::memcpy(file26.data(), &header26, sizeof(header26));
+        std::memcpy(file26.data() + sizeof(header26), buf26.data, buf26.size);
+        check(readSettings(file26.data(), file26.size(), back) && back.hostVoice == 1 && back.hostIdleMinutes == 0,
+              "a file of version 26 keeps talking, and never sends idle players away");
+        data.hostIdleMinutes = 3;
+        written = writeSettings(data);
+        check(!readSettings(written.data(), written.size(), back), "idle minutes not among the steps: not read");
+        data.hostIdleMinutes = 0;
+        written = writeSettings(data);
+        check(written.size() <= sizeof(SettingsHeader) + kSettingsMostBytes, "... and the settings still fit their most");
+
         data.controlScheme = kControlsSchemes;
         written = writeSettings(data);
         check(!readSettings(written.data(), written.size(), back), "a layout there is not: not read");

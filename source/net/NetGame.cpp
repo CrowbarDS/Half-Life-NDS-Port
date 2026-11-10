@@ -1871,6 +1871,27 @@ namespace hlrt
 #endif
     }
 
+#ifndef HLDS_CHILD
+    void NetGame::idleCheck()
+    {
+        const std::uint32_t now = Global::vblanks();
+        const std::uint32_t most = static_cast<std::uint32_t>(settings.hostIdleMinutes) * 60 * 60;
+        // (Counted only in a match, for a player whose map is loaded: not
+        // in the lobby, nor while the scores are shown, nor while it loads.)
+        const bool counting = most != 0 && phase_ == Phase::Playing && match_.playing && !match_.over;
+        for (int c = 1; c < kNetPlayers; ++c)
+        {
+            const bool in = counting && ((ready_ >> c) & 1) && netHere(match_, c);
+            if (idle_[c].step(match_.host.players[c], in, now, most) && kickAt_[c] == 0)
+            {
+                // (As a late one: not banned -- it may come back.)
+                match_.host.out.add(netEvent(NetEventType::Bye, c, kNetRefuseIdle));
+                kickAt_[c] = now + 60;
+            }
+        }
+    }
+#endif
+
     void NetGame::dropLate(int p)
     {
         if (!isHost() || p < 1 || p >= kNetPlayers || !netHere(match_, p) || kickAt_[p] != 0)
@@ -2551,6 +2572,9 @@ namespace hlrt
                 }
             }
             clientsWere_ = now;
+#ifndef HLDS_CHILD
+            idleCheck();
+#endif
         }
         else if (!netlink::joined())
         {
@@ -2776,6 +2800,7 @@ namespace hlrt
         {
             match_.passedCount = 0;
             lost(match_.refused == kNetRefuseKicked ? "The host has let you go."
+                 : match_.refused == kNetRefuseIdle ? "The host sent you away: idle too long."
                  : match_.refused == kNetRefuseLate ? "This console took too long to load the map."
                  : match_.refused == kNetRefuseNoRoom ? netDemoRefusal(false)
                                                     : "The game is full.");
