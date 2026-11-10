@@ -26,11 +26,43 @@ build/relay/hlds-relay --port 27500
 |---|---|
 | `--port N` | the UDP port to listen on (27500 if not given) |
 | `--bind ADDRESS` | the local IPv4 address to listen on (all of them if not given) |
+| `--log-ips trunc\|hash\|full` | how consoles' addresses are logged (`trunc` if not given; see below) |
 | `--quiet` | print nothing while running |
 
-It prints a line when a room opens or closes and when a console joins or
-leaves. A console that sends nothing for 45 seconds is let go, and with it
-its room if it was a host.
+A console that sends nothing for 45 seconds is let go, and with it its room
+if it was a host.
+
+## What it logs
+
+A line when a console comes or goes, when a room opens or closes, and when a
+console joins or leaves one. A console is named by a number of the relay's
+own (`#12`), given when it comes, and its address. No player's or room's name
+is logged.
+
+An address says who someone is, near enough, so it is logged no more than
+`--log-ips` asks:
+
+| `--log-ips` | logged as | |
+|---|---|---|
+| `trunc` (default) | `192.0.2.x` | the first three numbers |
+| `hash` | `h:4bf440` | a hash under a secret made at random each day (UTC), never written anywhere: the same address gives the same hash all that day, and a different one the next |
+| `full` | `192.0.2.1:5000` | address and port: to find a fault, not on a public relay |
+
+Once a minute it logs a line of counts:
+
+```
+stats peers=12 rooms=3 in=21600 in_bytes=9431200 out=64800 out_bytes=27100000 drop_not_ours=0 drop_too_many=0 send_failed=0 full_rounds=0 (last 60 s)
+```
+
+| | |
+|---|---|
+| `peers`, `rooms` | consoles and rooms known now |
+| `in`, `in_bytes` | datagrams come in that minute, and their bytes |
+| `out`, `out_bytes` | datagrams sent, and their bytes |
+| `drop_not_ours` | datagrams that were not this relay's protocol, or were of another version |
+| `drop_too_many` | datagrams from a new console while the relay knew as many as it may (1024) |
+| `send_failed` | datagrams the system would not send |
+| `full_rounds` | times it had more come at once than it reads in one go (256): under a flood, this climbs |
 
 ## The console's side
 

@@ -1,11 +1,12 @@
 // hlds-relay: the relay that consoles playing online meet through
 // (core/Relay.hpp). One UDP port, one thread.
 //
-//   hlds-relay [--port N] [--bind ADDRESS] [--quiet]
+//   hlds-relay [--port N] [--bind ADDRESS] [--log-ips trunc|hash|full] [--quiet]
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <poll.h>
+#include <sys/random.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -62,12 +63,29 @@ namespace
         int fd_;
     };
 
+    /// `size` bytes from the kernel's random source; false if it gave none.
+    bool randomBytes(std::uint8_t *out, std::size_t size)
+    {
+        while (size > 0)
+        {
+            const ssize_t got = ::getrandom(out, size, 0);
+            if (got <= 0)
+                return false;
+            out += got;
+            size -= static_cast<std::size_t>(got);
+        }
+        return true;
+    }
+
     void usage()
     {
-        std::fprintf(stderr, "usage: hlds-relay [--port N] [--bind ADDRESS] [--quiet]\n"
-                             "  --port   UDP port to listen on (default %d)\n"
-                             "  --bind   local IPv4 address to listen on (default 0.0.0.0, all)\n"
-                             "  --quiet  print nothing while running\n",
+        std::fprintf(stderr, "usage: hlds-relay [--port N] [--bind ADDRESS] [--log-ips trunc|hash|full] [--quiet]\n"
+                             "  --port     UDP port to listen on (default %d)\n"
+                             "  --bind     local IPv4 address to listen on (default 0.0.0.0, all)\n"
+                             "  --log-ips  how consoles' addresses are logged: trunc, the first three\n"
+                             "             numbers (default); hash, a hash under a secret renewed each\n"
+                             "             day (UTC); full, address and port (for debugging only)\n"
+                             "  --quiet    print nothing while running\n",
                      hldata::kRelayPort);
     }
 } // namespace
@@ -77,6 +95,7 @@ int main(int argc, char **argv)
     int port = hldata::kRelayPort;
     std::string bindTo = "0.0.0.0";
     bool quiet = false;
+    hlrelay::IpLog ipLog = hlrelay::IpLog::Trunc;
     for (int i = 1; i < argc; ++i)
     {
         const std::string arg = argv[i];
@@ -84,6 +103,21 @@ int main(int argc, char **argv)
             port = std::atoi(argv[++i]);
         else if (arg == "--bind" && i + 1 < argc)
             bindTo = argv[++i];
+        else if (arg == "--log-ips" && i + 1 < argc)
+        {
+            const std::string how = argv[++i];
+            if (how == "trunc")
+                ipLog = hlrelay::IpLog::Trunc;
+            else if (how == "hash")
+                ipLog = hlrelay::IpLog::Hash;
+            else if (how == "full")
+                ipLog = hlrelay::IpLog::Full;
+            else
+            {
+                usage();
+                return 2;
+            }
+        }
         else if (arg == "--quiet")
             quiet = true;
         else
@@ -121,6 +155,27 @@ int main(int argc, char **argv)
     std::signal(SIGTERM, onSignal);
 
     hlrelay::Relay relay;
+    relay.ipLog = ipLog;
+    // (The secret hashed addresses are made under, renewed each day: one
+    // day's hashes cannot be matched with another's.)
+    std::time_t saltDay = -1;
+    auto renewSalt = [&]
+    {
+        const std::time_t day = std::time(nullptr) / 86400;
+        if (day == saltDay)
+            return true;
+        std::uint8_t salt[16];
+        if (!randomBytes(salt, sizeof(salt)))
+            return false;
+        relay.setLogSalt(salt);
+        saltDay = day;
+        return true;
+    };
+    if (!renewSalt())
+    {
+        std::perror("getrandom");
+        return 1;
+    }
     if (!quiet)
     {
         relay.log = [](const std::string &line)
@@ -144,6 +199,7 @@ int main(int argc, char **argv)
         pollfd fd = {sock, POLLIN, 0};
         ::poll(&fd, 1, more ? 0 : static_cast<int>(hlrelay::Serve::kTickMs));
         more = serve.round(nowMs());
+        renewSalt();
     }
     ::close(sock);
     return 0;

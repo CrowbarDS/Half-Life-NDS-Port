@@ -5,6 +5,7 @@
 // say sent. main.cpp gives it the real socket; the tests a pretend one.
 
 #include <cstdint>
+#include <string>
 
 #include "Relay.hpp"
 
@@ -30,23 +31,39 @@ namespace hlrelay
         static constexpr int kMostPerRound = 256;
         /// How often the relay's clock runs (Relay::tick).
         static constexpr std::uint32_t kTickMs = 100;
+        /// How often a line of counts goes to the relay's log.
+        static constexpr std::uint32_t kStatsMs = 60000;
 
-        Serve(Relay &relay, Socket &socket, std::uint32_t nowMs) : relay_(relay), socket_(socket), lastTick_(nowMs) {}
+        Serve(Relay &relay, Socket &socket, std::uint32_t nowMs)
+            : relay_(relay), socket_(socket), lastTick_(nowMs), lastStats_(nowMs)
+        {
+        }
 
         /// One round, at `nowMs`. True if it stopped at kMostPerRound with
         /// more perhaps waiting (the next round should not wait for more).
         bool round(std::uint32_t nowMs);
 
-        // (Counts since start, for the operator.)
-        std::uint64_t received = 0;
-        std::uint64_t sent = 0;
-        std::uint64_t sendFailed = 0;
-        std::uint64_t fullRounds = 0; ///< rounds stopped at kMostPerRound
+        /// Counts since start, for the operator.
+        struct Counts
+        {
+            std::uint64_t received = 0, receivedBytes = 0;
+            std::uint64_t sent = 0, sentBytes = 0;
+            std::uint64_t sendFailed = 0;
+            std::uint64_t fullRounds = 0; ///< rounds stopped at kMostPerRound
+            Drops drops;                  ///< (the relay's)
+        };
+        Counts counts;
+
+        /// The line of counts: how many consoles and rooms now, and what came,
+        /// went and fell since `before`, over `seconds`.
+        std::string statsLine(const Counts &before, unsigned seconds) const;
 
     private:
         Relay &relay_;
         Socket &socket_;
         std::uint32_t lastTick_;
+        std::uint32_t lastStats_;
+        Counts atLastStats_;
         std::vector<Out> out_;
         std::uint8_t bytes_[2048];
     };

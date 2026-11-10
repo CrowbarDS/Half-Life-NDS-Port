@@ -14,6 +14,7 @@
 #include "HlRelay.hpp"
 #include "Relay.hpp"
 #include "Serve.hpp"
+#include "SipHash.hpp"
 
 using namespace hldata;
 using hlrelay::Address;
@@ -686,18 +687,18 @@ namespace
             socket.waiting.push_back({at(1), std::vector<std::uint8_t>(ping, ping + pingSize)});
         now += Relay::kStatusMs; // (the host is due to be told who is there)
         const bool more = serve.round(now);
-        check(more && serve.received == static_cast<std::uint64_t>(Serve::kMostPerRound) &&
+        check(more && serve.counts.received == static_cast<std::uint64_t>(Serve::kMostPerRound) &&
                   socket.waiting.size() == static_cast<std::size_t>(Serve::kMostPerRound * 2 + 10),
               "a flood: one round reads no more than its share, and says more may be waiting");
         check(!sentTo(socket.sent, at(0), RelayKind::Status).empty(),
               "... and the relay's clock still ran in it (the host told who is there)");
-        check(serve.sent == socket.sent.size() && serve.sendFailed == 0, "... what it had to say, sent and counted");
+        check(serve.counts.sent == socket.sent.size() && serve.counts.sendFailed == 0, "... what it had to say, sent and counted");
 
         // Rounds until it has read everything: each one ends.
         int rounds = 1;
         while (serve.round(now) && rounds < 100)
             ++rounds;
-        check(socket.waiting.empty() && rounds == 3 && serve.fullRounds == 3,
+        check(socket.waiting.empty() && rounds == 3 && serve.counts.fullRounds == 3,
               "... the rest read in the rounds after, the last not full");
 
         // The clock: not before its time.
@@ -710,10 +711,93 @@ namespace
         // A send that fails is counted, not retried.
         socket.failing = true;
         socket.waiting.push_back({at(1), std::vector<std::uint8_t>(ping, ping + pingSize)});
-        const std::uint64_t failedBefore = serve.sendFailed;
+        const std::uint64_t failedBefore = serve.counts.sendFailed;
         serve.round(now + 2 * Serve::kTickMs + 1000);
-        check(serve.sendFailed > failedBefore && relay.rooms() == 1 && id != 0,
+        check(serve.counts.sendFailed > failedBefore && relay.rooms() == 1 && id != 0,
               "a send that fails is counted, and the relay goes on");
+    }
+
+    void testSipHash()
+    {
+        // The paper's own (appendix A), and the reference code's first vector:
+        // key 00..0f, and a message of 00..0e, or none.
+        std::uint8_t key[16], message[15];
+        for (int i = 0; i < 16; ++i)
+            key[i] = static_cast<std::uint8_t>(i);
+        for (int i = 0; i < 15; ++i)
+            message[i] = static_cast<std::uint8_t>(i);
+        check(hlrelay::sipHash24(key, message, 15) == 0xa129ca6149be45e5ull, "SipHash-2-4: the paper's vector");
+        check(hlrelay::sipHash24(key, message, 0) == 0x726fdb47dd0e0e31ull, "... and the empty message's");
+    }
+
+    void testLog()
+    {
+        using hlrelay::IpLog;
+        Relay relay;
+        std::vector<std::string> lines;
+        relay.log = [&](const std::string &line) { lines.push_back(line); };
+        std::vector<Out> out;
+        std::uint32_t now = 1000;
+        const std::uint32_t id = open(relay, 0, "Gordon", 8, now, out);
+        join(relay, 1, id, now, out);
+        relay.tick(now + kRelaySilentMs + 1, out);
+        bool names = false, whole = false, cut = false;
+        for (const std::string &line : lines)
+        {
+            names = names || line.find("Gordon") != std::string::npos || line.find("P1") != std::string::npos;
+            whole = whole || line.find("10.0.0.") != std::string::npos && line.find(".x") == std::string::npos;
+            whole = whole || line.find(":500") != std::string::npos;
+            cut = cut || line.find("#1 (10.0.0.x) came") != std::string::npos;
+        }
+        check(!lines.empty() && !names, "the log names no room and no player");
+        check(cut && !whole, "... and gives a console's id and the first three numbers of its address, no more");
+
+        const Address one = {0xC0000201u, 1234}, sameOther = {0xC0000201u, 4321}, two = {0xC0000202u, 1234};
+        relay.ipLog = IpLog::Full;
+        check(relay.shown(one) == "192.0.2.1:1234", "--log-ips full: address and port");
+        relay.ipLog = IpLog::Trunc;
+        check(relay.shown(one) == "192.0.2.x", "--log-ips trunc: the first three numbers");
+        relay.ipLog = IpLog::Hash;
+        std::uint8_t salt[16] = {1, 2, 3};
+        relay.setLogSalt(salt);
+        const std::string a = relay.shown(one);
+        check(a.size() == 8 && a.rfind("h:", 0) == 0 && a.find("192") == std::string::npos &&
+                  relay.shown(sameOther) == a && relay.shown(two) != a,
+              "--log-ips hash: the same address the same whatever its port, another another");
+        salt[0] = 9;
+        relay.setLogSalt(salt);
+        check(relay.shown(one) != a, "... and not the same under the next day's secret");
+    }
+
+    void testStatsLine()
+    {
+        using hlrelay::Serve;
+        Relay relay;
+        std::vector<std::string> lines;
+        relay.log = [&](const std::string &line) { lines.push_back(line); };
+        PretendSocket socket;
+        std::uint32_t now = 1000;
+        Serve serve(relay, socket, now);
+        std::uint8_t ping[kRelayHeadBytes];
+        const int pingSize = relaySmallWrite(ping, RelayKind::Ping, 7);
+        for (int i = 0; i < 3; ++i)
+            socket.waiting.push_back({at(1), std::vector<std::uint8_t>(ping, ping + pingSize)});
+        socket.waiting.push_back({at(2), {1, 2, 3}});
+        serve.round(now);
+        serve.round(now + Serve::kStatsMs - 1);
+        bool stats = false;
+        for (const std::string &line : lines)
+            stats = stats || line.rfind("stats ", 0) == 0;
+        check(!stats, "no line of counts before its minute");
+        serve.round(now + Serve::kStatsMs);
+        // (Three Pongs, and a Bye: by then it had said nothing for longer
+        // than the relay waits.)
+        const std::string &last = lines.back();
+        check(last.find("stats peers=0 rooms=0 in=4 in_bytes=27 out=4 out_bytes=32 drop_not_ours=1 drop_too_many=0 "
+                        "send_failed=0 full_rounds=0 (last 60 s)") == 0,
+              "a line of counts each minute: consoles, rooms, what came, went and fell");
+        serve.round(now + 2 * Serve::kStatsMs);
+        check(lines.back().find("in=0 in_bytes=0 out=0") != std::string::npos, "... each minute's own");
     }
 } // namespace
 
@@ -726,6 +810,9 @@ int main()
     testLobbyThroughRelay();
     testIni();
     testServeRound();
+    testSipHash();
+    testLog();
+    testStatsLine();
     std::printf("%s (%d failed)\n", g_failures == 0 ? "PASS" : "FAIL", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

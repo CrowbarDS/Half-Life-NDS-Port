@@ -25,6 +25,22 @@ namespace hlrelay
         std::string text() const;
     };
 
+    /// How a console's address is put in the log. (An address says who
+    /// someone is, near enough: it is kept no more than the operator needs.)
+    enum class IpLog : std::uint8_t
+    {
+        Trunc, ///< its first three numbers: 192.0.2.x
+        Hash,  ///< a short hash, under a secret the operator changes daily: the same address the same that day
+        Full,  ///< all of it, and its port (to find a fault; not on a public relay)
+    };
+
+    /// Datagrams the relay let fall, by why.
+    struct Drops
+    {
+        std::uint64_t notOurs = 0; ///< not this relay protocol's (or of another version)
+        std::uint64_t tooMany = 0; ///< from a console new to it, while it knows as many as it may
+    };
+
     struct Out
     {
         Address to;
@@ -44,6 +60,12 @@ namespace hlrelay
         /// What it does, a line at a time (rooms opened and closed, who came
         /// and went), for the operator.
         std::function<void(const std::string &)> log;
+        /// How addresses are put in it.
+        IpLog ipLog = IpLog::Trunc;
+        /// The secret IpLog::Hash hashes under (16 bytes): a new one each day.
+        void setLogSalt(const std::uint8_t *salt);
+        /// An address as the log shows it.
+        std::string shown(const Address &at) const;
 
         /// A datagram from `from` at `nowMs`: what it says is done, and what
         /// is to be sent because of it is added to `out`.
@@ -55,6 +77,7 @@ namespace hlrelay
 
         std::size_t peers() const { return peers_.size(); }
         std::size_t rooms() const { return rooms_.size(); }
+        const Drops &drops() const { return drops_; }
 
     private:
         struct Peer
@@ -107,6 +130,8 @@ namespace hlrelay
         void status(Room &room, std::uint32_t nowMs, std::vector<Out> &out);
         void say(std::vector<Out> &out, const Peer &to, const std::uint8_t *bytes, int size);
         void note(const std::string &line);
+        /// A console as the log names it: its id here, and its address as shown.
+        std::string named(const Peer &peer) const;
 
         // The consoles by id, and which is at each address. (Rooms and knocks
         // name a console by its id, so that it may come from another address
@@ -116,5 +141,7 @@ namespace hlrelay
         std::map<std::uint32_t, Room> rooms_;
         std::uint32_t nextRoom_ = 1;
         std::uint32_t nextPeer_ = 1;
+        Drops drops_;
+        std::uint8_t salt_[16] = {};
     };
 } // namespace hlrelay

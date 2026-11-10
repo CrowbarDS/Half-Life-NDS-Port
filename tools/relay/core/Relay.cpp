@@ -2,6 +2,8 @@
 
 #include <cstdio>
 
+#include "SipHash.hpp"
+
 using namespace hldata;
 
 namespace hlrelay
@@ -12,6 +14,37 @@ namespace hlrelay
         std::snprintf(line, sizeof(line), "%u.%u.%u.%u:%u", (ip >> 24) & 0xFF, (ip >> 16) & 0xFF, (ip >> 8) & 0xFF,
                       ip & 0xFF, port);
         return line;
+    }
+
+    void Relay::setLogSalt(const std::uint8_t *salt) { std::memcpy(salt_, salt, sizeof(salt_)); }
+
+    std::string Relay::shown(const Address &at) const
+    {
+        char line[32];
+        switch (ipLog)
+        {
+        case IpLog::Full:
+            return at.text();
+        case IpLog::Hash:
+        {
+            // (The address alone, not its port: the same console the same
+            // all day, whichever port its router gives it.)
+            const std::uint8_t ip[4] = {static_cast<std::uint8_t>(at.ip >> 24), static_cast<std::uint8_t>(at.ip >> 16),
+                                        static_cast<std::uint8_t>(at.ip >> 8), static_cast<std::uint8_t>(at.ip)};
+            std::snprintf(line, sizeof(line), "h:%06x",
+                          static_cast<unsigned>(sipHash24(salt_, ip, sizeof(ip)) & 0xFFFFFFu));
+            return line;
+        }
+        default:
+            std::snprintf(line, sizeof(line), "%u.%u.%u.x", (at.ip >> 24) & 0xFF, (at.ip >> 16) & 0xFF,
+                          (at.ip >> 8) & 0xFF);
+            return line;
+        }
+    }
+
+    std::string Relay::named(const Peer &peer) const
+    {
+        return "#" + std::to_string(peer.id) + " (" + shown(peer.at) + ")";
     }
 
     int Relay::Room::count() const
@@ -107,7 +140,7 @@ namespace hlrelay
         room.clients[slot] = peer.id;
         peer.room = room.id;
         peer.slot = slot;
-        note(peer.at.text() + " joined room " + std::to_string(room.id) + " as client " + std::to_string(slot));
+        note(named(peer) + " joined room " + std::to_string(room.id) + " as client " + std::to_string(slot));
         say(out, peer, bytes, relaySmallWrite(bytes, RelayKind::Joined, peer.session, slot));
         status(room, nowMs, out);
     }
@@ -157,7 +190,7 @@ namespace hlrelay
         if (slot >= 1 && slot < kNetPlayers && room.clients[slot] == peer.id)
         {
             room.clients[slot] = 0;
-            note(peer.at.text() + " left room " + std::to_string(room.id) + " (client " + std::to_string(slot) + ")");
+            note(named(peer) + " left room " + std::to_string(room.id) + " (client " + std::to_string(slot) + ")");
             status(room, room.statusMs, out);
         }
     }
@@ -179,7 +212,10 @@ namespace hlrelay
     {
         RelayHead head;
         if (!relayHeadRead(bytes, size, head))
+        {
+            ++drops_.notOurs;
             return;
+        }
         Peer *me = peer(from);
         // (The same address with another session: a console started again,
         // or another behind the same port. The one before is gone.)
@@ -190,8 +226,13 @@ namespace hlrelay
         }
         if (me == nullptr)
         {
-            if (head.kind == RelayKind::Bye || peers_.size() >= kMostPeers)
+            if (head.kind == RelayKind::Bye)
                 return;
+            if (peers_.size() >= kMostPeers)
+            {
+                ++drops_.tooMany;
+                return;
+            }
             Peer fresh;
             while (nextPeer_ == 0 || peers_.count(nextPeer_) != 0)
                 ++nextPeer_;
@@ -200,7 +241,7 @@ namespace hlrelay
             fresh.session = head.session;
             me = &(peers_[fresh.id] = fresh);
             at_[from.key()] = fresh.id;
-            note(from.text() + " came");
+            note(named(*me) + " came");
         }
         me->heardMs = nowMs;
         std::uint8_t reply[kRelayRoomsMostBytes > kRelayMostBytes ? kRelayRoomsMostBytes : kRelayMostBytes];
@@ -235,7 +276,7 @@ namespace hlrelay
                 it = rooms_.emplace(room.id, room).first;
                 me->room = room.id;
                 me->slot = 0;
-                note(from.text() + " opened room " + std::to_string(room.id) + " \"" + open.name + "\"");
+                note(named(*me) + " opened room " + std::to_string(room.id));
             }
             it->second.open = open;
             say(out, *me, reply, relayRoomIdWrite(reply, RelayKind::Opened, me->session, it->second.id));
@@ -308,7 +349,7 @@ namespace hlrelay
             room.nextTicket = static_cast<std::uint8_t>(room.nextTicket == 255 ? 1 : room.nextTicket + 1);
             free->sinceMs = free->saidMs = nowMs;
             me->knocking = id;
-            note(from.text() + " (\"" + free->name + "\") asks to join room " + std::to_string(id));
+            note(named(*me) + " asks to join room " + std::to_string(id));
             knock(room, *free, out);
             break;
         }
@@ -333,7 +374,7 @@ namespace hlrelay
                     admitInto(room, *waiting, nowMs, out);
                 else
                 {
-                    note(waiting->at.text() + " not let into room " + std::to_string(room.id));
+                    note(named(*waiting) + " not let into room " + std::to_string(room.id));
                     say(out, *waiting, reply,
                         relaySmallWrite(reply, RelayKind::Refused, waiting->session,
                                         static_cast<int>(RelayRefuse::Declined)));
@@ -431,7 +472,7 @@ namespace hlrelay
                 silent.push_back(id);
         for (std::uint32_t id : silent)
         {
-            note(peers_[id].at.text() + " went quiet");
+            note(named(peers_[id]) + " went quiet");
             drop(id, out, true);
         }
         for (auto &[id, room] : rooms_)
@@ -449,7 +490,7 @@ namespace hlrelay
                     k = Knock();
                 else if (nowMs - k.sinceMs > kRelayKnockMs)
                 {
-                    note(waiting->at.text() + " was not answered by room " + std::to_string(id));
+                    note(named(*waiting) + " was not answered by room " + std::to_string(id));
                     unknock(*waiting, out, static_cast<int>(RelayRefuse::NoAnswer));
                 }
                 else if (nowMs - k.saidMs >= kStatusMs)
