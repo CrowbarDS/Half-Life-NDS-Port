@@ -254,6 +254,136 @@ What to look for: on the consoles, a match that goes on (with some
 stutter) at 150 ms and 5% loss; on the relay, no `went quiet` for a console
 that is still there.
 
+## The service
+
+On a server, systemd runs the relay: it starts it with the machine, starts
+it again if it stops, keeps what it prints, and shuts it in, so that even a
+fault in it would reach nothing on the machine but its own UDP port. Three
+files in `deploy/` do it (`install.sh` puts them in place):
+
+| file | installed as | what it is |
+|---|---|---|
+| `hlds-relay.service` | `/etc/systemd/system/hlds-relay.service` | the service: how the relay is run |
+| `hlds-relay.conf.example` | `/etc/hlds-relay.conf` | its options (`HLDS_RELAY_ARGS=...`) |
+| `journald@hlds-relay.conf` | `/etc/systemd/journald@hlds-relay.conf` | how long what it prints is kept |
+
+Day to day:
+
+```sh
+sudo systemctl status hlds-relay            # running? since when? its last lines
+sudo systemctl restart hlds-relay           # after changing /etc/hlds-relay.conf
+journalctl --namespace=hlds-relay -f        # what it says, as it says it (Ctrl-C to stop)
+journalctl --namespace=hlds-relay --since "1 hour ago"
+systemd-analyze security hlds-relay         # how shut in it is (lower is better)
+```
+
+### The unit, line by line
+
+A unit file is in sections (`[Unit]`, `[Service]`, `[Install]`), each a list
+of `Name=value` settings. `man systemd.service`, `man systemd.exec` and
+`man systemd.resource-control` say everything; here is what each line of
+this one does, and why.
+
+**`[Unit]`**: what the service is, and when it starts.
+
+| line | what it does |
+|---|---|
+| `Description=` | the name `systemctl status` shows |
+| `Documentation=` | where to read about it (this file) |
+| `Wants=network-online.target`, `After=network-online.target` | start once the machine's network is up, not before (the relay listens on it) |
+| `StartLimitIntervalSec=60`, `StartLimitBurst=5` | if it fails five times within a minute, stop trying (something is wrong: see `systemctl status`), rather than restart it for ever |
+
+**`[Service]`**: how it runs.
+
+| line | what it does |
+|---|---|
+| `Type=simple` | the program is the service: running while it runs |
+| `EnvironmentFile=-/etc/hlds-relay.conf` | read the options from this file (the `-`: no file is no error) |
+| `ExecStart=/usr/local/bin/hlds-relay $HLDS_RELAY_ARGS` | what is run, with the options from that file |
+| `Restart=on-failure`, `RestartSec=2s` | if it stops of itself (a crash), start it again two seconds later; not if it is stopped on purpose |
+| `TimeoutStopSec=5s` | asked to stop (SIGTERM), it tells every console and ends at once; if not within five seconds, it is killed |
+
+*Who it runs as:*
+
+| line | what it does |
+|---|---|
+| `DynamicUser=yes` | it runs as a user made up for it as it starts, and gone when it stops: it owns no file anywhere, and is not root |
+| `PrivateUsers=yes` | ... and that user sees no other user of the machine |
+
+*What it may see and touch.* The relay reads no file and writes none, so
+all of it is shut away:
+
+| line | what it does |
+|---|---|
+| `ProtectSystem=strict` | the whole file system is read-only to it |
+| `ProtectHome=yes` | `/home`, `/root` and `/run/user` are not there for it |
+| `PrivateTmp=yes` | a `/tmp` of its own, empty |
+| `PrivateDevices=yes` | no devices (disks, terminals...) but the harmless ones (`/dev/null`, `/dev/urandom`...) |
+| `PrivateIPC=yes` | its own shared memory and message queues: none of the machine's |
+| `ProtectProc=invisible`, `ProcSubset=pid` | in `/proc` it sees its own process only, and nothing of the kernel's |
+| `ProtectKernelTunables=yes` | it cannot change the kernel's settings (`/proc/sys`, `/sys`) |
+| `ProtectKernelModules=yes` | ... nor load a kernel module |
+| `ProtectKernelLogs=yes` | ... nor read the kernel's log |
+| `ProtectControlGroups=yes` | ... nor change the control groups (how the machine's resources are shared) |
+| `ProtectClock=yes` | ... nor set the clock |
+| `ProtectHostname=yes` | ... nor the machine's name |
+| `UMask=0077` | anything it did create would be its own alone |
+| `KeyringMode=private` | the kernel's key store: none of the machine's keys |
+
+*What it may do:*
+
+| line | what it does |
+|---|---|
+| `NoNewPrivileges=yes` | it can never gain more rights than it starts with (no `sudo`, no set-user-ID programs) |
+| `CapabilityBoundingSet=`, `AmbientCapabilities=` | empty: none of root's special powers, not even one. (Port 27500 is above 1024: no power is needed to listen on it) |
+| `RestrictAddressFamilies=AF_INET AF_UNIX` | it can open IPv4 sockets (its UDP port) and local ones, nothing else (no raw packets, no IPv6, no netlink) |
+| `RestrictNamespaces=yes` | it cannot make containers of its own |
+| `RestrictRealtime=yes` | it cannot take the CPU from everything else |
+| `RestrictSUIDSGID=yes` | it cannot make set-user-ID files |
+| `LockPersonality=yes` | it cannot ask the kernel to behave as another system |
+| `MemoryDenyWriteExecute=yes` | no memory it can both write and run: code smuggled in a datagram could not be run |
+| `SystemCallArchitectures=native` | only the machine's own kind of system calls |
+| `SystemCallFilter=@system-service` | only the system calls an ordinary service uses (systemd's list) |
+| `SystemCallFilter=~@privileged @resources` | ... less those that need root, and those that change limits or priorities |
+| `SystemCallErrorNumber=EPERM` | a call it may not make fails ("not permitted") rather than killing it |
+
+*How much it may take.* It needs about 5 MB:
+
+| line | what it does |
+|---|---|
+| `MemoryMax=64M` | never more than 64 MB of memory (else it is stopped, and started again) |
+| `TasksMax=4` | never more than four threads (it uses one) |
+| `LimitNOFILE=64` | never more than 64 open files and sockets (it uses one) |
+
+*Where what it prints goes:*
+
+| line | what it does |
+|---|---|
+| `LogNamespace=hlds-relay` | a journal of its own, apart from the machine's, kept as `journald@hlds-relay.conf` says. Read it with `journalctl --namespace=hlds-relay` (plain `journalctl -u hlds-relay` does not show it) |
+| `SyslogIdentifier=hlds-relay` | the name its lines carry |
+
+**`[Install]`**
+
+| line | what it does |
+|---|---|
+| `WantedBy=multi-user.target` | `systemctl enable hlds-relay` starts it with the machine, in its ordinary running state |
+
+`systemd-analyze security hlds-relay` rates it **1.1, "OK"** (0 is shut in
+altogether, 10 not at all). What is left counts as exposure only because it
+is a server: it uses the network, takes datagrams from any address, and
+opens Internet sockets.
+
+### How long what it prints is kept
+
+`journald@hlds-relay.conf` keeps the relay's journal **a week**
+(`MaxRetentionSec=7day`), in at most **50 MB** (`SystemMaxUse=50M`), on
+disk (`Storage=persistent`). Older lines are deleted by themselves. What is
+in it: consoles coming and going and rooms, by the relay's own numbers and
+addresses cut to their first three numbers (`--log-ips`), and a line of
+counts a minute; never a player's or room's name. To keep it shorter, lower
+`MaxRetentionSec`, then `sudo systemctl restart systemd-journald@hlds-relay`.
+To delete it all now: `sudo journalctl --namespace=hlds-relay --rotate --vacuum-time=1s`.
+
 ## The console's side
 
 The card says where the relay is, in `_nds/hl_nds/data/server.ini` (see

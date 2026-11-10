@@ -1,0 +1,71 @@
+# The relay for online play, as a service of its own: started with the
+# machine, started again if it stops, and shut in -- it can reach nothing on
+# the machine but its own UDP port. tools/relay/README.md ("The service")
+# explains every line.
+#
+# Installed as /etc/systemd/system/hlds-relay.service (install.sh does it).
+
+[Unit]
+Description=Half-Life NDS port: relay for online play
+Documentation=https://github.com/CrowbarDS/Half-Life-NDS-Port/tree/main/tools/relay
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/hlds-relay.conf
+ExecStart=/usr/local/bin/hlds-relay $HLDS_RELAY_ARGS
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=5s
+
+# Who it runs as: nobody that exists.
+DynamicUser=yes
+PrivateUsers=yes
+
+# What it may see and touch.
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateIPC=yes
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+UMask=0077
+KeyringMode=private
+
+# What it may do.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+
+# How much it may take.
+MemoryMax=64M
+TasksMax=4
+LimitNOFILE=64
+
+# Where what it says goes: a journal of its own, kept a week
+# (/etc/systemd/journald@hlds-relay.conf).
+LogNamespace=hlds-relay
+SyslogIdentifier=hlds-relay
+
+[Install]
+WantedBy=multi-user.target
