@@ -59,6 +59,8 @@ namespace hlrt
         /// (mapHave_: nothing heard yet of this map.)
         constexpr std::uint8_t kMapUnheard = 0xFF;
 #ifndef HLDS_CHILD
+        /// What was said (CHAT): the DSi's memory (a DS keeps none).
+        TWL_BSS NetChatLog chatLogTwl;
         /// The host: a block of each map's archive being sent (fetchPiece).
         struct MapReadBlock
         {
@@ -1676,6 +1678,46 @@ namespace hlrt
         return true;
     }
 
+    HL_TWL_CODE int NetGame::chat(const char *text)
+    {
+        match_.chatLog = &chatLogTwl;
+        const std::uint32_t now = Global::vblanks();
+        if (chatSaidAt_ != 0 && now - chatSaidAt_ < 120)
+            return 1;
+        if (!netSayChat(match_, text))
+            return 2;
+        chatSaidAt_ = now == 0 ? 1 : now;
+        return 0;
+    }
+
+    HL_TWL_CODE int NetGame::chatLines(char *out, int room, int most, std::uint32_t &stamp) const
+    {
+        out[0] = 0;
+        stamp = 0;
+        const NetChatLog *log = match_.chatLog;
+        if (log == nullptr)
+            return 0;
+        stamp = log->stamp;
+        const int had = log->stamp < static_cast<std::uint32_t>(NetChatLog::kLines) ? static_cast<int>(log->stamp)
+                                                                                     : NetChatLog::kLines;
+        const int count = most < had ? most : had;
+        int used = 0;
+        for (int k = count; k > 0; --k)
+        {
+            const NetChatLine &line = log->lines[(log->next + NetChatLog::kLines - k) % NetChatLog::kLines];
+            const char *name = line.who < kNetPlayers && match_.names[line.who][0] != 0 ? match_.names[line.who]
+                               : line.who == match_.me                                   ? match_.myName
+                                                                                         : "Someone";
+            static TWL_DATA const char kLine[] = "%s%.11s: %s", kBreak[] = "\n", kNone[] = "";
+            const int wrote = std::snprintf(out + used, static_cast<std::size_t>(room - used), kLine, used > 0 ? kBreak : kNone,
+                                            name, line.text);
+            if (wrote < 0 || used + wrote >= room)
+                break;
+            used += wrote;
+        }
+        return count;
+    }
+
     bool NetGame::mapLine(char *line, int room) const
     {
         return isDSiMode() && mapLineTwl(line, room);
@@ -2412,6 +2454,15 @@ namespace hlrt
     {
         if (phase_ == Phase::Off || phase_ == Phase::Scanning)
             return;
+#ifndef HLDS_CHILD
+        // (What is said, kept on a DSi: renew() lets go of it with the match,
+        // and a new one begins with nothing said.)
+        if (match_.chatLog == nullptr && isDSiMode())
+        {
+            std::memset(&chatLogTwl, 0, sizeof(chatLogTwl));
+            match_.chatLog = &chatLogTwl;
+        }
+#endif
         if (phase_ == Phase::Joining)
         {
             if (netlink::joined())

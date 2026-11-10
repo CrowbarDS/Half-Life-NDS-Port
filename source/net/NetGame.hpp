@@ -159,6 +159,17 @@ namespace hlrt
         /// it will be sent, how far it has come, or why it cannot be (false:
         /// it has it). (The host's: sending(), as for consoles given the game.)
         bool mapLine(char *line, int room) const;
+#ifndef HLDS_CHILD
+        /// CHAT: `text` said to everyone. 0: said; 1: too soon after the
+        /// last (two seconds); 2: nothing to say, or no room for it now.
+        int chat(const char *text);
+        /// The last `most` things said (up to NetMatch::kChatLines), oldest
+        /// first, a line each ("NAME: text"), into `out`; how many. `stamp`:
+        /// match().chatStamp as they were taken (a new one: more to show).
+        int chatLines(char *out, int room, int most, std::uint32_t &stamp) const;
+        /// How many things have been said (0: none, or none kept here -- a DS).
+        std::uint32_t chatStamp() const { return match_.chatLog != nullptr ? match_.chatLog->stamp : 0; }
+#endif
         /// A client, a match begun and this card without the host's map: it
         /// is being sent -- how far, how big, how fast (KB a second), and its
         /// name (kMapCardHeadBytes) -- for the screen a console sent the game
@@ -442,6 +453,7 @@ namespace hlrt
         void serveCards();
         bool mapReceivingTwl(int &percent, char *step, char *note) const;
         std::uint32_t mapGotAt_ = 0;
+        std::uint32_t chatSaidAt_ = 0; ///< (CHAT: when this console last said something)
         void mapIndexCame(std::uint8_t *data, std::uint32_t bytes);
         bool mapIndexFind(const hldata::FetchHost::Asked &asked, std::uint8_t *&data, std::uint32_t &packed, std::uint32_t &raw,
                           std::uint32_t &name);

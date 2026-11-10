@@ -856,6 +856,24 @@ namespace
         return true;
     }
     bool receiveHostMap() { return isDSiMode() && receiveHostMapTwl(); }
+
+    /// What is said (CHAT) in a match: the last two things, a line each, low
+    /// on the picture, for five seconds after the last. `seen`: what was
+    /// shown, as NetGame::chatStamp counts.
+    HL_TWL_CODE void showChat(std::uint32_t &seen)
+    {
+        char lines[2 * 80];
+        hlrt::netGame.chatLines(lines, static_cast<int>(sizeof(lines)), 2, seen);
+        hldata::MessageRecord said{};
+        said.x = -1;
+        said.y = 200;
+        said.effect = hldata::kMessageFade;
+        said.colour = 31 | 31 << 5 | 31 << 10;
+        said.fadeInMs = 100;
+        said.holdMs = 5000;
+        said.fadeOutMs = 600;
+        hlrt::topText.show(said, lines);
+    }
 #endif
 
     /// A match's map loaded, on any console: the others told (a client says
@@ -1971,6 +1989,10 @@ int main(int argc, char *argv[])
     std::uint32_t lastVblank = Global::vblanks();
     std::uint32_t lastPass = lastVblank;
     bool paused = false;
+#ifndef HLDS_CHILD
+    // (CHAT: what was said before this map is not said again on it.)
+    std::uint32_t chatSeen = hlrt::netGame.chatStamp();
+#endif
     // Out of a game between consoles, or QUIT TO MAIN MENU: the title again,
     // and whatever is chosen there.
     // The end of a demo, said (anywhere else, nothing).
@@ -2111,6 +2133,12 @@ int main(int argc, char *argv[])
                         hlrt::topText.show(said, line);
                     }
                 }
+#ifndef HLDS_CHILD
+                // What is said (CHAT): low on the picture, apart from who
+                // killed whom (a DSi's).
+                if (inMatch && hlrt::netGame.chatStamp() != chatSeen)
+                    showChat(chatSeen);
+#endif
 
                 if (!paused)
                 {
@@ -2220,7 +2248,9 @@ int main(int argc, char *argv[])
                         lastVblank = Global::vblanks();
                     }
 #endif
-                    else if (item == Menu::Action::Resume || item == Menu::Action::EndMatch || hlrt::input.startPressed)
+                    // (START on CHAT's keyboard is its own: it closes the keyboard.)
+                    else if (item == Menu::Action::Resume || item == Menu::Action::EndMatch ||
+                             (hlrt::input.startPressed && !hlrt::menu.typing()))
                     {
                         paused = false;
                         settings.save();

@@ -46,7 +46,7 @@ namespace hldata
     /// frame of another game, or of another build of this one, is not read.
     /// (Version 2: eight players, profiles, the rules, teams, sprays.)
     inline constexpr std::uint16_t kNetMagic = 0x4C48; // "HL"
-    inline constexpr std::uint8_t kNetVersion = 8;
+    inline constexpr std::uint8_t kNetVersion = 9;
 
     // ------------------------------------------------------------ the state
 
@@ -131,6 +131,7 @@ namespace hldata
         DemoWant, ///< client: `a` 1 wanted now, 0 for later: the demo's map of hash v[0..1], from piece v[2..3]
         MapSum,   ///< host: its map, hash v[0..1], sends as FetchFrom::MapCard: v[2..3] its crc32, v[4..5] its bytes
         MapHave,  ///< client: of the host's map (hash v[1..2]), `a` kMapHave*; v[0] per mille of it received
+        Chat,     ///< `from` says: twelve bytes of it in v, piece `a` & 0x7F (kNetChatLast: the last)
     };
     /// What a client says of the host's map (MapHave's `a`).
     inline constexpr std::uint8_t kMapHaveChecking = 0, kMapHaveGetting = 1, kMapHaveYes = 2, kMapHaveNoRoom = 3,

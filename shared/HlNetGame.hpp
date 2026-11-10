@@ -69,6 +69,29 @@ namespace hldata
         std::uint8_t weapon = 0; ///< (a death by another: what they had in hand when it was heard)
     };
 
+    /// What a player typed (Chat): up to kNetChatBytes - 1 letters, sent in
+    /// pieces of twelve; and as it is kept, with whose it is.
+    inline constexpr int kNetChatBytes = 60;
+    inline constexpr int kNetChatPieces = kNetChatBytes / 12;
+    inline constexpr std::uint8_t kNetChatLast = 0x80;
+    struct NetChatLine
+    {
+        std::uint8_t who;
+        char text[kNetChatBytes];
+    };
+    /// What was said: each player's as its pieces come, and the last few
+    /// whole, newest at next - 1; `stamp` counts them. Held apart from the
+    /// match (NetMatch::chatLog), in the DSi's memory on a console -- nothing
+    /// in it needs building, so a DS, which has none of it, never touches it.
+    struct NetChatLog
+    {
+        char in[kNetPlayers][kNetChatBytes];
+        static constexpr int kLines = 4;
+        NetChatLine lines[kLines];
+        int next;
+        std::uint32_t stamp;
+    };
+
     /// The rules of a match, as its host set them (Rules).
     struct NetRules
     {
@@ -235,6 +258,13 @@ namespace hldata
         static constexpr int kMostTaken = 96;
         Taken taken[kMostTaken];
 
+#ifndef HLDS_CHILD
+        /// What was said (Chat), if this console keeps it (a DSi: NetGame
+        /// gives it one); null, it is not kept, and nothing is said. (Not
+        /// on a console sent the game: it has no room to spare.)
+        NetChatLog *chatLog = nullptr;
+#endif
+
         static constexpr int kMostNotices = 8;
         NetNotice notices[kMostNotices];
         int noticeCount = 0;
@@ -290,6 +320,54 @@ namespace hldata
             e.v[i] = static_cast<std::int16_t>(v[i]);
         return e;
     }
+
+#ifndef HLDS_CHILD
+    namespace detail
+    {
+        inline void netChatKeep(NetMatch &match, int who, const char *text)
+        {
+            NetChatLog *log = match.chatLog;
+            if (log == nullptr)
+                return;
+            NetChatLine &line = log->lines[log->next];
+            line.who = static_cast<std::uint8_t>(who);
+            std::size_t n = 0;
+            for (; n < sizeof(line.text) - 1 && text[n] != 0; ++n)
+                line.text[n] = text[n];
+            line.text[n] = 0;
+            log->next = (log->next + 1) % NetChatLog::kLines;
+            ++log->stamp;
+        }
+    } // namespace detail
+
+    /// Say `text` to everyone (what is past kNetChatBytes - 1 letters cut
+    /// off), and keep it as this console's own. False (nothing said) if it is
+    /// empty, or the events waiting to go are too many for it.
+    /// (Always folded into its caller: on a console that is the DSi's own
+    /// code, and a copy of its own would be in the memory a DS has.)
+    __attribute__((always_inline)) inline bool netSayChat(NetMatch &match, const char *text)
+    {
+        std::size_t length = 0;
+        while (length < static_cast<std::size_t>(kNetChatBytes - 1) && text[length] != 0)
+            ++length;
+        NetOutbox &out = match.role == NetMatch::Role::Host ? match.host.out : match.client.out;
+        if (length == 0 || match.role == NetMatch::Role::Off || match.chatLog == nullptr || out.count >= NetOutbox::kMost - 32)
+            return false;
+        const int pieces = static_cast<int>((length + 11) / 12);
+        for (int p = 0; p < pieces; ++p)
+        {
+            NetEvent e = netEvent(NetEventType::Chat, p | (p == pieces - 1 ? kNetChatLast : 0));
+            std::memset(e.text, 0, sizeof(e.text));
+            const std::size_t from = static_cast<std::size_t>(p) * 12;
+            std::memcpy(e.text, text + from, length - from < 12 ? length - from : 12);
+            netSay(match, e);
+        }
+        char kept[kNetChatBytes] = {};
+        std::memcpy(kept, text, length);
+        detail::netChatKeep(match, match.me, kept);
+        return true;
+    }
+#endif
 
     /// Whether `a` and `b` are on one team, and may not hurt each other.
     inline bool netTeammates(const NetMatch &match, int a, int b)
@@ -885,6 +963,23 @@ namespace hldata
                     ++match.profileStamp;
                 }
                 break;
+#ifndef HLDS_CHILD
+            case NetEventType::Chat:
+                // (Its own, back from the host: kept already, as it was said.)
+                if (match.chatLog != nullptr && from != match.me && from < kNetPlayers && (event.a & 0x7F) < kNetChatPieces)
+                {
+                    char *in = match.chatLog->in[from];
+                    const int at = (event.a & 0x7F) * 12;
+                    std::memcpy(in + at, event.text, 12);
+                    if (event.a & kNetChatLast)
+                    {
+                        in[at + 12 < kNetChatBytes ? at + 12 : kNetChatBytes - 1] = 0;
+                        detail::netChatKeep(match, from, in);
+                        std::memset(in, 0, kNetChatBytes);
+                    }
+                }
+                break;
+#endif
             case NetEventType::Spray:
                 if (from != match.me && from < kNetPlayers && match.playing)
                 {
@@ -1333,6 +1428,7 @@ namespace hldata
                         case NetEventType::Bye:
                         case NetEventType::Profile:
                         case NetEventType::Spray:
+                        case NetEventType::Chat:
                             match.host.out.add(event);
                             break;
                         default:

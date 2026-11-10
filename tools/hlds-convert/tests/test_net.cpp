@@ -942,6 +942,7 @@ namespace
         std::unique_ptr<NetMatch> m[kNetPlayers];
         Air down[kNetPlayers], up[kNetPlayers];
         std::uint8_t sprays[kNetPlayers][kNetSprayBytes] = {};
+        NetChatLog logs[kNetPlayers] = {};
         LogicWorld none;
         PlayerState nobody;
 
@@ -952,6 +953,9 @@ namespace
             std::snprintf(name, sizeof(name), "P%d", n);
             netBegin(*m[n], n == 0 ? NetMatch::Role::Host : NetMatch::Role::Client, static_cast<std::uint16_t>(70 + n),
                      name);
+            // (What is said kept, as a DSi keeps it: after netBegin, which
+            // begins the match afresh.)
+            m[n]->chatLog = &logs[n];
             for (int i = 0; i < kNetSprayBytes; ++i)
                 sprays[n][i] = static_cast<std::uint8_t>(rnd());
             NetProfile profile;
@@ -1081,6 +1085,56 @@ namespace
         for (int n = 1; n < kNetPlayers; ++n)
             startedAll = startedAll && lobby.m[n]->rules.flags == kRuleFriendlyFire;
         check(ordered && startedAll, "the rules said before the start are known before the start is");
+    }
+
+    /// What a player types: to everyone, whole, once, in order, through bad
+    /// air -- a client's passed on by the host.
+    void testChat()
+    {
+        Lobby lobby;
+        for (int n = 0; n < 4; ++n)
+            lobby.add(n);
+        lobby.run(200);
+        const char *longest = "12345678901234567890123456789012345678901234567890123456789";
+        check(std::strlen(longest) == static_cast<std::size_t>(kNetChatBytes - 1), "(the longest a message may be)");
+        check(netSayChat(*lobby.m[2], longest), "a client says the longest there may be");
+        check(netSayChat(*lobby.m[0], "x"), "the host says one letter");
+        check(netSayChat(*lobby.m[3], "hello there, all of you"), "another client says something");
+        check(!netSayChat(*lobby.m[1], ""), "nothing is not said");
+        {
+            NetMatch keepsNone;
+            netBegin(keepsNone, NetMatch::Role::Client, 99, "DS");
+            check(!netSayChat(keepsNone, "hi"), "a console that keeps no chat (a DS) says none");
+        }
+        const char *cut = "this is far too long to be said whole, so the end of it goes: GONE";
+        check(netSayChat(*lobby.m[1], cut), "a message too long is said, cut short");
+        lobby.run(300);
+        auto has = [&](int n, int who, const char *text) {
+            int seen = 0;
+            for (const NetChatLine &line : lobby.m[n]->chatLog->lines)
+                seen += line.who == who && std::strcmp(line.text, text) == 0 ? 1 : 0;
+            return seen == 1;
+        };
+        bool all = true;
+        for (int n = 0; n < 4; ++n)
+        {
+            all = all && has(n, 2, longest) && has(n, 0, "x") && has(n, 3, "hello there, all of you");
+            all = all && lobby.m[n]->chatLog->stamp == 4;
+        }
+        check(all, "every console has each message once, whole -- its own as it said it");
+        char shorter[kNetChatBytes] = {};
+        std::memcpy(shorter, cut, kNetChatBytes - 1);
+        bool cutAll = true;
+        for (int n = 0; n < 4; ++n)
+            cutAll = cutAll && has(n, 1, shorter);
+        check(cutAll, "... the long one cut at the longest a message may be");
+        // The newest last: the ring keeps the last four.
+        check(netSayChat(*lobby.m[2], "one more"), "one more");
+        lobby.run(200);
+        const NetChatLog &seen = *lobby.m[1]->chatLog;
+        const NetChatLine &newest = seen.lines[(seen.next + NetChatLog::kLines - 1) % NetChatLog::kLines];
+        check(newest.who == 2 && std::strcmp(newest.text, "one more") == 0 && seen.stamp == 5,
+              "the newest is last, and the oldest has gone");
     }
 
     /// The host lets in no more than its rules say.
@@ -1753,6 +1807,7 @@ int main()
     testWire();
     testLobbyOfEight();
     testTooMany();
+    testChat();
     testTeamScore();
     testMatchEnd();
     testFinalScores();

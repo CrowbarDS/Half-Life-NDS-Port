@@ -9,8 +9,11 @@
 // a new game, a command) is handed back to whoever runs the game.
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
+
+#include <nds/system.h>
 
 #include "HlFont.hpp"
 #include "HlSaveFiles.hpp"
@@ -18,6 +21,7 @@
 
 namespace hlrt
 {
+    class Keyboard;
     class Menu
     {
     public:
@@ -66,6 +70,8 @@ namespace hlrt
         bool onJoin() const { return page_ == Page::NetJoin; }
         bool onHand() const { return page_ == Page::Hand; }
         bool onDemoChoice() const { return page_ == Page::DemoChoice; }
+        /// CHAT's keyboard is up (its START is its own: it closes it).
+        bool typing() const { return page_ == Page::NetChat; }
         void openDemoChoice();
         /// The list of saves that the load and save pages show (the
         /// caller's: SaveGame::index()).
@@ -134,6 +140,7 @@ namespace hlrt
             Hand = 20,        ///< a console sent the game, as it comes: which hand it is played with
             NetOnline = 24,   ///< ONLINE: host or join a game through the relay
             NetConnecting = 25, ///< ... going online first: how far it has got, and CANCEL
+            NetChat = 26,     ///< CHAT: a line typed for everyone in the game (the match goes on)
         };
 
         // A sheet: a page of its own, drawn and touched apart from the rows
@@ -158,6 +165,15 @@ namespace hlrt
         /// How many buttons along a sheet's bottom: the last is BACK (LEAVE).
         int sheetButtons() const
         {
+#ifndef HLDS_CHILD
+            // (The lobbies' CHAT as well: START, SEND GAME, CHAT, BACK; PROFILE,
+            // OPTIONS, CHAT, LEAVE.)
+            // (CHAT a DSi's: a DS has not the memory for it.)
+            if (page_ == Page::NetHost)
+                return (canSend() ? 3 : 2) + (isDSiMode() ? 1 : 0);
+            if (page_ == Page::NetLobby)
+                return isDSiMode() ? 4 : 3;
+#endif
             return page_ == Page::Saves || page_ == Page::NetLobby || (page_ == Page::NetHost && canSend()) ? 3
                    : page_ == Page::NetStarting                                                             ? 1
                                                                                                             : 2;
@@ -270,6 +286,26 @@ namespace hlrt
         bool connectFrame();
         int connectThen_ = 0;
         const char *connectShown_ = nullptr;
+#ifndef HLDS_CHILD
+        /// CHAT: the keyboard, from the lobby or the match's pause page, and
+        /// back there when the line is sent or given up.
+        void openChat();
+        void closeChat();
+        Action chatFrame();
+        void drawChat();
+        std::string chatText_;              ///< (kept until it is sent)
+        std::unique_ptr<Keyboard> chatKeys_;
+        Page chatFrom_ = Page::NetPause;
+        const char *chatWhy_ = "";          ///< why the last line was not sent
+        std::uint32_t chatShown_ = 0;       ///< the things said, as drawn
+        bool chatWanted_ = false;           ///< CHAT touched: the keyboard next frame
+        std::uint32_t chatSeenStamp_ = 0;   ///< (the lobby's: the last heard of...)
+        std::uint32_t chatHeardAt_ = 0;     ///< (... and when; 0 never)
+        /// Whether what was said lately is shown in the lobby's box (15 s).
+        bool chatRecent() const;
+        void chatHeard();
+        void drawLobbyChat(hldata::Canvas &canvas, const hldata::FontView &small, int x, int y, int pitch, int last, int width);
+#endif
         unsigned netSignature() const;
         bool big() const;
         int active_ = -1; ///< the row the stylus went down on, or -1

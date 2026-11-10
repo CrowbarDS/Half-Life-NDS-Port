@@ -167,6 +167,7 @@ namespace hlrt
             kNetHostOnline, ///< ONLINE's: host one
             kNetJoinOnline, ///< ... or look for one
             kNetCancelConnect, ///< CONNECTING's: give up going online
+            kChat,             ///< the match's pause page: CHAT
         };
         struct Row
         {
@@ -213,8 +214,9 @@ namespace hlrt
                                  {Kind::Button, kBack, "BACK"}};
         const Row kDemoChoiceRows[] = {{Kind::Button, kDemoContinue, "CONTINUE"}, {Kind::Button, kDemoRestart, "RESTART"}};
         const Row kServeRows[] = {{Kind::Button, kDemoSend, "SEND THE GAME"}, {Kind::Button, kStopDemo, "STOP"}};
-        const Row kNetPauseRows[] = {{Kind::Button, kResume, "RESUME"}, {Kind::Button, kOptions, "OPTIONS"},
-                                     {Kind::Button, kEndMatch, "END MATCH"}, {Kind::Button, kLeave, "LEAVE GAME"}};
+        const Row kNetPauseRows[] = {{Kind::Button, kResume, "RESUME"}, {Kind::Button, kChat, "CHAT"},
+                                     {Kind::Button, kOptions, "OPTIONS"}, {Kind::Button, kEndMatch, "END MATCH"},
+                                     {Kind::Button, kLeave, "LEAVE GAME"}};
         // The games found: made when they are shown, then BACK.
         constexpr int kFoundListed = 4;
         Row foundRows[kFoundListed + 1];
@@ -298,7 +300,9 @@ namespace hlrt
         bool hiddenRow(Id id)
         {
             return (id == kGameTraining && !onCard[1]) || (id == kGameUplink && !onCard[2]) ||
-                   (id == kContinue && !saveThere) || (id == kQuit && !quitThere) || (id == kEndMatch && (!netGame.isHost() || netGame.match().over));
+                   (id == kContinue && !saveThere) || (id == kQuit && !quitThere) || (id == kEndMatch && (!netGame.isHost() || netGame.match().over)) ||
+                   // (CHAT: not in a demo, and not on a console sent the game.)
+                   (id == kChat && (childConsole || !isDSiMode() || netGame.demo() != 0));
         }
 
         const Row *tableOf(int page, int &count);
@@ -452,6 +456,10 @@ namespace hlrt
         const NetMatch &match = netGame.match();
         unsigned sum = static_cast<unsigned>(netGame.phase()) * 7919u + match.profileStamp * 104729u +
                        static_cast<unsigned>(match.rules.mode) * 31u + match.rules.most + netGame.guestRoom() * 977u;
+#ifndef HLDS_CHILD
+        // (What was said, and whether it is still shown.)
+        sum = sum * 131u + netGame.chatStamp() * 2u + (isDSiMode() && chatRecent() ? 1u : 0u);
+#endif
         // (What is being sent to the consoles given the game, and how far.)
         const char *what = "";
         int consoles = 0, percent = 0;
@@ -555,6 +563,13 @@ namespace hlrt
         canvas.clear();
         // (Whatever the last page coloured: a score table's, a lobby's.)
         touchCanvas.tint(1, 0, 2, 24, nullptr);
+#ifndef HLDS_CHILD
+        if (page_ == Page::NetChat)
+        {
+            drawChat();
+            return;
+        }
+#endif
         if (sheet())
         {
             drawSheet();
@@ -757,6 +772,8 @@ namespace hlrt
                 return SheetBox{4, kSheetBarTop, 248, kSheetBarHeight};
             if (count == 2)
                 return n == 0 ? SheetBox{4, kSheetBarTop, 148, kSheetBarHeight} : SheetBox{156, kSheetBarTop, 96, kSheetBarHeight};
+            if (count == 4)
+                return SheetBox{4 + n * 62, kSheetBarTop, 58, kSheetBarHeight};
             return SheetBox{4 + n * 84, kSheetBarTop, 80, kSheetBarHeight};
         }
         // What YES does, once asked.
@@ -2265,6 +2282,14 @@ namespace hlrt
                 drawWrapped(canvas, small, x, y, g.line, 0, kLast, said, inkFor(small, kUiWhite), kWidth);
                 return;
             }
+#ifndef HLDS_CHILD
+            // What was said lately (CHAT), for a while after the last of it.
+            if (!chosen && isDSiMode() && chatRecent())
+            {
+                drawLobbyChat(canvas, small, x, y, g.line, kLast, kWidth);
+                return;
+            }
+#endif
             // The host's map, not on this card as the host has it: when it is
             // sent, and how far it has come.
             if (!chosen && netGame.mapLine(said, sizeof(said)))
@@ -2480,8 +2505,13 @@ namespace hlrt
             drawSheetButton(sheetBarBox(0, buttons), "START", sheetPressed_ == kSheetBar,
                             !(settings.nextMode == kNextVote && playersHere() > 1) &&
                                 (hostIndex() < 0 || netGame.phase() == NetGame::Phase::Serving || !hostMapFits()));
-            if (buttons == 3)
-                drawSheetButton(sheetBarBox(1, 3), "SEND GAME", sheetPressed_ == kSheetBar - 1, playersHere() > 1);
+            if (canSend())
+                drawSheetButton(sheetBarBox(1, buttons), "SEND GAME", sheetPressed_ == kSheetBar - 1, playersHere() > 1);
+#ifndef HLDS_CHILD
+            // CHAT (a DSi's): what is said shows here, in the box above, and in a match.
+            if (isDSiMode())
+                drawSheetButton(sheetBarBox(buttons - 2, buttons), "CHAT", sheetPressed_ == kSheetBar - (buttons - 2));
+#endif
             drawSheetButton(sheetBarBox(buttons - 1, buttons), "BACK", sheetPressed_ == kSheetBar - (buttons - 1));
             return;
         }
@@ -2504,9 +2534,12 @@ namespace hlrt
         {
             // (PROFILE and OPTIONS without leaving: a console that was sent
             // the game has nowhere else to set them.)
-            drawSheetButton(sheetBarBox(0, 3), "PROFILE", sheetPressed_ == kSheetBar);
-            drawSheetButton(sheetBarBox(1, 3), "OPTIONS", sheetPressed_ == kSheetBar - 1);
-            drawSheetButton(sheetBarBox(2, 3), "LEAVE", sheetPressed_ == kSheetBar - 2);
+            const int buttons = sheetButtons();
+            drawSheetButton(sheetBarBox(0, buttons), "PROFILE", sheetPressed_ == kSheetBar);
+            drawSheetButton(sheetBarBox(1, buttons), "OPTIONS", sheetPressed_ == kSheetBar - 1);
+            if (buttons == 4)
+                drawSheetButton(sheetBarBox(2, buttons), "CHAT", sheetPressed_ == kSheetBar - 2);
+            drawSheetButton(sheetBarBox(buttons - 1, buttons), "LEAVE", sheetPressed_ == kSheetBar - (buttons - 1));
             return;
         }
         if (optionSheet())
@@ -2894,7 +2927,16 @@ namespace hlrt
             openSheet(Page::NetStarting);
             return Action::None;
         }
-        if (page_ == Page::NetHost && button == 1 && sheetButtons() == 3)
+#ifndef HLDS_CHILD
+        if ((page_ == Page::NetHost || page_ == Page::NetLobby) && isDSiMode() && button == sheetButtons() - 2 &&
+            !(page_ == Page::NetHost && canSend() && button == 1))
+        {
+            sound.ui(kUiSoundPress);
+            chatWanted_ = true; // (opened next frame: this touch's page is still drawn after it)
+            return Action::None;
+        }
+#endif
+        if (page_ == Page::NetHost && button == 1 && canSend())
         {
             if (playersHere() <= 1)
                 sendBegin();
@@ -3012,6 +3054,140 @@ namespace hlrt
 
 #ifndef HLDS_CHILD
     // (CONNECTING is a DSi's alone: in its memory, as the rest of online.)
+#ifndef HLDS_CHILD
+    /// The lobby's box: the last three things said, a line each.
+    HL_TWL_CODE void Menu::drawLobbyChat(Canvas &canvas, const FontView &small, int x, int y, int pitch, int last, int width)
+    {
+        char lines[3 * 80];
+        std::uint32_t stamp = 0;
+        netGame.chatLines(lines, static_cast<int>(sizeof(lines)), 3, stamp);
+        int row = 0;
+        for (char *line = lines; *line != 0 && row <= last; ++row)
+        {
+            char *end = std::strchr(line, '\n');
+            if (end != nullptr)
+                *end = 0;
+            drawFitted(canvas, small, x, y + row * pitch, line, inkFor(small, kUiWhite), width);
+            if (end == nullptr)
+                break;
+            line = end + 1;
+        }
+    }
+
+    /// Something new said: heard (a sound, if it is another's, in a lobby),
+    /// and shown for a while in the lobby's box (chatRecent).
+    HL_TWL_CODE void Menu::chatHeard()
+    {
+        const NetChatLog *log = netGame.match().chatLog;
+        chatSeenStamp_ = netGame.chatStamp();
+        chatHeardAt_ = Global::vblanks() | 1;
+        if (log == nullptr || log->stamp == 0)
+            return;
+        const NetChatLine &newest = log->lines[(log->next + NetChatLog::kLines - 1) % NetChatLog::kLines];
+        if ((page_ == Page::NetHost || page_ == Page::NetLobby) && newest.who != netGame.match().me)
+            sound.ui(kUiSoundHudOn);
+    }
+
+    HL_TWL_CODE bool Menu::chatRecent() const
+    {
+        return chatHeardAt_ != 0 && Global::vblanks() - chatHeardAt_ < 15u * 60u;
+    }
+
+    HL_TWL_CODE void Menu::openChat()
+    {
+        chatFrom_ = page_ == Page::NetPause ? Page::NetPause : page_;
+        untintSeats();
+        mapCard.hide();
+        chatWhy_ = "";
+        page_ = Page::NetChat;
+        chatKeys_ = std::make_unique<Keyboard>(chatText_, static_cast<std::size_t>(kNetChatBytes - 1));
+        draw();
+    }
+
+    HL_TWL_CODE void Menu::closeChat()
+    {
+        chatKeys_.reset();
+        chatWhy_ = "";
+        if (chatFrom_ == Page::NetPause && netGame.playing())
+        {
+            page_ = Page::NetPause;
+            draw();
+        }
+        else
+            openLobby();
+    }
+
+    HL_TWL_CODE Menu::Action Menu::chatFrame()
+    {
+        // (Out of the game meanwhile: wherever that goes.)
+        if (!netGame.on())
+        {
+            chatKeys_.reset();
+            outOfGame();
+            return Action::None;
+        }
+        // Something said meanwhile: shown above the line.
+        if (netGame.chatStamp() != chatShown_)
+            draw();
+        switch (chatKeys_->poll())
+        {
+        case Keyboard::Event::Enter:
+        {
+            const int said = chatText_.empty() ? 2 : netGame.chat(chatText_.c_str());
+            if (said == 0)
+            {
+                chatText_.clear();
+                sound.ui(kUiSoundPress);
+                closeChat();
+                break;
+            }
+            static TWL_DATA const char kSoon[] = "Wait a moment before saying more.",
+                                       kNotNow[] = "Not now: nothing to say, or too much going on.";
+            chatWhy_ = said == 1 ? kSoon : kNotNow;
+            sound.ui(kUiSoundDeny);
+            draw();
+            break;
+        }
+        case Keyboard::Event::Cancel:
+            closeChat();
+            break;
+        default:
+            break;
+        }
+        return Action::None;
+    }
+
+    HL_TWL_CODE void Menu::drawChat()
+    {
+        Canvas &canvas = touchCanvas.canvas();
+        const FontView &medium = touchCanvas.font(kFontMedium);
+        const FontView &small = touchCanvas.font(kFontSmall);
+        static TWL_DATA const char kTitle[] = "CHAT";
+        drawTextCentred(canvas, medium, 128, 2, kTitle, inkFor(medium, kUiOrange));
+        // The last things said, one a line (what does not fit cut short).
+        char lines[3 * 80];
+        std::uint32_t stamp = 0;
+        netGame.chatLines(lines, static_cast<int>(sizeof(lines)), 3, stamp);
+        chatShown_ = stamp;
+        int y = 18;
+        for (char *line = lines; *line != 0 && y < 52;)
+        {
+            char *end = std::strchr(line, '\n');
+            if (end != nullptr)
+                *end = 0;
+            drawFitted(canvas, small, 4, y, line, inkFor(small, kUiGrey), 248);
+            y += small.height() + 1;
+            if (end == nullptr)
+                break;
+            line = end + 1;
+        }
+        if (chatWhy_[0] != 0)
+            drawTextCentred(canvas, small, 128, 52, chatWhy_, inkFor(small, kUiOrange));
+        chatKeys_->draw();
+    }
+
+#endif
+
     TWL_CODE void Menu::openConnecting(int then)
     {
         connectThen_ = then;
@@ -3933,6 +4109,9 @@ namespace hlrt
             page_ = Page::NetOnline;
             draw();
             break;
+        case kChat:
+            chatWanted_ = true;
+            break;
 #endif
         case kProfile:
             sheetFrom_ = Page::Multiplayer;
@@ -3976,9 +4155,23 @@ namespace hlrt
             return Action::None;
         }
 #ifndef HLDS_CHILD
+        // CHAT: its keyboard, and nothing else of the menu's (asked for last
+        // frame, from a page that has now done with its touch).
+        if (chatWanted_)
+        {
+            chatWanted_ = false;
+            if (netGame.on())
+                openChat();
+            return Action::None;
+        }
+        if (page_ == Page::NetChat)
+            return chatFrame();
         // (Diagnostic) online: the ARM7 watched.
         if (netGame.online())
             arm7Watch();
+        // Something said in the lobby: heard, and shown for a while.
+        if (netGame.chatStamp() != chatSeenStamp_)
+            chatHeard();
         // Online: one asking to come in, and the host asked whether to let
         // them -- on its lobby's page, when nothing else is being asked.
         if (page_ == Page::NetHost && sheetAsking_ == 0 && netGame.online())

@@ -1066,6 +1066,15 @@ Milestone 11, "levels of detail".
     (`Global::setMapFile`), and kept, one version a map, so the next time
     nothing is sent. A DSi's alone: the code and its tables are in the
     DSi's memory, and a DS goes by the map's name as before.
+  - **Chat** (a DSi's: CHAT in the lobby's bar and on a match's pause
+    page, the menu's own keyboard, the match going on meanwhile). A line of
+    up to 59 letters goes as Chat events, twelve bytes each, in order and
+    once like every event; the host passes a client's on. What was said is
+    kept in the DSi's memory (`NetChatLog`, which the match only points to:
+    a DS keeps none, offers no CHAT, and ignores what it hears), shown in
+    the lobby's box for a while and, in a match, low on the picture as
+    "NAME: text", apart from who killed whom. One line every two seconds a
+    console.
   - **A state** (sixteen bytes: where, facing, how fast, what in hand,
     standing or crouched or dead) goes whole in every frame, so a lost frame
     is replaced by the next. **An event** (a shot, a hit, a death, a pickup,
