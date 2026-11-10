@@ -138,4 +138,17 @@ namespace hlds::install
     /// console's ONLINE needs it), unless the card has one: one that says
     /// another relay is the player's own choice, and is never written over.
     IniPut putServerIni(const std::filesystem::path &card, std::string &why);
+    // ------------------------------------------------------------- the stage
+    /// Where this user's programs keep what they can make again: $XDG_CACHE_HOME
+    /// or ~/.cache, ~/Library/Caches on macOS, %LOCALAPPDATA% on Windows.
+    /// Empty if the system says none.
+    std::filesystem::path userCacheFolder();
+    /// Where the converter keeps its own files for the card at `card` (the
+    /// stage: what the archives are made from, found again by the next
+    /// run), when it is not told: `<card>-stage` if one is there already (a
+    /// card converted before carries on where it was; `kept` then true);
+    /// else a folder of its own under `cache` (userCacheFolder), named for
+    /// the card -- never in the folder it is run from, nor beside a card at
+    /// a drive's or a mount's root. With no `cache`, beside the card.
+    std::filesystem::path defaultStage(const std::filesystem::path &card, const std::filesystem::path &cache, bool &kept);
 } // namespace hlds::install

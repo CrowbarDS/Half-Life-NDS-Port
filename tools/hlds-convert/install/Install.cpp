@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <map>
 #include <memory>
@@ -507,5 +508,52 @@ namespace hlds::install
             return IniPut::Failed;
         }
         return IniPut::Written;
+    }
+    fs::path userCacheFolder()
+    {
+        const auto env = [](const char *name) -> fs::path
+        {
+            const char *value = std::getenv(name);
+            return value != nullptr && value[0] != 0 ? fs::path(value) : fs::path();
+        };
+#if defined(_WIN32)
+        return env("LOCALAPPDATA");
+#elif defined(__APPLE__)
+        const fs::path home = env("HOME");
+        return home.empty() ? fs::path() : home / "Library" / "Caches";
+#else
+        if (fs::path xdg = env("XDG_CACHE_HOME"); !xdg.empty() && xdg.is_absolute())
+            return xdg;
+        const fs::path home = env("HOME");
+        return home.empty() ? fs::path() : home / ".cache";
+#endif
+    }
+
+    fs::path defaultStage(const fs::path &card, const fs::path &cache, bool &kept)
+    {
+        // Beside the card, as it always was: kept if it is there.
+        fs::path named = card;
+        if (!named.has_filename())
+            named = named.parent_path();
+        fs::path beside = named;
+        beside += "-stage";
+        std::error_code ec;
+        kept = fs::exists(beside / "_nds" / "hl_nds" / "data", ec);
+        if (kept || cache.empty())
+            return beside;
+        // Else the user's cache, a folder for each card: by its whole path
+        // (FNV-1a), so that two cards never share one.
+        fs::path whole = fs::weakly_canonical(fs::absolute(card, ec), ec);
+        if (whole.empty())
+            whole = card;
+        std::uint64_t hash = 14695981039346656037ull;
+        for (const char c : whole.generic_string())
+        {
+            hash ^= static_cast<std::uint8_t>(c);
+            hash *= 1099511628211ull;
+        }
+        char name[32];
+        std::snprintf(name, sizeof(name), "stage-%016llx", static_cast<unsigned long long>(hash));
+        return cache / "hlds-convert" / name;
     }
 } // namespace hlds::install

@@ -1682,9 +1682,12 @@ falling lift is made of: three scientists on a floor that breaks. The map's enti
 read, stays in the stage (`maps/<map>.ent`) instead of in the level.
 
 The loose files the archives are made from stay on the PC, in a **stage**
-folder (`--stage <folder>`; by default `<card root>-stage`, beside the
-card's): a texture or a sound shared by fifty maps is made once there and
-found again by the next run.
+folder (`--stage <folder>`; by default a folder for that card in the user's
+cache -- `~/.cache/hlds-convert/stage-<hash of the card's path>`, macOS's
+`~/Library/Caches`, Windows' `%LOCALAPPDATA%` -- or `<card root>-stage` where
+a card has one there already from before; the installer's window keeps its
+own in its cache folder): a texture or a sound shared by fifty maps is made
+once there and found again by the next run.
 
 `build/convert/hlds-testmap <folder>` writes a small synthetic map -- one room
 with a door, a button, a lift and one brush of each drawing class -- that can

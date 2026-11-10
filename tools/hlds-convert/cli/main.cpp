@@ -59,7 +59,9 @@ namespace
                      "                         Menu++ offers the wide screen (16:10) for\n"
                      "      --stage <folder>   where the converter keeps its own files, which\n"
                      "                         the archives are made from and the next run\n"
-                     "                         finds again (default: <card root>-stage)\n"
+                     "                         finds again (default: a folder for the card in\n"
+                     "                         this user's cache -- ~/.cache/hlds-convert, or\n"
+                     "                         <card root>-stage if a card has one already)\n"
                      "      --language <name>  a translation installed beside the game folder\n"
                      "                         (valve_french: french), its text and voices\n"
                      "                         over the game's (default: english, the game's own)\n"
@@ -282,6 +284,18 @@ namespace
         }
     }
 
+    /// Where the converter keeps its own files, when it is not told (--stage):
+    /// install::defaultStage, said.
+    void chooseStage(ConvertOptions &options)
+    {
+        if (!options.stageRoot.empty())
+            return;
+        bool kept = false;
+        options.stageRoot = install::defaultStage(options.cardRoot, install::userCacheFolder(), kept);
+        std::printf("the converter's own files (to make the archives again): %s%s\n",
+                    options.stageRoot.string().c_str(), kept ? " (beside the card, as before)" : "");
+    }
+
     /// The console's program built into this converter, made for `device`,
     /// at the card's root (if the one there is not that already). Nonzero
     /// if it could not be.
@@ -426,6 +440,7 @@ namespace
         if (options.gameDir.empty() || options.cardRoot.empty() || options.lightScale <= 0 ||
             (!all && mapName.empty()))
             return usage();
+        chooseStage(options);
         for (char &c : language)
             c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         if (!language.empty() && language != "english")
@@ -522,6 +537,7 @@ namespace
         }
         if (options.cardRoot.empty())
             return usage();
+        chooseStage(options);
         Converter converter(options);
         std::string error;
         int maps = 0;

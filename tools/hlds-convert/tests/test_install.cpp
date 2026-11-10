@@ -376,6 +376,34 @@ namespace
         check(putServerIni(root / "blocked", why) == IniPut::Failed && !why.empty(), "a card that cannot be written says why");
     }
 
+    /// Where the stage goes when it is not said: never in the folder the
+    /// converter is run from, nor beside a card at a root; beside the card
+    /// only if a stage is there already.
+    void testStage(const fs::path &root)
+    {
+        const fs::path cache = root / "cache";
+        bool kept = true;
+        const fs::path relative = defaultStage("hlds", cache, kept);
+        check(!kept && relative.parent_path() == cache / "hlds-convert" &&
+                  relative.filename().string().rfind("stage-", 0) == 0,
+              "a card given as a folder of the working folder: its stage in the user's cache, not beside it");
+        check(defaultStage("hlds", cache, kept) == relative, "... the same one each run (the next run finds it)");
+        check(defaultStage(root / "another", cache, kept) != relative, "... and another card has another");
+        const fs::path top = defaultStage(root.root_path(), cache, kept);
+        check(!kept && top.parent_path() == cache / "hlds-convert",
+              "a card at a drive's or mount's root: its stage in the cache, not beside the root");
+
+        // A card converted before, its stage beside it: carried on with.
+        const fs::path card = root / "card";
+        put(root / "card-stage" / "_nds" / "hl_nds" / "data" / "manifest.bin");
+        check(defaultStage(card, cache, kept) == root / "card-stage" && kept,
+              "a card whose stage is beside it already keeps it there");
+        check(defaultStage(root / "card" / "", cache, kept) == root / "card-stage" && kept, "... given with a slash at its end too");
+        check(defaultStage(root / "fresh", fs::path(), kept) == root / "fresh-stage" && !kept,
+              "no cache folder on this system: beside the card, as before");
+        check(!userCacheFolder().empty(), "this system says where its user's cache is");
+    }
+
     void testParts()
     {
         check(partOfMap("t0a0b1") == Part::HazardCourse, "Hazard Course");
@@ -401,6 +429,7 @@ int main()
     testRomPut(root / "r");
     testRomFor(root / "h");
     testServerIni(root / "s");
+    testStage(root / "st");
     testParts();
     fs::remove_all(root, ec);
     if (failures == 0)
