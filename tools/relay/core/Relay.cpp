@@ -111,6 +111,23 @@ namespace hlrelay
         say(out, *me, welcome, relayWelcomeWrite(welcome, nonce, me->session, me->token));
     }
 
+    bool Relay::sayVersion(const Address &from, std::uint32_t nowMs)
+    {
+        if (nowMs - versionSecondMs_ >= 1000)
+        {
+            versionSecondMs_ = nowMs;
+            versionCount_ = 0;
+        }
+        if (versionCount_ >= kVersionPerSecond)
+            return false;
+        std::uint32_t &said = versionSaidMs_[(from.ip * 2654435761u) >> 22];
+        if (said != 0 && nowMs + 1 - said < 1000)
+            return false;
+        said = nowMs + 1;
+        ++versionCount_;
+        return true;
+    }
+
     void Relay::setLogSalt(const std::uint8_t *salt) { std::memcpy(salt_, salt, sizeof(salt_)); }
 
     std::string Relay::shown(const Address &at) const
@@ -310,6 +327,17 @@ namespace hlrelay
     void Relay::receive(const Address &from, const std::uint8_t *bytes, int size, std::uint32_t nowMs,
                         std::vector<Out> &out)
     {
+        // Another version: told this one's, now and then (HlRelay.hpp).
+        if (relayOtherVersion(bytes, size))
+        {
+            ++drops_.otherVersion;
+            if (sayVersion(from, nowMs))
+            {
+                std::uint8_t version[kRelayHeadBytes];
+                say(out, from, version, relayVersionWrite(version, relayGet32(bytes + 4)));
+            }
+            return;
+        }
         RelayHead head;
         if (!relayHeadRead(bytes, size, head))
         {

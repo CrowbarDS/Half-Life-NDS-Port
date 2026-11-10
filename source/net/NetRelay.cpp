@@ -48,6 +48,8 @@ namespace hlrt::netrelay
         HL_TWL_TEXT(kNoName, "The relay's name was not found");
         HL_TWL_TEXT(kNoSocket, "No socket for the relay");
         HL_TWL_TEXT(kNoAnswer, "The relay did not answer (%s:%d)");
+        HL_TWL_TEXT(kGameOlder, "Update the game: the relay is v%d, the game v%d");
+        HL_TWL_TEXT(kRelayOlder, "The relay is older than the game (v%d, game v%d)");
 #undef HL_TWL_TEXT
 
         constexpr std::uint32_t kConnectFrames = 20 * 60; ///< to join a saved network
@@ -93,6 +95,8 @@ namespace hlrt::netrelay
             std::uint32_t lastEnter;
             std::uint8_t cookie[kRelayCookieBytes];
             std::uint8_t token[kRelayTokenBytes];
+            /// The relay's version, if it answered that it speaks another; 0: not.
+            std::uint8_t relayVersion;
             Role role;
             std::uint32_t lastPump;
             std::uint32_t lastSent;
@@ -300,6 +304,15 @@ namespace hlrt::netrelay
         /// One datagram of the relay's. True if it was its answer to Ping.
         TWL_CODE bool heard(const std::uint8_t *bytes, int size)
         {
+            // (The relay speaks another version: kept, for the menu to say.)
+            int version = 0;
+            std::uint32_t echoed = 0;
+            if (relayVersionRead(bytes, size, version, echoed))
+            {
+                if (echoed == s.session && version != kRelayVersion)
+                    s.relayVersion = static_cast<std::uint8_t>(version);
+                return false;
+            }
             RelayHead head;
             if (!relayHeadRead(bytes, size, head) || head.session != s.session)
                 return false;
@@ -544,6 +557,7 @@ namespace hlrt::netrelay
                 s.role = Role::None;
                 s.in = false;
                 s.entering = 0;
+                s.relayVersion = 0;
                 if (!wifiUp && !Wifi_InitDefault(INIT_ONLY | WIFI_ATTEMPT_DSI_MODE))
                 {
                     char text[48];
@@ -611,7 +625,14 @@ namespace hlrt::netrelay
                 // ... and the relay is there, and lets it in.
                 drain();
                 stepEnter(now);
-                if (s.in)
+                if (s.relayVersion != 0)
+                {
+                    char text[64];
+                    std::snprintf(text, sizeof(text), s.relayVersion > kRelayVersion ? kGameOlder : kRelayOlder,
+                                  s.relayVersion, kRelayVersion);
+                    failConnect(7, text);
+                }
+                else if (s.in)
                 {
                     started = true;
                     s.lastPump = s.lastSent = now;

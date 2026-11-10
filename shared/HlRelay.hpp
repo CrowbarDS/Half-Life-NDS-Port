@@ -144,6 +144,46 @@ namespace hldata
         return true;
     }
 
+    // ------------------------------------------------- another version
+    //
+    // A datagram of another version than the relay's is answered (now and
+    // then: not more than once a second to an address) with its head alone:
+    // the magic, the RELAY's version, kind 0, and the session it was sent
+    // with -- so that a console says which of the two is to be updated rather
+    // than that the relay is not there. THIS NEVER CHANGES, in any version
+    // to come: an old console and a new relay (or a new console and an old
+    // relay) must still understand it.
+    inline constexpr std::uint8_t kRelayVersionKind = 0;
+
+    inline int relayVersionWrite(std::uint8_t *out, std::uint32_t session)
+    {
+        out[0] = static_cast<std::uint8_t>(kRelayMagic & 0xFF);
+        out[1] = static_cast<std::uint8_t>(kRelayMagic >> 8);
+        out[2] = kRelayVersion;
+        out[3] = kRelayVersionKind;
+        relayPut32(out + 4, session);
+        return kRelayHeadBytes;
+    }
+    /// The version a relay answered with, and the session it echoed; false
+    /// if it is not such an answer.
+    inline bool relayVersionRead(const std::uint8_t *bytes, int size, int &version, std::uint32_t &session)
+    {
+        if (size < kRelayHeadBytes || bytes[0] != (kRelayMagic & 0xFF) || bytes[1] != (kRelayMagic >> 8) ||
+            bytes[3] != kRelayVersionKind)
+            return false;
+        version = bytes[2];
+        session = relayGet32(bytes + 4);
+        return true;
+    }
+    /// Whether `bytes` is of this protocol (its magic) but of another version
+    /// -- and not itself such an answer (two relays never answer each other
+    /// for ever).
+    inline bool relayOtherVersion(const std::uint8_t *bytes, int size)
+    {
+        return size >= kRelayHeadBytes && bytes[0] == (kRelayMagic & 0xFF) && bytes[1] == (kRelayMagic >> 8) &&
+               bytes[2] != kRelayVersion && bytes[3] != kRelayVersionKind;
+    }
+
     /// A datagram with nothing after its head but one byte (`Joined`,
     /// `Refused`, `Admit`, `Kick`, `Status`), or none (`value` < 0).
     inline int relaySmallWrite(std::uint8_t *out, RelayKind kind, std::uint32_t session, int value = -1)

@@ -37,7 +37,8 @@ namespace hlrelay
     /// Datagrams the relay let fall, by why.
     struct Drops
     {
-        std::uint64_t notOurs = 0;   ///< not this relay protocol's (or of another version)
+        std::uint64_t notOurs = 0;   ///< not this relay protocol's
+        std::uint64_t otherVersion = 0; ///< of another version (answered, now and then, with this one's)
         std::uint64_t tooMany = 0;   ///< a console coming in, while it knows as many as it may
         std::uint64_t unknown = 0;   ///< from no console it knows (or not in its session), and not coming in
         std::uint64_t badCookie = 0; ///< coming in with a cookie it did not make for that address, or too old
@@ -62,6 +63,11 @@ namespace hlrelay
         /// next: windows of 2^14 ms (16 s).
         static constexpr int kCookieShift = 14;
         static constexpr int kSecretBytes = 32;
+        /// A datagram of another version is answered at most once a second
+        /// to an address (as near as a table of kVersionSlots says), and to
+        /// kVersionPerSecond addresses a second in all.
+        static constexpr int kVersionSlots = 1024;
+        static constexpr int kVersionPerSecond = 200;
 
         /// The relay's own secret (kSecretBytes, random, made at start-up and
         /// never shown): what cookies are made under, and sessions and tokens
@@ -168,5 +174,12 @@ namespace hlrelay
         std::uint8_t cookieKey_[16] = {};
         std::uint8_t randomKey_[16] = {};
         std::uint64_t randomCount_ = 0;
+        /// When each slot (an address's, hashed) was last answered its
+        /// version (+1: 0 never).
+        std::uint32_t versionSaidMs_[kVersionSlots] = {};
+        std::uint32_t versionSecondMs_ = 0;
+        int versionCount_ = 0;
+        /// Whether a datagram of another version from `from` is answered now.
+        bool sayVersion(const Address &from, std::uint32_t nowMs);
     };
 } // namespace hlrelay

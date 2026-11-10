@@ -873,7 +873,7 @@ namespace
         // (Three Pongs, and a Bye: by then it had said nothing for longer
         // than the relay waits.)
         const std::string &last = lines.back();
-        check(last.find("stats peers=0 rooms=0 in=4 in_bytes=27 out=4 out_bytes=32 drop_not_ours=1 drop_too_many=0 "
+        check(last.find("stats peers=0 rooms=0 in=4 in_bytes=27 out=4 out_bytes=32 drop_not_ours=1 other_version=0 drop_too_many=0 "
                         "drop_unknown=0 drop_bad_cookie=0 send_failed=0 full_rounds=0 (last 60 s)") == 0,
               "a line of counts each minute: consoles, rooms, what came, went and fell");
         serve.round(now + 2 * Serve::kStatsMs);
@@ -990,6 +990,70 @@ namespace
         check(full.peers() == Relay::kMostPeers && comeIn(full, 99, now) == 0 && full.drops().tooMany == 1,
               "one more than it may know: not let in, and counted");
     }
+
+    void testOtherVersion()
+    {
+        g_sessions.clear();
+        Relay relay;
+        std::vector<Out> out;
+        std::uint32_t now = 70000;
+        std::uint8_t bytes[kRelayMostBytes];
+
+        auto older = [&](const Address &from, std::uint32_t when)
+        {
+            out.clear();
+            const int size = relaySmallWrite(bytes, RelayKind::Ping, 0xABCD1234u);
+            bytes[2] = kRelayVersion - 1;
+            relay.receive(from, bytes, size, when, out);
+        };
+        older(at(1), now);
+        int version = 0;
+        std::uint32_t echoed = 0;
+        check(out.size() == 1 && out[0].to == at(1) && out[0].bytes.size() == static_cast<std::size_t>(kRelayHeadBytes) &&
+                  relayVersionRead(out[0].bytes.data(), kRelayHeadBytes, version, echoed) &&
+                  version == kRelayVersion && echoed == 0xABCD1234u && relay.peers() == 0,
+              "a console of an older version: told the relay's, in its own session, and nothing kept");
+        RelayHead head;
+        check(!relayHeadRead(out[0].bytes.data(), kRelayHeadBytes, head),
+              "... an answer no console of any version takes for anything else");
+        older(at(1), now + 500);
+        check(out.empty(), "... said again within the second: not answered again");
+        older({at(1).ip, 9999}, now + 600);
+        check(out.empty(), "... nor from another port of that address");
+        older(at(1), now + 1000);
+        check(out.size() == 1, "... a second later, answered again");
+
+        out.clear();
+        relayHelloWrite(bytes, 77);
+        bytes[2] = kRelayVersion + 1;
+        relay.receive(at(2), bytes, kRelayHelloBytes, now, out);
+        check(out.size() == 1 && out[0].bytes.size() <= static_cast<std::size_t>(kRelayHelloBytes) &&
+                  relayVersionRead(out[0].bytes.data(), kRelayHeadBytes, version, echoed) && echoed == 77,
+              "a newer console's Hello: told the relay's version, nothing bigger than it sent");
+
+        out.clear();
+        relayVersionWrite(bytes, 5);
+        bytes[2] = kRelayVersion + 1;
+        relay.receive(at(3), bytes, kRelayHeadBytes, now, out);
+        check(out.empty(), "another relay's answer of its version: not answered (no two relays answering for ever)");
+        out.clear();
+        relay.receive(at(3), bytes, kRelayHeadBytes - 1, now, out);
+        bytes[0] ^= 0xFF;
+        relay.receive(at(3), bytes, kRelayHeadBytes, now, out);
+        check(out.empty(), "... nor a head cut short, nor one not of this protocol");
+
+        // From very many addresses at once: not more than so many answers a second.
+        int answered = 0;
+        for (int n = 0; n < 3 * Relay::kVersionPerSecond; ++n)
+        {
+            older({0x0B000000u + static_cast<std::uint32_t>(n) * 7919u, 1}, now + 5000);
+            answered += static_cast<int>(out.size());
+        }
+        check(answered <= Relay::kVersionPerSecond && answered > Relay::kVersionPerSecond / 2,
+              "very many of another version at once: no more than so many answered a second");
+        check(relay.drops().otherVersion >= static_cast<std::uint64_t>(3 * Relay::kVersionPerSecond),
+              "... and every one counted");
+    }
 } // namespace
 
 int main()
@@ -1005,6 +1069,7 @@ int main()
     testLog();
     testStatsLine();
     testComingIn();
+    testOtherVersion();
     std::printf("%s (%d failed)\n", g_failures == 0 ? "PASS" : "FAIL", g_failures);
     return g_failures == 0 ? 0 : 1;
 }
