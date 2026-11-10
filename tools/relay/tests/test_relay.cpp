@@ -1124,6 +1124,7 @@ namespace
             check(quiet.peers() == 1, "... a console quiet a minute, the relay set to a minute: still there");
             quiet.tick(1000 + 60001, said);
             check(quiet.peers() == 0, "... a moment after: let go");
+            g_sessions.erase({&quiet, 1}); // (another relay may be where this one was)
             check(Limits().silentSeconds * 1000u == kRelaySilentMs && kRelaySilentMs == 210000u,
                   "... by default three and a half minutes");
         }
