@@ -61,7 +61,6 @@
             </div>
             <div class="get-side">
               <a class="alt" id="alt-cli" href="#"><span><span class="t">Command line only</span><span class="d" id="alt-cli-d">No window, for scripts and servers</span></span><span class="s" id="alt-cli-s"></span></a>
-              <a class="alt" id="alt-rom" href="#"><span><span class="t">ROM only</span><span class="d">For a card that already has the game converted</span></span><span class="s" id="alt-rom-s"></span></a>
               <a class="alt" id="alt-sums" href="#"><span><span class="t">Checksums</span><span class="d">SHA-256 of every file in the release</span></span><span class="s">.txt</span></a>
             </div>
           </div>
@@ -91,7 +90,7 @@
           <ol class="steps">
             <li><h3>Unzip the package</h3><p class="dim">Right-click the downloaded <code>.zip</code> and choose <b>Extract All</b>. Keep the files together: the program needs the files beside it.</p></li>
             <li><h3>Run the converter</h3><p class="dim">Open <code>hlds-convert-gui.exe</code> in the extracted folder. If Windows SmartScreen says it protected your PC, choose <b>More info</b>, then <b>Run anyway</b>: the program isn't signed by a paid certificate.</p></li>
-            <li><h3>Choose your game and your card</h3><p class="dim">The converter looks for Half-Life and for your SD card by itself. Check both, then start. It writes the game's data and the ROM to the card.</p></li>
+            <li><h3>Choose your game, your card and your console</h3><p class="dim">The converter looks for Half-Life and for your SD card by itself. Check both, say which console the card is for (DSi, 3DS, DS or flashcard, or an emulator), then start. It writes the game's data and the ROM, made for that console, to the card.</p></li>
             <li><h3>Play</h3><p class="dim">Eject the card safely, put it in your console, and start <code>half-life-nds-port.nds</code> from your loader.</p></li>
           </ol>
           <details>
@@ -109,8 +108,9 @@
             <summary>Command line on Windows</summary>
             <div class="inner">
               <p class="dim">The same folder has <code>hlds-convert.exe</code>. In PowerShell, from that folder:</p>
-<pre><code>.\hlds-convert.exe cook-all "C:\Program Files (x86)\Steam\steamapps\common\Half-Life\valve" -o E:\</code></pre>
+<pre><code>.\hlds-convert.exe cook-all "C:\Program Files (x86)\Steam\steamapps\common\Half-Life\valve" -o E:\ --device dsi</code></pre>
               <p class="dim small">Replace <code>E:\</code> with your SD card's drive.</p>
+              <p class="dim small"><code>--device</code> says which console the card is for: <code>dsi</code>, <code>3ds</code> (TWiLight Menu++ then offers the wide screen), <code>ds</code> (a DS, DS Lite or DS flashcard; the default) or <code>emulator</code>. A card already converted gets only the ROM, made for its console, with <code>put-rom -o &lt;card&gt; --device &lt;console&gt;</code>.</p>
             </div>
           </details>
         </div>
@@ -120,7 +120,7 @@
           <ol class="steps">
             <li><h3>Unzip the package</h3><p class="dim">Double-click the downloaded <code>.zip</code>. You get <code>hlds-convert-gui.app</code>; you can move it to Applications.</p></li>
             <li><h3>Open it the first time</h3><p class="dim">The app isn't signed by an Apple developer account, so macOS stops a double-click. <b>Right-click</b> (or Control-click) the app and choose <b>Open</b>, then <b>Open</b> again. On recent macOS, if there is no Open button, go to <b>System Settings &gt; Privacy &amp; Security</b> and choose <b>Open Anyway</b>.</p></li>
-            <li><h3>Choose your game and your card</h3><p class="dim">The converter looks for Half-Life and for your SD card by itself. Check both, then start. It writes the game's data and the ROM to the card.</p></li>
+            <li><h3>Choose your game, your card and your console</h3><p class="dim">The converter looks for Half-Life and for your SD card by itself. Check both, say which console the card is for (DSi, 3DS, DS or flashcard, or an emulator), then start. It writes the game's data and the ROM, made for that console, to the card.</p></li>
             <li><h3>Play</h3><p class="dim">Eject the card in Finder, put it in your console, and start <code>half-life-nds-port.nds</code> from your loader.</p></li>
           </ol>
           <details>
@@ -133,7 +133,8 @@
               <p class="dim">Unpack the command-line package and run it from Terminal. The first run may need the quarantine flag removed:</p>
 <pre><code>mkdir hlds-convert &amp;&amp; tar -xzf hlds-convert-*-cli-macos-universal.tar.gz -C hlds-convert
 xattr -dr com.apple.quarantine hlds-convert
-./hlds-convert/hlds-convert cook-all ~/Library/Application\ Support/Steam/steamapps/common/Half-Life/valve -o /Volumes/SDCARD</code></pre>
+./hlds-convert/hlds-convert cook-all ~/Library/Application\ Support/Steam/steamapps/common/Half-Life/valve -o /Volumes/SDCARD --device dsi</code></pre>
+              <p class="dim small"><code>--device</code> says which console the card is for: <code>dsi</code>, <code>3ds</code> (TWiLight Menu++ then offers the wide screen), <code>ds</code> (a DS, DS Lite or DS flashcard; the default) or <code>emulator</code>. A card already converted gets only the ROM, made for its console, with <code>put-rom -o &lt;card&gt; --device &lt;console&gt;</code>.</p>
             </div>
           </details>
         </div>
@@ -144,7 +145,7 @@ xattr -dr com.apple.quarantine hlds-convert
             <li><h3>Make the AppImage runnable</h3><p class="dim">In your file manager, open the file's properties and allow it to run as a program, or in a terminal:</p>
 <pre><code>chmod +x hlds-convert-*.AppImage</code></pre></li>
             <li><h3>Run the converter</h3><p class="dim">Double-click it, or run <code>./hlds-convert-*.AppImage</code>. AppImages need FUSE 2: if it refuses to start, install <code>libfuse2</code> (<code>libfuse2t64</code> on Ubuntu 24.04 and later), or run it with <code>--appimage-extract-and-run</code>.</p></li>
-            <li><h3>Choose your game and your card</h3><p class="dim">The converter looks for Half-Life and for your mounted SD card by itself. Check both, then start. It writes the game's data and the ROM to the card.</p></li>
+            <li><h3>Choose your game, your card and your console</h3><p class="dim">The converter looks for Half-Life and for your mounted SD card by itself. Check both, say which console the card is for (DSi, 3DS, DS or flashcard, or an emulator), then start. It writes the game's data and the ROM, made for that console, to the card.</p></li>
             <li><h3>Play</h3><p class="dim">Unmount the card, put it in your console, and start <code>half-life-nds-port.nds</code> from your loader.</p></li>
           </ol>
           <details>
@@ -156,7 +157,8 @@ xattr -dr com.apple.quarantine hlds-convert
             <div class="inner">
               <p class="dim">The command-line package is a static program with no dependencies, good for headless machines:</p>
 <pre><code>mkdir hlds-convert &amp;&amp; tar -xzf hlds-convert-*-cli-linux-*.tar.gz -C hlds-convert
-./hlds-convert/hlds-convert cook-all ~/.steam/steam/steamapps/common/Half-Life/valve -o /media/$USER/SDCARD</code></pre>
+./hlds-convert/hlds-convert cook-all ~/.steam/steam/steamapps/common/Half-Life/valve -o /media/$USER/SDCARD --device dsi</code></pre>
+              <p class="dim small"><code>--device</code> says which console the card is for: <code>dsi</code>, <code>3ds</code> (TWiLight Menu++ then offers the wide screen), <code>ds</code> (a DS, DS Lite or DS flashcard; the default) or <code>emulator</code>. A card already converted gets only the ROM, made for its console, with <code>put-rom -o &lt;card&gt; --device &lt;console&gt;</code>.</p>
             </div>
           </details>
         </div>
@@ -179,8 +181,8 @@ xattr -dr com.apple.quarantine hlds-convert
         <div class="label">Good to know</div>
         <h2>Questions</h2>
         <details>
-          <summary>Do I need the ROM download?</summary>
-          <div class="inner dim"><p>Usually not: the converter puts the ROM on the card for you. The ROM zip is for a console whose card already has the game converted, or for copying the ROM yourself. Keep the ROM and the converter from the same release: the title screen shows the version at the bottom, and warns you if the card's data came from a different one.</p></div>
+          <summary>Where is the ROM?</summary>
+          <div class="inner dim"><p>No: the converter puts the ROM on the card for you, made for the console you choose. For a card that already has the game converted, the command line writes the ROM alone: <code>hlds-convert put-rom -o &lt;card&gt; --device &lt;console&gt;</code>. Keep the ROM and the converter from the same release: the title screen shows the version at the bottom, and warns you if the card's data came from a different one.</p></div>
         </details>
         <details>
           <summary>How do I update?</summary>

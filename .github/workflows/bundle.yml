@@ -1,6 +1,6 @@
-# Everything a release has, in one artifact: the converter's packages, the ROM
-# zip, the relay for a server (x86_64 and aarch64), the checksums and the
-# notes. Called after every other build, so that the
+# Everything a release has, in one artifact: the converter's packages (each
+# with the console's ROM built in, made for the console the player chooses),
+# the relay for a server (x86_64 and aarch64), the checksums and the notes. Called after every other build, so that the
 # release is only ever made from builds that all passed.
 name: Bundle
 
@@ -31,10 +31,9 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          # (The ROM's files at the top of its zip, in no folder of their own.)
-          mkdir -p rom release
-          cp artifacts/rom/half-life-nds-port.nds THIRD_PARTY_LICENSES LICENSE-HALF-LIFE-SDK rom/
-          (cd rom && zip -qr "../release/half-life-nds-port-$VERSION.zip" .)
+          # (No ROM of its own: the converter has it built in, and makes it for
+          # the console the card is for -- put-rom writes it alone.)
+          mkdir -p release
           for f in artifacts/converter-*/*; do
             name="$(basename "$f")"
             cp "$f" "release/${name/hlds-convert/hlds-convert-$VERSION}"

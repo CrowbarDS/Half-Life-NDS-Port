@@ -50,15 +50,26 @@ Auto works only with a TwlBg made by TWPatch, which can be asked through its rtc
 
 ## Quick start
 
-1. **Get the release.** Download the converter for your system from the [download page](https://crowbards.github.io/Half-Life-NDS-Port/download.html), which picks the right file and explains the installation, or from the [Releases](https://github.com/CrowbarDS/Half-Life-NDS-Port/releases) page. It has the ROM built in. The ROM zip is there too, for a console that only needs the ROM. `SHA256SUMS.txt` lists each file's checksum.
-2. **Run the converter on your own Half-Life copy.** Open the installer, which finds your game and your SD card, or use the command line:
+1. **Get the converter.** Download it for your system from the [download page](https://crowbards.github.io/Half-Life-NDS-Port/download.html), which picks the right file and explains the installation, or from the [Releases](https://github.com/CrowbarDS/Half-Life-NDS-Port/releases) page. It is the only download: the console's ROM is built into it. `SHA256SUMS.txt` lists each file's checksum.
+2. **Run the converter on your own Half-Life copy.** Open the installer, which finds your game and your SD card and asks which console the card is for, or use the command line:
 
    ```sh
-   hlds-convert cook-all <path to>/Half-Life/valve -o <SD card root>
+   hlds-convert cook-all <path to>/Half-Life/valve -o <SD card root> --device <console>
    ```
 
-   The game's data goes to `<card>/_nds/hl_nds/data/`, and the ROM, `half-life-nds-port.nds`, to the card's root. The ROM is copied only if the card doesn't already have this version of it. On macOS, right-click the app and choose Open the first time, because it isn't signed by a developer account.
+   The game's data goes to `<card>/_nds/hl_nds/data/`, and the ROM, `half-life-nds-port.nds`, to the card's root. The ROM is copied only if the card doesn't already have this version of it, made for that console. On macOS, right-click the app and choose Open the first time, because it isn't signed by a developer account.
 3. **Start `half-life-nds-port.nds`** from your console's homebrew loader.
+
+The console you choose changes only how the ROM is recognised, not the game:
+
+| Choice | `--device` | The ROM |
+|---|---|---|
+| DSi (TWiLight Menu++, hiyaCFW, Unlaunch) | `dsi` | homebrew game code `####` |
+| 3DS (TWiLight Menu++) | `3ds` | game code `WHLD`, so that TWiLight Menu++ offers the wide screen |
+| DS, DS Lite or a DS flashcard | `ds` (the default) | `####`: the flashcard's loader gives it the card |
+| An emulator (melonDS and others) | `emulator` | `####`: the emulator gives it the SD card |
+
+A card already converted gets only the ROM, for another console or a new release, with `hlds-convert put-rom -o <SD card root> --device <console>`. The converter also writes `server.ini` (where the relay for online play is) when the card has none, and never writes over one that is there.
 
 If you copy a ROM yourself, use one from the same release as the converter. The title screen shows the version at the bottom, and warns you if the card's data came from a different one.
 

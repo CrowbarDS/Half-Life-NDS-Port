@@ -192,8 +192,6 @@ function render() {
     setAlt(cliEl, $("alt-cli-s"), findAsset(arch.cli), RELEASES + "/latest");
   }
 
-  const rom = state.assets.find((a) => /^half-life-nds-port-.*\.zip$/.test(a.name));
-  setAlt($("alt-rom"), $("alt-rom-s"), rom, RELEASES + "/latest");
   const sums = state.assets.find((a) => a.name === "SHA256SUMS.txt");
   setAlt($("alt-sums"), null, sums, RELEASES + "/latest");
 }
