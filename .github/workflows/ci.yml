@@ -22,6 +22,11 @@ jobs:
       contents: read
     uses: ./.github/workflows/converter.yml
 
+  relay:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/relay.yml
+
   bundle:
     needs: [rom, converter]
     permissions:

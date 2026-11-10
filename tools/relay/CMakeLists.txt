@@ -13,6 +13,14 @@ endif()
 
 set(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 
+# Everything built with AddressSanitizer and UndefinedBehaviorSanitizer: what
+# CI runs the tests with, so that a bad read of a datagram stops the test.
+option(HLDS_RELAY_SANITIZE "Build with ASan and UBSan" OFF)
+if(HLDS_RELAY_SANITIZE AND NOT MSVC)
+    add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address,undefined)
+endif()
+
 add_library(hlds_relay_core STATIC core/Relay.cpp)
 target_include_directories(hlds_relay_core PUBLIC
     core
