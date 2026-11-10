@@ -254,6 +254,78 @@ What to look for: on the consoles, a match that goes on (with some
 stutter) at 150 ms and 5% loss; on the relay, no `went quiet` for a console
 that is still there.
 
+## On a server
+
+A small Linux server is enough: Oracle Cloud's free one (ARM, aarch64) or an
+OVH VPS (x86_64), on Ubuntu 22.04, 24.04 or 26.04, or Debian 12 or 13.
+`deploy/install.sh` sets it up. Run it as root, on the server:
+
+```sh
+# (On your PC: the release's relay for the server's machine, and its sums.)
+scp hlds-relay-linux-aarch64 SHA256SUMS tools/relay/deploy/* you@server:~/relay/
+# (On the server.)
+cd ~/relay && sudo ./install.sh --binary hlds-relay-linux-aarch64 --sums SHA256SUMS
+# ... or straight from a GitHub release:
+sudo ./install.sh --release v0.4.0
+```
+
+`--dry-run` says what it would do, and does nothing. Run again, it does no
+harm, and keeps `/etc/hlds-relay.conf` as you left it.
+
+What it does:
+
+1. **Checks the relay.** Its SHA-256 must be the release's (`--sums
+   SHA256SUMS`, or `--sha256 HASH`), or nothing is installed. Then it puts
+   it at `/usr/local/bin/hlds-relay`.
+2. **The service** (see "The service" below): the unit, the options file
+   (`--port`; 27500 if not given), the journal kept a week, and
+   `net.core.rmem_max` raised so the relay gets the 4 MB of room it asks for.
+   It enables and starts the service, and restarts it when the program
+   changed.
+3. **The firewall: nothing in but SSH and the relay's UDP port.** With ufw:
+   deny in, allow out, allow SSH (the port sshd listens on, or
+   `--ssh-port`), allow UDP 27500. On Oracle Cloud's images, which come with
+   iptables rules of their own (ufw would fight them), it adds one rule for
+   the relay's port in `/etc/iptables/rules.v4`, just before the rule that
+   turns the rest away. It keeps the rules before as
+   `rules.v4.before-hlds-relay`. `--no-firewall` leaves it alone.
+4. **Security updates applied by themselves:** `unattended-upgrades`,
+   switched on daily.
+5. **SSH by key only:** passwords off, root by key only
+   (`/etc/ssh/sshd_config.d/10-hlds-relay.conf`). It does this **only if**
+   the account you ran it from (with sudo) has a key in its
+   `~/.ssh/authorized_keys`, so it can't shut you out of your own server.
+   It checks the result with `sshd -t` first, and takes it back if sshd
+   would not take it. Keep your session open until a new one comes in by
+   key. `--no-ssh-keys-only` leaves SSH alone.
+
+What it cannot do, outside the machine:
+
+- **Oracle Cloud:** the virtual network has a firewall of its own. In the
+  console: Networking, your VCN, its subnet's **security list** (or the
+  instance's network security group). Add an ingress rule: source
+  `0.0.0.0/0`, protocol **UDP**, destination port **27500**. Without it,
+  nothing reaches the server, whatever the server's own firewall says.
+- **OVH Public Cloud** (instances): the instance's **security group**. Add
+  an ingress rule for UDP 27500.
+- **OVH VPS or dedicated server:** the **Network Firewall** is on the
+  server's IP, in the control panel. If it is on, add a rule letting UDP
+  27500 in.
+- **The server's address** goes in each console's `server.ini` (`host =`).
+  Give it a name, if you have a domain, so that it can change.
+
+To take it all away:
+
+```sh
+sudo systemctl disable --now hlds-relay
+sudo rm /usr/local/bin/hlds-relay /etc/systemd/system/hlds-relay.service /etc/hlds-relay.conf \
+        /etc/systemd/journald@hlds-relay.conf /etc/sysctl.d/90-hlds-relay.conf
+sudo ufw delete allow 27500/udp           # (or, on Oracle: the rule in /etc/iptables/rules.v4)
+sudo systemctl daemon-reload
+```
+
+(The SSH and update settings are good to keep.)
+
 ## The service
 
 On a server, systemd runs the relay: it starts it with the machine, starts
