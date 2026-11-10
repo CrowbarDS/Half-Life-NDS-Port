@@ -62,6 +62,11 @@ namespace hlrt::netrelay
     /// Given up before Ready (the Wi-Fi stays started: holdsWifi).
     void connectCancel();
     bool ready();
+    /// While the game is busy (a map loading): what has come read, the IP
+    /// stack let run, and a Ping each second -- so that the relay does not
+    /// take the console for gone, nor the console the relay. Nothing if not
+    /// online (and on a DS, nothing at all).
+    void keepAlive();
 
     /// Out of the room, and the relay told; the Wi-Fi stays connected.
     void shutdown();

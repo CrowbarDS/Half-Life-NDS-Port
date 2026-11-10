@@ -813,6 +813,19 @@ namespace hlrt::netrelay
         return started;
     }
 
+    TWL_CODE static void keepAliveTwl()
+    {
+        pump();
+    }
+
+    void keepAlive()
+    {
+        // (Plain code, read on a DS too: there it is never started, and the
+        // DSi's own code is never reached.)
+        if (started)
+            keepAliveTwl();
+    }
+
     TWL_CODE static const char *unavailableTwl()
     {
         readIni();
@@ -1185,6 +1198,7 @@ namespace hlrt::netrelay
     const char *connectText() { return ""; }
     void connectCancel() {}
     bool ready() { return false; }
+    void keepAlive() {}
     void setName(const char *) {}
     const char *refusedText() { return ""; }
     const char *letGo() { return nullptr; }

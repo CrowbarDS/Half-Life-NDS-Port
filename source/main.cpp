@@ -2,6 +2,7 @@
 
 #include "HlManifest.hpp"
 #include "net/NetGame.hpp"
+#include "net/NetRelay.hpp"
 #include "audio/Voice.hpp"
 #include "global_header.hpp"
 
@@ -579,10 +580,15 @@ namespace
 
     /// (Sent the game: the map's stream heard and answered between the
     /// load's long steps.)
+    /// Between the stages of a load: what goes on meanwhile kept going -- a
+    /// console sent the game, its stream; one online, the relay (or each
+    /// takes the other for gone while a map loads).
     void hearStream()
     {
 #ifdef HLDS_CHILD
         hlrt::guest::hear();
+#else
+        hlrt::netrelay::keepAlive();
 #endif
     }
 
@@ -652,6 +658,9 @@ namespace
             hlrt::screenFade.curtainUp();
 
         clock.mark("down");
+#ifndef HLDS_CHILD
+        hlrt::netrelay::keepAlive();
+#endif
         // The map's archive in the place of the last one's: everything
         // from here to the end of the load is read out of it.
         if (!global.mountMap(name))
@@ -669,6 +678,9 @@ namespace
         // sound at all: c1a3 on a DS, when it came last).
         hlrt::sound.prepare();
         clock.mark("level");
+#ifndef HLDS_CHILD
+        hlrt::netrelay::keepAlive();
+#endif
         // Textures before models: if video memory runs short it is a model
         // that goes without its skin, not a wall. Models before the game:
         // actors are set up from their models.
@@ -780,6 +792,9 @@ namespace
             hlrt::sound.setMusic(-1, 0);
         hlrt::sound.load(kPlayReserve);
         clock.mark("snd");
+#ifndef HLDS_CHILD
+        hlrt::netrelay::keepAlive();
+#endif
         // Last, from what is left past what play takes: the streamer's copies
         // of the pictures that change often. Then what play takes from here
         // is measured.
