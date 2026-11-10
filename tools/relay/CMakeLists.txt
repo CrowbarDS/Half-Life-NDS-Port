@@ -37,10 +37,29 @@ endif()
 add_executable(hlds-relay main.cpp)
 target_link_libraries(hlds-relay PRIVATE hlds_relay_core)
 
+# The relay under libFuzzer, for long runs by hand (clang only; not a ctest):
+#   CXX=clang++ cmake -S tools/relay -B build/relay-fuzz -DHLDS_RELAY_LIBFUZZER=ON
+#   cmake --build build/relay-fuzz --target relay_libfuzzer
+#   build/relay-fuzz/relay_libfuzzer -max_total_time=600
+option(HLDS_RELAY_LIBFUZZER "Build the libFuzzer target (clang)" OFF)
+if(HLDS_RELAY_LIBFUZZER)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "HLDS_RELAY_LIBFUZZER needs clang (CXX=clang++)")
+    endif()
+    add_library(hlds_relay_core_fuzz STATIC core/Relay.cpp core/Serve.cpp core/Limits.cpp)
+    target_include_directories(hlds_relay_core_fuzz PUBLIC core "${REPO_ROOT}/shared" "${REPO_ROOT}/thirdparty")
+    target_compile_definitions(hlds_relay_core_fuzz PUBLIC _LITTLE_ENDIAN)
+    target_compile_options(hlds_relay_core_fuzz PUBLIC -fsanitize=fuzzer-no-link,address,undefined)
+    add_executable(relay_libfuzzer tests/fuzz_relay_libfuzzer.cpp)
+    target_link_libraries(relay_libfuzzer PRIVATE hlds_relay_core_fuzz)
+    target_compile_options(relay_libfuzzer PRIVATE -fsanitize=fuzzer,address,undefined)
+    target_link_options(relay_libfuzzer PRIVATE -fsanitize=fuzzer,address,undefined)
+endif()
+
 option(HLDS_BUILD_TESTS "Build the relay's tests" ON)
 if(HLDS_BUILD_TESTS)
     enable_testing()
-    foreach(test_name test_relay)
+    foreach(test_name test_relay fuzz_relay)
         add_executable(${test_name} tests/${test_name}.cpp)
         target_link_libraries(${test_name} PRIVATE hlds_relay_core)
         add_test(NAME ${test_name} COMMAND ${test_name})

@@ -117,6 +117,13 @@ namespace hlrelay
         std::size_t peers() const { return peers_.size(); }
         std::size_t rooms() const { return rooms_.size(); }
         const Drops &drops() const { return drops_; }
+        /// Whether a console is known at `at`.
+        bool knows(const Address &at) const { return at_.count(at.key()) != 0; }
+        /// Whether what it keeps agrees with itself: each address's console,
+        /// each room's host, clients and those at its door, and what each
+        /// address is counted as having (worked out again from the rest).
+        /// Empty if so; else what does not (for the tests).
+        std::string consistent() const;
 
     private:
         struct Peer

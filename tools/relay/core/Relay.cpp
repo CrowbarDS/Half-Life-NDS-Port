@@ -786,6 +786,81 @@ namespace hlrelay
         }
     }
 
+    std::string Relay::consistent() const
+    {
+        std::map<std::uint32_t, IpCount> counts;
+        for (const auto &[key, id] : at_)
+        {
+            auto p = peers_.find(id);
+            if (p == peers_.end() || p->second.at.key() != key)
+                return "an address names a console not there, or not at it";
+        }
+        for (const auto &[id, peer] : peers_)
+        {
+            if (peer.id != id || peer.session == 0)
+                return "a console without its id or a session";
+            auto at = at_.find(peer.at.key());
+            if (at == at_.end() || at->second != id)
+                return "a console not found at its address";
+            ++counts[peer.at.ip].peers;
+            if (peer.room != 0)
+            {
+                auto room = rooms_.find(peer.room);
+                if (room == rooms_.end())
+                    return "a console in a room not there";
+                const std::uint32_t there = peer.slot == 0 ? room->second.host
+                                            : peer.slot > 0 && peer.slot < kNetPlayers ? room->second.clients[peer.slot]
+                                                                                        : 0;
+                if (there != id)
+                    return "a console not in the place it says it has";
+            }
+            if (peer.knocking != 0)
+            {
+                auto room = rooms_.find(peer.knocking);
+                bool found = false;
+                if (room != rooms_.end())
+                    for (const Knock &k : room->second.knocks)
+                        found = found || k.peer == id;
+                if (!found)
+                    return "a console waiting at a door it is not at";
+            }
+        }
+        for (const auto &[id, room] : rooms_)
+        {
+            auto host = peers_.find(room.host);
+            if (room.id != id || host == peers_.end() || host->second.room != id || host->second.slot != 0)
+                return "a room without its host";
+            ++counts[host->second.at.ip].rooms;
+            for (int c = 1; c < kNetPlayers; ++c)
+            {
+                if (room.clients[c] == 0)
+                    continue;
+                auto client = peers_.find(room.clients[c]);
+                if (client == peers_.end() || client->second.room != id || client->second.slot != c)
+                    return "a room's client not in it";
+            }
+            for (const Knock &k : room.knocks)
+            {
+                if (k.peer == 0)
+                    continue;
+                auto waiting = peers_.find(k.peer);
+                if (waiting == peers_.end() || waiting->second.knocking != id || waiting->second.at.ip != k.ip)
+                    return "a knock by one not waiting there";
+                ++counts[k.ip].knocks;
+            }
+        }
+        if (counts.size() != ipCounts_.size())
+            return "addresses counted that have nothing, or not counted that have";
+        for (const auto &[ip, c] : counts)
+        {
+            auto kept = ipCounts_.find(ip);
+            if (kept == ipCounts_.end() || kept->second.peers != c.peers || kept->second.rooms != c.rooms ||
+                kept->second.knocks != c.knocks)
+                return "an address counted wrongly";
+        }
+        return "";
+    }
+
     void Relay::stop(std::vector<Out> &out)
     {
         std::uint8_t bye[kRelayHeadBytes + 1];

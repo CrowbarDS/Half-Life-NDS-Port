@@ -132,6 +132,32 @@ stats peers=12 rooms=3 in=21600 in_bytes=9431200 out=64800 out_bytes=27100000 dr
 | `send_failed` | datagrams the system would not send |
 | `full_rounds` | times it had more come at once than it reads in one go (256): under a flood, this climbs |
 
+## Tests
+
+`ctest` runs two:
+
+- `test_relay`: every message, every limit, every way a console goes.
+- `fuzz_relay`: a million datagrams, mostly wrong ones. Consoles play as they
+  should, the same datagrams come with bits flipped, cut short or run on,
+  strangers say anything in sessions they make up, and noise. After each,
+  the relay must not:
+  - answer one it does not know anywhere but where it is;
+  - answer one it does not know with more than it was sent;
+  - send anything but its own datagrams;
+  - let what it keeps disagree with itself (`Relay::consistent`).
+
+  It is the same each run, and CI runs it under AddressSanitizer and
+  UndefinedBehaviorSanitizer.
+
+For longer runs, libFuzzer (clang):
+
+```sh
+CXX=clang++ cmake -S tools/relay -B build/relay-fuzz -DHLDS_RELAY_LIBFUZZER=ON -DHLDS_BUILD_TESTS=OFF
+cmake --build build/relay-fuzz --target relay_libfuzzer
+mkdir -p build/relay-fuzz/corpus
+build/relay-fuzz/relay_libfuzzer build/relay-fuzz/corpus -max_total_time=600
+```
+
 ## The console's side
 
 The card says where the relay is, in `_nds/hl_nds/data/server.ini` (see
