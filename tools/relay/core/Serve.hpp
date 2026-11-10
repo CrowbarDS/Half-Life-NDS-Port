@@ -42,6 +42,8 @@ namespace hlrelay
         /// One round, at `nowMs`. True if it stopped at kMostPerRound with
         /// more perhaps waiting (the next round should not wait for more).
         bool round(std::uint32_t nowMs);
+        /// The relay stopping: every console told so (Relay::stop), sent now.
+        void stop();
 
         /// Counts since start, for the operator.
         struct Counts

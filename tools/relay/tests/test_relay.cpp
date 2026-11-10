@@ -280,7 +280,7 @@ namespace
         relay.receive(at(2), bytes, relaySmallWrite(bytes, RelayKind::Ping, 999), now, out);
         relay.receive(at(2), bytes, relaySmallWrite(bytes, RelayKind::Bye, 999), now, out);
         relay.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Bye, 998), now, out);
-        check(out.empty() && relay.peers() == 3 && relay.rooms() == 1,
+        check(out.empty() && relay.peers() == 2 && relay.rooms() == 1,
               "a datagram in another session than the console's there: nothing done, nothing said");
 
         // A console started again at the same address comes in again: it is
@@ -873,7 +873,7 @@ namespace
         // (Three Pongs, and a Bye: by then it had said nothing for longer
         // than the relay waits.)
         const std::string &last = lines.back();
-        check(last.find("stats peers=0 rooms=0 in=4 in_bytes=27 out=4 out_bytes=32 drop_not_ours=1 other_version=0 drop_too_many=0 "
+        check(last.find("stats peers=0 rooms=0 in=4 in_bytes=27 out=4 out_bytes=33 drop_not_ours=1 other_version=0 drop_too_many=0 "
                         "drop_unknown=0 drop_bad_cookie=0 drop_rate_hello=0 drop_rate_control=0 drop_rate_data=0 "
                         "drop_rate_voice=0 drop_cap_peers=0 drop_cap_rooms=0 drop_cap_knocks=0 drop_out_budget=0 "
                         "send_failed=0 full_rounds=0 (last 60 s)") == 0,
@@ -1275,6 +1275,106 @@ namespace
         serve.round(now + 100);
         check(socket.sent.size() == 11, "... and sent again in its time");
     }
+
+    /// The reason of the one Bye `to` was sent among `out`; -1 if none, or not one.
+    int byeTo(const std::vector<Out> &out, const Address &to)
+    {
+        const auto byes = sentTo(out, to, RelayKind::Bye);
+        return byes.size() == 1 ? relaySmallRead(byes[0].data(), static_cast<int>(byes[0].size())) : -1;
+    }
+
+    void testByeReasons()
+    {
+        g_sessions.clear();
+        std::vector<Out> out;
+        std::uint8_t bytes[kRelayMostBytes];
+        const std::uint32_t now = 300000;
+        {
+            Relay relay;
+            const std::uint32_t id = open(relay, 0, "H", 8, now, out);
+            join(relay, 1, id, now, out);
+            join(relay, 2, id, now, out);
+            join(relay, 3, id, now, out, 0, -1); // (at the door)
+            out.clear();
+            relay.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Bye, comeIn(relay, 0, now)), now, out);
+            const auto refused = sentTo(out, at(3), RelayKind::Refused);
+            check(byeTo(out, at(1)) == static_cast<int>(RelayBye::HostLeft) &&
+                      byeTo(out, at(2)) == static_cast<int>(RelayBye::HostLeft) && refused.size() == 1 &&
+                      relaySmallRead(refused[0].data(), static_cast<int>(refused[0].size())) ==
+                          static_cast<int>(RelayRefuse::NoRoom),
+                  "the host says goodbye: each client told the host left, the one at the door that there is no room");
+            check(relay.peers() == 1 && relay.rooms() == 0,
+                  "... and its clients let go with it (they come in again for whatever they do next)");
+            out.clear();
+            relay.receive(at(1), bytes, relaySmallWrite(bytes, RelayKind::Ping, comeIn(relay, 1, now)), now, out);
+            check(out.empty(), "... one of them still in its old session: not known");
+        }
+        g_sessions.clear();
+        {
+            Relay relay;
+            const std::uint32_t id = open(relay, 0, "H", 8, now, out);
+            join(relay, 1, id, now, out);
+            join(relay, 2, id, now, out);
+            out.clear();
+            relay.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Kick, comeIn(relay, 0, now), 1), now, out);
+            check(byeTo(out, at(1)) == static_cast<int>(RelayBye::Kicked) && relay.peers() == 2 && lastStatus(out, 0) == 0x4u,
+                  "the host sends one away: it is told so, and let go; the host told who is left");
+            // The client keeps talking; the host goes quiet.
+            out.clear();
+            relay.receive(at(2), bytes, relaySmallWrite(bytes, RelayKind::Ping, comeIn(relay, 2, now)),
+                          now + kRelaySilentMs - 100, out);
+            out.clear();
+            relay.tick(now + kRelaySilentMs + 1, out);
+            check(byeTo(out, at(0)) == static_cast<int>(RelayBye::Silent) &&
+                      byeTo(out, at(2)) == static_cast<int>(RelayBye::HostSilent) && relay.peers() == 0,
+                  "a host that says nothing for too long: told so (if it hears), its client told the host stopped answering");
+        }
+        g_sessions.clear();
+        {
+            Relay relay;
+            const std::uint32_t id = open(relay, 0, "H", 8, now, out);
+            join(relay, 1, id, now, out);
+            out.clear();
+            relay.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Ping, comeIn(relay, 0, now)),
+                          now + kRelaySilentMs - 100, out);
+            out.clear();
+            relay.tick(now + kRelaySilentMs + 1, out);
+            check(byeTo(out, at(1)) == static_cast<int>(RelayBye::Silent) && lastStatus(out, 0) == 0u &&
+                      relay.peers() == 1,
+                  "a client that says nothing for too long: told so, the host told it is gone");
+        }
+        g_sessions.clear();
+        {
+            // A whole room quiet at once: the host's clients go with it, and
+            // none is counted twice.
+            Relay relay;
+            const std::uint32_t id = open(relay, 0, "H", 8, now, out);
+            for (int n = 1; n < 5; ++n)
+                join(relay, n, id, now, out);
+            out.clear();
+            relay.tick(now + kRelaySilentMs + 1, out);
+            check(relay.peers() == 0 && relay.rooms() == 0, "a whole room quiet at once: all let go, nothing left over");
+        }
+        g_sessions.clear();
+        {
+            Relay relay;
+            const std::uint32_t id = open(relay, 0, "H", 8, now, out);
+            join(relay, 1, id, now, out);
+            comeIn(relay, 2, now);
+            out.clear();
+            relay.stop(out);
+            bool all = true;
+            for (int n = 0; n < 3; ++n)
+            {
+                const auto byes = sentTo(out, at(n), RelayKind::Bye);
+                all = all && byes.size() == 2 &&
+                      relaySmallRead(byes[0].data(), static_cast<int>(byes[0].size())) ==
+                          static_cast<int>(RelayBye::RelayStopping);
+            }
+            check(all && relay.peers() == 0 && relay.rooms() == 0,
+                  "the relay stopping: every console told so, twice, and nothing kept");
+        }
+    }
 } // namespace
 
 int main()
@@ -1293,6 +1393,7 @@ int main()
     testOtherVersion();
     testLimits();
     testOutBudget();
+    testByeReasons();
     std::printf("%s (%d failed)\n", g_failures == 0 ? "PASS" : "FAIL", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

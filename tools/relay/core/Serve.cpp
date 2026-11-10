@@ -54,6 +54,14 @@ namespace hlrelay
         return full;
     }
 
+    void Serve::stop()
+    {
+        relay_.stop(out_);
+        for (const Out &one : out_)
+            socket_.send(one.to, one.bytes.data(), static_cast<int>(one.bytes.size()));
+        out_.clear();
+    }
+
     std::string Serve::statsLine(const Counts &before, unsigned seconds) const
     {
         const Counts &now = counts;

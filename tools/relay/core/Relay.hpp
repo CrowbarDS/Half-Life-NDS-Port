@@ -108,6 +108,9 @@ namespace hlrelay
         /// Now and then (every tenth of a second or so): who said nothing for
         /// too long is let go, and the hosts are told who is there.
         void tick(std::uint32_t nowMs, std::vector<Out> &out);
+        /// The relay stopping: every console told so (twice: there is no
+        /// waiting to hear it arrived), and forgotten.
+        void stop(std::vector<Out> &out);
 
         std::size_t peers() const { return peers_.size(); }
         std::size_t rooms() const { return rooms_.size(); }
@@ -155,14 +158,17 @@ namespace hlrelay
         Peer *peer(const Address &at);
         /// A console by its number; null if there is none.
         Peer *byId(std::uint32_t id);
-        void leave(Peer &peer, std::vector<Out> &out, bool told);
+        /// `peer` out of its room (as a host: the room closed, its clients
+        /// told); `why`: it is told so itself, and why (0: not told).
+        void leave(Peer &peer, std::vector<Out> &out, int why);
         /// `peer` no longer at a door: its knock forgotten (and, `refused`,
         /// it is told why).
         void unknock(Peer &peer, std::vector<Out> &out, int refused);
         void knock(const Room &room, const Knock &knock, std::vector<Out> &out);
         /// `peer` let into `room`, or told why not.
         void admitInto(Room &room, Peer &peer, std::uint32_t nowMs, std::vector<Out> &out);
-        void drop(std::uint32_t id, std::vector<Out> &out, bool told);
+        /// `id` forgotten, out of its room first (`why`: as leave).
+        void drop(std::uint32_t id, std::vector<Out> &out, int why);
         void status(Room &room, std::uint32_t nowMs, std::vector<Out> &out);
         void say(std::vector<Out> &out, const Peer &to, const std::uint8_t *bytes, int size);
         void say(std::vector<Out> &out, const Address &to, const std::uint8_t *bytes, int size);

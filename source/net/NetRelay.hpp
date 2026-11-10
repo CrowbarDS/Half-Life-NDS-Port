@@ -92,6 +92,9 @@ namespace hlrt::netrelay
     void setName(const char *name);
     /// A client refused: why, in words.
     const char *refusedText();
+    /// Why the relay let this console go (a host, or a client of one), in
+    /// words; null if it has not. It is no longer known to the relay then.
+    const char *letGo();
     /// A host: one asking to come in, if there is (its ticket, and its name:
     /// kNetTextBytes) -- the same until it is answered.
     bool knock(int &ticket, char *name);

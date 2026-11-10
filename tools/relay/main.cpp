@@ -239,6 +239,9 @@ int main(int argc, char **argv)
         more = serve.round(nowMs());
         renewSalt();
     }
+    // (Stopped, by systemd or by hand: every console told, so that each says
+    // why it is back in the menu.)
+    serve.stop();
     ::close(sock);
     return 0;
 }

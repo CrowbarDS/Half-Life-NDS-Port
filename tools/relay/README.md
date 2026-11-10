@@ -42,7 +42,10 @@ build/relay/hlds-relay --port 27500
 | `--quiet` | print nothing while running |
 
 A console that sends nothing for 45 seconds is let go, and with it its room
-if it was a host.
+if it was a host. Whenever the relay lets a console go it tells it why --
+its host left or stopped answering, its host sent it away, it said nothing
+for too long, or the relay is stopping (Ctrl-C, or `systemctl stop`) -- and
+the console goes back to the menu saying so.
 
 ## Limits
 

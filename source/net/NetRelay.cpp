@@ -97,6 +97,8 @@ namespace hlrt::netrelay
             std::uint8_t token[kRelayTokenBytes];
             /// The relay's version, if it answered that it speaks another; 0: not.
             std::uint8_t relayVersion;
+            /// Why the relay let it go (RelayBye; 255: it did not say); 0: it has not.
+            std::uint8_t byeWhy;
             Role role;
             std::uint32_t lastPump;
             std::uint32_t lastSent;
@@ -435,17 +437,17 @@ namespace hlrt::netrelay
                 break;
             }
             case RelayKind::Bye:
-                // A client: out (the host went, or sent it away). A host: the
-                // relay let it go (it had been quiet too long) -- its room is
-                // opened again.
+            {
+                // Let go: no longer known to the relay (whatever it does
+                // next, it comes in again), and why kept for the menu (letGo).
+                const int why = relaySmallRead(bytes, size);
+                s.byeWhy = static_cast<std::uint8_t>(why > 0 && why < 255 ? why : 255);
+                s.in = false;
+                s.entering = 0;
                 if (s.role == Role::Client)
                     s.byeNow = true;
-                else if (s.role == Role::Host)
-                {
-                    s.roomId = 0;
-                    s.clientMask = 0;
-                }
                 break;
+            }
             default:
                 break;
             }
@@ -558,6 +560,7 @@ namespace hlrt::netrelay
                 s.in = false;
                 s.entering = 0;
                 s.relayVersion = 0;
+                s.byeWhy = 0;
                 if (!wifiUp && !Wifi_InitDefault(INIT_ONLY | WIFI_ATTEMPT_DSI_MODE))
                 {
                     char text[48];
@@ -746,6 +749,7 @@ namespace hlrt::netrelay
         // it comes in again first.)
         s.in = false;
         s.entering = 0;
+        s.byeWhy = 0;
         s.role = Role::None;
         s.roomId = 0;
         s.clientMask = 0;
@@ -936,6 +940,29 @@ namespace hlrt::netrelay
         }
     }
 
+    TWL_CODE const char *letGo()
+    {
+        static TWL_DATA const char kHostLeft[] = "The host has left.";
+        static TWL_DATA const char kHostSilent[] = "The host stopped answering.";
+        static TWL_DATA const char kKicked[] = "The host has let you go.";
+        static TWL_DATA const char kSilent[] = "The relay heard nothing from this console for too long.";
+        static TWL_DATA const char kExpired[] = "The room closed: nobody joined it for a long time.";
+        static TWL_DATA const char kStopping[] = "The relay was stopped (restarted or updated).";
+        static TWL_DATA const char kOther[] = "The relay let this console go.";
+        if (!started || s.byeWhy == 0)
+            return nullptr;
+        switch (static_cast<RelayBye>(s.byeWhy))
+        {
+        case RelayBye::HostLeft: return kHostLeft;
+        case RelayBye::HostSilent: return kHostSilent;
+        case RelayBye::Kicked: return kKicked;
+        case RelayBye::Silent: return kSilent;
+        case RelayBye::RoomExpired: return kExpired;
+        case RelayBye::RelayStopping: return kStopping;
+        default: return kOther;
+        }
+    }
+
     TWL_CODE bool knock(int &ticket, char *name)
     {
         pump();
@@ -1040,6 +1067,7 @@ namespace hlrt::netrelay
     bool ready() { return false; }
     void setName(const char *) {}
     const char *refusedText() { return ""; }
+    const char *letGo() { return nullptr; }
     bool knock(int &, char *) { return false; }
     void answer(int, bool) {}
     void radioCounts(char *out, int room)

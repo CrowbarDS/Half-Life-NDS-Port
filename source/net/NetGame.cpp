@@ -2464,6 +2464,18 @@ namespace hlrt
             match_.chatLog = &chatLogTwl;
         }
 #endif
+#ifndef HLDS_CHILD
+        // Let go by the relay (its host gone, sent away, quiet too long, the
+        // relay stopping): back to the menu, saying why.
+        if (online())
+        {
+            if (const char *why = netrelay::letGo())
+            {
+                lost(why);
+                return;
+            }
+        }
+#endif
         if (phase_ == Phase::Joining)
         {
             if (netlink::joined())

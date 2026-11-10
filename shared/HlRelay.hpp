@@ -73,7 +73,7 @@ namespace hldata
         Kick = 11,   ///< host: send client (u8) away
         Status = 12, ///< relay to a host: which clients are there (u8, bit n for client n)
         Data = 13,   ///< a game frame: whose (u8: 0 the host, else the client), then the frame
-        Bye = 14,    ///< console: I am going; relay: you are out (the host went, or sent you away)
+        Bye = 14,    ///< console: I am going; relay: you are out, and no longer known (u8, RelayBye)
         Knock = 15,  ///< relay to a host: (ticket u8, name) asks to come in; said again until answered
         Answer = 16, ///< host: (ticket u8, yes u8)
         Voice = 17,  ///< what one says aloud: (player u8, number u8, rate u16, a packet: HlVoice.hpp), to all the others
@@ -101,6 +101,17 @@ namespace hldata
         Declined = 4, ///< its host said no
         NoAnswer = 5, ///< its host said nothing in time
         Busy = 6,     ///< as many from its address wait at doors as may
+    };
+
+    /// Why the relay let a console go (its `Bye`'s byte).
+    enum class RelayBye : std::uint8_t
+    {
+        HostLeft = 1,      ///< its room's host went (said goodbye, or left the room)
+        HostSilent = 2,    ///< its room's host said nothing for too long
+        Kicked = 3,        ///< its host sent it away
+        Silent = 4,        ///< it said nothing for too long
+        RoomExpired = 5,   ///< its room stayed empty too long
+        RelayStopping = 6, ///< the relay is stopping (started again, or put away)
     };
 
     struct RelayHead
