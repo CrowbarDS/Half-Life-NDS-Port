@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "HlRelay.hpp"
+#include "Limits.hpp"
 
 namespace hlrelay
 {
@@ -42,6 +43,14 @@ namespace hlrelay
         std::uint64_t tooMany = 0;   ///< a console coming in, while it knows as many as it may
         std::uint64_t unknown = 0;   ///< from no console it knows (or not in its session), and not coming in
         std::uint64_t badCookie = 0; ///< coming in with a cookie it did not make for that address, or too old
+        // Over a limit (Limits.hpp).
+        std::uint64_t rateHello = 0;   ///< an address coming in too often
+        std::uint64_t rateControl = 0; ///< a console saying too much (but Data and Voice)
+        std::uint64_t rateData = 0;    ///< a console sending frames too often, or too many bytes of them
+        std::uint64_t rateVoice = 0;   ///< a console talking more than a voice's worth
+        std::uint64_t capPeers = 0;    ///< a console coming in from an address with as many as it may have
+        std::uint64_t capRooms = 0;    ///< a room opened from an address with as many as it may have
+        std::uint64_t capKnocks = 0;   ///< a console asking to join from an address with as many waiting as it may
     };
 
     struct Out
@@ -68,6 +77,12 @@ namespace hlrelay
         /// kVersionPerSecond addresses a second in all.
         static constexpr int kVersionSlots = 1024;
         static constexpr int kVersionPerSecond = 200;
+        /// Addresses kept account of before their console is known (each one
+        /// in a slot by a hash of it, under the secret: another in the same
+        /// slot takes its place).
+        static constexpr int kIpSlots = 8192;
+        /// A line in the log for an address over a limit: once a minute.
+        static constexpr std::uint32_t kOverLogMs = 60000;
 
         /// The relay's own secret (kSecretBytes, random, made at start-up and
         /// never shown): what cookies are made under, and sessions and tokens
@@ -77,6 +92,8 @@ namespace hlrelay
         /// What it does, a line at a time (rooms opened and closed, who came
         /// and went), for the operator.
         std::function<void(const std::string &)> log;
+        /// How much each address and console may do (and the relay send).
+        Limits limits;
         /// How addresses are put in it.
         IpLog ipLog = IpLog::Trunc;
         /// The secret IpLog::Hash hashes under (16 bytes): a new one each day.
@@ -108,13 +125,13 @@ namespace hlrelay
             std::uint32_t room = 0; ///< the room it hosts or is in; 0: none
             int slot = -1;          ///< 0: its host; 1..7: a client of it
             std::uint32_t knocking = 0; ///< the room whose host it waits to be let in by; 0: none
-            std::uint32_t voiceSinceMs = 0; ///< the second its Voice is counted in
-            int voiceCount = 0;
+            Bucket control, data, dataBytes, voice; ///< Limits.hpp
         };
         /// A console at a room's door, waiting for its host's answer.
         struct Knock
         {
             std::uint32_t peer = 0; ///< its console's id; 0: none
+            std::uint32_t ip = 0;   ///< (its console's address, as counted)
             char name[hldata::kNetTextBytes] = {};
             std::uint8_t ticket = 0;
             std::uint32_t sinceMs = 0, saidMs = 0;
@@ -157,6 +174,30 @@ namespace hlrelay
                    std::vector<Out> &out);
         /// Eight bytes no one can guess (keyed by the secret).
         std::uint64_t random();
+
+        /// An address before its console is known: how often it comes in,
+        /// and when it was last logged as over a limit.
+        struct IpSlot
+        {
+            std::uint32_t ip = 0;
+            bool used = false;
+            Bucket hello;
+            bool logged = false;
+            std::uint32_t loggedMs = 0;
+        };
+        IpSlot &ipSlot(std::uint32_t ip);
+        /// What one address has at once: counted as it changes.
+        struct IpCount
+        {
+            std::uint32_t peers = 0, rooms = 0, knocks = 0;
+        };
+        IpCount &counted(std::uint32_t ip) { return ipCounts_[ip]; }
+        void uncount(std::uint32_t ip, std::uint32_t IpCount::*what);
+        /// A knock forgotten, and its address's count with it.
+        void clearKnock(Knock &k);
+        /// A datagram from `at` over a limit: counted in `count`, and logged
+        /// (once a minute for an address).
+        void over(const Address &at, std::uint64_t &count, const char *why, std::uint32_t nowMs);
         void note(const std::string &line);
         /// A console as the log names it: its id here, and its address as shown.
         std::string named(const Peer &peer) const;
@@ -174,6 +215,8 @@ namespace hlrelay
         std::uint8_t cookieKey_[16] = {};
         std::uint8_t randomKey_[16] = {};
         std::uint64_t randomCount_ = 0;
+        std::vector<IpSlot> ipSlots_ = std::vector<IpSlot>(kIpSlots);
+        std::map<std::uint32_t, IpCount> ipCounts_;
         /// When each slot (an address's, hashed) was last answered its
         /// version (+1: 0 never).
         std::uint32_t versionSaidMs_[kVersionSlots] = {};

@@ -1,7 +1,8 @@
 // hlds-relay: the relay that consoles playing online meet through
 // (core/Relay.hpp). One UDP port, one thread.
 //
-//   hlds-relay [--port N] [--bind ADDRESS] [--log-ips trunc|hash|full] [--quiet]
+//   hlds-relay [--port N] [--bind ADDRESS] [--log-ips trunc|hash|full]
+//              [--limit NAME=VALUE]... [--quiet]
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -79,14 +80,17 @@ namespace
 
     void usage()
     {
-        std::fprintf(stderr, "usage: hlds-relay [--port N] [--bind ADDRESS] [--log-ips trunc|hash|full] [--quiet]\n"
+        std::fprintf(stderr, "usage: hlds-relay [--port N] [--bind ADDRESS] [--log-ips trunc|hash|full]\n"
+                             "                  [--limit NAME=VALUE]... [--quiet]\n"
                              "  --port     UDP port to listen on (default %d)\n"
                              "  --bind     local IPv4 address to listen on (default 0.0.0.0, all)\n"
                              "  --log-ips  how consoles' addresses are logged: trunc, the first three\n"
                              "             numbers (default); hash, a hash under a secret renewed each\n"
                              "             day (UTC); full, address and port (for debugging only)\n"
+                             "  --limit    one of these limits (default in brackets), as often as needed:\n"
+                             "%s"
                              "  --quiet    print nothing while running\n",
-                     hldata::kRelayPort);
+                     hldata::kRelayPort, hlrelay::Limits::help());
     }
 } // namespace
 
@@ -96,6 +100,7 @@ int main(int argc, char **argv)
     std::string bindTo = "0.0.0.0";
     bool quiet = false;
     hlrelay::IpLog ipLog = hlrelay::IpLog::Trunc;
+    hlrelay::Limits limits;
     for (int i = 1; i < argc; ++i)
     {
         const std::string arg = argv[i];
@@ -114,6 +119,21 @@ int main(int argc, char **argv)
                 ipLog = hlrelay::IpLog::Full;
             else
             {
+                usage();
+                return 2;
+            }
+        }
+        else if (arg == "--limit" && i + 1 < argc)
+        {
+            const std::string what = argv[++i];
+            const std::size_t equals = what.find('=');
+            char *end = nullptr;
+            const unsigned long value =
+                equals == std::string::npos ? 0 : std::strtoul(what.c_str() + equals + 1, &end, 10);
+            if (equals == std::string::npos || end == nullptr || *end != 0 || value > 0xFFFFFFFFul ||
+                !limits.set(what.substr(0, equals), static_cast<std::uint32_t>(value)))
+            {
+                std::fprintf(stderr, "not a limit: %s\n", what.c_str());
                 usage();
                 return 2;
             }
@@ -151,11 +171,18 @@ int main(int argc, char **argv)
         std::perror("bind");
         return 1;
     }
+    // (Room for a burst of datagrams while a round is busy: as much as the
+    // system lets a program ask for -- net.core.rmem_max says how much.)
+    {
+        const int want = 4 * 1024 * 1024;
+        ::setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &want, sizeof(want));
+    }
     std::signal(SIGINT, onSignal);
     std::signal(SIGTERM, onSignal);
 
     hlrelay::Relay relay;
     relay.ipLog = ipLog;
+    relay.limits = limits;
     // (Its own secret, new each time it starts: a cookie made before is no
     // good after.)
     {

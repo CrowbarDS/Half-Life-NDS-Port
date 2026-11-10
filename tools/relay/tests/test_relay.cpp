@@ -874,7 +874,9 @@ namespace
         // than the relay waits.)
         const std::string &last = lines.back();
         check(last.find("stats peers=0 rooms=0 in=4 in_bytes=27 out=4 out_bytes=32 drop_not_ours=1 other_version=0 drop_too_many=0 "
-                        "drop_unknown=0 drop_bad_cookie=0 send_failed=0 full_rounds=0 (last 60 s)") == 0,
+                        "drop_unknown=0 drop_bad_cookie=0 drop_rate_hello=0 drop_rate_control=0 drop_rate_data=0 "
+                        "drop_rate_voice=0 drop_cap_peers=0 drop_cap_rooms=0 drop_cap_knocks=0 drop_out_budget=0 "
+                        "send_failed=0 full_rounds=0 (last 60 s)") == 0,
               "a line of counts each minute: consoles, rooms, what came, went and fell");
         serve.round(now + 2 * Serve::kStatsMs);
         check(lines.back().find("in=0 in_bytes=0 out=0") != std::string::npos, "... each minute's own");
@@ -904,7 +906,7 @@ namespace
                 if (size >= kRelayHeadBytes)
                     relayHeadWrite(bytes, static_cast<RelayKind>(kind), rnd());
                 out.clear();
-                relay.receive(at(1), bytes, size, now, out);
+                relay.receive(at(9), bytes, size, now, out);
                 int said = 0;
                 for (const Out &one : out)
                     said += static_cast<int>(one.bytes.size());
@@ -1054,6 +1056,225 @@ namespace
         check(relay.drops().otherVersion >= static_cast<std::uint64_t>(3 * Relay::kVersionPerSecond),
               "... and every one counted");
     }
+
+    /// A console at `from` comes in: its session (0 if not let in).
+    std::uint32_t comeInAt(Relay &relay, const Address &from, std::uint32_t now)
+    {
+        std::vector<Out> out;
+        std::uint8_t bytes[64], cookie[kRelayCookieBytes] = {}, token[kRelayTokenBytes];
+        const std::uint32_t nonce = ++g_nonce;
+        relay.receive(from, bytes, relayHelloWrite(bytes, nonce), now, out);
+        const auto challenge = sentTo(out, from, RelayKind::Challenge);
+        if (challenge.size() != 1)
+            return 0;
+        relayChallengeRead(challenge[0].data(), static_cast<int>(challenge[0].size()), cookie);
+        out.clear();
+        relay.receive(from, bytes, relayEnterWrite(bytes, nonce, cookie, nullptr), now, out);
+        std::uint32_t session = 0;
+        const auto welcome = sentTo(out, from, RelayKind::Welcome);
+        if (welcome.size() == 1)
+            relayWelcomeRead(welcome[0].data(), static_cast<int>(welcome[0].size()), session, token);
+        return session;
+    }
+
+    void testLimits()
+    {
+        g_sessions.clear();
+        using hlrelay::Bucket;
+        using hlrelay::Limits;
+
+        // The bucket itself.
+        Bucket b;
+        int taken = 0;
+        while (b.take(1, 10, 20, 1000) && taken < 100)
+            ++taken;
+        check(taken == 20, "a bucket: as much as its burst at once");
+        check(!b.take(1, 10, 20, 1099) && b.take(1, 10, 20, 1100) && !b.take(1, 10, 20, 1100),
+              "... then its rate: one a tenth of a second at ten a second");
+        check(b.take(20, 10, 20, 1100 + 3600000u * 3) && !b.take(1, 10, 20, 1100 + 3600000u * 3),
+              "... a long silence fills it, no more than its burst");
+        Bucket wrap;
+        wrap.take(5, 10, 10, 0xFFFFFF00u);
+        check(wrap.take(5, 10, 10, 0xFFFFFF00u) && wrap.take(1, 10, 10, 0x00000100u),
+              "... and the clock going round is no trouble");
+
+        Limits named;
+        check(named.set("data-per-s", 5) && named.dataPerSecond == 5 && !named.set("nope", 5) &&
+                  !named.set("data-per-s", 0) && named.dataPerSecond == 5,
+              "limits set by name; not one that is not there, nor to 0");
+
+        Relay relay;
+        std::vector<std::string> lines;
+        relay.log = [&](const std::string &line) { lines.push_back(line); };
+        std::vector<Out> out;
+        std::uint32_t now = 100000;
+        std::uint8_t bytes[kRelayMostBytes];
+
+        // Coming in, from one address: its burst, then its rate.
+        int answered = 0;
+        for (int i = 0; i < 50; ++i)
+        {
+            out.clear();
+            relay.receive(at(1), bytes, relayHelloWrite(bytes, 1), now, out);
+            answered += static_cast<int>(out.size());
+        }
+        const Limits &l = relay.limits;
+        check(answered == static_cast<int>(2 * l.helloPerSecond) &&
+                  relay.drops().rateHello == 50 - 2 * l.helloPerSecond,
+              "Hellos from one address at once: twice its rate answered, the rest let fall");
+        out.clear();
+        relay.receive(at(2), bytes, relayHelloWrite(bytes, 1), now, out);
+        check(out.size() == 1, "... another address is not held up by it");
+        out.clear();
+        relay.receive(at(1), bytes, relayHelloWrite(bytes, 1), now + 1000 / l.helloPerSecond, out);
+        check(out.size() == 1, "... and the first is answered again in its time");
+        int overLines = 0;
+        for (const std::string &line : lines)
+            overLines += line.find("over its limit (coming in)") != std::string::npos;
+        check(overLines == 1, "... logged once, not for each one let fall");
+        for (int i = 0; i < 50; ++i)
+            relay.receive(at(1), bytes, relayHelloWrite(bytes, 1), now + Relay::kOverLogMs + 200, out);
+        overLines = 0;
+        for (const std::string &line : lines)
+            overLines += line.find("over its limit (coming in)") != std::string::npos;
+        check(overLines == 2, "... and again a minute later, if it is still over");
+
+        // Consoles from one address at once.
+        now += 10 * Relay::kOverLogMs;
+        const std::uint32_t lan = 0xC6336401u; // (198.51.100.1: behind one router)
+        std::vector<std::uint32_t> sessions;
+        for (std::uint32_t n = 0; n <= l.peersPerIp; ++n)
+        {
+            // (Each a second apart: not held up by coming in too often.)
+            now += 1000;
+            sessions.push_back(comeInAt(relay, {lan, static_cast<std::uint16_t>(6000 + n)}, now));
+        }
+        check(sessions[l.peersPerIp - 1] != 0 && sessions[l.peersPerIp] == 0 && relay.drops().capPeers == 1,
+              "as many consoles from one address as it may have: one more is not let in");
+        out.clear();
+        relay.receive({lan, 6000}, bytes, relaySmallWrite(bytes, RelayKind::Bye, sessions[0]), now, out);
+        now += 1000;
+        check(comeInAt(relay, {lan, 7000}, now) != 0, "... one goes: another may come");
+
+        // Rooms from one address at once.
+        RelayOpen o;
+        int opened = 0;
+        for (std::uint32_t n = 1; n <= l.roomsPerIp + 1; ++n)
+        {
+            out.clear();
+            relay.receive({lan, static_cast<std::uint16_t>(6000 + n)}, bytes, relayOpenWrite(bytes, sessions[n], o),
+                          now, out);
+            opened += static_cast<int>(sentTo(out, {lan, static_cast<std::uint16_t>(6000 + n)}, RelayKind::Opened).size());
+        }
+        check(opened == static_cast<int>(l.roomsPerIp) && relay.rooms() == l.roomsPerIp && relay.drops().capRooms == 1,
+              "as many rooms from one address as it may have: one more is not opened");
+        out.clear();
+        relay.receive({lan, 6001}, bytes, relaySmallWrite(bytes, RelayKind::Bye, sessions[1]), now, out);
+        relay.receive({lan, static_cast<std::uint16_t>(6000 + l.roomsPerIp + 1)}, bytes,
+                      relayOpenWrite(bytes, sessions[l.roomsPerIp + 1], o), now, out);
+        check(relay.rooms() == l.roomsPerIp, "... one closes: another may open");
+
+        // Consoles of one address at doors at once (rooms elsewhere, their
+        // hosts not answering).
+        const std::uint32_t idA = open(relay, 20, "A", 8, now, out);
+        const std::uint32_t idB = open(relay, 21, "B", 8, now, out);
+        const std::uint32_t knockers = 0xCB007101u; // (203.0.113.1)
+        int busy = 0, waiting = 0;
+        std::uint32_t last = 0;
+        for (std::uint32_t n = 0; n <= l.knocksPerIp; ++n)
+        {
+            now += 1000;
+            const Address from = {knockers, static_cast<std::uint16_t>(8000 + n)};
+            last = comeInAt(relay, from, now);
+            out.clear();
+            relay.receive(from, bytes, relayJoinWrite(bytes, last, n % 2 ? idA : idB, "K"), now, out);
+            const auto refused = sentTo(out, from, RelayKind::Refused);
+            busy += refused.size() == 1 && relaySmallRead(refused[0].data(), static_cast<int>(refused[0].size())) ==
+                                               static_cast<int>(RelayRefuse::Busy);
+            waiting += refused.empty();
+        }
+        check(waiting == static_cast<int>(l.knocksPerIp) && busy == 1 && relay.drops().capKnocks == 1,
+              "as many of one address at doors as it may have: one more is told so (Busy)");
+        const std::uint32_t firstKnocker = comeInAt(relay, {knockers, 9000}, now + 1000);
+        relay.tick(now + kRelayKnockMs + 2000, out); // (the hosts never answer: all turned away)
+        out.clear();
+        relay.receive({knockers, 9000}, bytes, relayJoinWrite(bytes, firstKnocker, idA, "K"), now + kRelayKnockMs + 2000,
+                      out);
+        check(sentTo(out, {knockers, 9000}, RelayKind::Refused).empty(),
+              "... once those at the doors are turned away (not answered in time), others may knock");
+
+        // A console's own: control, and frames.
+        Relay r2;
+        out.clear();
+        const std::uint32_t t = 200000;
+        const std::uint32_t room = open(r2, 0, "H", 8, t, out);
+        join(r2, 1, room, t, out);
+        int pongs = 0;
+        for (int i = 0; i < 100; ++i)
+        {
+            out.clear();
+            r2.receive(at(1), bytes, relaySmallWrite(bytes, RelayKind::Ping, comeIn(r2, 1, t)), t + 1, out);
+            pongs += static_cast<int>(sentTo(out, at(1), RelayKind::Pong).size());
+        }
+        check(pongs > 0 && pongs < 100 && r2.drops().rateControl == static_cast<std::uint64_t>(100 - pongs),
+              "a console saying a hundred things at once: what is over its rate let fall");
+
+        // A host's frames as a game sends them (60 a second, the biggest):
+        // every one passed on, for ten seconds.
+        std::uint8_t frame[kNetCmdBytes] = {};
+        int passed = 0, sent = 0;
+        for (int f = 0; f < 600; ++f)
+        {
+            out.clear();
+            const std::uint32_t when = t + 2000 + static_cast<std::uint32_t>(f * 1000 / 60);
+            r2.receive(at(0), bytes, relayDataWrite(bytes, comeIn(r2, 0, t), 0, frame, kNetCmdBytes), when, out);
+            // (and the client's, and a ping each second, as a game does)
+            r2.receive(at(1), bytes, relayDataWrite(bytes, comeIn(r2, 1, t), 1, frame, kNetReplyBytes), when, out);
+            passed += static_cast<int>(sentTo(out, at(1), RelayKind::Data).size() + sentTo(out, at(0), RelayKind::Data).size());
+            sent += 2;
+            if (f % 60 == 0)
+            {
+                r2.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Ping, comeIn(r2, 0, t)), when, out);
+                r2.receive(at(1), bytes, relaySmallWrite(bytes, RelayKind::Ping, comeIn(r2, 1, t)), when, out);
+            }
+        }
+        check(passed == sent && r2.drops().rateData == 0, "a game's own frames, host's and client's: every one passed on");
+        // ... twice as many, for ten seconds: held to its rate.
+        passed = 0;
+        for (int f = 0; f < 1200; ++f)
+        {
+            out.clear();
+            const std::uint32_t when = t + 20000 + static_cast<std::uint32_t>(f * 1000 / 120);
+            r2.receive(at(0), bytes, relayDataWrite(bytes, comeIn(r2, 0, t), 0, frame, kNetCmdBytes), when, out);
+            passed += static_cast<int>(sentTo(out, at(1), RelayKind::Data).size());
+        }
+        const std::uint32_t mostBytes = 10 * r2.limits.hostBytesPerSecond + 2 * r2.limits.hostBytesPerSecond;
+        check(passed < 1200 && static_cast<std::uint32_t>(passed) * (kRelayHeadBytes + 1 + kNetCmdBytes) <= mostBytes &&
+                  r2.drops().rateData == static_cast<std::uint64_t>(1200 - passed),
+              "a host sending twice a game's frames: held to its bytes a second, the rest let fall");
+    }
+
+    void testOutBudget()
+    {
+        g_sessions.clear();
+        using hlrelay::Serve;
+        Relay relay;
+        relay.limits.outBytesPerSecond = 10 * kRelayHeadBytes; // (ten Pongs a second)
+        PretendSocket socket;
+        std::uint32_t now = 1000;
+        Serve serve(relay, socket, now);
+        std::uint8_t ping[kRelayHeadBytes];
+        const int pingSize = relaySmallWrite(ping, RelayKind::Ping, comeIn(relay, 1, now));
+        relay.limits.controlPerSecond = 1000;
+        for (int i = 0; i < 25; ++i)
+            socket.waiting.push_back({at(1), std::vector<std::uint8_t>(ping, ping + pingSize)});
+        serve.round(now);
+        check(socket.sent.size() == 10 && serve.counts.outBudget == 15,
+              "the relay sending more than it may in all: the rest not sent, and counted");
+        socket.waiting.push_back({at(1), std::vector<std::uint8_t>(ping, ping + pingSize)});
+        serve.round(now + 100);
+        check(socket.sent.size() == 11, "... and sent again in its time");
+    }
 } // namespace
 
 int main()
@@ -1070,6 +1291,8 @@ int main()
     testStatsLine();
     testComingIn();
     testOtherVersion();
+    testLimits();
+    testOutBudget();
     std::printf("%s (%d failed)\n", g_failures == 0 ? "PASS" : "FAIL", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

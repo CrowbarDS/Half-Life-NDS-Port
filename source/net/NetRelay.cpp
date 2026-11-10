@@ -925,11 +925,13 @@ namespace hlrt::netrelay
         static TWL_DATA const char kNoAnswer[] = "The host did not answer.";
         static TWL_DATA const char kGone[] = "That game is no longer there.";
         static TWL_DATA const char kFull[] = "That game is full, or a match is on.";
+        static TWL_DATA const char kBusy[] = "Too many on your network are asking to join.";
         switch (static_cast<RelayRefuse>(s.refuseWhy))
         {
         case RelayRefuse::Declined: return kDeclined;
         case RelayRefuse::NoAnswer: return kNoAnswer;
         case RelayRefuse::NoRoom: return kGone;
+        case RelayRefuse::Busy: return kBusy;
         default: return kFull;
         }
     }

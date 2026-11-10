@@ -100,6 +100,7 @@ namespace hldata
         Closed = 3, ///< its host lets nobody in (a match is on)
         Declined = 4, ///< its host said no
         NoAnswer = 5, ///< its host said nothing in time
+        Busy = 6,     ///< as many from its address wait at doors as may
     };
 
     struct RelayHead

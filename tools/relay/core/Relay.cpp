@@ -92,6 +92,11 @@ namespace hlrelay
             ++drops_.tooMany;
             return;
         }
+        if (counted(from.ip).peers >= limits.peersPerIp)
+        {
+            over(from, drops_.capPeers, "consoles at once", nowMs);
+            return;
+        }
         Peer fresh;
         while (nextPeer_ == 0 || peers_.count(nextPeer_) != 0)
             ++nextPeer_;
@@ -107,8 +112,53 @@ namespace hlrelay
         fresh.heardMs = nowMs;
         me = &(peers_[fresh.id] = fresh);
         at_[from.key()] = fresh.id;
+        ++counted(from.ip).peers;
         note(named(*me) + " came");
         say(out, *me, welcome, relayWelcomeWrite(welcome, nonce, me->session, me->token));
+    }
+
+    Relay::IpSlot &Relay::ipSlot(std::uint32_t ip)
+    {
+        std::uint8_t bytes[4];
+        relayPut32(bytes, ip);
+        IpSlot &slot = ipSlots_[sipHash24(cookieKey_, bytes, sizeof(bytes)) & (kIpSlots - 1)];
+        if (!slot.used || slot.ip != ip)
+        {
+            slot = IpSlot();
+            slot.used = true;
+            slot.ip = ip;
+        }
+        return slot;
+    }
+
+    void Relay::uncount(std::uint32_t ip, std::uint32_t IpCount::*what)
+    {
+        auto it = ipCounts_.find(ip);
+        if (it == ipCounts_.end())
+            return;
+        IpCount &c = it->second;
+        if (c.*what > 0)
+            --(c.*what);
+        if (c.peers == 0 && c.rooms == 0 && c.knocks == 0)
+            ipCounts_.erase(it);
+    }
+
+    void Relay::clearKnock(Knock &k)
+    {
+        if (k.peer != 0)
+            uncount(k.ip, &IpCount::knocks);
+        k = Knock();
+    }
+
+    void Relay::over(const Address &at, std::uint64_t &count, const char *why, std::uint32_t nowMs)
+    {
+        ++count;
+        IpSlot &slot = ipSlot(at.ip);
+        if (slot.logged && nowMs - slot.loggedMs < kOverLogMs)
+            return;
+        slot.logged = true;
+        slot.loggedMs = nowMs;
+        note(shown(at) + " over its limit (" + why + "): what is over is let fall");
     }
 
     bool Relay::sayVersion(const Address &from, std::uint32_t nowMs)
@@ -232,7 +282,7 @@ namespace hlrelay
         {
             for (Knock &k : it->second.knocks)
                 if (k.peer == peer.id)
-                    k = Knock();
+                    clearKnock(k);
         }
         if (refused > 0)
         {
@@ -290,9 +340,10 @@ namespace hlrelay
                 say(out, *client, bye, relaySmallWrite(bye, RelayKind::Bye, client->session));
             }
             // (Those at its door: there is no room any more.)
-            for (const Knock &k : room.knocks)
+            for (Knock &k : room.knocks)
             {
                 Peer *waiting = byId(k.peer);
+                clearKnock(k);
                 if (waiting == nullptr)
                     continue;
                 waiting->knocking = 0;
@@ -300,6 +351,7 @@ namespace hlrelay
                 say(out, *waiting, no,
                     relaySmallWrite(no, RelayKind::Refused, waiting->session, static_cast<int>(RelayRefuse::NoRoom)));
             }
+            uncount(peer.at.ip, &IpCount::rooms);
             note("room " + std::to_string(room.id) + " closed");
             rooms_.erase(it);
             return;
@@ -318,6 +370,7 @@ namespace hlrelay
         if (it == peers_.end())
             return;
         leave(it->second, out, told);
+        uncount(it->second.at.ip, &IpCount::peers);
         auto at = at_.find(it->second.at.key());
         if (at != at_.end() && at->second == id)
             at_.erase(at);
@@ -346,6 +399,13 @@ namespace hlrelay
         }
         // Coming in: a cookie for a Hello (kept nowhere: it is made again to
         // be checked), and a console known for an Enter that sends it back.
+        // (Not too often from one address.)
+        if ((head.kind == RelayKind::Hello || head.kind == RelayKind::Enter) &&
+            !ipSlot(from.ip).hello.take(1, limits.helloPerSecond, 2 * limits.helloPerSecond, nowMs))
+        {
+            over(from, drops_.rateHello, "coming in", nowMs);
+            return;
+        }
         if (head.kind == RelayKind::Hello)
         {
             if (size < kRelayHelloBytes)
@@ -373,6 +433,30 @@ namespace hlrelay
             return;
         }
         me->heardMs = nowMs;
+        // Not more than a game needs (Limits.hpp).
+        if (head.kind == RelayKind::Data)
+        {
+            const std::uint32_t bytesRate = me->slot == 0 ? limits.hostBytesPerSecond : limits.clientBytesPerSecond;
+            if (!me->data.take(1, limits.dataPerSecond, 2 * limits.dataPerSecond, nowMs) ||
+                !me->dataBytes.take(static_cast<std::uint32_t>(size), bytesRate, 2 * bytesRate, nowMs))
+            {
+                over(from, drops_.rateData, "game frames", nowMs);
+                return;
+            }
+        }
+        else if (head.kind == RelayKind::Voice)
+        {
+            if (!me->voice.take(1, limits.voicePerSecond, limits.voicePerSecond, nowMs))
+            {
+                ++drops_.rateVoice; // (a voice's worth: too common to log)
+                return;
+            }
+        }
+        else if (!me->control.take(1, limits.controlPerSecond, 2 * limits.controlPerSecond, nowMs))
+        {
+            over(from, drops_.rateControl, "control", nowMs);
+            return;
+        }
         std::uint8_t reply[kRelayRoomsMostBytes > kRelayMostBytes ? kRelayRoomsMostBytes : kRelayMostBytes];
 
         switch (head.kind)
@@ -397,6 +481,12 @@ namespace hlrelay
             {
                 if (rooms_.size() >= kMostRooms)
                     break;
+                if (counted(from.ip).rooms >= limits.roomsPerIp)
+                {
+                    over(from, drops_.capRooms, "rooms at once", nowMs);
+                    break;
+                }
+                ++counted(from.ip).rooms;
                 Room room;
                 room.id = nextRoom_++;
                 if (nextRoom_ == 0)
@@ -464,6 +554,12 @@ namespace hlrelay
                 if (!room.admit || room.count() >= room.open.most)
                     free = nullptr;
             }
+            if (free != nullptr && counted(from.ip).knocks >= limits.knocksPerIp)
+            {
+                over(from, drops_.capKnocks, "waiting at doors at once", nowMs);
+                free = nullptr;
+                why = RelayRefuse::Busy;
+            }
             if (free == nullptr)
             {
                 say(out, *me, reply,
@@ -473,6 +569,8 @@ namespace hlrelay
             // At the door: the host is asked.
             Room &room = it->second;
             free->peer = me->id;
+            free->ip = from.ip;
+            ++counted(from.ip).knocks;
             relayJoinName(bytes, size, free->name);
             free->ticket = room.nextTicket;
             room.nextTicket = static_cast<std::uint8_t>(room.nextTicket == 255 ? 1 : room.nextTicket + 1);
@@ -495,7 +593,7 @@ namespace hlrelay
                 if (k.peer == 0 || k.ticket != ticket)
                     continue;
                 Peer *waiting = byId(k.peer);
-                k = Knock();
+                clearKnock(k);
                 if (waiting == nullptr)
                     break;
                 waiting->knocking = 0;
@@ -530,13 +628,6 @@ namespace hlrelay
             auto it = rooms_.find(me->room);
             RelayVoice voice;
             if (it == rooms_.end() || !it->second.voice || me->slot < 0 || !relayVoiceRead(bytes, size, voice))
-                break;
-            if (nowMs - me->voiceSinceMs >= 1000)
-            {
-                me->voiceSinceMs = nowMs;
-                me->voiceCount = 0;
-            }
-            if (++me->voiceCount > kRelayVoicePerSecond)
                 break;
             Room &room = it->second;
             for (int c = 0; c < kNetPlayers; ++c)
@@ -616,7 +707,7 @@ namespace hlrelay
                     continue;
                 Peer *waiting = byId(k.peer);
                 if (waiting == nullptr)
-                    k = Knock();
+                    clearKnock(k);
                 else if (nowMs - k.sinceMs > kRelayKnockMs)
                 {
                     note(named(*waiting) + " was not answered by room " + std::to_string(id));

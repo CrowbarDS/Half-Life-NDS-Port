@@ -49,6 +49,7 @@ namespace hlrelay
             std::uint64_t received = 0, receivedBytes = 0;
             std::uint64_t sent = 0, sentBytes = 0;
             std::uint64_t sendFailed = 0;
+            std::uint64_t outBudget = 0;  ///< not sent: the relay had sent as much as it may (Limits::outBytesPerSecond)
             std::uint64_t fullRounds = 0; ///< rounds stopped at kMostPerRound
             Drops drops;                  ///< (the relay's)
         };
@@ -65,6 +66,7 @@ namespace hlrelay
         std::uint32_t lastStats_;
         Counts atLastStats_;
         std::vector<Out> out_;
+        Bucket outBytes_;
         std::uint8_t bytes_[2048];
     };
 } // namespace hlrelay

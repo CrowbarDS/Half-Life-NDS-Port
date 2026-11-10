@@ -38,10 +38,40 @@ build/relay/hlds-relay --port 27500
 | `--port N` | the UDP port to listen on (27500 if not given) |
 | `--bind ADDRESS` | the local IPv4 address to listen on (all of them if not given) |
 | `--log-ips trunc\|hash\|full` | how consoles' addresses are logged (`trunc` if not given; see below) |
+| `--limit NAME=VALUE` | one of the limits below; as often as needed |
 | `--quiet` | print nothing while running |
 
 A console that sends nothing for 45 seconds is let go, and with it its room
 if it was a host.
+
+## Limits
+
+What a game needs, with room to spare; what is over is let fall (and
+counted, and logged once a minute for an address), so that nobody can make
+the relay work or send for others. A host sends a frame each 60th of a
+second (729 bytes at most), a client one (229 bytes at most), a voice packet
+each 27 ms at most, and a ping, its room or a list each second.
+
+| `--limit` | default | |
+|---|---|---|
+| `hello-per-s` | 10 | Hello and Enter from one address, before its console is known |
+| `control-per-s` | 30 | a console's datagrams other than game frames and voice |
+| `data-per-s` | 90 | a console's game frames |
+| `host-bytes-per-s` | 65536 | a host's game frames, in bytes: each goes to every client of its room |
+| `client-bytes-per-s` | 24576 | a client's game frames, in bytes |
+| `voice-per-s` | 45 | a console's voice packets |
+| `peers-per-ip` | 16 | consoles known at one address at once (several behind one router) |
+| `rooms-per-ip` | 4 | rooms open from one address at once |
+| `knocks-per-ip` | 8 | consoles of one address waiting at doors at once (one more is told so) |
+| `out-bytes-per-s` | 12582912 | bytes the relay sends in all (12 MB/s, about 100 Mbit/s) |
+
+Each may go to twice its rate at once (voice: its rate), then keeps to it.
+A full room of eight sends about 300 KB/s out: `out-bytes-per-s` is what
+the server's link (and its provider's traffic allowance) should bear.
+
+The system holds what comes in while the relay is busy; the relay asks for
+4 MB of room, but gets no more than `net.core.rmem_max` allows (often
+208 KB): `sysctl -w net.core.rmem_max=4194304` lets it have it.
 
 ## What it logs
 
@@ -62,7 +92,7 @@ An address says who someone is, near enough, so it is logged no more than
 Once a minute it logs a line of counts:
 
 ```
-stats peers=12 rooms=3 in=21600 in_bytes=9431200 out=64800 out_bytes=27100000 drop_not_ours=0 other_version=0 drop_too_many=0 drop_unknown=0 drop_bad_cookie=0 send_failed=0 full_rounds=0 (last 60 s)
+stats peers=12 rooms=3 in=21600 in_bytes=9431200 out=64800 out_bytes=27100000 drop_not_ours=0 other_version=0 drop_too_many=0 drop_unknown=0 drop_bad_cookie=0 drop_rate_hello=0 drop_rate_control=0 drop_rate_data=0 drop_rate_voice=0 drop_cap_peers=0 drop_cap_rooms=0 drop_cap_knocks=0 drop_out_budget=0 send_failed=0 full_rounds=0 (last 60 s)
 ```
 
 | | |
@@ -75,6 +105,9 @@ stats peers=12 rooms=3 in=21600 in_bytes=9431200 out=64800 out_bytes=27100000 dr
 | `drop_too_many` | consoles coming in while the relay knew as many as it may (1024) |
 | `drop_unknown` | datagrams from no console the relay knows, or in another session than the one there: a console it let go, a relay started again, or someone making them up |
 | `drop_bad_cookie` | consoles coming in with a cookie the relay did not make for that address, or one too old |
+| `drop_rate_*` | over a rate (see Limits): `hello`, coming in; `control`; `data`, game frames; `voice` |
+| `drop_cap_*` | over what one address may have at once: `peers`, `rooms`, `knocks` |
+| `drop_out_budget` | not sent: the relay had sent as much as `out-bytes-per-s` lets it |
 | `send_failed` | datagrams the system would not send |
 | `full_rounds` | times it had more come at once than it reads in one go (256): under a flood, this climbs |
 

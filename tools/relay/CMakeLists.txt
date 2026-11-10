@@ -21,7 +21,7 @@ if(HLDS_RELAY_SANITIZE AND NOT MSVC)
     add_link_options(-fsanitize=address,undefined)
 endif()
 
-add_library(hlds_relay_core STATIC core/Relay.cpp core/Serve.cpp)
+add_library(hlds_relay_core STATIC core/Relay.cpp core/Serve.cpp core/Limits.cpp)
 target_include_directories(hlds_relay_core PUBLIC
     core
     "${REPO_ROOT}/shared"      # the relay's datagrams and the game's frames, as the DS has them
