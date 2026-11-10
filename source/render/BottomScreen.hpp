@@ -177,6 +177,7 @@ namespace hlrt
         int held_ = 0;
         bool mirrored_ = false; ///< as the pad was last drawn
         bool matchBar_ = false; ///< the bar was drawn with a match's buttons (SPRAY)
+        bool talkBar_ = false;  ///< ... with TALK in SPRAY's place
         bool padPending_ = false; ///< the play area drawn off the screen, not yet on it
         bool iconsTried_ = false;
     };

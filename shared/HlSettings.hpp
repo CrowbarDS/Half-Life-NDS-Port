@@ -174,6 +174,9 @@ namespace hldata
         std::uint8_t voteSeconds = kVoteDefault;
         /// The top screen's shape (kScreen*).
         std::uint8_t screenShape = kScreenAuto;
+        /// A match hosted online: its players may talk (kRuleVoice). Off
+        /// unless asked for.
+        std::uint8_t hostVoice = 0;
 
         /// What a file of version 8 held: all but the controls.
         template <class Ar>
@@ -225,6 +228,16 @@ namespace hldata
         template <class Ar>
         void serialize(Ar &ar)
         {
+            serializeTwentyFive(ar);
+            for (int a = kActionsBeforeTalk; a < kActionCount; ++a)
+                ar &keys[a];
+            ar &hostVoice;
+        }
+        /// ... and of version 25: no TALK (a custom layout's read with none),
+        /// nor talking in a match hosted (read as off, the default).
+        template <class Ar>
+        void serializeTwentyFive(Ar &ar)
+        {
             serializeTwentyFour(ar);
             ar &screenShape;
         }
@@ -233,7 +246,7 @@ namespace hldata
         void serializeTwentyFour(Ar &ar)
         {
             serializeTwentyThree(ar);
-            for (int a = kActionsBeforeLook; a < kActionCount; ++a)
+            for (int a = kActionsBeforeLook; a < kActionsBeforeTalk; ++a)
                 ar &keys[a];
         }
         /// ... and of version 23: no buttons that look (a custom layout's
@@ -326,8 +339,9 @@ namespace hldata
     inline constexpr std::uint8_t kQualityStandard = 0, kQualityHigh = 1, kQualityChoices = 2;
 
     inline constexpr char kSettingsMagic[4] = {'H', 'L', 'S', 'T'};
-    inline constexpr std::uint16_t kSettingsVersion = 25;
-    /// The versions before, which are still read: 24 had no screen shape
+    inline constexpr std::uint16_t kSettingsVersion = 26;
+    /// The versions before, which are still read: 25 had no TALK, nor
+    /// talking in a match hosted; 24 had no screen shape
     /// (read as auto); 23 had no buttons that
     /// look, nor the BUTTONS ONLY layout; 22 always showed the map's
     /// name while it loaded (read as hidden, the default); 21 had no dialogue focus
@@ -340,6 +354,7 @@ namespace hldata
     /// 11 had no achievements' pop-ups to turn off; 10 had no autoaim; 9 had
     /// the layouts but no aim speed, custom buttons or stylus pressure; 8 no
     /// controls to choose.
+    inline constexpr std::uint16_t kSettingsVersionTwentyFive = 25;
     inline constexpr std::uint16_t kSettingsVersionTwentyFour = 24;
     inline constexpr std::uint16_t kSettingsVersionTwentyThree = 23;
     inline constexpr std::uint16_t kSettingsVersionTwentyTwo = 22;
@@ -434,6 +449,12 @@ namespace hldata
             data.serializeTwentyThree(ar);
         else if (version == kSettingsVersionTwentyFour)
             data.serializeTwentyFour(ar);
+#ifndef HLDS_CHILD
+        // (A console sent the game has no card, and never reads a file of the
+        // versions before: what it does not read, it has no room for.)
+        else if (version == kSettingsVersionTwentyFive)
+            data.serializeTwentyFive(ar);
+#endif
         else
             ar &data;
     }
@@ -459,7 +480,8 @@ namespace hldata
             return false;
         std::memcpy(&header, bytes, sizeof(header));
         if (std::memcmp(header.magic, kSettingsMagic, sizeof(header.magic)) != 0 ||
-            (header.version != kSettingsVersion && header.version != kSettingsVersionTwentyFour &&
+            (header.version != kSettingsVersion && header.version != kSettingsVersionTwentyFive &&
+             header.version != kSettingsVersionTwentyFour &&
              header.version != kSettingsVersionTwentyThree &&
              header.version != kSettingsVersionTwentyTwo &&
              header.version != kSettingsVersionTwentyOne &&
@@ -525,7 +547,7 @@ namespace hldata
         if (read.playerModel >= kCharacterCount)
             read.playerModel = 0;
         if (read.sprayColour >= kSprayColours || read.hostMode >= kModeChoices || read.weaponsStay > 1 ||
-            read.fallDamage > 1 || read.friendlyFire > 1 || read.flashlight > 1 || read.hostAutoaim > 1 ||
+            read.fallDamage > 1 || read.friendlyFire > 1 || read.flashlight > 1 || read.hostAutoaim > 1 || read.hostVoice > 1 ||
             read.maxPlayers < kPlayersLeast || read.maxPlayers > kPlayersMost || read.allowGuests > 1 ||
             read.chatSeconds < kChatLeast || read.chatSeconds > kChatMost || read.sessionTotals > 1 ||
             read.nextMode >= kNextChoices || read.rotationCount > kRotationMost ||

@@ -147,6 +147,8 @@ namespace hlrt
             kNetFriendly,  ///< ... friendly fire
             kNetLamp,      ///< ... the flashlight allowed
             kNetAim,       ///< ... autoaim
+            kNetVoice,     ///< ... talking (online)
+            kSpray,        ///< the match's pause page: SPRAY (TALK in its place on the touch screen)
             kNetGuests,    ///< ... consoles without the game let in
             kNetChat,      ///< NEXT MAP's: how long a match's scores are shown
             kNetTotals,    ///< ... a lobby's matches added up
@@ -214,9 +216,13 @@ namespace hlrt
                                  {Kind::Button, kBack, "BACK"}};
         const Row kDemoChoiceRows[] = {{Kind::Button, kDemoContinue, "CONTINUE"}, {Kind::Button, kDemoRestart, "RESTART"}};
         const Row kServeRows[] = {{Kind::Button, kDemoSend, "SEND THE GAME"}, {Kind::Button, kStopDemo, "STOP"}};
-        const Row kNetPauseRows[] = {{Kind::Button, kResume, "RESUME"}, {Kind::Button, kChat, "CHAT"},
-                                     {Kind::Button, kOptions, "OPTIONS"}, {Kind::Button, kEndMatch, "END MATCH"},
-                                     {Kind::Button, kLeave, "LEAVE GAME"}};
+        // (CHAT and SPRAY: never on a console sent the game.)
+        const Row kNetPauseRows[] = {{Kind::Button, kResume, "RESUME"},
+#ifndef HLDS_CHILD
+                                     {Kind::Button, kChat, "CHAT"},     {Kind::Button, kSpray, "SPRAY"},
+#endif
+                                     {Kind::Button, kOptions, "OPTIONS"},
+                                     {Kind::Button, kEndMatch, "END MATCH"}, {Kind::Button, kLeave, "LEAVE GAME"}};
         // The games found: made when they are shown, then BACK.
         constexpr int kFoundListed = 4;
         Row foundRows[kFoundListed + 1];
@@ -302,7 +308,9 @@ namespace hlrt
             return (id == kGameTraining && !onCard[1]) || (id == kGameUplink && !onCard[2]) ||
                    (id == kContinue && !saveThere) || (id == kQuit && !quitThere) || (id == kEndMatch && (!netGame.isHost() || netGame.match().over)) ||
                    // (CHAT: not in a demo, and not on a console sent the game.)
-                   (id == kChat && (childConsole || !isDSiMode() || netGame.demo() != 0));
+                   (id == kChat && (childConsole || !isDSiMode() || netGame.demo() != 0)) ||
+                   // (SPRAY: here only when TALK has its place on the touch screen.)
+                   (id == kSpray && (childConsole || !netGame.talkAllowed()));
         }
 
         const Row *tableOf(int page, int &count);
@@ -1055,6 +1063,9 @@ namespace hlrt
                                  {Kind::Value, kNetFriendly, "Friendly fire"},
                                  {Kind::Value, kNetLamp, "Flashlight"},
                                  {Kind::Value, kNetAim, "Autoaim"},
+#ifndef HLDS_CHILD
+                                 {Kind::Value, kNetVoice, "Voice chat"},
+#endif
                                  {Kind::Value, kNetSkill, "Difficulty"},
                                  {Kind::Value, kNetGuests, "Download Play players"}};
 #ifndef HLDS_CHILD
@@ -1255,6 +1266,10 @@ namespace hlrt
             {
             case kNetFriendly:
                 return settings.hostMode == kModeTeamplay ? nullptr : "Only in teamplay: there are no teams.";
+#ifndef HLDS_CHILD
+            case kNetVoice:
+                return netGame.online() ? nullptr : "Online only: the local wireless has no room for voices.";
+#endif
             case kNetGuests:
                 return netAnyGuestMap(netGame.mapInfo(), netGame.guestRoom())
                            ? nullptr
@@ -1345,6 +1360,9 @@ namespace hlrt
             case kNetFriendly: std::snprintf(out, size, "%s", settings.friendlyFire ? "on" : "off"); break;
             case kNetLamp: std::snprintf(out, size, "%s", settings.flashlight ? "allowed" : "not allowed"); break;
             case kNetAim: std::snprintf(out, size, "%s", settings.hostAutoaim ? "on" : "off"); break;
+#ifndef HLDS_CHILD
+            case kNetVoice: std::snprintf(out, size, "%s", settings.hostVoice ? "on" : "off"); break;
+#endif
             case kNetGuests: std::snprintf(out, size, "%s", settings.allowGuests ? "let in" : "not let in"); break;
             case kNetTeam:
             {
@@ -1525,6 +1543,9 @@ namespace hlrt
             case kNetFriendly: return "In teamplay: whether teammates' shots hurt each other.";
             case kNetLamp: return "Whether the suit's flashlight may be lit in the match.";
             case kNetAim: return "Whether the guns' aim bends towards a player near it.";
+#ifndef HLDS_CHILD
+            case kNetVoice: return "Online: whether the players may talk, holding TALK (in SPRAY's place) or its button.";
+#endif
             case kNetSkill: return "How hard the map's chargers and anything of its own are, on every console.";
             case kNetGuests:
                 return "Consoles sent the game by Download Play can join: only the maps that fit them are offered.";
@@ -1758,6 +1779,9 @@ namespace hlrt
                 return true;
             case kNetLamp: settings.flashlight = !settings.flashlight; netGame.hostChanged(); return true;
             case kNetAim: settings.hostAutoaim = !settings.hostAutoaim; netGame.hostChanged(); return true;
+#ifndef HLDS_CHILD
+            case kNetVoice: settings.hostVoice = !settings.hostVoice; netGame.hostChanged(); return true;
+#endif
             case kNetGuests:
                 if (hostDead(id) != nullptr)
                     return false;
@@ -3888,6 +3912,13 @@ namespace hlrt
         switch (item.id)
         {
         case kResume:  return Action::Resume;
+#ifndef HLDS_CHILD
+        case kSpray:
+            // (Where the player is looking, as SPRAY on the touch screen; and
+            // back to the match.)
+            netGame.spray();
+            return Action::Resume;
+#endif
         case kDemoContinue: return Action::DemoContinue;
         case kDemoRestart:  return Action::DemoRestart;
         case kHandLeft:

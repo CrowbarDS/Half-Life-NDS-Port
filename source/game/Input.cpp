@@ -90,6 +90,9 @@ namespace hlrt
             theirs.touching = false;
         hldata::ControlSettings controls = settings.controls();
         controls.match = netGame.playing();
+#ifndef HLDS_CHILD
+        controls.talk = netGame.talkAllowed();
+#endif
         controls.longJump = longJump;
         static_cast<hldata::ControlsOut &>(*this) = hldata::controlsStep(controls, theirs, state_);
         weaponChoose = list.chosen;

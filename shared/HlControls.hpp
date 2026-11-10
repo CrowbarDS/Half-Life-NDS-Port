@@ -128,19 +128,23 @@ namespace hldata
         kActionLookDown,
         kActionTurnLeft,
         kActionTurnRight,
+        kActionTalk, ///< (online, the host letting it: held, what the microphone hears is sent)
         kActionCount
     };
     /// How many a settings file before version 18 keeps (HlSettings.hpp).
     inline constexpr int kActionsBeforeWalk = kActionWalk;
     /// ... and before version 24.
     inline constexpr int kActionsBeforeLook = kActionLookUp;
+    /// ... and before version 26.
+    inline constexpr int kActionsBeforeTalk = kActionTalk;
     /// Their names, for the options.
     inline const char *actionName(int action)
     {
         static const char *const kNames[kActionCount] = {"Forward", "Back",   "Left",   "Right",       "Fire",
                                                      "Alt fire", "Jump",  "Duck",   "Reload",      "Use",
                                                      "Next weapon", "Weapon before", "Flashlight", "Walk",
-                                                     "Look up",  "Look down", "Turn left", "Turn right"};
+                                                     "Look up",  "Look down", "Turn left", "Turn right",
+                                                     "Talk"};
         return action >= 0 && action < kActionCount ? kNames[action] : "";
     }
     /// The buttons that may be given an action: all but Start.
@@ -181,6 +185,12 @@ namespace hldata
         /// A match between consoles is on: the touch screen has SPRAY
         /// (HlTouchLayout.hpp). Not a setting: the game's state.
         bool match = false;
+#ifndef HLDS_CHILD
+        /// ... and its host lets its players talk (online): SPRAY's place on
+        /// the touch screen is TALK, held to talk. (Never a console sent the
+        /// game's.)
+        bool talk = false;
+#endif
     };
 
     /// Each action's buttons in a layout (not CUSTOM, whose are its own).
@@ -377,6 +387,11 @@ namespace hldata
         int touchOn = kTouchAim;
         bool lampPressed = false;
         bool sprayPressed = false; ///< (a match's: the touch screen's SPRAY)
+#ifndef HLDS_CHILD
+        /// TALK is held (its button, or the touch screen's in SPRAY's place,
+        /// the host letting it): what the microphone hears is sent.
+        bool talkHeld = false;
+#endif
         bool startPressed = false;
         bool tapped = false; ///< the stylus came down this frame, at (tapX, tapY)
         int tapX = 0, tapY = 0;
@@ -540,7 +555,11 @@ namespace hldata
                 out.menuPressed = state.touch == kTouchMenu;
                 out.reloadPressed = out.reloadPressed || state.touch == kTouchReload;
                 out.lampPressed = out.lampPressed || state.touch == kTouchLamp;
+#ifndef HLDS_CHILD
+                out.sprayPressed = state.touch == kTouchSpray && !set.talk;
+#else
                 out.sprayPressed = state.touch == kTouchSpray;
+#endif
                 if (state.touch >= kTouchSlot && state.touch < kTouchSlot + kTouchSlots)
                     out.weaponPick = state.touch - kTouchSlot + 1;
                 // The button on the screen: held to crouch (and then slid off
@@ -793,6 +812,9 @@ namespace hldata
                                       : (state.duckSlide ? kTouchDuck : (state.walkSlide ? kTouchWalk : state.touch));
         out.useHeld = on(kActionUse) || (state.touching && state.touch == kTouchUse) ||
                       (firmNow && set.firmPress == kFirmUse);
+#ifndef HLDS_CHILD
+        out.talkHeld = set.talk && (on(kActionTalk) || (state.touching && state.touch == kTouchSpray));
+#endif
         state.lastHeld = held;
         state.lastBlank = in.blank;
         return out;

@@ -42,6 +42,12 @@ namespace hlrt
         Phase phase() const { return phase_; }
         bool on() const { return phase_ != Phase::Off; }
         bool playing() const { return phase_ == Phase::Playing; }
+        /// A match online whose host lets its players talk (TALK, held).
+#ifdef HLDS_CHILD
+        bool talkAllowed() const { return false; } ///< (a console sent the game is never online)
+#else
+        bool talkAllowed() const { return playing() && online() && match_.rules.has(hldata::kRuleVoice); }
+#endif
         bool isHost() const { return match_.role == hldata::NetMatch::Role::Host; }
         const hldata::NetMatch &match() const { return match_; }
         hldata::NetMatch &match() { return match_; }

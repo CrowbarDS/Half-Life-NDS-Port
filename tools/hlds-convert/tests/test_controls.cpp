@@ -765,6 +765,39 @@ namespace
         check(!readSettings(written.data(), written.size(), back), "a screen shape there is not: not read");
         data.screenShape = kScreenAuto;
 
+        // TALK and talking in a match hosted: kept; a file of version 25 has
+        // neither (no button, talking off).
+        data.keys[kActionTalk] = static_cast<std::uint16_t>(kButtonR);
+        data.hostVoice = 1;
+        written = writeSettings(data);
+        check(readSettings(written.data(), written.size(), back) && back.keys[kActionTalk] == kButtonR && back.hostVoice == 1,
+              "TALK's button and talking in a match hosted are kept");
+        SettingsData before25;
+        before25.keys[kActionTalk] = static_cast<std::uint16_t>(kButtonR); // (not in that version)
+        before25.hostVoice = 1;                                             // (nor this)
+        before25.screenShape = kScreenWide;
+        yas::mem_ostream os25;
+        yas::binary_oarchive<yas::mem_ostream, flags> oa25(os25);
+        before25.serializeTwentyFive(oa25);
+        const auto buf25 = os25.get_intrusive_buffer();
+        SettingsHeader header25{};
+        std::memcpy(header25.magic, kSettingsMagic, sizeof(header25.magic));
+        header25.version = kSettingsVersionTwentyFive;
+        header25.payloadBytes = static_cast<std::uint16_t>(buf25.size);
+        header25.crc32 = crc32(reinterpret_cast<const std::uint8_t *>(buf25.data), static_cast<std::uint32_t>(buf25.size));
+        std::vector<std::uint8_t> file25(sizeof(header25) + buf25.size);
+        std::memcpy(file25.data(), &header25, sizeof(header25));
+        std::memcpy(file25.data() + sizeof(header25), buf25.data, buf25.size);
+        check(readSettings(file25.data(), file25.size(), back) && back.screenShape == kScreenWide &&
+                  back.keys[kActionTalk] == 0 && back.hostVoice == 0,
+              "a file of version 25 keeps its screen, and has no TALK nor talking");
+        data.hostVoice = 2;
+        written = writeSettings(data);
+        check(!readSettings(written.data(), written.size(), back), "talking neither on nor off: not read");
+        data.hostVoice = 0;
+        data.keys[kActionTalk] = 0;
+        check(written.size() <= sizeof(SettingsHeader) + kSettingsMostBytes, "the settings still fit their most");
+
         data.controlScheme = kControlsSchemes;
         written = writeSettings(data);
         check(!readSettings(written.data(), written.size(), back), "a layout there is not: not read");
@@ -1446,6 +1479,39 @@ namespace
         out = press(modern, tapped, 0, blank);
         check(out.usePressed && !out.useHeld, "... its tap is USE pressed, once, and not held");
     }
+
+    /// TALK: held, its button or the touch screen's in SPRAY's place -- only
+    /// where the host lets the players talk; SPRAY as it was otherwise.
+    void testTalk()
+    {
+        ControlSettings set;
+        set.scheme = kControlsCustom;
+        set.keys[kActionTalk] = kButtonR;
+        set.match = true;
+        std::uint16_t keys[kActionCount];
+        keysOf(set, keys);
+        ControlsState state;
+        std::uint32_t blank = 100;
+        const TouchLayout at = touchLayout(false, true, set.jumpWalks, false);
+        check(at.spray.w > 0, "(a match's touch screen has SPRAY's place)");
+        ControlsOut out = touch(set, state, at.spray.x + 2, at.spray.y + 2, blank);
+        check(out.sprayPressed && !out.talkHeld, "no talking: SPRAY sprays, and nothing is said");
+        press(set, state, 0, blank);
+        out = press(set, state, keys[kActionTalk], blank);
+        check(!out.talkHeld, "... nor by TALK's button");
+        set.talk = true;
+        ControlsState talking;
+        out = touch(set, talking, at.spray.x + 2, at.spray.y + 2, blank);
+        check(out.talkHeld && !out.sprayPressed, "talking let: the touch screen's TALK talks, and does not spray");
+        out = touch(set, talking, at.spray.x + 3, at.spray.y + 2, blank);
+        check(out.talkHeld, "... for as long as the stylus stays");
+        out = press(set, talking, 0, blank);
+        check(!out.talkHeld, "... and not once it is lifted");
+        out = press(set, talking, keys[kActionTalk], blank);
+        check(out.talkHeld, "TALK's button talks while held");
+        out = press(set, talking, 0, blank);
+        check(!out.talkHeld, "... and not once let go");
+    }
 } // namespace
 
 int main()
@@ -1466,6 +1532,7 @@ int main()
     testTouchFilter();
     testSensitivity();
     testUseHeld();
+    testTalk();
     if (g_failures == 0)
         std::printf("test_controls: ok\n");
     return g_failures == 0 ? 0 : 1;

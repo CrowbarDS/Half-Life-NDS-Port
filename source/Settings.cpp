@@ -71,6 +71,7 @@ void Settings::load()
         friendlyFire = data.friendlyFire != 0;
         flashlight = data.flashlight != 0;
         hostAutoaim = data.hostAutoaim != 0;
+        hostVoice = data.hostVoice != 0;
         maxPlayers = data.maxPlayers;
         allowGuests = data.allowGuests != 0;
         chatSeconds = data.chatSeconds;
@@ -214,6 +215,7 @@ bool Settings::save() const
     data.friendlyFire = friendlyFire ? 1 : 0;
     data.flashlight = flashlight ? 1 : 0;
     data.hostAutoaim = hostAutoaim ? 1 : 0;
+    data.hostVoice = hostVoice ? 1 : 0;
     data.maxPlayers = maxPlayers;
     data.allowGuests = allowGuests ? 1 : 0;
     data.chatSeconds = chatSeconds;

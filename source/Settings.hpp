@@ -114,6 +114,7 @@ public:
     bool friendlyFire = false;
     bool flashlight = false;
     bool hostAutoaim = true;
+    bool hostVoice = false; ///< online: the players may talk (kRuleVoice)
     std::uint8_t maxPlayers = 4;
     bool allowGuests = true;
     /// What follows a match (hldata::SettingsData's).

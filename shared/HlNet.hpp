@@ -146,6 +146,8 @@ namespace hldata
     inline constexpr std::uint16_t kRuleFlashlight = 8;
     inline constexpr std::uint16_t kRuleAutoaim = 16;
     inline constexpr std::uint16_t kRuleGuests = 32;
+    /// Players may talk to each other (online, through the relay: TALK).
+    inline constexpr std::uint16_t kRuleVoice = 64;
 
     /// The kinds of match (Rules' v[0]): every one for themselves, or two
     /// teams (HlSettings.hpp's kModeDeathmatch, kModeTeamplay).

@@ -134,6 +134,9 @@ namespace hlrt
         // (The bar has other buttons in a match: what was there before is
         // cleared, not drawn over.)
         matchBar_ = netGame.playing();
+#ifndef HLDS_CHILD
+        talkBar_ = netGame.talkAllowed();
+#endif
         const TouchLayout at = touchLayout(mirrored_, matchBar_, settings.jumpWalks, longJump_);
         canvas.fill(0, 0, kTouchWidth, kTouchBarHeight, kUiBack);
         label(at.menu, "MENU", held_ == kTouchMenu);
@@ -141,7 +144,7 @@ namespace hlrt
         if (at.walk.y == 0)
             label(at.walk, "WALK", walking_ || held_ == kTouchWalk);
         if (at.spray.w > 0)
-            label(at.spray, "SPRAY", held_ == kTouchSpray);
+            label(at.spray, talkBar_ ? "TALK" : "SPRAY", held_ == kTouchSpray);
         // RELOAD is faint while there is nothing to reload: no gun in
         // hand, a full one, or nothing carried for it.
         if (canReload_ || held_ == kTouchReload)
@@ -448,7 +451,11 @@ namespace hlrt
 
     void BottomScreen::setStatus(int weapon, int clip, int spare, unsigned have, unsigned empty, bool canReload)
     {
+#ifndef HLDS_CHILD
+        const bool bar = canReload != canReload_ || netGame.playing() != matchBar_ || netGame.talkAllowed() != talkBar_;
+#else
         const bool bar = canReload != canReload_ || netGame.playing() != matchBar_;
+#endif
         const bool slots = weapon != weapon_ || clip != clip_ || spare != spare_ || have != have_;
         empty_ = empty;
         canReload_ = canReload;
