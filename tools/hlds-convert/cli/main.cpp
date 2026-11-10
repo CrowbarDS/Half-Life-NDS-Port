@@ -6,11 +6,13 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <span>
 #include <string>
 #include <vector>
 
 #include "HlUi.hpp"
 #include "BundledRom.hpp"
+#include "RomHeader.hpp"
 #include "HlLevelReader.hpp"
 #include "hlds/TextureFamily.hpp"
 #include "hlds/AtomicWrite.hpp"
@@ -48,6 +50,11 @@ namespace
                      "      what every map shares, the music and the manifest. The console's\n"
                      "      program built into this converter (a release's) goes to the card's\n"
                      "      root, if the one there is not that one.\n"
+                     "      --device <console> the console the card is for, which the program is\n"
+                     "                         made for: dsi, 3ds, ds (a DS, DS Lite or DS\n"
+                     "                         flashcard) or emulator. Default ds, which every\n"
+                     "                         loader and emulator starts; 3ds is what TWiLight\n"
+                     "                         Menu++ offers the wide screen (16:10) for\n"
                      "      --stage <folder>   where the converter keeps its own files, which\n"
                      "                         the archives are made from and the next run\n"
                      "                         finds again (default: <card root>-stage)\n"
@@ -79,6 +86,9 @@ namespace
                      "                         face: fewer textures and polygons, and\n"
                      "                         floors that repeat\n"
                      "      --start <map>      the map a new game starts in (c0a0)\n"
+                     "  hlds-convert put-rom -o <card root> [--device <console>]\n"
+                     "      Only the console's program, made for that console, at the card's\n"
+                     "      root: for a card whose game is converted already.\n"
                      "  hlds-convert pack -o <card root> [--stage <folder>] [--no-compress]\n"
                      "      Make the card's archives again from the stage, cooking nothing.\n"
                      "  hlds-convert verify <level.hlm | map.npac> [--brushes]\n"
@@ -270,16 +280,96 @@ namespace
         }
     }
 
+    /// The console's program built into this converter, made for `device`,
+    /// at the card's root (if the one there is not that already). Nonzero
+    /// if it could not be.
+    int putConsoleProgram(const std::filesystem::path &cardRoot, install::Device device, bool told)
+    {
+        const std::span<const std::uint8_t> rom = install::bundledRom();
+        if (rom.empty())
+        {
+            std::printf("no console's program is built into this converter: copy half-life-nds-port.nds yourself\n");
+            return 0;
+        }
+        std::vector<std::uint8_t> made;
+        std::string why;
+        if (!install::romFor(rom, device, made, why))
+        {
+            std::fprintf(stderr, "error: the console's program: %s\n", why.c_str());
+            return 1;
+        }
+        const install::RomPut put = install::putRom(made, cardRoot / install::kRomName, why);
+        if (put == install::RomPut::Failed)
+        {
+            std::fprintf(stderr, "error: the console's program: %s\n", why.c_str());
+            return 1;
+        }
+        std::printf("the console's program, %s, for %s: %s\n", install::kRomName, install::deviceTitle(device),
+                    put == install::RomPut::Same ? "already on the card" : "put on the card");
+        if (!told)
+            std::printf("  (--device dsi, 3ds, ds or emulator says which; on a 3DS, --device 3ds lets TWiLight Menu++\n"
+                        "   offer the wide screen)\n");
+        return 0;
+    }
+
+    /// `--device <console>` at args[i]: the console, into `device`. False
+    /// (and said) for a name that is not one.
+    bool readDevice(const std::vector<std::string> &args, std::size_t &i, install::Device &device)
+    {
+        const std::string &name = args[++i];
+        if (install::deviceFromName(name, device))
+            return true;
+        std::fprintf(stderr, "--device wants dsi, 3ds, ds or emulator (not \"%s\")\n", name.c_str());
+        return false;
+    }
+
+    /// put-rom: only the console's program.
+    int cmdPutRom(const std::vector<std::string> &args)
+    {
+        std::filesystem::path card;
+        install::Device device = install::kDefaultDevice;
+        bool told = false;
+        for (std::size_t i = 0; i < args.size(); ++i)
+        {
+            if (args[i] == "-o" && i + 1 < args.size())
+                card = args[++i];
+            else if (args[i] == "--device" && i + 1 < args.size())
+            {
+                if (!readDevice(args, i, device))
+                    return 2;
+                told = true;
+            }
+            else
+                return usage();
+        }
+        if (card.empty())
+            return usage();
+        if (install::bundledRom().empty())
+        {
+            std::fprintf(stderr, "error: no console's program is built into this converter\n");
+            return 1;
+        }
+        return putConsoleProgram(card, device, told);
+    }
+
     /// cook-map and cook-all: the same run, over one map or over all of them.
     int cmdCook(const std::vector<std::string> &args, bool all)
     {
         ConvertOptions options;
         std::string mapName;
         std::string language;
+        install::Device device = install::kDefaultDevice;
+        bool deviceTold = false;
         for (std::size_t i = 0; i < args.size(); ++i)
         {
             if (args[i] == "-o" && i + 1 < args.size())
                 options.cardRoot = args[++i];
+            else if (args[i] == "--device" && i + 1 < args.size())
+            {
+                if (!readDevice(args, i, device))
+                    return 2;
+                deviceTold = true;
+            }
             else if (args[i] == "--no-textures")
                 options.textures = false;
             else if (args[i] == "--ptexconv" && i + 1 < args.size())
@@ -392,20 +482,9 @@ namespace
             std::printf("%s\n", line.c_str());
         if (all)
             std::printf("%zu maps, %d failed\n", names.size(), failed);
-        // The program the data is for, if one is built in.
-        const std::span<const std::uint8_t> rom = install::bundledRom();
-        if (!rom.empty())
-        {
-            std::string why;
-            const install::RomPut put = install::putRom(rom, options.cardRoot / install::kRomName, why);
-            if (put == install::RomPut::Failed)
-            {
-                std::fprintf(stderr, "error: the console's program: %s\n", why.c_str());
-                return 1;
-            }
-            std::printf("the console's program, %s: %s\n", install::kRomName,
-                        put == install::RomPut::Same ? "already on the card" : "put on the card");
-        }
+        // The program the data is for, if one is built in, made for the console.
+        if (!install::bundledRom().empty() && putConsoleProgram(options.cardRoot, device, deviceTold) != 0)
+            return 1;
         return failed == 0 ? 0 : 1;
     }
 
@@ -599,6 +678,8 @@ int main(int argc, char *argv[])
         return cmdCook(args, true);
     if (command == "pack")
         return cmdPack(args);
+    if (command == "put-rom")
+        return cmdPutRom(args);
     if (command == "verify")
         return cmdVerify(args);
     return usage();

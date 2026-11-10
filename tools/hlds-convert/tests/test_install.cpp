@@ -8,6 +8,9 @@
 
 #include "BundledRom.hpp"
 #include "Install.hpp"
+#include "RomHeader.hpp"
+#include <cstring>
+#include <vector>
 
 namespace fs = std::filesystem;
 using namespace hlds::install;
@@ -259,6 +262,104 @@ namespace
               "a card that cannot be written says why");
     }
 
+    /// The header's check, worked out here again (the DS's CRC-16: 0xA001
+    /// reflected, from 0xFFFF), apart from the converter's.
+    std::uint16_t crcHere(const std::uint8_t *bytes, std::size_t size)
+    {
+        std::uint16_t crc = 0xFFFF;
+        for (std::size_t i = 0; i < size; ++i)
+        {
+            crc = static_cast<std::uint16_t>(crc ^ bytes[i]);
+            for (int b = 0; b < 8; ++b)
+                crc = static_cast<std::uint16_t>((crc >> 1) ^ ((crc & 1) ? 0xA001 : 0));
+        }
+        return crc;
+    }
+
+    /// A program's beginning as the build makes it: its code, its version,
+    /// the rest of the header made up, and the check right.
+    std::vector<std::uint8_t> madeUpRom(const char *code)
+    {
+        std::vector<std::uint8_t> rom(0x4000);
+        for (std::size_t i = 0; i < rom.size(); ++i)
+            rom[i] = static_cast<std::uint8_t>(i * 7 + 3);
+        std::memcpy(rom.data(), "HALF-LIFE DS", 12);
+        std::memcpy(rom.data() + kGameCodeAt, code, 4);
+        rom[0x1E] = 0x57;
+        const std::uint16_t crc = crcHere(rom.data(), kHeaderCrcAt);
+        rom[kHeaderCrcAt] = static_cast<std::uint8_t>(crc);
+        rom[kHeaderCrcAt + 1] = static_cast<std::uint8_t>(crc >> 8);
+        return rom;
+    }
+
+    /// The program made for each console: its code, and the check right.
+    void testRomFor(const fs::path &root)
+    {
+        const std::uint8_t digits[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
+        check(headerCrc(digits) == 0x4B37, "the header's check is CRC-16/MODBUS (\"123456789\": 4B37)");
+
+        const std::vector<std::uint8_t> built = madeUpRom("WHLD");
+        std::string why;
+        const struct
+        {
+            Device device;
+            const char *code;
+        } kWant[] = {{Device::ThreeDs, "WHLD"}, {Device::Dsi, "####"}, {Device::Ds, "####"}, {Device::Emulator, "####"}};
+        for (const auto &want : kWant)
+        {
+            std::vector<std::uint8_t> made;
+            const bool ok = romFor(built, want.device, made, why);
+            const std::uint16_t crc = static_cast<std::uint16_t>(made.size() > kHeaderCrcAt + 1
+                                                                     ? made[kHeaderCrcAt] | made[kHeaderCrcAt + 1] << 8
+                                                                     : 0);
+            bool rest = made.size() == built.size();
+            for (std::size_t i = 0; rest && i < built.size(); ++i)
+                rest = (i >= kGameCodeAt && i < kGameCodeAt + 4) || i == kHeaderCrcAt || i == kHeaderCrcAt + 1 ||
+                       made[i] == built[i];
+            const std::string message = std::string("for ") + deviceName(want.device) + ": code " + want.code +
+                                        ", the header's check right, and nothing else changed";
+            check(ok && std::memcmp(made.data() + kGameCodeAt, want.code, 4) == 0 &&
+                      crc == crcHere(made.data(), kHeaderCrcAt) && rest && made[0x1E] == 0x57,
+                  message.c_str());
+        }
+        // Back again: made from one already made for another.
+        std::vector<std::uint8_t> homebrew, wide;
+        check(romFor(built, Device::Emulator, homebrew, why) && romFor(homebrew, Device::ThreeDs, wide, why) &&
+                  wide == built,
+              "made for an emulator, then for a 3DS: the program as it was built");
+
+        // Not this game's.
+        std::vector<std::uint8_t> out;
+        std::vector<std::uint8_t> other = madeUpRom("ABCD");
+        check(!romFor(other, Device::Ds, out, why) && why.find("ABCD") != std::string::npos,
+              "another game's program is refused, saying its code");
+        std::vector<std::uint8_t> broken = built;
+        broken[0x20] ^= 1;
+        check(!romFor(broken, Device::Ds, out, why) && !why.empty(), "... and one whose header's check is wrong");
+        const std::vector<std::uint8_t> shortOne(0x100, 0);
+        check(!romFor(shortOne, Device::Ds, out, why) && !why.empty(), "... and one too short to be one");
+
+        // Names.
+        bool names = true;
+        for (const auto &want : kWant)
+        {
+            Device back = Device::Ds;
+            names = names && deviceFromName(deviceName(want.device), back) && back == want.device;
+        }
+        Device none = Device::Dsi;
+        check(names && !deviceFromName("wii", none) && none == Device::Dsi && kDefaultDevice == Device::Ds,
+              "each console by its name (dsi, 3ds, ds, emulator), no other; ds when not told");
+
+        // On the card: made for another console, it is written again.
+        const fs::path file = root / "card" / kRomName;
+        std::vector<std::uint8_t> forDs, for3ds;
+        romFor(built, Device::Ds, forDs, why);
+        romFor(built, Device::ThreeDs, for3ds, why);
+        check(putRom(forDs, file, why) == RomPut::Written && putRom(forDs, file, why) == RomPut::Same &&
+                  putRom(for3ds, file, why) == RomPut::Written && read(file).compare(kGameCodeAt, 4, "WHLD") == 0,
+              "a card's program made for another console is written again, not left as it was");
+    }
+
     void testParts()
     {
         check(partOfMap("t0a0b1") == Part::HazardCourse, "Hazard Course");
@@ -282,6 +383,7 @@ int main()
     testLook(root);
     testCopy(root / "c");
     testRomPut(root / "r");
+    testRomFor(root / "h");
     testParts();
     fs::remove_all(root, ec);
     if (failures == 0)

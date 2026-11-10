@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "Install.hpp"
+#include "RomHeader.hpp"
 
 class QCheckBox;
 class QLabel;
@@ -25,6 +26,7 @@ public:
         Welcome,
         Game,
         Card,
+        Console,
         Ready,
         Installing,
         Finished,
@@ -36,6 +38,12 @@ public:
     QString cardFolder() const { return card_; }
     void setGameFolder(const QString &folder) { game_ = folder; }
     void setCardFolder(const QString &folder) { card_ = folder; }
+    /// The console the card is for (the Console page's choice).
+    void setDevice(hlds::install::Device device)
+    {
+        device_ = device;
+        deviceChosen_ = true;
+    }
     /// The maps to install, as Advanced has them.
     QStringList chosenMaps() const;
     /// (hlds-install-check) these maps alone; and its cache elsewhere.
@@ -54,6 +62,7 @@ protected:
 private:
     friend class GamePage;
     friend class CardPage;
+    friend class ConsolePage;
     friend class ReadyPage;
     friend class InstallingPage;
     friend class FinishedPage;
@@ -64,6 +73,8 @@ private:
     QStringList limit_;
     QString cache_;
     bool succeeded_ = false;
+    hlds::install::Device device_ = hlds::install::kDefaultDevice;
+    bool deviceChosen_ = false;
     bool textures_ = true;
     int threads_ = 0; ///< threads the conversion keeps busy; 0: all of them
     bool stopping_ = false;

@@ -122,30 +122,40 @@ namespace detect
         return fromInfo(QStorageInfo(path));
     }
 
-    QString findRom()
+    QString findRom(Device device)
     {
         // The one made with this converter: its data is what that program
-        // reads. (Copied from the cache folder, as everything is, so that the
-        // card's is compared with it and left alone if it is the same.)
+        // reads. (Made for the console, and written to the cache folder, as
+        // everything is, so that the card's is compared with it and left
+        // alone if it is the same.)
+        std::vector<std::uint8_t> source;
         const std::span<const std::uint8_t> bundled = bundledRom();
         if (!bundled.empty())
+            source.assign(bundled.begin(), bundled.end());
+        else
         {
-            const QString folder = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
-            const QString file = folder + QStringLiteral("/") + QString::fromLatin1(kRomName);
-            std::string why;
-            if (putRom(bundled, toPath(file), why) != RomPut::Failed)
-                return file;
+            QDir dir(QCoreApplication::applicationDirPath());
+            for (int up = 0; up < 5 && source.empty(); ++up)
+            {
+                QFile file(dir.filePath(QString::fromLatin1(kRomName)));
+                if (file.open(QIODevice::ReadOnly))
+                {
+                    const QByteArray bytes = file.readAll();
+                    source.assign(bytes.begin(), bytes.end());
+                }
+                if (!dir.cdUp())
+                    break;
+            }
         }
-        QDir dir(QCoreApplication::applicationDirPath());
-        for (int up = 0; up < 5; ++up)
-        {
-            const QString here = dir.filePath(QString::fromLatin1(kRomName));
-            if (QFileInfo::exists(here))
-                return here;
-            if (!dir.cdUp())
-                break;
-        }
-        return {};
+        std::vector<std::uint8_t> made;
+        std::string why;
+        if (source.empty() || !romFor(source, device, made, why))
+            return {};
+        const QString folder = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+        const QString file = folder + QStringLiteral("/") + QString::fromLatin1(kRomName);
+        if (putRom(made, toPath(file), why) == RomPut::Failed)
+            return {};
+        return file;
     }
 
     bool eject(const QString &root)

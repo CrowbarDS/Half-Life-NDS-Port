@@ -43,19 +43,22 @@ int main(int argc, char *argv[])
     out << "card found: " << wizard.cardFolder() << Qt::endl;
     wizard.setCardFolder(card);
     wizard.next();
-    shot("4-ready");
+    shot("4-console");
+    wizard.setDevice(hlds::install::Device::Emulator);
+    wizard.next();
+    shot("5-ready");
     QObject::connect(&wizard, &Installer::installDone, &app, [&](bool ok)
                      {
                          out << "done: " << ok << Qt::endl;
                          QTimer::singleShot(200, &app, [&]()
                                             {
-                                                shot("6-finished");
+                                                shot("7-finished");
                                                 QApplication::exit(wizard.succeeded() ? 0 : 1);
                                             });
                      });
     if (argc <= 4)
         return 0; // (the pages alone)
     wizard.next();
-    QTimer::singleShot(4000, &app, [&]() { shot("5-installing"); });
+    QTimer::singleShot(4000, &app, [&]() { shot("6-installing"); });
     return app.exec();
 }

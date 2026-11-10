@@ -5,6 +5,7 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QButtonGroup>
 #include <QComboBox>
 #include <QDesktopServices>
 #include <QDir>
@@ -19,6 +20,7 @@
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QRadioButton>
 #include <QSettings>
 #include <QSpinBox>
 #include <QStandardPaths>
@@ -396,6 +398,70 @@ private:
     QTimer *timer_ = nullptr;
 };
 
+/// Which console the card is for: the program is made for it (RomHeader.hpp).
+class ConsolePage : public QWizardPage
+{
+public:
+    explicit ConsolePage(Installer *owner) : owner_(owner)
+    {
+        setTitle(QStringLiteral("Your console"));
+        setSubTitle(QStringLiteral("Which console will play from this card? The game is the same on all of them; "
+                                   "this is about how it is started."));
+        auto *layout = new QVBoxLayout(this);
+        group_ = new QButtonGroup(this);
+        struct Choice
+        {
+            hlds::install::Device device;
+            const char *name;
+            const char *line;
+        };
+        static const Choice kChoices[] = {
+            {hlds::install::Device::Dsi, "DSi", "From TWiLight Menu++, hiyaCFW or Unlaunch, on the SD card."},
+            {hlds::install::Device::ThreeDs, "3DS",
+             "From TWiLight Menu++, which can then offer the wide screen (16:10) for it."},
+            {hlds::install::Device::Ds, "DS, DS Lite, or a DS flashcard",
+             "Any console that starts it from a DS flashcard (R4 and the like)."},
+            {hlds::install::Device::Emulator, "An emulator", "melonDS, or another, on a computer or a phone."},
+        };
+        for (const Choice &choice : kChoices)
+        {
+            auto *button = new QRadioButton(QString::fromLatin1(choice.name));
+            QFont bold = button->font();
+            bold.setBold(true);
+            button->setFont(bold);
+            group_->addButton(button, static_cast<int>(choice.device));
+            layout->addWidget(button);
+            auto *line = wrapped();
+            line->setText(QString::fromLatin1(choice.line));
+            line->setContentsMargins(24, 0, 0, 8);
+            layout->addWidget(line);
+        }
+        layout->addStretch();
+        connect(group_, &QButtonGroup::idClicked, this, [this](int id)
+                {
+                    owner_->setDevice(static_cast<hlds::install::Device>(id));
+                    QSettings().setValue(QStringLiteral("device"), QString::fromLatin1(hlds::install::deviceName(owner_->device_)));
+                    emit completeChanged();
+                });
+    }
+
+    void initializePage() override
+    {
+        // The last one chosen, if there was one: else none, to be chosen.
+        hlds::install::Device saved;
+        if (!owner_->deviceChosen_ &&
+            hlds::install::deviceFromName(QSettings().value(QStringLiteral("device")).toString().toStdString(), saved))
+            owner_->setDevice(saved);
+        if (owner_->deviceChosen_)
+            group_->button(static_cast<int>(owner_->device_))->setChecked(true);
+    }
+    bool isComplete() const override { return owner_->deviceChosen_; }
+
+private:
+    Installer *owner_;
+    QButtonGroup *group_ = nullptr;
+};
+
 class ReadyPage : public QWizardPage
 {
 public:
@@ -519,18 +585,20 @@ private:
             if (it->is_regular_file(ec))
                 ours += it->file_size(ec);
         }
-        const QString rom = detect::findRom();
+        const QString rom = detect::findRom(owner_->device_);
         summary_->setText(QStringLiteral(
             "<table cellspacing=6>"
             "<tr><td><b>From</b></td><td>%1</td></tr>"
             "<tr><td><b>To</b></td><td>%2</td></tr>"
+            "<tr><td><b>For</b></td><td>%6</td></tr>"
             "<tr><td><b>On the card</b></td><td>about %3 (%4 free)</td></tr>"
             "<tr><td><b>Time</b></td><td>around half an hour; less if some was done before</td></tr>"
             "</table><p>Your saved games and settings on the card are kept.</p>%5")
             .arg(owner_->game_.toHtmlEscaped(), owner_->card_.toHtmlEscaped(), sizeText(needed), sizeText(card.free),
                  rom.isEmpty() ? QStringLiteral("<p>The console's program, half-life-nds-port.nds, was not found beside this "
                                                 "application: you will have to copy it to the card yourself.</p>")
-                               : QString()));
+                               : QString(),
+                 QString::fromLatin1(hlds::install::deviceTitle(owner_->device_))));
 
         const QString cache = owner_->cacheFolder();
         QDir().mkpath(cache);
@@ -696,7 +764,7 @@ public:
     void initializePage() override
     {
         setFinalPage(true);
-        const QString rom = detect::findRom();
+        const QString rom = detect::findRom(owner_->device_);
         if (owner_->succeeded_)
         {
             setTitle(QStringLiteral("Half-Life is on your card"));
@@ -736,6 +804,7 @@ Installer::Installer(QWidget *parent) : QWizard(parent)
     setPage(Welcome, new WelcomePage);
     setPage(Game, new GamePage(this));
     setPage(Card, new CardPage(this));
+    setPage(Console, new ConsolePage(this));
     setPage(Ready, new ReadyPage(this));
     setPage(Installing, new InstallingPage(this));
     setPage(Finished, new FinishedPage(this));
@@ -752,7 +821,7 @@ Installer::Installer(QWidget *parent) : QWizard(parent)
     title->setStyleSheet(QStringLiteral("color: %1; font-size: 16pt; font-weight: 700;").arg(QLatin1String(kOrange)));
     column->addWidget(title);
     column->addSpacing(10);
-    for (const char *word : {"Welcome", "Half-Life", "SD card", "Ready", "Installing", "Finished"})
+    for (const char *word : {"Welcome", "Half-Life", "SD card", "Console", "Ready", "Installing", "Finished"})
     {
         auto *label = new QLabel(QLatin1String(word));
         steps_.push_back(label);
@@ -804,7 +873,7 @@ void Installer::start()
     job.game = game_;
     job.card = card_;
     job.cache = cacheFolder();
-    job.rom = detect::findRom();
+    job.rom = detect::findRom(device_);
     job.ptexconv = ptexconv_;
     job.maps = chosenMaps();
     job.textures = textures_;

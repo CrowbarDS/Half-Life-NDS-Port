@@ -114,7 +114,7 @@ endif()
 # out without it; one that then has nothing left to check returns 77: skipped.
 # ---------------------------------------------------------------------------
 # The installer's decisions: no Qt either, and tested with the rest.
-add_library(hlds_install STATIC install/Install.cpp)
+add_library(hlds_install STATIC install/Install.cpp install/RomHeader.cpp)
 target_include_directories(hlds_install PUBLIC install)
 target_compile_features(hlds_install PUBLIC cxx_std_20)
 
