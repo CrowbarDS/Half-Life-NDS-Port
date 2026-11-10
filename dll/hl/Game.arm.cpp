@@ -186,6 +186,8 @@ namespace hlrt
                 Hull{view.clipNodes, view.planes, view.planeTypes, model.clipStanding};
             movers_[i].crouched =
                 Hull{view.clipNodes, view.planes, view.planeTypes, model.clipCrouched};
+            // (Its collision may reach past its drawn box: a clip brush.)
+            movers_[i].pad.value = view.brushes[i].pad;
         }
 
         world.standing =

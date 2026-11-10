@@ -277,6 +277,7 @@ namespace hldstest
             const Model &model = v.models[v.brushes[i].model];
             g.movers[i].standing = Hull{v.clipNodes, v.planes, v.planeTypes, model.clipStanding};
             g.movers[i].crouched = Hull{v.clipNodes, v.planes, v.planeTypes, model.clipCrouched};
+            g.movers[i].pad.value = v.brushes[i].pad;
         }
         g.move.nodes = v.nodes;
         g.move.brushes = v.brushes;

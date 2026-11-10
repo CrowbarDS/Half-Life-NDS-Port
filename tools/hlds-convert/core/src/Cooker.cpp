@@ -183,6 +183,286 @@ namespace hlds
                 level.entities.push_back(record);
             }
         }
+        // ----------------------------------------------- a brush's reach
+        //
+        // How far a brush's clip hulls -- what stops the player -- reach past
+        // the box its model is drawn in: a clip brush in front of a pane of
+        // glass (c1a0d's suit case) stops the player well before it. The
+        // game, which skips a brush the player is nowhere near by that box,
+        // is told this much more (Brush::pad).
+
+        using Point = std::array<double, 3>;
+        using Polygon = std::vector<Point>;
+        using Solid = std::vector<Polygon>; ///< a convex region, as its faces
+
+        /// `in` cut to one side of the plane n.x = d (side 0: n.x >= d, in
+        /// front; 1: n.x <= d, behind), into `out`; false if nothing is left.
+        bool cutSolid(const Solid &in, const Point &n, double d, int side, Solid &out)
+        {
+            constexpr double kOn = 1e-6;
+            const double sign = side == 0 ? 1.0 : -1.0;
+            out.clear();
+            // (Something of it strictly on that side, or nothing: a region that
+            // only touches the plane is not on its side, however thin.)
+            bool inside = false;
+            for (const Polygon &face : in)
+                for (const Point &a : face)
+                    inside = inside || sign * (n[0] * a[0] + n[1] * a[1] + n[2] * a[2] - d) > kOn;
+            if (!inside)
+                return false;
+            std::vector<Point> rim; // (the new face's corners: where faces cross the plane)
+            for (const Polygon &face : in)
+            {
+                Polygon kept;
+                for (std::size_t i = 0; i < face.size(); ++i)
+                {
+                    const Point &a = face[i];
+                    const Point &b = face[(i + 1) % face.size()];
+                    const double da = sign * (n[0] * a[0] + n[1] * a[1] + n[2] * a[2] - d);
+                    const double db = sign * (n[0] * b[0] + n[1] * b[1] + n[2] * b[2] - d);
+                    if (da >= -kOn)
+                        kept.push_back(a);
+                    if (std::fabs(da) <= kOn)
+                        rim.push_back(a);
+                    if ((da > kOn && db < -kOn) || (da < -kOn && db > kOn))
+                    {
+                        const double t = da / (da - db);
+                        const Point x = {a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]), a[2] + t * (b[2] - a[2])};
+                        kept.push_back(x);
+                        rim.push_back(x);
+                    }
+                }
+                if (kept.size() >= 3)
+                    out.push_back(std::move(kept));
+            }
+            if (out.empty())
+                return false;
+            if (rim.size() >= 3)
+            {
+                // The new face: the rim's corners, in order round their middle.
+                Point mid = {0, 0, 0};
+                for (const Point &p : rim)
+                    for (int k = 0; k < 3; ++k)
+                        mid[k] += p[k] / static_cast<double>(rim.size());
+                // Two directions in the plane.
+                const int big = std::fabs(n[0]) > std::fabs(n[1]) ? (std::fabs(n[0]) > std::fabs(n[2]) ? 0 : 2)
+                                                                  : (std::fabs(n[1]) > std::fabs(n[2]) ? 1 : 2);
+                Point u = {0, 0, 0};
+                u[(big + 1) % 3] = 1;
+                const double along = u[0] * n[0] + u[1] * n[1] + u[2] * n[2];
+                for (int k = 0; k < 3; ++k)
+                    u[k] -= along * n[k];
+                const Point v = {n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]};
+                std::sort(rim.begin(), rim.end(), [&](const Point &a, const Point &b)
+                {
+                    const double aa = std::atan2((a[0] - mid[0]) * v[0] + (a[1] - mid[1]) * v[1] + (a[2] - mid[2]) * v[2],
+                                                 (a[0] - mid[0]) * u[0] + (a[1] - mid[1]) * u[1] + (a[2] - mid[2]) * u[2]);
+                    const double ab = std::atan2((b[0] - mid[0]) * v[0] + (b[1] - mid[1]) * v[1] + (b[2] - mid[2]) * v[2],
+                                                 (b[0] - mid[0]) * u[0] + (b[1] - mid[1]) * u[1] + (b[2] - mid[2]) * u[2]);
+                    return aa < ab;
+                });
+                out.push_back(std::move(rim));
+            }
+            return true;
+        }
+
+        /// How thin a convex region is at its thinnest: the spread of its
+        /// corners along each of its faces' normals, the least of them (a
+        /// sheet between two planes all but parallel is that thin, however
+        /// wide, and however it is tilted).
+        double thinnest(const Solid &s)
+        {
+            double least = 1e30;
+            for (const Polygon &face : s)
+            {
+                if (face.size() < 3)
+                    continue;
+                // (Newell's normal: sound for any polygon.)
+                Point n = {0, 0, 0};
+                for (std::size_t i = 0; i < face.size(); ++i)
+                {
+                    const Point &a = face[i];
+                    const Point &b = face[(i + 1) % face.size()];
+                    n[0] += (a[1] - b[1]) * (a[2] + b[2]);
+                    n[1] += (a[2] - b[2]) * (a[0] + b[0]);
+                    n[2] += (a[0] - b[0]) * (a[1] + b[1]);
+                }
+                const double length = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+                if (length < 1e-9)
+                    continue;
+                double low = 1e30, high = -1e30;
+                for (const Polygon &other : s)
+                    for (const Point &p : other)
+                    {
+                        const double d = (n[0] * p[0] + n[1] * p[1] + n[2] * p[2]) / length;
+                        low = std::min(low, d);
+                        high = std::max(high, d);
+                    }
+                least = std::min(least, high - low);
+            }
+            return least;
+        }
+
+        /// The solid of the clip hull from `node` down, within `region`: its
+        /// corners' bounds, into lo/hi (`any` once there is one). The level's
+        /// own clip nodes and planes, read as the game reads them
+        /// (planeDistance): along an axis, that coordinate; else the normal.
+        /// `near`: the model's box grown by the player and 64 units more. A
+        /// solid region counts in full within it; beyond it, a slice of
+        /// kSlice units at a time, and only a slice at least 2 units thick
+        /// (thinnest): a hull's bevels make wedges and sheets between planes
+        /// all but parallel that run on, thinner and thinner, for thousands
+        /// of units, where nothing can stand -- while a brush grown by the
+        /// player is never that thin anywhere.
+        void solidBounds(const CookedLevel &level, int node, const Solid &region, const Point &nearLo,
+                         const Point &nearHi, bool &any, Point &lo, Point &hi, int depth)
+        {
+            if (node < 0)
+            {
+                if (node != kContentsSolid)
+                    return;
+                constexpr double kSlice = 32;
+                const auto boundsOf = [](const Solid &s, Point &bl, Point &bh)
+                {
+                    bool first = true;
+                    for (const Polygon &face : s)
+                        for (const Point &p : face)
+                        {
+                            for (int k = 0; k < 3; ++k)
+                            {
+                                bl[k] = first || p[k] < bl[k] ? p[k] : bl[k];
+                                bh[k] = first || p[k] > bh[k] ? p[k] : bh[k];
+                            }
+                            first = false;
+                        }
+                };
+                const auto take = [&](const Point &bl, const Point &bh)
+                {
+                    for (int k = 0; k < 3; ++k)
+                    {
+                        lo[k] = any ? std::min(lo[k], bl[k]) : bl[k];
+                        hi[k] = any ? std::max(hi[k], bh[k]) : bh[k];
+                    }
+                    any = true;
+                };
+                Point rl, rh;
+                boundsOf(region, rl, rh);
+                // Within the near box: all of it (its box, clamped there).
+                {
+                    Point bl = rl, bh = rh;
+                    bool there = true;
+                    for (int k = 0; k < 3; ++k)
+                    {
+                        bl[k] = std::max(bl[k], nearLo[k]);
+                        bh[k] = std::min(bh[k], nearHi[k]);
+                        there = there && bl[k] <= bh[k];
+                    }
+                    if (there)
+                        take(bl, bh);
+                }
+                // Beyond it, each way: slice by slice.
+                for (int k = 0; k < 3; ++k)
+                {
+                    for (int way = 0; way < 2; ++way)
+                    {
+                        const double from = way == 0 ? nearHi[k] : nearLo[k];
+                        const double to = way == 0 ? rh[k] : rl[k];
+                        if (way == 0 ? to <= from : to >= from)
+                            continue;
+                        Point axis = {0, 0, 0};
+                        axis[k] = 1;
+                        for (double at = from; way == 0 ? at < to : at > to; at += way == 0 ? kSlice : -kSlice)
+                        {
+                            const double a = way == 0 ? at : at - kSlice, b = way == 0 ? at + kSlice : at;
+                            Solid lower, slice;
+                            if (!cutSolid(region, axis, a, 0, lower) || !cutSolid(lower, axis, b, 1, slice))
+                                continue;
+                            if (thinnest(slice) < 2.0)
+                                continue;
+                            Point bl, bh;
+                            boundsOf(slice, bl, bh);
+                            take(bl, bh);
+                        }
+                    }
+                }
+                return;
+            }
+            if (depth > 256 || node >= static_cast<int>(level.clipNodes.size()))
+            {
+                // (Deeper than any map goes: all of the region, to be safe.)
+                solidBounds(level, kContentsSolid, region, nearLo, nearHi, any, lo, hi, depth);
+                return;
+            }
+            const ClipNode &clip = level.clipNodes[static_cast<std::size_t>(node)];
+            const Plane &plane = level.planes[clip.plane];
+            const std::uint8_t type = level.planeTypes[clip.plane];
+            Point n = {0, 0, 0};
+            if (type < kPlaneOther)
+                n[type] = 1.0;
+            else
+                for (int k = 0; k < 3; ++k)
+                    n[k] = static_cast<double>(plane.normal[k]) / static_cast<double>(1 << kNormalShift);
+            const double d = static_cast<double>(plane.dist) / static_cast<double>(kFxOne);
+            for (int side = 0; side < 2; ++side)
+            {
+                Solid part;
+                if (cutSolid(region, n, d, side, part))
+                    solidBounds(level, clip.children[side], part, nearLo, nearHi, any, lo, hi, depth + 1);
+            }
+        }
+
+        /// How far (whole units, and one more) model `model`'s clip hulls
+        /// reach past its box, the player's size taken off: at most
+        /// kBrushReachMost.
+        int clipReach(const CookedLevel &level, int model)
+        {
+            const Model &m = level.models[static_cast<std::size_t>(model)];
+            constexpr double kLook = kBrushReachMost + 64;
+            int most = 0;
+            const std::int32_t roots[2] = {m.clipStanding, m.clipCrouched};
+            const double high[2] = {36, 18};
+            for (int h = 0; h < 2; ++h)
+            {
+                if (roots[h] < 0)
+                    continue;
+                const double half[3] = {16, 16, high[h]};
+                Point a, b;
+                for (int k = 0; k < 3; ++k)
+                {
+                    a[k] = m.mins[k] - kLook - half[k];
+                    b[k] = m.maxs[k] + kLook + half[k];
+                }
+                const Solid box = {
+                    {{a[0], a[1], a[2]}, {a[0], b[1], a[2]}, {b[0], b[1], a[2]}, {b[0], a[1], a[2]}},
+                    {{a[0], a[1], b[2]}, {b[0], a[1], b[2]}, {b[0], b[1], b[2]}, {a[0], b[1], b[2]}},
+                    {{a[0], a[1], a[2]}, {b[0], a[1], a[2]}, {b[0], a[1], b[2]}, {a[0], a[1], b[2]}},
+                    {{a[0], b[1], a[2]}, {a[0], b[1], b[2]}, {b[0], b[1], b[2]}, {b[0], b[1], a[2]}},
+                    {{a[0], a[1], a[2]}, {a[0], a[1], b[2]}, {a[0], b[1], b[2]}, {a[0], b[1], a[2]}},
+                    {{b[0], a[1], a[2]}, {b[0], b[1], a[2]}, {b[0], b[1], b[2]}, {b[0], a[1], b[2]}},
+                };
+                Point nearLo, nearHi;
+                for (int k = 0; k < 3; ++k)
+                {
+                    nearLo[k] = m.mins[k] - half[k] - 64;
+                    nearHi[k] = m.maxs[k] + half[k] + 64;
+                }
+                bool any = false;
+                Point lo = {0, 0, 0}, hi = {0, 0, 0};
+                solidBounds(level, roots[h], box, nearLo, nearHi, any, lo, hi, 0);
+                if (!any)
+                    continue;
+                for (int k = 0; k < 3; ++k)
+                {
+                    const double below = m.mins[k] - (lo[k] + half[k]);
+                    const double above = (hi[k] - half[k]) - m.maxs[k];
+                    const int reach = static_cast<int>(std::ceil(std::max(below, above) - 1e-3));
+                    most = std::max(most, reach);
+                }
+            }
+            if (most <= 0)
+                return 0;
+            return most + 1 > kBrushReachMost ? kBrushReachMost : most + 1;
+        }
     } // namespace
 
     bool cookLevel(const BspFile &bsp, const CookOptions &options, const TexturePlan &plan,
@@ -1207,6 +1487,16 @@ namespace hlds
 
         level.planes = std::move(planes.planes);
         level.planeTypes = std::move(planes.types);
+        // How far what stops the player reaches past each solid brush's box
+        // (Brush::pad): from the clip hulls and planes as the game reads them.
+        for (Brush &record : level.brushes)
+        {
+            if (!(record.flags & kBrushSolid))
+                continue;
+            const int reach = clipReach(level, record.model);
+            record.pad = static_cast<std::uint16_t>(reach);
+            report.brushesReachingFar += reach != 0 ? 1 : 0;
+        }
         // (Now that the planes are the level's: the walk test reads them.)
         report.paths = cookPathNodes(entities, level, options.nodGraph);
         report.droppedPlanes = static_cast<int>(bsp.planes.size() - level.planes.size());

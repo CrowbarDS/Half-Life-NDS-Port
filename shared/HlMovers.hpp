@@ -25,6 +25,7 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "HlFields.hpp"
 #include "HlHullTrace.hpp"
 #include "HlPlaneMath.hpp"
 
@@ -52,6 +53,14 @@ namespace hldata
         /// its box is in that liquid while it is `present`.
         std::int8_t contents = 0;
         bool present = false;     ///< there at all, solid or not
+        /// How far its clip hulls reach past `mins`..`maxs` (whole units): a
+        /// brush entity's collision is not always its drawn box (a clip brush
+        /// in front of a pane of glass, c1a0d's suit case). Whatever passes
+        /// over a brush by its box alone (nearMover, MoverReach) leaves this
+        /// much more room. The map's (Brush::pad, worked out by the
+        /// converter), so no part of a save (one written before it was there
+        /// reads the same).
+        Unsaved<std::uint16_t> pad;
     };
 
     /// A volume the player climbs in: a func_ladder. Not solid, never drawn.
@@ -257,7 +266,7 @@ namespace hldata
             for (int i = 0; i < 3; ++i)
             {
                 const fx grow = (i == 2 ? kPlayerHalfHeight[crouched ? 1 : 0] : kPlayerHalfWidth) +
-                                kMoverSlack;
+                                kMoverSlack + fxFromInt(mover.pad.value);
                 const fx lo = a[i] < b[i] ? a[i] : b[i];
                 const fx hi = a[i] < b[i] ? b[i] : a[i];
                 if (hi < mover.mins[i] - grow || lo > mover.maxs[i] + grow)
@@ -274,8 +283,8 @@ namespace hldata
                 return reach;
             for (int i = 0; i < 3; ++i)
             {
-                const std::int32_t lo = mover.mins[i] >> kFxShift;
-                const std::int32_t hi = (mover.maxs[i] + kFxOne - 1) >> kFxShift;
+                const std::int32_t lo = (mover.mins[i] >> kFxShift) - mover.pad.value;
+                const std::int32_t hi = ((mover.maxs[i] + kFxOne - 1) >> kFxShift) + mover.pad.value;
                 reach.lo[i] = static_cast<std::int16_t>(lo < -32767 ? -32767 : (lo > 32766 ? 32766 : lo));
                 reach.hi[i] = static_cast<std::int16_t>(hi < -32767 ? -32767 : (hi > 32766 ? 32766 : hi));
                 // (Further out than the table can say: as far as it can.)
@@ -381,8 +390,9 @@ namespace hldata
 
     /// Mover `m` has moved, or become solid or stopped being: its line of
     /// the table, again. Whoever writes a MoverHull's bounds or its `solid`
-    /// calls this after.
-    inline void moverReachSet(const MoveWorld &world, int m)
+    /// calls this after. (One copy, not one in each place that moves a
+    /// brush: it is not what a frame spends its time on.)
+    [[gnu::noinline]] inline void moverReachSet(const MoveWorld &world, int m)
     {
         if (world.reach != nullptr)
             world.reach[m] = detail::moverReachOf(world.movers[m]);

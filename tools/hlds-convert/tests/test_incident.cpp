@@ -914,6 +914,92 @@ namespace
     }
 } // namespace
 
+namespace
+{
+    /// c1a0d: the suit is behind the glass of its case (a func_door, "step",
+    /// that rises when its button is pressed). The glass stops the player
+    /// further out than it is drawn (a clip brush in front of it): a brush
+    /// passed over by its drawn box alone let the player, stepping up onto
+    /// the case's floor against it, into it and through it, and the suit
+    /// taken without the button. Walked at with the glass shut, the player
+    /// is stopped by it and the suit stays; once the glass is up, it is
+    /// theirs.
+    void testSuitBehindGlass(const char *dir)
+    {
+        const std::unique_ptr<Game> game = load(dir, "c1a0d");
+        if (game == nullptr)
+            return;
+        Game &g = *game;
+        int suit = -1, glass = -1;
+        for (int i = 0; i < g.actors.count && suit < 0; ++i)
+            if (g.actors.states[i].kind == static_cast<std::uint8_t>(ActorKind::Item) &&
+                g.actors.states[i].item == static_cast<std::uint8_t>(ItemKind::Suit))
+                suit = i;
+        for (int r = 0; r < g.logic.recordCount; ++r)
+        {
+            const int brush = g.view.logic[r].brush;
+            if (brush >= 0 && brush < static_cast<int>(g.movers.size()) && fxToInt(g.movers[brush].mins[0]) == -3645 &&
+                fxToInt(g.movers[brush].mins[1]) == 924)
+                glass = r;
+        }
+        check(suit >= 0 && glass >= 0, "c1a0d: the suit, and the glass of its case");
+        if (suit < 0 || glass < 0)
+            return;
+        const MoverHull &pane = g.movers[g.view.logic[glass].brush];
+        std::printf("test_incident: c1a0d's suit case: what stops the player at its glass reaches %d units past the "
+                    "box it is drawn in\n",
+                    static_cast<int>(pane.pad.value));
+        check(pane.pad.value >= 9, "... and the glass's collision is known to reach past its drawn box");
+
+        // Walked at, from the room, on the suit's line.
+        auto walkAt = [&](int ticks) -> int
+        {
+            MoveCommand walk;
+            walk.forward = 1;
+            walk.forwardXY[0] = -kFxOne;
+            walk.forwardXY[1] = 0;
+            walk.rightXY[0] = 0;
+            walk.rightXY[1] = kFxOne;
+            int closest = 1 << 30;
+            for (int n = 0; n < ticks; ++n)
+            {
+                logicTick(g.logic, g.player, 33);
+                g.logic.viewTurn = 0;
+                monstersTick(g.logic, g.player, 33);
+                playerMove(g.player, walk, g.move, kPlayerTick);
+                g.drain();
+                closest = std::min(closest, fxToInt(g.player.origin[0]));
+            }
+            return closest;
+        };
+        g.player.inv.have &= ~kHaveSuit;
+        g.player.origin[0] = fxFromInt(-3560);
+        g.player.origin[1] = g.actors.states[suit].pos[1];
+        g.player.origin[2] = fxFromInt(-260);
+        for (fx &c : g.player.velocity)
+            c = 0;
+        const int shut = walkAt(90);
+        std::printf("test_incident: walked at the shut glass for three seconds: stopped at x %d (its face, the "
+                    "player's half off: %d), the suit %s\n",
+                    shut, fxToInt(pane.maxs[0]) + 16, (g.player.inv.have & kHaveSuit) ? "TAKEN" : "still there");
+        check(shut >= fxToInt(pane.maxs[0]) + 16 && g.logic.states[glass].move == MoveState::AtBottom,
+              "c1a0d: the shut glass of the suit's case stops the player, stepping up to it or not");
+        check(!(g.player.inv.have & kHaveSuit) && g.actors.states[suit].active,
+              "... and the suit cannot be taken through it");
+
+        // Its button pressed: the glass rises, and the suit is theirs.
+        logicFire(g.logic, g.player, static_cast<std::uint16_t>(nameOf(g, "step")), -1, kUseToggle, 0);
+        for (int n = 0; n < 150; ++n)
+            g.frame();
+        walkAt(90);
+        std::printf("test_incident: the button pressed, the glass %s; walked at again: the suit %s\n",
+                    g.logic.states[glass].move == MoveState::AtTop ? "up" : "NOT UP",
+                    (g.player.inv.have & kHaveSuit) ? "taken" : "STILL THERE");
+        check(g.logic.states[glass].move == MoveState::AtTop && (g.player.inv.have & kHaveSuit),
+              "... and once its button has raised the glass, the suit is taken");
+    }
+} // namespace
+
 int main()
 {
     testStyles();
@@ -934,6 +1020,7 @@ int main()
         testSigns(dir);
         testScenes(dir);
         testTripmine(dir);
+        testSuitBehindGlass(dir);
     }
     else
     {

@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 62;
+    inline constexpr std::uint16_t kLevelVersion = 63;
     /// The oldest level format this build reads. (49: a map's textures are
     /// stored in its archive as they are, never compressed, so that one that
     /// streams is read straight in during play. 50: each texture's record
@@ -97,7 +97,9 @@ namespace hldata
     /// 61: the egon's two sprites among the common ones, before the map's
     /// own, which a build before never draws: commonSpritesOf. 62: a ladder
     /// that is not a box names its model in `pad`, which a build before
-    /// leaves alone: it climbs its bounds, as it did.)
+    /// leaves alone: it climbs its bounds, as it did. 63: how far a brush's
+    /// collision reaches past its box, in Brush::pad, which a build before
+    /// leaves alone: it passes over the brush by its box, as it did.)
     inline constexpr std::uint16_t kLevelMinReader = 56;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,
@@ -434,8 +436,19 @@ namespace hldata
         std::uint16_t firstLeaf;
         std::uint16_t leafCount;
         std::uint16_t logic;       ///< its LogicRecord, or kNoLogic if it only stands there
+        /// How far what stops the player (its clip hulls) reaches past
+        /// mins..maxs, in whole units (at most kBrushReachMost): a clip brush
+        /// in front of a pane of glass. MoverHull::pad. (0 in a map cooked
+        /// before 63.)
         std::uint16_t pad;
     };
+    /// The most Brush::pad says: how far past a brush's box its collision
+    /// is looked for at all. (In the game's own maps a clip brush reaches 21
+    /// units past its box at most; what reaches further -- a few hundred
+    /// units, in c1a4b -- is the hulls' own making: plates and wedges a few
+    /// units thin, from the bevels the map compiler adds, where nobody can
+    /// stand.)
+    inline constexpr int kBrushReachMost = 256;
     inline constexpr std::uint16_t kNoLogic = 0xFFFF;
 
     // The three angles of a brush, in the order the game's maps give them.

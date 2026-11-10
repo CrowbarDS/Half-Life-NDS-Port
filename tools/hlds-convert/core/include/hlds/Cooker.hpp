@@ -79,6 +79,7 @@ namespace hlds
     {
         std::vector<std::string> warnings;
         PathReport paths; ///< the nodes and the ways between them
+        int brushesReachingFar = 0; ///< solid brushes whose collision reaches past their box (Brush::pad)
         int surfaces = 0;
         int polygons = 0;      ///< every surface of the map
         int vertices = 0;
