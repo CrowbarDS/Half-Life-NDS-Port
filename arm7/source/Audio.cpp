@@ -229,6 +229,37 @@ namespace hlaudio
             }
         }
 
+        /// What the microphone hears (MicOn), or null.
+        VoiceMicRing *volatile micRing = nullptr;
+
+        /// The microphone's samples since the last block, into its ring (a
+        /// block's are 16 or 24: the FIFO holds more).
+        void micDrain()
+        {
+            VoiceMicRing *ring = micRing;
+            if (ring == nullptr)
+                return;
+            std::uint32_t write = ring->write;
+            for (int n = 0; n < 32 && !(REG_MICCNT & MICCNT_EMPTY); ++n)
+            {
+                const std::uint32_t pair = REG_MICDATA;
+                ring->samples[write % kVoiceMicRing] = static_cast<std::int16_t>(pair & 0xFFFF);
+                ring->samples[(write + 1) % kVoiceMicRing] = static_cast<std::int16_t>(pair >> 16);
+                write += 2;
+            }
+            // (Too long away: what was lost is lost, and it goes on.)
+            if (REG_MICCNT & MICCNT_OVERRUN)
+                REG_MICCNT = static_cast<std::uint16_t>(REG_MICCNT | MICCNT_CLEAR_FIFO);
+            ring->write = write;
+        }
+
+        void micStop()
+        {
+            if (isDSiMode())
+                REG_MICCNT = 0;
+            micRing = nullptr;
+        }
+
         void run(std::uint32_t blocks)
         {
             AudioLink &l = *link;
@@ -321,6 +352,23 @@ namespace hlaudio
                         SCHANNEL_CR(n) = 0;
                     TIMER_CR(0) = 0;
                     TIMER_CR(1) = 0;
+                    micStop();
+                    break;
+                case AudioOp::MicOn:
+                    if (isDSiMode() && command.a != 0)
+                    {
+                        // A quarter of the output's rate: 8182 Hz, or 11901
+                        // at the DSi's higher one.
+                        VoiceMicRing *ring = reinterpret_cast<VoiceMicRing *>(command.a);
+                        REG_MICCNT = 0;
+                        REG_MICCNT = MICCNT_CLEAR_FIFO;
+                        ring->rate = ((REG_SNDEXTCNT & SNDEXTCNT_FREQ_47KHZ) ? 47605u : 32728u) / 4u;
+                        micRing = ring;
+                        REG_MICCNT = MICCNT_ENABLE | MICCNT_FORMAT_NORMAL | MICCNT_FREQ_DIV(3);
+                    }
+                    break;
+                case AudioOp::MicOff:
+                    micStop();
                     break;
                 case AudioOp::StopAll:
                     for (int c = 0; c < kChannelCount; ++c)
@@ -398,6 +446,7 @@ namespace hlaudio
         const std::uint32_t was = l->where;
         l->where = 3;
         run(blocks);
+        micDrain();
         l->where = was;
         const std::uint32_t took = static_cast<std::uint32_t>(static_cast<std::uint16_t>(stamp() - began)) * kStampTicks;
         l->blocks = l->blocks + blocks;

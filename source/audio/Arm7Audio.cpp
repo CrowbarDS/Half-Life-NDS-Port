@@ -77,6 +77,24 @@ namespace hlrt
         return p;
     }
 
+#ifndef HLDS_CHILD
+    // (A DSi's, in its own memory.)
+    TWL_CODE __attribute__((noinline)) void Arm7Audio::micOn(void *ring)
+    {
+        AudioCommand c;
+        c.op = AudioOp::MicOn;
+        c.a = reinterpret_cast<std::uint32_t>(ring);
+        push(c);
+    }
+
+    TWL_CODE __attribute__((noinline)) void Arm7Audio::micOff()
+    {
+        AudioCommand c;
+        c.op = AudioOp::MicOff;
+        push(c);
+    }
+#endif
+
     std::uint16_t Arm7Audio::play(const void *data, std::uint32_t words, std::uint32_t loopWord, std::uint16_t rate,
                                   int volume, int pan, int pitch, bool menu)
     {

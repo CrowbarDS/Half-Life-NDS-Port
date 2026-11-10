@@ -73,6 +73,10 @@ namespace hldata
         /// The program is leaving: every channel silent, the capture off, the
         /// blocks' timer stopped -- nothing left running for what is started next.
         Shutdown,
+        /// A DSi's: the microphone heard, into the VoiceMicRing at `a` (a
+        /// quarter of the output's rate), each block -- until MicOff.
+        MicOn,
+        MicOff,
         Count
     };
 
@@ -85,6 +89,16 @@ namespace hldata
     inline constexpr std::uint8_t kAudioOutputSpeakers = 0, kAudioOutputHeadphones = 1, kAudioOutputMono = 2;
     inline constexpr std::uint8_t kAudioQualityStandard = 0, kAudioQualityHigh = 1;
     inline constexpr std::uint32_t kAudioPipeline = 1u << 24;
+
+    /// What the microphone hears (MicOn): written by the ARM7, `write`
+    /// counting the samples so far; `rate` in Hz, as the ARM7 set it going.
+    inline constexpr std::uint32_t kVoiceMicRing = 2048; ///< samples (a power of two)
+    struct VoiceMicRing
+    {
+        volatile std::uint32_t write;
+        volatile std::uint32_t rate;
+        std::int16_t samples[kVoiceMicRing];
+    };
 
     struct AudioCommand
     {

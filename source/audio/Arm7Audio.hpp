@@ -42,6 +42,12 @@ namespace hlrt
         void setPanning(std::uint16_t token, int pan);
         void setRate(std::uint16_t token, int pitch);
         void stopAll();
+#ifndef HLDS_CHILD
+        /// A DSi's: the microphone heard into `ring` (VoiceMicRing, its own
+        /// address -- not a mirror's), until micOff.
+        void micOn(void *ring);
+        void micOff();
+#endif
         /// Everything silent and stopped, for good: the program is leaving.
         void shutdown();
         /// Whether a sound is still being played (not ended, not stopped),

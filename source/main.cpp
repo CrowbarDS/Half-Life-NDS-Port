@@ -2,6 +2,7 @@
 
 #include "HlManifest.hpp"
 #include "net/NetGame.hpp"
+#include "audio/Voice.hpp"
 #include "global_header.hpp"
 
 #include <cstdlib>
@@ -2138,6 +2139,11 @@ int main(int argc, char *argv[])
                 // killed whom (a DSi's).
                 if (inMatch && hlrt::netGame.chatStamp() != chatSeen)
                     showChat(chatSeen);
+                // Voice (online, the host letting it): TALK held, what the
+                // microphone hears made into packets to send. (A DSi's: its
+                // code is in the DSi's memory.)
+                if (isDSiMode())
+                    hlrt::voice::frame(inMatch && hlrt::input.talkHeld && hlrt::netGame.talkAllowed());
 #endif
 
                 if (!paused)
