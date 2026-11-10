@@ -1,5 +1,6 @@
 # Everything a release has, in one artifact: the converter's packages, the ROM
-# zip, the checksums and the notes. Called after every other build, so that the
+# zip, the relay for a server (x86_64 and aarch64), the checksums and the
+# notes. Called after every other build, so that the
 # release is only ever made from builds that all passed.
 name: Bundle
 
@@ -38,6 +39,9 @@ jobs:
             name="$(basename "$f")"
             cp "$f" "release/${name/hlds-convert/hlds-convert-$VERSION}"
           done
+          # (The relay keeps its name: tools/relay/deploy/install.sh fetches it
+          # by it, and checks it against SHA256SUMS.txt.)
+          cp artifacts/relay-linux-*/hlds-relay-linux-* release/
           (cd release && sha256sum -- * > SHA256SUMS.txt)
           ls -la release
 

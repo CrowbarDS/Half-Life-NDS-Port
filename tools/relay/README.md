@@ -262,9 +262,9 @@ OVH VPS (x86_64), on Ubuntu 22.04, 24.04 or 26.04, or Debian 12 or 13.
 
 ```sh
 # (On your PC: the release's relay for the server's machine, and its sums.)
-scp hlds-relay-linux-aarch64 SHA256SUMS tools/relay/deploy/* you@server:~/relay/
+scp hlds-relay-linux-aarch64 SHA256SUMS.txt tools/relay/deploy/* you@server:~/relay/
 # (On the server.)
-cd ~/relay && sudo ./install.sh --binary hlds-relay-linux-aarch64 --sums SHA256SUMS
+cd ~/relay && sudo ./install.sh --binary hlds-relay-linux-aarch64 --sums SHA256SUMS.txt
 # ... or straight from a GitHub release:
 sudo ./install.sh --release v0.4.0
 ```
@@ -275,7 +275,7 @@ harm, and keeps `/etc/hlds-relay.conf` as you left it.
 What it does:
 
 1. **Checks the relay.** Its SHA-256 must be the release's (`--sums
-   SHA256SUMS`, or `--sha256 HASH`), or nothing is installed. Then it puts
+   SHA256SUMS.txt`, or `--sha256 HASH`), or nothing is installed. Then it puts
    it at `/usr/local/bin/hlds-relay`.
 2. **The service** (see "The service" below): the unit, the options file
    (`--port`; 27500 if not given), the journal kept a week, and

@@ -62,8 +62,14 @@ jobs:
       contents: read
     uses: ./.github/workflows/converter.yml
 
+  relay:
+    needs: tag
+    permissions:
+      contents: read
+    uses: ./.github/workflows/relay.yml
+
   bundle:
-    needs: [tag, rom, converter]
+    needs: [tag, rom, converter, relay]
     permissions:
       contents: read
     uses: ./.github/workflows/bundle.yml

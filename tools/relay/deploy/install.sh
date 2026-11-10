@@ -4,7 +4,7 @@
 # a firewall that lets in SSH and the relay's UDP port alone, the system's
 # security updates applied by themselves, and SSH by key only.
 #
-#   sudo ./install.sh --binary hlds-relay-linux-aarch64 --sums SHA256SUMS
+#   sudo ./install.sh --binary hlds-relay-linux-aarch64 --sums SHA256SUMS.txt
 #   sudo ./install.sh --release v0.4.0                     # (fetched from GitHub)
 #   ./install.sh --dry-run ...                             # says what it would do, does nothing
 #
@@ -29,11 +29,11 @@ sshKeys=1
 
 usage() {
     cat <<'EOF'
-usage: install.sh (--binary FILE (--sums SHA256SUMS | --sha256 HASH) | --release VERSION)
+usage: install.sh (--binary FILE (--sums SHA256SUMS.txt | --sha256 HASH) | --release VERSION)
                   [--port N] [--ssh-port N] [--no-firewall] [--no-ssh-keys-only] [--dry-run]
 
   --binary FILE       the relay to install (hlds-relay-linux-<arch> of a release)
-  --sums FILE         the release's SHA256SUMS: the binary must be in it, and match
+  --sums FILE         the release's SHA256SUMS.txt: the binary must be in it, and match
   --sha256 HASH       ... or its SHA-256, given here
   --release VERSION   fetch both from the project's GitHub release (v0.4.0, say)
   --port N            the relay's UDP port (27500)
@@ -130,12 +130,13 @@ trap 'rm -rf "$work"' EXIT
 if [ -n "$release" ]; then
     command -v curl >/dev/null || die "no curl, to fetch the release (apt-get install curl)"
     base="https://github.com/$REPO/releases/download/$release"
-    note "fetching hlds-relay-linux-$arch and SHA256SUMS of $release"
+    note "fetching hlds-relay-linux-$arch and SHA256SUMS.txt of $release"
     curl -fsSL --proto '=https' -o "$work/hlds-relay-linux-$arch" "$base/hlds-relay-linux-$arch" ||
         die "could not fetch $base/hlds-relay-linux-$arch"
-    curl -fsSL --proto '=https' -o "$work/SHA256SUMS" "$base/SHA256SUMS" || die "could not fetch $base/SHA256SUMS"
+    curl -fsSL --proto '=https' -o "$work/SHA256SUMS.txt" "$base/SHA256SUMS.txt" ||
+        die "could not fetch $base/SHA256SUMS.txt"
     binary="$work/hlds-relay-linux-$arch"
-    sums="$work/SHA256SUMS"
+    sums="$work/SHA256SUMS.txt"
 fi
 [ -n "$binary" ] || { usage >&2; die "say which relay: --binary FILE, or --release VERSION"; }
 [ -f "$binary" ] || die "no such file: $binary"
@@ -147,7 +148,7 @@ if [ -n "$sums" ]; then
 elif [ -n "$sha" ]; then
     want="$sha"
 else
-    die "nothing to check $binary against: give --sums SHA256SUMS or --sha256 HASH"
+    die "nothing to check $binary against: give --sums SHA256SUMS.txt or --sha256 HASH"
 fi
 [ "$got" = "$want" ] || die "$binary is not the one released: its SHA-256 is $got, not $want"
 note "SHA-256 checked: $got"
