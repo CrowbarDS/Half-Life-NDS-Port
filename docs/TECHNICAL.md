@@ -1075,6 +1075,21 @@ Milestone 11, "levels of detail".
     the lobby's box for a while and, in a match, low on the picture as
     "NAME: text", apart from who killed whom. One line every two seconds a
     console.
+  - **Voice** (online, a DSi's, if the host turns it on in its match
+    sheet: TALK in SPRAY's place on the touch bar, or a key bound to Talk).
+    While TALK is held the ARM7 empties the microphone's FIFO into a ring
+    in each 2 ms sound block, at a quarter of the output rate (8182 or
+    11901 Hz); the ARM9 cuts it into packets of 320 samples, IMA-ADPCM as
+    the sound hardware plays it (`shared/HlVoice.hpp`), each with its own
+    first sample and step, so a lost one costs only itself. They go
+    straight through the relay as Voice datagrams, never in the game's
+    frames, to everyone else in the room; the relay passes them on only
+    while the room's host allows it, and no more than 45 a second from one
+    console. A hearer puts each talker's packets back in order and holds
+    about three before it begins (`VoiceJitter`), then plays them one
+    after another on a game sound channel, the next queued to begin with
+    no gap, at the Voices volume. Two talkers at once at most; who is heard
+    is shown faintly in the top left corner.
   - **A state** (sixteen bytes: where, facing, how fast, what in hand,
     standing or crouched or dead) goes whole in every frame, so a lost frame
     is replaced by the next. **An event** (a shot, a hit, a death, a pickup,

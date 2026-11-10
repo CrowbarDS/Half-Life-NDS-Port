@@ -7,7 +7,11 @@
 
 #include "audio/Arm7Audio.hpp"
 #include "net/MapShare.hpp" // (HL_TWL_CODE)
+#include "net/NetRelay.hpp"
+#include "Global.hpp"
 #include "HlAudioLink.hpp"
+#include "HlSettings.hpp"
+#include "Settings.hpp"
 
 namespace hlrt::voice
 {
@@ -42,8 +46,35 @@ namespace hlrt::voice
             Packet packets[kPackets];
             hldata::VoiceEncoder encoder;
             std::int16_t cut[kVoiceSamples];
+            std::uint8_t number; ///< the next packet sent's
         };
         TWL_BSS State s;
+
+        // What others say, heard: two at once at most, each its packets put
+        // in order (VoiceJitter) and played one after the other on a
+        // channel of the game's sound -- one playing, the next queued behind
+        // it to begin with no gap, from buffers of their own (the ARM7 reads
+        // them while they play).
+        constexpr int kTalkers = 2;
+        constexpr int kBuffers = 4;
+        /// Silent this long, a talker's place is free for another.
+        constexpr std::uint32_t kTalkerGoneMs = 1000;
+        /// Heard within this long: shown as speaking.
+        constexpr std::uint32_t kSpeakingMs = 300;
+        struct Talker
+        {
+            int player; ///< -1: nobody
+            std::uint32_t lastMs;
+            std::uint16_t playing, queued; ///< (tokens)
+            int nextBuffer;
+            hldata::VoiceJitter jitter;
+            alignas(32) std::uint8_t buffers[kBuffers][kVoiceAdpcmBytes];
+        };
+        TWL_BSS Talker talkers[kTalkers];
+        TWL_BSS bool heardBegun;
+        TWL_BSS std::uint8_t heardPacket[kVoiceAdpcmBytes];
+
+        std::uint32_t nowMs() { return Global::vblanks() * 50u / 3u; }
 
         hldata::VoiceMicRing &seen() { return static_cast<Ring *>(memUncached(&ring))->r; }
 
@@ -93,42 +124,155 @@ namespace hlrt::voice
                 ++s.count;
             }
         }
+
+        HL_TWL_CODE void silence(Talker &t)
+        {
+            if (t.queued != 0)
+                arm7Audio.stop(t.queued);
+            if (t.playing != 0)
+                arm7Audio.stop(t.playing);
+            t.playing = t.queued = 0;
+            t.player = -1;
+            hldata::voiceJitterClear(t.jitter);
+        }
+
+        HL_TWL_CODE void silenceAll()
+        {
+            for (Talker &t : talkers)
+                if (t.player >= 0)
+                    silence(t);
+        }
+
+        /// What has come, each to its talker's place.
+        HL_TWL_CODE void hear(int me, std::uint32_t now)
+        {
+            int player = 0, number = 0, rate = 0;
+            while (hlrt::netrelay::takeVoice(player, number, rate, heardPacket))
+            {
+                if (player == me)
+                    continue;
+                Talker *place = nullptr;
+                for (Talker &t : talkers)
+                    if (t.player == player)
+                        place = &t;
+                for (Talker &t : talkers)
+                {
+                    if (place != nullptr)
+                        break;
+                    if (t.player < 0 || (now - t.lastMs > kTalkerGoneMs && t.playing == 0 && t.queued == 0))
+                    {
+                        if (t.player >= 0)
+                            silence(t);
+                        place = &t;
+                    }
+                }
+                if (place == nullptr)
+                    continue; // (two talk already)
+                place->player = player;
+                place->lastMs = now;
+                hldata::voiceJitterPut(place->jitter, number, rate, heardPacket, now);
+            }
+        }
+
+        /// A talker's next packet, played (behind the one playing, if one
+        /// is). False if there was none, or no channel.
+        HL_TWL_CODE bool feed(Talker &t, std::uint32_t now)
+        {
+            const bool dry = t.playing == 0;
+            const hldata::VoiceJitter::Slot *next = hldata::voiceJitterTake(t.jitter, now, dry);
+            if (next == nullptr)
+                return false;
+            std::uint8_t *buffer = t.buffers[t.nextBuffer];
+            t.nextBuffer = (t.nextBuffer + 1) % kBuffers;
+            std::memcpy(buffer, next->bytes, kVoiceAdpcmBytes);
+            DC_FlushRange(buffer, kVoiceAdpcmBytes);
+            const int volume = settings.volume[hldata::kVolumeVoices] * 255 / hldata::kVolumeMost;
+            constexpr std::uint32_t kWords = kVoiceAdpcmBytes / 4;
+            if (dry)
+                t.playing = arm7Audio.play(buffer, kWords, hldata::kAudioNoLoop, next->rate, volume, 128, 1024, true);
+            else
+                t.queued = arm7Audio.chain(t.playing, buffer, kWords, hldata::kAudioNoLoop, next->rate, volume, 128,
+                                           1024);
+            return true;
+        }
+
+        /// Each talker's packets kept going: one playing, the next queued.
+        HL_TWL_CODE void play(std::uint32_t now)
+        {
+            for (Talker &t : talkers)
+            {
+                if (t.player < 0)
+                    continue;
+                // (The queued one begun: it is the one playing now. The one
+                // playing ended with none behind it: dry.)
+                if (t.queued != 0 && !arm7Audio.queued(t.queued))
+                {
+                    t.playing = t.queued;
+                    t.queued = 0;
+                }
+                if (t.playing != 0 && !arm7Audio.playing(t.playing))
+                    t.playing = 0;
+                if (t.playing == 0)
+                    feed(t, now);
+                if (t.playing != 0 && t.queued == 0)
+                    feed(t, now);
+            }
+        }
     } // namespace
 
-    HL_TWL_CODE void frame(bool talking)
+    HL_TWL_CODE void frame(bool talking, bool hearing, int me)
     {
         if (!isDSiMode() || !arm7Audio.up())
             return;
+        // (The places begun empty: nobody in them -- not player 0.)
+        if (!heardBegun)
+        {
+            heardBegun = true;
+            for (Talker &t : talkers)
+                t.player = -1;
+        }
+        talking = talking && hearing;
         if (talking && !s.on)
             begin();
         else if (!talking && s.on)
             end();
         if (s.on)
             cutPackets();
+        // (Only the host's word counts with the relay.)
+        hlrt::netrelay::allowVoice(hearing);
+        if (!hearing)
+        {
+            s.count = 0;
+            s.head = 0;
+            silenceAll();
+            int player = 0, number = 0, rate = 0;
+            while (hlrt::netrelay::takeVoice(player, number, rate, heardPacket))
+            {
+            }
+            return;
+        }
+        // What was made, sent.
+        for (; s.count > 0; --s.count)
+        {
+            const Packet &p = s.packets[s.head];
+            hlrt::netrelay::sendVoice(me, s.number++, p.rate, p.bytes);
+            s.head = (s.head + 1) % kPackets;
+        }
+        const std::uint32_t now = nowMs();
+        hear(me, now);
+        play(now);
     }
 
-    HL_TWL_CODE bool take(std::uint8_t *packet, std::uint16_t &rate)
-    {
-        if (!isDSiMode() || s.count == 0)
-            return false;
-        const Packet &p = s.packets[s.head];
-        std::memcpy(packet, p.bytes, kVoiceAdpcmBytes);
-        rate = p.rate;
-        s.head = (s.head + 1) % kPackets;
-        --s.count;
-        return true;
-    }
-
-    HL_TWL_CODE void stop()
+    HL_TWL_CODE int speaking()
     {
         if (!isDSiMode())
-            return;
-        end();
-        s.count = 0;
-        s.head = 0;
+            return -1;
+        const std::uint32_t now = nowMs();
+        for (const Talker &t : talkers)
+            if (t.player >= 0 && (t.playing != 0 || now - t.lastMs < kSpeakingMs))
+                return t.player;
+        return -1;
     }
-
-    bool on() { return isDSiMode() && s.on; }
 } // namespace hlrt::voice
 
 #endif

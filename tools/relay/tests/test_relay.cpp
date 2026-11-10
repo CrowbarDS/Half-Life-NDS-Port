@@ -257,6 +257,78 @@ namespace
               "a host says goodbye: the room is closed, its client told");
     }
 
+    /// What one says aloud: to everyone else in its room, if its host lets
+    /// them talk, and no more than a voice's worth a second.
+    void testVoice()
+    {
+        Relay relay;
+        std::vector<Out> out;
+        std::uint32_t now = 1000;
+        const std::uint32_t id = open(relay, 0, "Gordon", 8, now, out);
+        check(join(relay, 1, id, now, out) == 1 && join(relay, 2, id, now, out) == 2,
+              "voice: a room with a host and two clients");
+        const std::uint32_t other = open(relay, 3, "Barney", 8, now, out);
+        join(relay, 4, other, now, out, 3);
+
+        std::uint8_t packet[kVoiceAdpcmBytes];
+        for (int i = 0; i < kVoiceAdpcmBytes; ++i)
+            packet[i] = static_cast<std::uint8_t>(i * 7);
+        std::uint8_t bytes[kRelayMostBytes];
+        auto say = [&](int n, int number)
+        {
+            out.clear();
+            relay.receive(at(n), bytes, relayVoiceWrite(bytes, 100u + n, n, number, 8182, packet), now, out);
+        };
+
+        say(1, 5);
+        check(out.empty(), "a host that has not let them talk: nothing passed on");
+        relay.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Admit, 100, kRelayAdmitIn | kRelayAdmitVoice),
+                      now, out);
+        say(1, 6);
+        const auto toHost = sentTo(out, at(0), RelayKind::Voice);
+        const auto toTwo = sentTo(out, at(2), RelayKind::Voice);
+        RelayVoice heard;
+        RelayHead head;
+        check(out.size() == 2 && toHost.size() == 1 && toTwo.size() == 1 && sentTo(out, at(1), RelayKind::Voice).empty(),
+              "it lets them: a client's goes to the host and the other client, not back to it");
+        check(relayVoiceRead(toTwo[0].data(), static_cast<int>(toTwo[0].size()), heard) && heard.player == 1 &&
+                  heard.number == 6 && heard.rate == 8182 && std::memcmp(heard.packet, packet, kVoiceAdpcmBytes) == 0 &&
+                  relayHeadRead(toTwo[0].data(), static_cast<int>(toTwo[0].size()), head) && head.session == 102,
+              "... as it was said, in the hearer's own session");
+        check(sentTo(out, at(3), RelayKind::Voice).empty() && sentTo(out, at(4), RelayKind::Voice).empty(),
+              "... and nothing to another room");
+        say(0, 1);
+        check(out.size() == 2 && sentTo(out, at(1), RelayKind::Voice).size() == 1 &&
+                  sentTo(out, at(2), RelayKind::Voice).size() == 1,
+              "the host's goes to its clients");
+        say(5, 1);
+        check(out.empty(), "a console in no room: nothing");
+        out.clear();
+        relayVoiceWrite(bytes, 101, 1, 8, 8182, packet);
+        bytes[kRelayHeadBytes + 2] = 0; // (a rate of nothing)
+        bytes[kRelayHeadBytes + 3] = 0;
+        relay.receive(at(1), bytes, kRelayVoiceBytes, now, out);
+        check(out.empty(), "one that is not a voice: nothing");
+
+        // No more than a voice's worth a second.
+        now += 1000;
+        int passed = 0;
+        for (int n = 0; n < kRelayVoicePerSecond + 20; ++n)
+        {
+            say(2, n);
+            passed += sentTo(out, at(0), RelayKind::Voice).size() == 1 ? 1 : 0;
+        }
+        check(passed == kRelayVoicePerSecond, "more than a voice's worth in a second: the rest let fall");
+        now += 1000;
+        say(2, 0);
+        check(sentTo(out, at(0), RelayKind::Voice).size() == 1, "... and the next second, passed on again");
+
+        // Talk taken back.
+        relay.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Admit, 100, kRelayAdmitIn), now, out);
+        say(1, 7);
+        check(out.empty(), "the host no longer lets them: nothing");
+    }
+
     void testKnocks()
     {
         Relay relay;
@@ -575,6 +647,7 @@ int main()
     testDatagrams();
     testRooms();
     testKnocks();
+    testVoice();
     testLobbyThroughRelay();
     testIni();
     std::printf("%s (%d failed)\n", g_failures == 0 ? "PASS" : "FAIL", g_failures);

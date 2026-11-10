@@ -65,6 +65,8 @@ namespace hlrelay
             std::uint32_t room = 0; ///< the room it hosts or is in; 0: none
             int slot = -1;          ///< 0: its host; 1..7: a client of it
             std::uint32_t knocking = 0; ///< the room whose host it waits to be let in by; 0: none
+            std::uint32_t voiceSinceMs = 0; ///< the second its Voice is counted in
+            int voiceCount = 0;
         };
         /// A console at a room's door, waiting for its host's answer.
         struct Knock
@@ -80,6 +82,7 @@ namespace hlrelay
             std::uint64_t host = 0; ///< its host's key
             hldata::RelayOpen open;
             bool admit = true;
+            bool voice = false; ///< its host lets them talk
             std::uint64_t clients[hldata::kNetPlayers] = {}; ///< by slot (0 unused); 0: nobody
             std::uint32_t statusMs = 0;
             Knock knocks[hldata::kRelayKnocksMost];

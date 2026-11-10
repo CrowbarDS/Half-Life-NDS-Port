@@ -335,7 +335,38 @@ namespace hlrelay
             auto it = rooms_.find(me->room);
             const int allow = relaySmallRead(bytes, size);
             if (it != rooms_.end() && me->slot == 0 && allow >= 0)
-                it->second.admit = allow != 0;
+            {
+                it->second.admit = (allow & kRelayAdmitIn) != 0;
+                it->second.voice = (allow & kRelayAdmitVoice) != 0;
+            }
+            break;
+        }
+        case RelayKind::Voice:
+        {
+            // To everyone else in its room, if its host lets them talk; not
+            // more than a voice's worth a second.
+            auto it = rooms_.find(me->room);
+            RelayVoice voice;
+            if (it == rooms_.end() || !it->second.voice || me->slot < 0 || !relayVoiceRead(bytes, size, voice))
+                break;
+            if (nowMs - me->voiceSinceMs >= 1000)
+            {
+                me->voiceSinceMs = nowMs;
+                me->voiceCount = 0;
+            }
+            if (++me->voiceCount > kRelayVoicePerSecond)
+                break;
+            Room &room = it->second;
+            for (int c = 0; c < kNetPlayers; ++c)
+            {
+                const std::uint64_t key = c == 0 ? room.host : room.clients[c];
+                auto other = peers_.find(key);
+                if (key == 0 || key == from.key() || other == peers_.end())
+                    continue;
+                std::memcpy(reply, bytes, static_cast<std::size_t>(size));
+                relayPut32(reply + 4, other->second.session);
+                say(out, other->second, reply, size);
+            }
             break;
         }
         case RelayKind::Kick:

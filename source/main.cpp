@@ -875,6 +875,25 @@ namespace
         said.fadeOutMs = 600;
         hlrt::topText.show(said, lines);
     }
+
+    /// Who is heard speaking (voice), faint in the top left corner while
+    /// they speak. `shown`: who was shown (-1 nobody).
+    HL_TWL_CODE void showSpeaking(int &shown)
+    {
+        const int who = hlrt::voice::speaking();
+        if (who == shown)
+            return;
+        shown = who;
+        static TWL_BSS char line[hldata::kNetTextBytes + 12];
+        if (who < 0)
+        {
+            hlrt::topText.endNotice(300);
+            return;
+        }
+        static TWL_DATA const char kSpeaking[] = "%s speaking";
+        std::snprintf(line, sizeof(line), kSpeaking, hlrt::netGame.match().names[who]);
+        hlrt::topText.notice(line);
+    }
 #endif
 
     /// A match's map loaded, on any console: the others told (a client says
@@ -1993,6 +2012,7 @@ int main(int argc, char *argv[])
 #ifndef HLDS_CHILD
     // (CHAT: what was said before this map is not said again on it.)
     std::uint32_t chatSeen = hlrt::netGame.chatStamp();
+    int speakingShown = -1;
 #endif
     // Out of a game between consoles, or QUIT TO MAIN MENU: the title again,
     // and whatever is chosen there.
@@ -2139,11 +2159,15 @@ int main(int argc, char *argv[])
                 // killed whom (a DSi's).
                 if (inMatch && hlrt::netGame.chatStamp() != chatSeen)
                     showChat(chatSeen);
-                // Voice (online, the host letting it): TALK held, what the
-                // microphone hears made into packets to send. (A DSi's: its
-                // code is in the DSi's memory.)
+                // Voice (online, the host letting it): what the others say,
+                // heard; TALK held, what the microphone hears sent. (A
+                // DSi's: its code is in the DSi's memory.)
                 if (isDSiMode())
-                    hlrt::voice::frame(inMatch && hlrt::input.talkHeld && hlrt::netGame.talkAllowed());
+                {
+                    hlrt::voice::frame(hlrt::input.talkHeld, inMatch && hlrt::netGame.talkAllowed(),
+                                       hlrt::netGame.match().me);
+                    showSpeaking(speakingShown);
+                }
 #endif
 
                 if (!paused)

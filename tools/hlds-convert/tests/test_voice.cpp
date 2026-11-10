@@ -1,7 +1,8 @@
 // A voice as it is sent (shared/HlVoice.hpp): what the hardware will play of a
 // packet stays near what the microphone heard -- a tone, speech-like noise,
 // a shout at the top of the range -- from one packet to the next, each
-// packet whole by itself; and a packet with no head is refused.
+// packet whole by itself; and a packet with no head is refused. And what is
+// heard: packets put back in order, held a moment, the late let fall.
 
 #include <cmath>
 #include <cstdio>
@@ -37,6 +38,75 @@ namespace
             }
         }
         return noise == 0 ? 99 : 10 * std::log10(signal / noise);
+    }
+
+    /// A packet whose bytes say its number (to see which was played).
+    void put(VoiceJitter &j, int number, std::uint32_t now, bool *kept = nullptr)
+    {
+        std::uint8_t packet[kVoiceAdpcmBytes] = {};
+        packet[4] = static_cast<std::uint8_t>(number);
+        const bool ok = voiceJitterPut(j, number, 8182, packet, now);
+        if (kept != nullptr)
+            *kept = ok;
+    }
+    /// The number of the packet played now; -1 for none.
+    int take(VoiceJitter &j, std::uint32_t now, bool dry = true)
+    {
+        const VoiceJitter::Slot *slot = voiceJitterTake(j, now, dry);
+        return slot == nullptr ? -1 : slot->bytes[4];
+    }
+
+    void testJitter()
+    {
+        VoiceJitter j{};
+        check(take(j, 0) == -1, "nothing heard: nothing played");
+        put(j, 10, 0);
+        put(j, 11, 40);
+        check(take(j, 50) == -1, "two held: not yet begun");
+        put(j, 12, 80);
+        check(take(j, 90) == 10 && take(j, 130) == 11 && take(j, 170) == 12, "three held: played in order");
+        check(take(j, 205, false) == -1, "none held while one still plays: nothing to queue");
+        put(j, 13, 208);
+        check(take(j, 210, false) == 13, "... and one come in time is played at once, not held");
+        check(take(j, 250) == -1, "none left and what played has run out: it stops");
+        put(j, 14, 260);
+        check(take(j, 270) == -1, "... and waits for enough again");
+
+        // Out of order, the same one twice, one late.
+        voiceJitterClear(j);
+        put(j, 20, 0);
+        put(j, 22, 10);
+        bool kept = true;
+        put(j, 22, 15, &kept);
+        check(!kept, "the same packet twice: the second let fall");
+        put(j, 21, 20);
+        check(take(j, 30) == 20 && take(j, 70) == 21 && take(j, 110) == 22, "come out of order: played in order");
+        put(j, 21, 120, &kept);
+        check(!kept, "one come after its time: let fall");
+
+        // One lost: passed over when its turn comes.
+        voiceJitterClear(j);
+        put(j, 30, 0);
+        put(j, 32, 10);
+        put(j, 33, 20);
+        check(take(j, 30) == 30 && take(j, 70) == 32 && take(j, 110) == 33, "one lost: the next played in its place");
+
+        // The last words: fewer than enough, played once nothing more comes.
+        voiceJitterClear(j);
+        put(j, 40, 0);
+        check(take(j, kVoiceJitterWaitMs - 1) == -1 && take(j, kVoiceJitterWaitMs) == 40,
+              "the last packet of what was said is played after a moment");
+
+        // Round from 255 to 0, and a jump far ahead.
+        voiceJitterClear(j);
+        put(j, 254, 0);
+        put(j, 255, 0);
+        put(j, 0, 0);
+        check(take(j, 10) == 254 && take(j, 10) == 255 && take(j, 10) == 0, "numbers go round from 255 to 0");
+        put(j, 1, 20);
+        put(j, 100, 30);
+        put(j, 101, 30);
+        check(take(j, 40) == 100 && take(j, 40) == 101, "a jump far ahead: what was before it let go");
     }
 } // namespace
 
@@ -98,6 +168,8 @@ int main()
     // A head that is no head: refused.
     packet[2] = 100;
     check(!voiceDecode(packet, kVoiceSamples, back), "a packet whose step is out of range is refused");
+
+    testJitter();
 
     std::printf("test_voice: tone %.1f dB, speech %.1f dB\n", toneSnr, speechSnr);
     if (g_failures == 0)

@@ -97,6 +97,19 @@ namespace hlrt::netrelay
     bool knock(int &ticket, char *name);
     void answer(int ticket, bool yes);
 
+#ifndef HLDS_CHILD
+    // ----------------------------------------------------- voice
+    /// A host: whether those in its room may talk (the relay passes Voice
+    /// on only then). Said to the relay when it changes, and with the room.
+    void allowVoice(bool allow);
+    /// A packet said aloud (HlVoice.hpp: kVoiceAdpcmBytes), by `player`,
+    /// numbered `number` (one more each packet), heard at `rate` Hz: to the
+    /// others in the room.
+    void sendVoice(int player, int number, int rate, const std::uint8_t *packet);
+    /// The oldest packet another said that has come and is not yet read.
+    bool takeVoice(int &player, int &number, int &rate, std::uint8_t *packet);
+#endif
+
     /// (Diagnostic) the wireless library's own counts, in a line.
     void radioCounts(char *out, int room);
 } // namespace hlrt::netrelay

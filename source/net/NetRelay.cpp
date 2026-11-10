@@ -53,6 +53,7 @@ namespace hlrt::netrelay
         constexpr std::uint32_t kConnectFrames = 20 * 60; ///< to join a saved network
         constexpr std::uint32_t kAnswerFrames = 5 * 60; ///< for the relay to answer
         constexpr int kRingSlots = 24;
+        constexpr int kHeardSlots = 12; ///< voice packets come, not yet read
 
         enum class Role : std::uint8_t
         {
@@ -125,6 +126,17 @@ namespace hlrt::netrelay
             } ring[kRingSlots];
             int ringHead, ringTail;
             unsigned ringDropped;
+            // what is said aloud, come, not yet read (apart from the game's
+            // frames: a voice never takes their room); and whether a host
+            // lets them talk
+            struct Heard
+            {
+                std::uint8_t player, number;
+                std::uint16_t rate;
+                std::uint8_t packet[kVoiceAdpcmBytes];
+            } heard[kHeardSlots];
+            int heardHead, heardTail;
+            bool voice;
             std::uint8_t datagram[kRelayMostBytes + 16];
         };
         // (In a union with nothing to do at start-up: the program's
@@ -175,11 +187,16 @@ namespace hlrt::netrelay
             sendRaw(bytes, relaySmallWrite(bytes, kind, s.session, value));
         }
 
+        TWL_CODE void sendAdmit()
+        {
+            sendSmall(RelayKind::Admit, (s.admitting ? kRelayAdmitIn : 0) | (s.voice ? kRelayAdmitVoice : 0));
+        }
+
         TWL_CODE void sendOpen()
         {
             std::uint8_t bytes[kRelayHeadBytes + kRelayOpenBytes];
             sendRaw(bytes, relayOpenWrite(bytes, s.session, s.open));
-            sendSmall(RelayKind::Admit, s.admitting ? 1 : 0);
+            sendAdmit();
             s.lastOpen = Global::vblanks();
         }
 
@@ -291,6 +308,21 @@ namespace hlrt::netrelay
                     keep(who, frame, length);
                 else if (s.role == Role::Client && s.slot > 0 && who == 0)
                     keep(0, frame, length);
+                break;
+            }
+            case RelayKind::Voice:
+            {
+                RelayVoice voice;
+                const int next = (s.heardTail + 1) % kHeardSlots;
+                if ((s.role != Role::Host && !(s.role == Role::Client && s.slot > 0)) ||
+                    !relayVoiceRead(bytes, size, voice) || next == s.heardHead)
+                    break;
+                State::Heard &h = s.heard[s.heardTail];
+                h.player = voice.player;
+                h.number = voice.number;
+                h.rate = voice.rate;
+                std::memcpy(h.packet, voice.packet, kVoiceAdpcmBytes);
+                s.heardTail = next;
                 break;
             }
             case RelayKind::Bye:
@@ -598,6 +630,8 @@ namespace hlrt::netrelay
         s.clientMask = 0;
         s.slot = -1;
         s.ringHead = s.ringTail = 0;
+        s.heardHead = s.heardTail = 0;
+        s.voice = false;
     }
 
     TWL_CODE void powerDown()
@@ -673,7 +707,37 @@ namespace hlrt::netrelay
         if (!started || s.role != Role::Host)
             return;
         s.admitting = allow;
-        sendSmall(RelayKind::Admit, allow ? 1 : 0);
+        sendAdmit();
+    }
+
+    TWL_CODE void allowVoice(bool allow)
+    {
+        if (!started || s.role != Role::Host || s.voice == allow)
+            return;
+        s.voice = allow;
+        sendAdmit();
+    }
+
+    TWL_CODE void sendVoice(int player, int number, int rate, const std::uint8_t *packet)
+    {
+        if (!started || !((s.role == Role::Host && s.roomId != 0) || (s.role == Role::Client && s.slot > 0 && !s.byeNow)))
+            return;
+        std::uint8_t datagram[kRelayVoiceBytes];
+        sendRaw(datagram, relayVoiceWrite(datagram, s.session, player, number, rate, packet));
+    }
+
+    TWL_CODE bool takeVoice(int &player, int &number, int &rate, std::uint8_t *packet)
+    {
+        pump();
+        if (!started || s.heardHead == s.heardTail)
+            return false;
+        const State::Heard &h = s.heard[s.heardHead];
+        player = h.player;
+        number = h.number;
+        rate = h.rate;
+        std::memcpy(packet, h.packet, kVoiceAdpcmBytes);
+        s.heardHead = (s.heardHead + 1) % kHeardSlots;
+        return true;
     }
 
     TWL_CODE void kick(int c)

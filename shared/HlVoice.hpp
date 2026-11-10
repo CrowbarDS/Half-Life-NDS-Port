@@ -117,4 +117,116 @@ namespace hldata
         }
         return true;
     }
+
+    // ------------------------------------------------- what is heard
+
+    /// One talker's packets as they come, put back in order and held a
+    /// moment before they are played, so that one that comes a little late is
+    /// not lost: playing begins once kVoiceJitterStart are held (about 120 ms),
+    /// or once nothing more has come for kVoiceJitterWaitMs (the last words
+    /// of what was said); once what is played has run out with none held,
+    /// it waits until enough are held again. One whose time has gone (its number before what is
+    /// played next) is let fall; one missing when its turn comes is
+    /// passed over.
+    inline constexpr int kVoiceJitterSlots = 8;
+    inline constexpr int kVoiceJitterStart = 3;
+    inline constexpr std::uint32_t kVoiceJitterWaitMs = 200;
+
+    /// Begun empty: `VoiceJitter{}`, or voiceJitterClear.
+    struct VoiceJitter
+    {
+        struct Slot
+        {
+            bool full;
+            std::uint8_t number;
+            std::uint16_t rate;
+            std::uint8_t bytes[kVoiceAdpcmBytes];
+        };
+        Slot slots[kVoiceJitterSlots];
+        std::uint8_t next; ///< the number to be played next, once `known`
+        bool known;
+        bool playing;
+        std::uint32_t lastMs; ///< when the last came
+    };
+
+    inline void voiceJitterClear(VoiceJitter &j)
+    {
+        for (VoiceJitter::Slot &slot : j.slots)
+            slot.full = false;
+        j.known = false;
+        j.playing = false;
+    }
+
+    inline int voiceJitterCount(const VoiceJitter &j)
+    {
+        int n = 0;
+        for (const VoiceJitter::Slot &slot : j.slots)
+            n += slot.full ? 1 : 0;
+        return n;
+    }
+
+    /// A packet come, numbered `number` (one more each packet, round from
+    /// 255 to 0). False if it was let fall: late, or had already.
+    inline bool voiceJitterPut(VoiceJitter &j, int number, int rate, const std::uint8_t *packet, std::uint32_t nowMs)
+    {
+        const std::uint8_t n = static_cast<std::uint8_t>(number);
+        if (!j.known)
+        {
+            j.next = n;
+            j.known = true;
+        }
+        const int ahead = static_cast<std::int8_t>(static_cast<std::uint8_t>(n - j.next));
+        if (ahead < 0)
+            return false;
+        // (So far ahead that it has no place: what is before its place goes.)
+        if (ahead >= kVoiceJitterSlots)
+        {
+            j.next = static_cast<std::uint8_t>(n - (kVoiceJitterSlots - 1));
+            for (VoiceJitter::Slot &slot : j.slots)
+                if (slot.full && static_cast<std::int8_t>(static_cast<std::uint8_t>(slot.number - j.next)) < 0)
+                    slot.full = false;
+        }
+        VoiceJitter::Slot &slot = j.slots[n % kVoiceJitterSlots];
+        if (slot.full && slot.number == n)
+            return false;
+        slot.full = true;
+        slot.number = n;
+        slot.rate = static_cast<std::uint16_t>(rate);
+        for (int i = 0; i < kVoiceAdpcmBytes; ++i)
+            slot.bytes[i] = packet[i];
+        j.lastMs = nowMs;
+        return true;
+    }
+
+    /// The packet to be played now, or null: none held, or too few held yet
+    /// to begin. `dry`: nothing is being played (what was has run out).
+    /// (It stays where it is until another comes in its place.)
+    inline const VoiceJitter::Slot *voiceJitterTake(VoiceJitter &j, std::uint32_t nowMs, bool dry)
+    {
+        const int count = voiceJitterCount(j);
+        if (count == 0)
+        {
+            if (dry)
+                j.playing = false;
+            return nullptr;
+        }
+        if (!j.playing)
+        {
+            if (count < kVoiceJitterStart && nowMs - j.lastMs < kVoiceJitterWaitMs)
+                return nullptr;
+            j.playing = true;
+        }
+        for (int k = 0; k < kVoiceJitterSlots; ++k)
+        {
+            const std::uint8_t n = static_cast<std::uint8_t>(j.next + k);
+            VoiceJitter::Slot &slot = j.slots[n % kVoiceJitterSlots];
+            if (slot.full && slot.number == n)
+            {
+                slot.full = false;
+                j.next = static_cast<std::uint8_t>(n + 1);
+                return &slot;
+            }
+        }
+        return nullptr;
+    }
 } // namespace hldata

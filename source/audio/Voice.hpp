@@ -3,8 +3,11 @@
 // Voice chat (a DSi's, online, the host letting it): while TALK is held, what
 // the microphone hears -- the ARM7 drains it into a ring each 2 ms block
 // (HlAudioLink.hpp's MicOn) -- is cut into packets of 40 ms and encoded as the
-// DS's sound hardware plays them (shared/HlVoice.hpp), to be sent. All of it
-// in the DSi's memory: a DS has no room for it, and is never online.
+// DS's sound hardware plays them (shared/HlVoice.hpp), and sent through the
+// relay to the others in the room (netrelay::sendVoice). What they say comes
+// the same way, is put back in order, and is played on the game's sound
+// channels, two talkers at once at most. All of it in the DSi's memory: a DS
+// has no room for it, and is never online.
 //
 // Not in a console sent the game.
 
@@ -15,16 +18,12 @@
 namespace hlrt::voice
 {
 #ifndef HLDS_CHILD
-    /// Once a frame: `talking` (TALK held, talk allowed), the microphone on
-    /// and what it heard made into packets; not, off (what was heard but not
-    /// yet made into a packet let go of).
-    void frame(bool talking);
-    /// The oldest packet made and not yet taken: its bytes (kVoiceAdpcmBytes)
-    /// and rate. False if there is none.
-    bool take(std::uint8_t *packet, std::uint16_t &rate);
-    /// Off, whatever it was doing: the microphone off, nothing waiting.
-    void stop();
-    /// Whether the microphone is on (TALK held).
-    bool on();
+    /// Once a frame. `hearing`: in a match online whose host lets them talk
+    /// (a host says so to the relay); what others say is heard, and
+    /// `talking` (TALK held), the microphone is on and what it hears is
+    /// sent as player `me`. Not hearing: all of it off and let go of.
+    void frame(bool talking, bool hearing, int me);
+    /// The player heard speaking now (the first, if two are); -1 if none.
+    int speaking();
 #endif
 } // namespace hlrt::voice

@@ -7,7 +7,8 @@
 // that look are given the list of rooms, and ask to join one -- the host is
 // asked whether to let each in (Knock, Answer); from then on the
 // relay passes the host's frames to every client of its room, and each
-// client's to the host, saying whose it is. It never reads a game frame:
+// client's to the host, saying whose it is -- and what one says aloud (Voice,
+// if the host lets them) to all the others. It never reads a game frame:
 // what is in them is HlNet.hpp's, the same as through the air, so the lobby
 // and the match are the very ones played over the local wireless.
 //
@@ -23,12 +24,13 @@
 #include <cstring>
 
 #include "HlNet.hpp"
+#include "HlVoice.hpp"
 
 namespace hldata
 {
     inline constexpr std::uint16_t kRelayMagic = 0x5248; // "HR"
-    /// (2: the host lets each in, or not.)
-    inline constexpr std::uint8_t kRelayVersion = 2;
+    /// (2: the host lets each in, or not. 3: Voice.)
+    inline constexpr std::uint8_t kRelayVersion = 3;
     /// The port a relay listens on unless server.ini says another.
     inline constexpr int kRelayPort = 27500;
     inline constexpr int kRelayHeadBytes = 8;
@@ -64,7 +66,17 @@ namespace hldata
         Bye = 14,    ///< console: I am going; relay: you are out (the host went, or sent you away)
         Knock = 15,  ///< relay to a host: (ticket u8, name) asks to come in; said again until answered
         Answer = 16, ///< host: (ticket u8, yes u8)
+        Voice = 17,  ///< what one says aloud: (player u8, number u8, rate u16, a packet: HlVoice.hpp), to all the others
     };
+
+    /// `Admit`'s byte: bit 0, more are let in; bit 1, they may talk (Voice is
+    /// passed on). A host says it again with its room, now and then.
+    inline constexpr int kRelayAdmitIn = 1;
+    inline constexpr int kRelayAdmitVoice = 2;
+    /// The most Voice datagrams one console may send in a second: the relay
+    /// lets the rest fall. (A packet each 27 ms at the most, at the DSi's
+    /// faster rate: 37 a second.)
+    inline constexpr int kRelayVoicePerSecond = 45;
 
     enum class RelayRefuse : std::uint8_t
     {
@@ -110,7 +122,7 @@ namespace hldata
     {
         if (size < kRelayHeadBytes || bytes[0] != (kRelayMagic & 0xFF) || bytes[1] != (kRelayMagic >> 8) ||
             bytes[2] != kRelayVersion || bytes[3] < static_cast<std::uint8_t>(RelayKind::Ping) ||
-            bytes[3] > static_cast<std::uint8_t>(RelayKind::Answer))
+            bytes[3] > static_cast<std::uint8_t>(RelayKind::Voice))
             return false;
         head.kind = static_cast<RelayKind>(bytes[3]);
         head.session = relayGet32(bytes + 4);
@@ -312,5 +324,41 @@ namespace hldata
         who = bytes[kRelayHeadBytes];
         frame = bytes + kRelayHeadBytes + 1;
         return size - kRelayHeadBytes - 1;
+    }
+
+    /// `Voice`: who says it (the player), its number (one more each packet,
+    /// so that the hearer puts them in order), the rate it was heard at, and
+    /// the packet.
+    inline constexpr int kRelayVoiceBytes = kRelayHeadBytes + 4 + kVoiceAdpcmBytes;
+    static_assert(kRelayVoiceBytes <= kRelayMostBytes, "a packet in one datagram");
+    struct RelayVoice
+    {
+        std::uint8_t player = 0;
+        std::uint8_t number = 0;
+        std::uint16_t rate = 0;
+        const std::uint8_t *packet = nullptr; ///< (in the datagram read)
+    };
+    inline int relayVoiceWrite(std::uint8_t *out, std::uint32_t session, int player, int number, int rate,
+                               const std::uint8_t *packet)
+    {
+        int at = relayHeadWrite(out, RelayKind::Voice, session);
+        out[at++] = static_cast<std::uint8_t>(player);
+        out[at++] = static_cast<std::uint8_t>(number);
+        out[at++] = static_cast<std::uint8_t>(rate & 0xFF);
+        out[at++] = static_cast<std::uint8_t>(rate >> 8);
+        std::memcpy(out + at, packet, kVoiceAdpcmBytes);
+        return at + kVoiceAdpcmBytes;
+    }
+    /// False for what is not a whole one (or a rate no voice is heard at).
+    inline bool relayVoiceRead(const std::uint8_t *bytes, int size, RelayVoice &voice)
+    {
+        if (size != kRelayVoiceBytes)
+            return false;
+        const std::uint8_t *in = bytes + kRelayHeadBytes;
+        voice.player = in[0];
+        voice.number = in[1];
+        voice.rate = static_cast<std::uint16_t>(in[2] | in[3] << 8);
+        voice.packet = in + 4;
+        return voice.player < kNetPlayers && voice.rate >= 4000 && voice.rate <= 16000;
     }
 } // namespace hldata
