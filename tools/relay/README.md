@@ -7,7 +7,15 @@ seconds is turned away -- and from then on the
 relay passes the host's frames to every client of the room and each client's
 to the host, and voice packets (when the host allows voice) to everyone else
 in the room. It never reads a game frame: the lobby and the match are the
-same ones played over the local wireless. What the two ends say to each other
+same ones played over the local wireless.
+
+A console is known to the relay only once it has shown that it gets what is
+sent to its address: it says Hello, is given a cookie made from its address
+under a secret the relay makes at random each time it starts, and sends it
+back. Until then the relay keeps nothing for it, answers nothing but that,
+and never with more than it was sent -- so it cannot be made to fill its
+tables, or to send to an address that did not ask, by datagrams sent in
+another's name. What the two ends say to each other
 is in `shared/HlRelay.hpp`.
 
 Online play is for a DSi (in DSi mode), on one of the console's saved Wi-Fi
@@ -51,7 +59,7 @@ An address says who someone is, near enough, so it is logged no more than
 Once a minute it logs a line of counts:
 
 ```
-stats peers=12 rooms=3 in=21600 in_bytes=9431200 out=64800 out_bytes=27100000 drop_not_ours=0 drop_too_many=0 send_failed=0 full_rounds=0 (last 60 s)
+stats peers=12 rooms=3 in=21600 in_bytes=9431200 out=64800 out_bytes=27100000 drop_not_ours=0 drop_too_many=0 drop_unknown=0 drop_bad_cookie=0 send_failed=0 full_rounds=0 (last 60 s)
 ```
 
 | | |
@@ -60,7 +68,9 @@ stats peers=12 rooms=3 in=21600 in_bytes=9431200 out=64800 out_bytes=27100000 dr
 | `in`, `in_bytes` | datagrams come in that minute, and their bytes |
 | `out`, `out_bytes` | datagrams sent, and their bytes |
 | `drop_not_ours` | datagrams that were not this relay's protocol, or were of another version |
-| `drop_too_many` | datagrams from a new console while the relay knew as many as it may (1024) |
+| `drop_too_many` | consoles coming in while the relay knew as many as it may (1024) |
+| `drop_unknown` | datagrams from no console the relay knows, or in another session than the one there: a console it let go, a relay started again, or someone making them up |
+| `drop_bad_cookie` | consoles coming in with a cookie the relay did not make for that address, or one too old |
 | `send_failed` | datagrams the system would not send |
 | `full_rounds` | times it had more come at once than it reads in one go (256): under a flood, this climbs |
 

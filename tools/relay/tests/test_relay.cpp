@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstring>
 #include <deque>
+#include <map>
 #include <memory>
 #include <vector>
 
@@ -41,6 +42,41 @@ namespace
     Address at(int n) { return {0x0A000002u + static_cast<std::uint32_t>(n), static_cast<std::uint16_t>(5000 + n)}; }
 
     /// What the relay sent `to` among `out`, of `kind`.
+    std::vector<std::vector<std::uint8_t>> sentTo(const std::vector<Out> &out, const Address &to, RelayKind kind);
+
+    /// Each test console's session, by relay.
+    std::map<std::pair<const Relay *, int>, std::uint32_t> g_sessions;
+    std::uint32_t g_nonce = 0x5000;
+
+    /// Console `n` comes in (Hello, Enter), unless it has already -- or
+    /// `again`, as a console started again: its session. (What the relay
+    /// said goes in `said`, if given.)
+    std::uint32_t comeIn(Relay &relay, int n, std::uint32_t now, bool again = false, std::vector<Out> *said = nullptr)
+    {
+        const auto key = std::make_pair(static_cast<const Relay *>(&relay), n);
+        auto known = g_sessions.find(key);
+        if (!again && known != g_sessions.end())
+            return known->second;
+        std::vector<Out> out;
+        std::uint8_t bytes[64], cookie[kRelayCookieBytes] = {}, token[kRelayTokenBytes];
+        const std::uint32_t nonce = ++g_nonce;
+        relay.receive(at(n), bytes, relayHelloWrite(bytes, nonce), now, out);
+        const auto challenge = sentTo(out, at(n), RelayKind::Challenge);
+        if (challenge.size() == 1)
+            relayChallengeRead(challenge[0].data(), static_cast<int>(challenge[0].size()), cookie);
+        out.clear();
+        relay.receive(at(n), bytes, relayEnterWrite(bytes, nonce, cookie, nullptr), now, out);
+        std::uint32_t session = 0;
+        const auto welcome = sentTo(out, at(n), RelayKind::Welcome);
+        if (welcome.size() == 1)
+            relayWelcomeRead(welcome[0].data(), static_cast<int>(welcome[0].size()), session, token);
+        if (said != nullptr)
+            said->insert(said->end(), out.begin(), out.end());
+        g_sessions[key] = session;
+        return session;
+    }
+
+    /// What the relay sent `to` among `out`, of `kind`.
     std::vector<std::vector<std::uint8_t>> sentTo(const std::vector<Out> &out, const Address &to, RelayKind kind)
     {
         std::vector<std::vector<std::uint8_t>> found;
@@ -62,7 +98,7 @@ namespace
         o.room[0] = kNetVersion;
         std::uint8_t bytes[kRelayMostBytes];
         out.clear();
-        relay.receive(at(n), bytes, relayOpenWrite(bytes, 100u + n, o), now, out);
+        relay.receive(at(n), bytes, relayOpenWrite(bytes, comeIn(relay, n, now), o), now, out);
         const auto opened = sentTo(out, at(n), RelayKind::Opened);
         std::uint32_t id = 0;
         return opened.size() == 1 && relayRoomIdRead(opened[0].data(), static_cast<int>(opened[0].size()), id) ? id : 0;
@@ -78,7 +114,7 @@ namespace
         char name[kNetTextBytes];
         std::snprintf(name, sizeof(name), "P%d", n);
         out.clear();
-        relay.receive(at(n), bytes, relayJoinWrite(bytes, 100u + n, id, name), now, out);
+        relay.receive(at(n), bytes, relayJoinWrite(bytes, comeIn(relay, n, now), id, name), now, out);
         auto result = [&]() -> int
         {
             const auto joined = sentTo(out, at(n), RelayKind::Joined);
@@ -100,7 +136,7 @@ namespace
         if (answer < 0)
             return -100;
         out.clear();
-        relay.receive(at(host), bytes, relayAnswerWrite(bytes, 100u + host, ticket, answer != 0), now, out);
+        relay.receive(at(host), bytes, relayAnswerWrite(bytes, comeIn(relay, host, now), ticket, answer != 0), now, out);
         return result();
     }
 
@@ -108,7 +144,7 @@ namespace
     {
         std::uint8_t bytes[kRelayMostBytes];
         out.clear();
-        relay.receive(at(n), bytes, relaySmallWrite(bytes, RelayKind::List, 100u + n), now, out);
+        relay.receive(at(n), bytes, relaySmallWrite(bytes, RelayKind::List, comeIn(relay, n, now)), now, out);
         const auto got = sentTo(out, at(n), RelayKind::Rooms);
         return got.size() == 1 ? relayRoomsRead(got[0].data(), static_cast<int>(got[0].size()), rooms, kRelayListMost)
                                : -1;
@@ -123,6 +159,7 @@ namespace
 
     void testDatagrams()
     {
+        g_sessions.clear(); // (a relay of an earlier test's may have been where this one is)
         std::uint8_t bytes[kRelayMostBytes];
         RelayHead head;
         const int size = relaySmallWrite(bytes, RelayKind::Kick, 0xDEADBEEFu, 5);
@@ -167,6 +204,7 @@ namespace
 
     void testRooms()
     {
+        g_sessions.clear(); // (a relay of an earlier test's may have been where this one is)
         Relay relay;
         std::vector<Out> out;
         std::uint32_t now = 1000;
@@ -193,7 +231,7 @@ namespace
         std::uint8_t bytes[kRelayMostBytes];
         const std::uint8_t frame[5] = {1, 2, 3, 4, 5};
         out.clear();
-        relay.receive(at(0), bytes, relayDataWrite(bytes, 100, 0, frame, 5), now, out);
+        relay.receive(at(0), bytes, relayDataWrite(bytes, comeIn(relay, 0, now), 0, frame, 5), now, out);
         const auto to1 = sentTo(out, at(1), RelayKind::Data);
         const auto to2 = sentTo(out, at(2), RelayKind::Data);
         int who = -1;
@@ -203,49 +241,59 @@ namespace
                   std::memcmp(in, frame, 5) == 0,
               "a host frame goes to each client, from the host");
         out.clear();
-        relay.receive(at(2), bytes, relayDataWrite(bytes, 102, 2, frame, 5), now, out);
+        relay.receive(at(2), bytes, relayDataWrite(bytes, comeIn(relay, 2, now), 2, frame, 5), now, out);
         const auto toHost = sentTo(out, at(0), RelayKind::Data);
         check(out.size() == 1 && toHost.size() == 1 &&
                   relayDataRead(toHost[0].data(), static_cast<int>(toHost[0].size()), who, in) == 5 && who == 2,
               "a client's goes to the host alone, saying whose");
         out.clear();
-        relay.receive(at(2), bytes, relayDataWrite(bytes, 102, 7, frame, 5), now, out);
+        relay.receive(at(2), bytes, relayDataWrite(bytes, comeIn(relay, 2, now), 7, frame, 5), now, out);
         check(sentTo(out, at(0), RelayKind::Data).size() == 1 &&
                   relayDataRead(sentTo(out, at(0), RelayKind::Data)[0].data(),
                                 static_cast<int>(sentTo(out, at(0), RelayKind::Data)[0].size()), who, in) == 5 &&
                   who == 2,
               "... whoever it says it is from: the relay says");
         out.clear();
-        relay.receive(at(3), bytes, relayDataWrite(bytes, 103, 0, frame, 5), now, out);
+        relay.receive(at(3), bytes, relayDataWrite(bytes, comeIn(relay, 3, now), 0, frame, 5), now, out);
         check(out.empty(), "a console in no room sends nothing on");
 
         // No more let in while a match is on.
         out.clear();
-        relay.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Admit, 100, 0), now, out);
+        relay.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Admit, comeIn(relay, 0, now), 0), now, out);
         out.clear();
-        relay.receive(at(1), bytes, relaySmallWrite(bytes, RelayKind::Bye, 101), now, out);
+        relay.receive(at(1), bytes, relaySmallWrite(bytes, RelayKind::Bye, comeIn(relay, 1, now)), now, out);
         check(lastStatus(out, 0) == 0x4u && relay.peers() == 3, "a client says goodbye: the host is told, it is forgotten");
         check(join(relay, 3, id, now, out) == -static_cast<int>(RelayRefuse::Closed),
               "a room that lets nobody in refuses, though there is room");
-        relay.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Admit, 100, 1), now, out);
+        relay.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Admit, comeIn(relay, 0, now), 1), now, out);
         check(join(relay, 3, id, now, out) == 1, "... and once it lets them in again, the first free place is given");
 
         // The host sends one away.
         out.clear();
-        relay.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Kick, 100, 3 - 2), now, out);
+        relay.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Kick, comeIn(relay, 0, now), 3 - 2), now, out);
         check(sentTo(out, at(3), RelayKind::Bye).size() == 1 && lastStatus(out, 0) == 0x4u,
               "the host sends client 1 away: it is told, and the host told who is left");
 
-        // A console started again at the same address is a new one.
+        // Another's session at a known address (made up, by one who is not
+        // there): not answered, and the console there keeps its place.
         out.clear();
         relay.receive(at(2), bytes, relaySmallWrite(bytes, RelayKind::Ping, 999), now, out);
-        check(lastStatus(out, 0) == 0u && sentTo(out, at(2), RelayKind::Pong).size() == 1,
-              "the same address with another session: the one before is out of the room");
+        relay.receive(at(2), bytes, relaySmallWrite(bytes, RelayKind::Bye, 999), now, out);
+        relay.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Bye, 998), now, out);
+        check(out.empty() && relay.peers() == 3 && relay.rooms() == 1,
+              "a datagram in another session than the console's there: nothing done, nothing said");
+
+        // A console started again at the same address comes in again: it is
+        // a new one.
+        out.clear();
+        comeIn(relay, 2, now, true, &out);
+        check(lastStatus(out, 0) == 0u && sentTo(out, at(2), RelayKind::Welcome).size() == 1,
+              "the same address coming in again: the one before is out of the room");
 
         // Silence.
         out.clear();
         now += kRelaySilentMs - 10;
-        relay.receive(at(2), bytes, relaySmallWrite(bytes, RelayKind::Ping, 999), now, out);
+        relay.receive(at(2), bytes, relaySmallWrite(bytes, RelayKind::Ping, comeIn(relay, 2, now)), now, out);
         now += 20;
         relay.tick(now, out);
         check(relay.rooms() == 0 && relay.peers() == 1, "a host that says nothing for too long: gone, and its room");
@@ -254,7 +302,7 @@ namespace
         const std::uint32_t second = open(relay, 4, "Barney", 8, now, out);
         join(relay, 5, second, now, out, 4);
         out.clear();
-        relay.receive(at(4), bytes, relaySmallWrite(bytes, RelayKind::Bye, 104), now, out);
+        relay.receive(at(4), bytes, relaySmallWrite(bytes, RelayKind::Bye, comeIn(relay, 4, now)), now, out);
         check(relay.rooms() == 0 && sentTo(out, at(5), RelayKind::Bye).size() == 1,
               "a host says goodbye: the room is closed, its client told");
     }
@@ -263,6 +311,7 @@ namespace
     /// them talk, and no more than a voice's worth a second.
     void testVoice()
     {
+        g_sessions.clear(); // (a relay of an earlier test's may have been where this one is)
         Relay relay;
         std::vector<Out> out;
         std::uint32_t now = 1000;
@@ -279,12 +328,12 @@ namespace
         auto say = [&](int n, int number)
         {
             out.clear();
-            relay.receive(at(n), bytes, relayVoiceWrite(bytes, 100u + n, n, number, 8182, packet), now, out);
+            relay.receive(at(n), bytes, relayVoiceWrite(bytes, comeIn(relay, n, now), n, number, 8182, packet), now, out);
         };
 
         say(1, 5);
         check(out.empty(), "a host that has not let them talk: nothing passed on");
-        relay.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Admit, 100, kRelayAdmitIn | kRelayAdmitVoice),
+        relay.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Admit, comeIn(relay, 0, now), kRelayAdmitIn | kRelayAdmitVoice),
                       now, out);
         say(1, 6);
         const auto toHost = sentTo(out, at(0), RelayKind::Voice);
@@ -295,7 +344,8 @@ namespace
               "it lets them: a client's goes to the host and the other client, not back to it");
         check(relayVoiceRead(toTwo[0].data(), static_cast<int>(toTwo[0].size()), heard) && heard.player == 1 &&
                   heard.number == 6 && heard.rate == 8182 && std::memcmp(heard.packet, packet, kVoiceAdpcmBytes) == 0 &&
-                  relayHeadRead(toTwo[0].data(), static_cast<int>(toTwo[0].size()), head) && head.session == 102,
+                  relayHeadRead(toTwo[0].data(), static_cast<int>(toTwo[0].size()), head) &&
+                      head.session == comeIn(relay, 2, now),
               "... as it was said, in the hearer's own session");
         check(sentTo(out, at(3), RelayKind::Voice).empty() && sentTo(out, at(4), RelayKind::Voice).empty(),
               "... and nothing to another room");
@@ -306,7 +356,7 @@ namespace
         say(5, 1);
         check(out.empty(), "a console in no room: nothing");
         out.clear();
-        relayVoiceWrite(bytes, 101, 1, 8, 8182, packet);
+        relayVoiceWrite(bytes, comeIn(relay, 1, now), 1, 8, 8182, packet);
         bytes[kRelayHeadBytes + 2] = 0; // (a rate of nothing)
         bytes[kRelayHeadBytes + 3] = 0;
         relay.receive(at(1), bytes, kRelayVoiceBytes, now, out);
@@ -326,13 +376,14 @@ namespace
         check(sentTo(out, at(0), RelayKind::Voice).size() == 1, "... and the next second, passed on again");
 
         // Talk taken back.
-        relay.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Admit, 100, kRelayAdmitIn), now, out);
+        relay.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Admit, comeIn(relay, 0, now), kRelayAdmitIn), now, out);
         say(1, 7);
         check(out.empty(), "the host no longer lets them: nothing");
     }
 
     void testKnocks()
     {
+        g_sessions.clear(); // (a relay of an earlier test's may have been where this one is)
         Relay relay;
         std::vector<Out> out;
         std::uint32_t now = 5000;
@@ -346,14 +397,14 @@ namespace
         check(join(relay, 2, id, now, out, 0, -1) == -100, "one at the door, the host not answering yet");
         std::uint8_t bytes[kRelayMostBytes];
         out.clear();
-        relay.receive(at(2), bytes, relayJoinWrite(bytes, 102, id, "P2"), now + 100, out);
+        relay.receive(at(2), bytes, relayJoinWrite(bytes, comeIn(relay, 2, now), id, "P2"), now + 100, out);
         check(out.empty(), "... it asks again: the host is not asked twice for it");
         out.clear();
         relay.tick(now + 1200, out);
         check(sentTo(out, at(0), RelayKind::Knock).size() == 1, "... a second later the host is asked again");
         out.clear();
-        relay.receive(at(2), bytes, relaySmallWrite(bytes, RelayKind::Ping, 102), now + kRelayKnockMs, out);
-        relay.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Ping, 100), now + kRelayKnockMs, out);
+        relay.receive(at(2), bytes, relaySmallWrite(bytes, RelayKind::Ping, comeIn(relay, 2, now)), now + kRelayKnockMs, out);
+        relay.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Ping, comeIn(relay, 0, now)), now + kRelayKnockMs, out);
         out.clear();
         relay.tick(now + kRelayKnockMs + 100, out);
         const auto late = sentTo(out, at(2), RelayKind::Refused);
@@ -370,16 +421,16 @@ namespace
         char name[kNetTextBytes];
         relayKnockRead(knocked[0].data(), static_cast<int>(knocked[0].size()), ticket, name);
         out.clear();
-        relay.receive(at(3), bytes, relaySmallWrite(bytes, RelayKind::Bye, 103), now, out);
+        relay.receive(at(3), bytes, relaySmallWrite(bytes, RelayKind::Bye, comeIn(relay, 3, now)), now, out);
         out.clear();
-        relay.receive(at(0), bytes, relayAnswerWrite(bytes, 100, ticket, true), now, out);
+        relay.receive(at(0), bytes, relayAnswerWrite(bytes, comeIn(relay, 0, now), ticket, true), now, out);
         check(sentTo(out, at(3), RelayKind::Joined).empty() && lastStatus(out, 0) == 0xFFFFu,
               "... it goes before the host says yes: nobody let in");
 
         // A host that goes: those at its door are told there is no room.
         check(join(relay, 4, id, now, out, 0, -1) == -100, "one more at the door");
         out.clear();
-        relay.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Bye, 100), now, out);
+        relay.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Bye, comeIn(relay, 0, now)), now, out);
         const auto gone = sentTo(out, at(4), RelayKind::Refused);
         check(gone.size() == 1 &&
                   relaySmallRead(gone[0].data(), static_cast<int>(gone[0].size())) ==
@@ -430,7 +481,9 @@ namespace
     struct Console
     {
         int n = 0;
-        std::uint32_t session = 0;
+        std::uint32_t nonce = 0, session = 0;
+        std::uint8_t cookie[kRelayCookieBytes] = {};
+        bool haveCookie = false, entered = false;
         Link up, down;
         std::unique_ptr<NetMatch> match;
         std::uint32_t room = 0;
@@ -452,7 +505,7 @@ namespace
         {
             auto c = std::make_unique<Console>();
             c->n = static_cast<int>(consoles.size());
-            c->session = 0x1000u + static_cast<std::uint32_t>(c->n);
+            c->nonce = 0x1000u + static_cast<std::uint32_t>(c->n);
             c->match = std::make_unique<NetMatch>();
             char name[kNetTextBytes];
             std::snprintf(name, sizeof(name), "P%d", c->n);
@@ -483,6 +536,14 @@ namespace
                     if (c->out)
                         continue;
                     Console &me = *c;
+                    // (Coming in first, said again until it is answered.)
+                    if (!me.entered)
+                    {
+                        me.up.send(now, bytes,
+                                   me.haveCookie ? relayEnterWrite(bytes, me.nonce, me.cookie, nullptr)
+                                                 : relayHelloWrite(bytes, me.nonce));
+                        continue;
+                    }
                     if (isHost(me) && me.room == 0)
                     {
                         RelayOpen open;
@@ -527,7 +588,20 @@ namespace
                     {
                         RelayHead head;
                         const int size = static_cast<int>(datagram.size());
-                        if (me.out || !relayHeadRead(datagram.data(), size, head) || head.session != me.session)
+                        if (me.out || !relayHeadRead(datagram.data(), size, head))
+                            continue;
+                        if (!me.entered)
+                        {
+                            if (head.session != me.nonce)
+                                continue;
+                            if (head.kind == RelayKind::Challenge)
+                                me.haveCookie = relayChallengeRead(datagram.data(), size, me.cookie);
+                            std::uint8_t token[kRelayTokenBytes];
+                            if (head.kind == RelayKind::Welcome)
+                                me.entered = relayWelcomeRead(datagram.data(), size, me.session, token);
+                            continue;
+                        }
+                        if (head.session != me.session)
                             continue;
                         if (head.kind == RelayKind::Opened)
                             relayRoomIdRead(datagram.data(), size, me.room);
@@ -581,6 +655,7 @@ namespace
 
     void testLobbyThroughRelay()
     {
+        g_sessions.clear(); // (a relay of an earlier test's may have been where this one is)
         Online online;
         Console &host = online.add(true);
         NetRules rules;
@@ -619,6 +694,7 @@ namespace
 
     void testIni()
     {
+        g_sessions.clear(); // (a relay of an earlier test's may have been where this one is)
         const char text[] = "# the relay\r\n"
                             "[relay]\r\n"
                             "  Host =  relay.example.org  \r\n"
@@ -671,6 +747,7 @@ namespace
 
     void testServeRound()
     {
+        g_sessions.clear(); // (a relay of an earlier test's may have been where this one is)
         using hlrelay::Serve;
         Relay relay;
         PretendSocket socket;
@@ -682,7 +759,7 @@ namespace
 
         // A flood: more than a round reads.
         std::uint8_t ping[kRelayHeadBytes];
-        const int pingSize = relaySmallWrite(ping, RelayKind::Ping, 0x1000u);
+        const int pingSize = relaySmallWrite(ping, RelayKind::Ping, comeIn(relay, 1, now));
         for (int i = 0; i < Serve::kMostPerRound * 3 + 10; ++i)
             socket.waiting.push_back({at(1), std::vector<std::uint8_t>(ping, ping + pingSize)});
         now += Relay::kStatusMs; // (the host is due to be told who is there)
@@ -719,6 +796,7 @@ namespace
 
     void testSipHash()
     {
+        g_sessions.clear(); // (a relay of an earlier test's may have been where this one is)
         // The paper's own (appendix A), and the reference code's first vector:
         // key 00..0f, and a message of 00..0e, or none.
         std::uint8_t key[16], message[15];
@@ -732,6 +810,7 @@ namespace
 
     void testLog()
     {
+        g_sessions.clear(); // (a relay of an earlier test's may have been where this one is)
         using hlrelay::IpLog;
         Relay relay;
         std::vector<std::string> lines;
@@ -771,6 +850,7 @@ namespace
 
     void testStatsLine()
     {
+        g_sessions.clear(); // (a relay of an earlier test's may have been where this one is)
         using hlrelay::Serve;
         Relay relay;
         std::vector<std::string> lines;
@@ -779,7 +859,7 @@ namespace
         std::uint32_t now = 1000;
         Serve serve(relay, socket, now);
         std::uint8_t ping[kRelayHeadBytes];
-        const int pingSize = relaySmallWrite(ping, RelayKind::Ping, 7);
+        const int pingSize = relaySmallWrite(ping, RelayKind::Ping, comeIn(relay, 1, now));
         for (int i = 0; i < 3; ++i)
             socket.waiting.push_back({at(1), std::vector<std::uint8_t>(ping, ping + pingSize)});
         socket.waiting.push_back({at(2), {1, 2, 3}});
@@ -794,10 +874,121 @@ namespace
         // than the relay waits.)
         const std::string &last = lines.back();
         check(last.find("stats peers=0 rooms=0 in=4 in_bytes=27 out=4 out_bytes=32 drop_not_ours=1 drop_too_many=0 "
-                        "send_failed=0 full_rounds=0 (last 60 s)") == 0,
+                        "drop_unknown=0 drop_bad_cookie=0 send_failed=0 full_rounds=0 (last 60 s)") == 0,
               "a line of counts each minute: consoles, rooms, what came, went and fell");
         serve.round(now + 2 * Serve::kStatsMs);
         check(lines.back().find("in=0 in_bytes=0 out=0") != std::string::npos, "... each minute's own");
+    }
+
+    void testComingIn()
+    {
+        g_sessions.clear(); // (a relay of an earlier test's may have been where this one is)
+        Relay relay;
+        std::uint8_t secret[Relay::kSecretBytes];
+        for (int i = 0; i < Relay::kSecretBytes; ++i)
+            secret[i] = static_cast<std::uint8_t>(rnd());
+        relay.setSecret(secret);
+        std::vector<Out> out;
+        const std::uint32_t now = 5000000;
+        std::uint8_t bytes[kRelayMostBytes + 16];
+
+        // A console not known: only Hello and Enter are answered, and never
+        // with more than was sent; nothing is kept.
+        bool quiet = true, small = true;
+        for (int kind = 0; kind <= static_cast<int>(kRelayLastKind) + 1; ++kind)
+        {
+            for (int size = 0; size <= kRelayMostBytes + 16; size += 1 + static_cast<int>(rnd() % 7))
+            {
+                for (int i = 0; i < size; ++i)
+                    bytes[i] = static_cast<std::uint8_t>(rnd());
+                if (size >= kRelayHeadBytes)
+                    relayHeadWrite(bytes, static_cast<RelayKind>(kind), rnd());
+                out.clear();
+                relay.receive(at(1), bytes, size, now, out);
+                int said = 0;
+                for (const Out &one : out)
+                    said += static_cast<int>(one.bytes.size());
+                small = small && said <= size;
+                if (kind != static_cast<int>(RelayKind::Hello))
+                    quiet = quiet && out.empty();
+            }
+        }
+        check(quiet && relay.peers() == 0,
+              "a console not known: nothing answered but a Hello, and nothing kept (an Enter needs a good cookie)");
+        check(small, "... and no answer bigger than what it was sent, whatever it was");
+
+        // The cookie.
+        out.clear();
+        const std::uint32_t nonce = 0xC0FFEEu;
+        relay.receive(at(1), bytes, relayHelloWrite(bytes, nonce), now, out);
+        std::uint8_t cookie[kRelayCookieBytes] = {}, token[kRelayTokenBytes] = {};
+        const auto challenge = sentTo(out, at(1), RelayKind::Challenge);
+        check(challenge.size() == 1 && challenge[0].size() <= static_cast<std::size_t>(kRelayHelloBytes) &&
+                  relayChallengeRead(challenge[0].data(), static_cast<int>(challenge[0].size()), cookie) &&
+                  relay.peers() == 0,
+              "a Hello: a cookie, nothing kept");
+        out.clear();
+        relay.receive(at(1), bytes, relayHelloWrite(bytes, nonce) - 1, now, out);
+        check(out.empty(), "... a Hello short of its padding: nothing");
+
+        auto enterWith = [&](const Address &from, std::uint32_t n, const std::uint8_t *c, std::uint32_t when)
+        {
+            out.clear();
+            relay.receive(from, bytes, relayEnterWrite(bytes, n, c, nullptr), when, out);
+            return sentTo(out, from, RelayKind::Welcome);
+        };
+        std::uint8_t forged[kRelayCookieBytes];
+        std::memcpy(forged, cookie, sizeof(forged));
+        forged[7] ^= 1;
+        const std::uint64_t badBefore = relay.drops().badCookie;
+        check(enterWith(at(1), nonce, forged, now).empty() && relay.peers() == 0 &&
+                  relay.drops().badCookie == badBefore + 1,
+              "an Enter with a cookie it did not make: refused, nothing said");
+        check(enterWith(at(2), nonce, cookie, now).empty() && relay.peers() == 0,
+              "... with one made for another address");
+        check(enterWith({at(1).ip, static_cast<std::uint16_t>(at(1).port + 1)}, nonce, cookie, now).empty() &&
+                  relay.peers() == 0,
+              "... or another port of the same address");
+        check(enterWith(at(1), nonce + 1, cookie, now).empty() && relay.peers() == 0, "... or another nonce");
+        const std::uint32_t window = 1u << Relay::kCookieShift;
+        check(enterWith(at(1), nonce, cookie, now + 2 * window).empty() && relay.peers() == 0,
+              "... or too old (two windows on)");
+
+        const auto welcome = enterWith(at(1), nonce, cookie, now + window);
+        std::uint32_t session = 0;
+        check(welcome.size() == 1 && welcome[0].size() <= static_cast<std::size_t>(kRelayEnterBytes) &&
+                  relayWelcomeRead(welcome[0].data(), static_cast<int>(welcome[0].size()), session, token) &&
+                  session != 0 && session != nonce && relay.peers() == 1,
+              "the cookie sent back, in the next window still: known, given a session of the relay's");
+        std::uint8_t sameToken[kRelayTokenBytes];
+        std::uint32_t same = 0;
+        const auto again = enterWith(at(1), nonce, cookie, now + window);
+        check(again.size() == 1 && relayWelcomeRead(again[0].data(), static_cast<int>(again[0].size()), same, sameToken) &&
+                  same == session && std::memcmp(sameToken, token, kRelayTokenBytes) == 0 && relay.peers() == 1,
+              "... the Enter said again (the Welcome lost): the same answer, nothing more kept");
+
+        out.clear();
+        relay.receive(at(1), bytes, relaySmallWrite(bytes, RelayKind::Ping, session), now + window, out);
+        check(sentTo(out, at(1), RelayKind::Pong).size() == 1, "... and from then on, in its session, it is answered");
+        out.clear();
+        relay.receive(at(1), bytes, relaySmallWrite(bytes, RelayKind::Ping, nonce), now + window, out);
+        check(out.empty(), "... not in another");
+
+        // Another relay (or this one started again): another secret, other
+        // cookies and sessions.
+        Relay other;
+        secret[0] ^= 0xFF;
+        other.setSecret(secret);
+        out.clear();
+        other.receive(at(1), bytes, relayEnterWrite(bytes, nonce, cookie, nullptr), now, out);
+        check(out.empty() && other.peers() == 0, "a cookie of another relay's (or of this one before it started again): no good");
+
+        // As many as it may know.
+        Relay full;
+        for (int n = 0; n < static_cast<int>(Relay::kMostPeers); ++n)
+            comeIn(full, 100 + n, now);
+        check(full.peers() == Relay::kMostPeers && comeIn(full, 99, now) == 0 && full.drops().tooMany == 1,
+              "one more than it may know: not let in, and counted");
     }
 } // namespace
 
@@ -813,6 +1004,7 @@ int main()
     testSipHash();
     testLog();
     testStatsLine();
+    testComingIn();
     std::printf("%s (%d failed)\n", g_failures == 0 ? "PASS" : "FAIL", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

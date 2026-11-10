@@ -37,8 +37,10 @@ namespace hlrelay
     /// Datagrams the relay let fall, by why.
     struct Drops
     {
-        std::uint64_t notOurs = 0; ///< not this relay protocol's (or of another version)
-        std::uint64_t tooMany = 0; ///< from a console new to it, while it knows as many as it may
+        std::uint64_t notOurs = 0;   ///< not this relay protocol's (or of another version)
+        std::uint64_t tooMany = 0;   ///< a console coming in, while it knows as many as it may
+        std::uint64_t unknown = 0;   ///< from no console it knows (or not in its session), and not coming in
+        std::uint64_t badCookie = 0; ///< coming in with a cookie it did not make for that address, or too old
     };
 
     struct Out
@@ -56,6 +58,15 @@ namespace hlrelay
         /// How often a host is told who is in its room, whether it changed
         /// or not (a Status lost on the way is not waited on).
         static constexpr std::uint32_t kStatusMs = 1000;
+        /// A cookie is good in the window of time it was made in and the
+        /// next: windows of 2^14 ms (16 s).
+        static constexpr int kCookieShift = 14;
+        static constexpr int kSecretBytes = 32;
+
+        /// The relay's own secret (kSecretBytes, random, made at start-up and
+        /// never shown): what cookies are made under, and sessions and tokens
+        /// picked from. (Without it, all zeros: for the tests.)
+        void setSecret(const std::uint8_t *secret);
 
         /// What it does, a line at a time (rooms opened and closed, who came
         /// and went), for the operator.
@@ -84,7 +95,9 @@ namespace hlrelay
         {
             std::uint32_t id = 0; ///< its number here, for as long as it is known (never 0)
             Address at;
-            std::uint32_t session = 0;
+            std::uint32_t session = 0; ///< the relay's pick
+            std::uint32_t nonce = 0;   ///< what it came in with (an Enter said again is welcomed again)
+            std::uint8_t token[hldata::kRelayTokenBytes] = {};
             std::uint32_t heardMs = 0;
             std::uint32_t room = 0; ///< the room it hosts or is in; 0: none
             int slot = -1;          ///< 0: its host; 1..7: a client of it
@@ -129,6 +142,15 @@ namespace hlrelay
         void drop(std::uint32_t id, std::vector<Out> &out, bool told);
         void status(Room &room, std::uint32_t nowMs, std::vector<Out> &out);
         void say(std::vector<Out> &out, const Peer &to, const std::uint8_t *bytes, int size);
+        void say(std::vector<Out> &out, const Address &to, const std::uint8_t *bytes, int size);
+        /// The cookie for `at` coming in with `nonce`, made in `window`.
+        void cookie(const Address &at, std::uint32_t nonce, std::uint32_t window, std::uint8_t *out) const;
+        bool cookieGood(const Address &at, std::uint32_t nonce, const std::uint8_t *cookie, std::uint32_t nowMs) const;
+        /// An Enter: a console known from now on (or again), if its cookie is good.
+        void enter(const Address &from, std::uint32_t nonce, const std::uint8_t *bytes, int size, std::uint32_t nowMs,
+                   std::vector<Out> &out);
+        /// Eight bytes no one can guess (keyed by the secret).
+        std::uint64_t random();
         void note(const std::string &line);
         /// A console as the log names it: its id here, and its address as shown.
         std::string named(const Peer &peer) const;
@@ -143,5 +165,8 @@ namespace hlrelay
         std::uint32_t nextPeer_ = 1;
         Drops drops_;
         std::uint8_t salt_[16] = {};
+        std::uint8_t cookieKey_[16] = {};
+        std::uint8_t randomKey_[16] = {};
+        std::uint64_t randomCount_ = 0;
     };
 } // namespace hlrelay

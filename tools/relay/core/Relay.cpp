@@ -16,6 +16,101 @@ namespace hlrelay
         return line;
     }
 
+    void Relay::setSecret(const std::uint8_t *secret)
+    {
+        std::memcpy(cookieKey_, secret, sizeof(cookieKey_));
+        std::memcpy(randomKey_, secret + sizeof(cookieKey_), sizeof(randomKey_));
+    }
+
+    std::uint64_t Relay::random()
+    {
+        std::uint8_t count[8];
+        for (int i = 0; i < 8; ++i)
+            count[i] = static_cast<std::uint8_t>(randomCount_ >> (8 * i));
+        ++randomCount_;
+        return sipHash24(randomKey_, count, sizeof(count));
+    }
+
+    void Relay::cookie(const Address &at, std::uint32_t nonce, std::uint32_t window, std::uint8_t *out) const
+    {
+        std::uint8_t what[14];
+        relayPut32(what, at.ip);
+        what[4] = static_cast<std::uint8_t>(at.port);
+        what[5] = static_cast<std::uint8_t>(at.port >> 8);
+        relayPut32(what + 6, nonce);
+        relayPut32(what + 10, window);
+        const std::uint64_t mac = sipHash24(cookieKey_, what, sizeof(what));
+        relayPut32(out, window);
+        relayPut32(out + 4, static_cast<std::uint32_t>(mac));
+        relayPut32(out + 8, static_cast<std::uint32_t>(mac >> 32));
+    }
+
+    bool Relay::cookieGood(const Address &at, std::uint32_t nonce, const std::uint8_t *given, std::uint32_t nowMs) const
+    {
+        const std::uint32_t window = relayGet32(given);
+        const std::uint32_t now = nowMs >> kCookieShift;
+        if (window != now && window != now - 1)
+            return false;
+        std::uint8_t made[kRelayCookieBytes];
+        cookie(at, nonce, window, made);
+        unsigned differ = 0;
+        for (int i = 0; i < kRelayCookieBytes; ++i)
+            differ |= static_cast<unsigned>(made[i] ^ given[i]);
+        return differ == 0;
+    }
+
+    void Relay::enter(const Address &from, std::uint32_t nonce, const std::uint8_t *bytes, int size,
+                      std::uint32_t nowMs, std::vector<Out> &out)
+    {
+        const std::uint8_t *given = nullptr, *token = nullptr;
+        if (!relayEnterRead(bytes, size, given, token))
+        {
+            ++drops_.unknown;
+            return;
+        }
+        if (!cookieGood(from, nonce, given, nowMs))
+        {
+            ++drops_.badCookie;
+            return;
+        }
+        std::uint8_t welcome[kRelayWelcomeBytes];
+        Peer *me = peer(from);
+        // (Said again, the Welcome lost on the way: welcomed again, the same.)
+        if (me != nullptr && me->nonce == nonce)
+        {
+            me->heardMs = nowMs;
+            say(out, *me, welcome, relayWelcomeWrite(welcome, nonce, me->session, me->token));
+            return;
+        }
+        // (Another, from where one was: a console started again there, or
+        // another behind the same port. It has shown that it is at that
+        // address: the one before is gone.)
+        if (me != nullptr)
+            drop(me->id, out, false);
+        if (peers_.size() >= kMostPeers)
+        {
+            ++drops_.tooMany;
+            return;
+        }
+        Peer fresh;
+        while (nextPeer_ == 0 || peers_.count(nextPeer_) != 0)
+            ++nextPeer_;
+        fresh.id = nextPeer_++;
+        fresh.at = from;
+        fresh.nonce = nonce;
+        do
+            fresh.session = static_cast<std::uint32_t>(random());
+        while (fresh.session == 0);
+        const std::uint64_t t = random();
+        for (int i = 0; i < kRelayTokenBytes; ++i)
+            fresh.token[i] = static_cast<std::uint8_t>(t >> (8 * i));
+        fresh.heardMs = nowMs;
+        me = &(peers_[fresh.id] = fresh);
+        at_[from.key()] = fresh.id;
+        note(named(*me) + " came");
+        say(out, *me, welcome, relayWelcomeWrite(welcome, nonce, me->session, me->token));
+    }
+
     void Relay::setLogSalt(const std::uint8_t *salt) { std::memcpy(salt_, salt, sizeof(salt_)); }
 
     std::string Relay::shown(const Address &at) const
@@ -84,7 +179,12 @@ namespace hlrelay
 
     void Relay::say(std::vector<Out> &out, const Peer &to, const std::uint8_t *bytes, int size)
     {
-        out.push_back({to.at, std::vector<std::uint8_t>(bytes, bytes + size)});
+        say(out, to.at, bytes, size);
+    }
+
+    void Relay::say(std::vector<Out> &out, const Address &to, const std::uint8_t *bytes, int size)
+    {
+        out.push_back({to, std::vector<std::uint8_t>(bytes, bytes + size)});
     }
 
     void Relay::status(Room &room, std::uint32_t nowMs, std::vector<Out> &out)
@@ -216,32 +316,33 @@ namespace hlrelay
             ++drops_.notOurs;
             return;
         }
-        Peer *me = peer(from);
-        // (The same address with another session: a console started again,
-        // or another behind the same port. The one before is gone.)
-        if (me != nullptr && me->session != head.session)
+        // Coming in: a cookie for a Hello (kept nowhere: it is made again to
+        // be checked), and a console known for an Enter that sends it back.
+        if (head.kind == RelayKind::Hello)
         {
-            drop(me->id, out, false);
-            me = nullptr;
-        }
-        if (me == nullptr)
-        {
-            if (head.kind == RelayKind::Bye)
-                return;
-            if (peers_.size() >= kMostPeers)
+            if (size < kRelayHelloBytes)
             {
-                ++drops_.tooMany;
+                ++drops_.unknown;
                 return;
             }
-            Peer fresh;
-            while (nextPeer_ == 0 || peers_.count(nextPeer_) != 0)
-                ++nextPeer_;
-            fresh.id = nextPeer_++;
-            fresh.at = from;
-            fresh.session = head.session;
-            me = &(peers_[fresh.id] = fresh);
-            at_[from.key()] = fresh.id;
-            note(named(*me) + " came");
+            std::uint8_t made[kRelayCookieBytes], challenge[kRelayChallengeBytes];
+            cookie(from, head.session, nowMs >> kCookieShift, made);
+            say(out, from, challenge, relayChallengeWrite(challenge, head.session, made));
+            return;
+        }
+        if (head.kind == RelayKind::Enter)
+        {
+            enter(from, head.session, bytes, size, nowMs, out);
+            return;
+        }
+        // Anything else: only from a console known at that address, in the
+        // session it was given. (Another's session, or none: not answered,
+        // and the one known there is left as it is.)
+        Peer *me = peer(from);
+        if (me == nullptr || me->session != head.session)
+        {
+            ++drops_.unknown;
+            return;
         }
         me->heardMs = nowMs;
         std::uint8_t reply[kRelayRoomsMostBytes > kRelayMostBytes ? kRelayRoomsMostBytes : kRelayMostBytes];

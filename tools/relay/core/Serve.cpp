@@ -50,16 +50,19 @@ namespace hlrelay
     std::string Serve::statsLine(const Counts &before, unsigned seconds) const
     {
         const Counts &now = counts;
-        char line[320];
+        char line[384];
         std::snprintf(line, sizeof(line),
                       "stats peers=%zu rooms=%zu in=%llu in_bytes=%llu out=%llu out_bytes=%llu drop_not_ours=%llu "
-                      "drop_too_many=%llu send_failed=%llu full_rounds=%llu (last %u s)",
+                      "drop_too_many=%llu drop_unknown=%llu drop_bad_cookie=%llu send_failed=%llu full_rounds=%llu "
+                      "(last %u s)",
                       relay_.peers(), relay_.rooms(), static_cast<unsigned long long>(now.received - before.received),
                       static_cast<unsigned long long>(now.receivedBytes - before.receivedBytes),
                       static_cast<unsigned long long>(now.sent - before.sent),
                       static_cast<unsigned long long>(now.sentBytes - before.sentBytes),
                       static_cast<unsigned long long>(now.drops.notOurs - before.drops.notOurs),
                       static_cast<unsigned long long>(now.drops.tooMany - before.drops.tooMany),
+                      static_cast<unsigned long long>(now.drops.unknown - before.drops.unknown),
+                      static_cast<unsigned long long>(now.drops.badCookie - before.drops.badCookie),
                       static_cast<unsigned long long>(now.sendFailed - before.sendFailed),
                       static_cast<unsigned long long>(now.fullRounds - before.fullRounds), seconds);
         return line;

@@ -82,7 +82,17 @@ namespace hlrt::netrelay
             int port;
             int sock;
             sockaddr_in server;
+            /// What it says carries: the session the relay gave it -- or,
+            /// coming in, its nonce.
             std::uint32_t session;
+            // Coming in (HlRelay.hpp): the relay knows it only once it has
+            // sent back the cookie it was given. `in`: it has (Welcome).
+            bool in;
+            std::uint8_t entering; ///< 0: not coming in; 1: saying Hello; 2: Enter
+            std::uint8_t enterTries;
+            std::uint32_t lastEnter;
+            std::uint8_t cookie[kRelayCookieBytes];
+            std::uint8_t token[kRelayTokenBytes];
             Role role;
             std::uint32_t lastPump;
             std::uint32_t lastSent;
@@ -174,7 +184,11 @@ namespace hlrt::netrelay
 
         TWL_CODE void sendRaw(const std::uint8_t *bytes, int size)
         {
-            if (s.sock < 0 || size <= 0)
+            if (s.sock < 0 || size <= kRelayHeadBytes - 1)
+                return;
+            // (Not known to the relay yet: it would only let it fall.)
+            if (!s.in && bytes[3] != static_cast<std::uint8_t>(RelayKind::Hello) &&
+                bytes[3] != static_cast<std::uint8_t>(RelayKind::Enter))
                 return;
             sendto(s.sock, bytes, static_cast<std::size_t>(size), 0, reinterpret_cast<const sockaddr *>(&s.server),
                    sizeof(s.server));
@@ -207,6 +221,66 @@ namespace hlrt::netrelay
             s.lastJoin = Global::vblanks();
         }
 
+        /// Hello, or Enter with the cookie: whichever it is at.
+        TWL_CODE void sendEntering()
+        {
+            std::uint8_t bytes[kRelayEnterBytes > kRelayHelloBytes ? kRelayEnterBytes : kRelayHelloBytes];
+            if (s.entering == 1)
+                sendRaw(bytes, relayHelloWrite(bytes, s.session));
+            else
+                sendRaw(bytes, relayEnterWrite(bytes, s.session, s.cookie, nullptr));
+            s.lastEnter = Global::vblanks();
+        }
+
+        /// Coming in afresh, with a new nonce: the relay knows nothing of
+        /// this console until it is answered.
+        TWL_CODE void beginEnter()
+        {
+            s.session = (s.session * 1664525u + 1013904223u) ^ Global::vblanks();
+            if (s.session == 0)
+                s.session = 1;
+            s.in = false;
+            s.entering = 1;
+            s.enterTries = 0;
+            sendEntering();
+        }
+
+        /// Coming in: said again until answered (each half a second). An Enter
+        /// not answered a few times (its cookie gone stale, or lost): Hello
+        /// again.
+        TWL_CODE void stepEnter(std::uint32_t now)
+        {
+            if (s.in || s.entering == 0 || now - s.lastEnter < 30)
+                return;
+            if (s.entering == 2 && ++s.enterTries >= 4)
+            {
+                s.entering = 1;
+                s.enterTries = 0;
+            }
+            sendEntering();
+        }
+
+        /// Come in: what the role it has says first, said now.
+        TWL_CODE void sayRole()
+        {
+            switch (s.role)
+            {
+            case Role::Host:
+                sendOpen();
+                break;
+            case Role::Scan:
+                sendSmall(RelayKind::List);
+                s.lastList = Global::vblanks();
+                break;
+            case Role::Client:
+                if (s.slot < 0 && !s.refusedNow)
+                    sendJoin();
+                break;
+            default:
+                break;
+            }
+        }
+
         TWL_CODE void keep(int from, const std::uint8_t *frame, int size)
         {
             const int next = (s.ringTail + 1) % kRingSlots;
@@ -229,8 +303,30 @@ namespace hlrt::netrelay
             RelayHead head;
             if (!relayHeadRead(bytes, size, head) || head.session != s.session)
                 return false;
+            if (!s.in && head.kind != RelayKind::Challenge && head.kind != RelayKind::Welcome)
+                return false;
             switch (head.kind)
             {
+            case RelayKind::Challenge:
+                if (s.entering == 1 && relayChallengeRead(bytes, size, s.cookie))
+                {
+                    s.entering = 2;
+                    s.enterTries = 0;
+                    sendEntering();
+                }
+                break;
+            case RelayKind::Welcome:
+            {
+                std::uint32_t session = 0;
+                if (s.entering == 2 && relayWelcomeRead(bytes, size, session, s.token))
+                {
+                    s.session = session;
+                    s.entering = 0;
+                    s.in = true;
+                    sayRole();
+                }
+                break;
+            }
             case RelayKind::Pong:
                 return true;
             case RelayKind::Opened:
@@ -375,6 +471,11 @@ namespace hlrt::netrelay
                 return;
             s.lastPump = now;
             drain();
+            if (!s.in)
+            {
+                stepEnter(now);
+                return;
+            }
             switch (s.role)
             {
             case Role::Host:
@@ -422,7 +523,6 @@ namespace hlrt::netrelay
         // as a network takes to join and the relay to answer.
         Connect phase = Connect::Off;
         std::uint32_t phaseAt = 0;
-        std::uint32_t lastPing = 0;
 
         TWL_CODE void failConnect(int code, const char *text)
         {
@@ -442,6 +542,8 @@ namespace hlrt::netrelay
                 s.ringHead = s.ringTail = 0;
                 s.sock = -1;
                 s.role = Role::None;
+                s.in = false;
+                s.entering = 0;
                 if (!wifiUp && !Wifi_InitDefault(INIT_ONLY | WIFI_ATTEMPT_DSI_MODE))
                 {
                     char text[48];
@@ -491,7 +593,8 @@ namespace hlrt::netrelay
                     failConnect(5, kNoSocket);
                     return;
                 }
-                // A session of its own: a console started again is another one.
+                // (The first nonce's seed: a console started again is
+                // another one.)
                 std::uint8_t mac[6] = {};
                 Wifi_GetData(WIFIGETDATA_MACADDRESS, 6, mac);
                 s.session = (now * 2654435761u) ^
@@ -501,17 +604,14 @@ namespace hlrt::netrelay
                     s.session = 1;
                 phase = Connect::Waiting;
                 phaseAt = now;
-                lastPing = now - 30;
+                beginEnter();
                 return;
             }
             case Connect::Waiting:
-                // ... and the relay is there.
-                if (now - lastPing >= 30)
-                {
-                    sendSmall(RelayKind::Ping);
-                    lastPing = now;
-                }
-                if (drain())
+                // ... and the relay is there, and lets it in.
+                drain();
+                stepEnter(now);
+                if (s.in)
                 {
                     started = true;
                     s.lastPump = s.lastSent = now;
@@ -615,16 +715,16 @@ namespace hlrt::netrelay
         if (!started)
             return;
         // (Said twice: there is no waiting to hear it arrived.)
-        if (s.role != Role::None && s.role != Role::Scan)
+        if (s.in)
         {
             sendSmall(RelayKind::Bye);
             sendSmall(RelayKind::Bye);
             drain();
         }
-        // (A new session: what the relay knew of this one is gone with it.)
-        s.session = s.session * 1664525u + 1013904223u;
-        if (s.session == 0)
-            s.session = 1;
+        // (What the relay knew of it is gone with it: whatever it does next,
+        // it comes in again first.)
+        s.in = false;
+        s.entering = 0;
         s.role = Role::None;
         s.roomId = 0;
         s.clientMask = 0;
@@ -666,7 +766,8 @@ namespace hlrt::netrelay
         std::memset(s.knocks, 0, sizeof(s.knocks));
         std::memset(s.answered, 0, sizeof(s.answered));
         s.answeredNext = 0;
-        sendOpen();
+        s.lastOpen = Global::vblanks();
+        beginEnter(); // (its room said once it is in: sayRole)
         return true;
     }
 
@@ -753,8 +854,8 @@ namespace hlrt::netrelay
         shutdown();
         s.role = Role::Scan;
         s.roomCount = 0;
-        sendSmall(RelayKind::List);
         s.lastList = Global::vblanks();
+        beginEnter(); // (the list asked once it is in: sayRole)
         return true;
     }
 

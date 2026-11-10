@@ -156,6 +156,17 @@ int main(int argc, char **argv)
 
     hlrelay::Relay relay;
     relay.ipLog = ipLog;
+    // (Its own secret, new each time it starts: a cookie made before is no
+    // good after.)
+    {
+        std::uint8_t secret[hlrelay::Relay::kSecretBytes];
+        if (!randomBytes(secret, sizeof(secret)))
+        {
+            std::perror("getrandom");
+            return 1;
+        }
+        relay.setSecret(secret);
+    }
     // (The secret hashed addresses are made under, renewed each day: one
     // day's hashes cannot be matched with another's.)
     std::time_t saltDay = -1;

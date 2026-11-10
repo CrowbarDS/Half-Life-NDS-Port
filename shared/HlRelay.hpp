@@ -13,9 +13,18 @@
 // and the match are the very ones played over the local wireless.
 //
 // Every datagram begins with a head of eight bytes: the magic, the relay
-// protocol's version, the kind, and the sender's session -- a number a
-// console picks when it goes online, so that a console started again from
-// the same address is not taken for the one before.
+// protocol's version, the kind, and the sender's session.
+//
+// COMING IN. The relay keeps nothing for an address until the console there
+// has shown it gets what is sent to it (so that nobody can make the relay
+// keep, or send, anything in another's name): it says Hello, with a number
+// of its own (its nonce) in the session's place; the relay answers with a
+// cookie, made from that address, that nonce and the time, under a secret of
+// its own -- and keeps nothing; the console sends the cookie back (Enter),
+// and only then is it known: Welcome gives it its session, picked by the
+// relay at random, which everything it says from then on carries. Before
+// that, nothing the relay sends is bigger than what it was sent (Hello and
+// Enter are padded so), and nothing else is answered at all.
 //
 // std-only, no heap: the console and the relay both compile it, and the
 // relay's tests run it.
@@ -29,8 +38,9 @@
 namespace hldata
 {
     inline constexpr std::uint16_t kRelayMagic = 0x5248; // "HR"
-    /// (2: the host lets each in, or not. 3: Voice.)
-    inline constexpr std::uint8_t kRelayVersion = 3;
+    /// (2: the host lets each in, or not. 3: Voice. 4: Hello, Enter -- the
+    /// console proves its address before the relay keeps anything.)
+    inline constexpr std::uint8_t kRelayVersion = 4;
     /// The port a relay listens on unless server.ini says another.
     inline constexpr int kRelayPort = 27500;
     inline constexpr int kRelayHeadBytes = 8;
@@ -67,7 +77,12 @@ namespace hldata
         Knock = 15,  ///< relay to a host: (ticket u8, name) asks to come in; said again until answered
         Answer = 16, ///< host: (ticket u8, yes u8)
         Voice = 17,  ///< what one says aloud: (player u8, number u8, rate u16, a packet: HlVoice.hpp), to all the others
+        Hello = 18,     ///< console, its nonce for session: let me in (padded: kRelayHelloBytes)
+        Challenge = 19, ///< relay: the cookie (kRelayCookieBytes) to send back
+        Enter = 20,     ///< console, its nonce for session: the cookie, and a token (0: none) (kRelayEnterBytes)
+        Welcome = 21,   ///< relay, to the nonce: your session (u32), and your token (u64)
     };
+    inline constexpr RelayKind kRelayLastKind = RelayKind::Welcome;
 
     /// `Admit`'s byte: bit 0, more are let in; bit 1, they may talk (Voice is
     /// passed on). A host says it again with its room, now and then.
@@ -122,7 +137,7 @@ namespace hldata
     {
         if (size < kRelayHeadBytes || bytes[0] != (kRelayMagic & 0xFF) || bytes[1] != (kRelayMagic >> 8) ||
             bytes[2] != kRelayVersion || bytes[3] < static_cast<std::uint8_t>(RelayKind::Ping) ||
-            bytes[3] > static_cast<std::uint8_t>(RelayKind::Voice))
+            bytes[3] > static_cast<std::uint8_t>(kRelayLastKind))
             return false;
         head.kind = static_cast<RelayKind>(bytes[3]);
         head.session = relayGet32(bytes + 4);
@@ -305,6 +320,84 @@ namespace hldata
             std::memcpy(room.room, in + 7 + kNetTextBytes, kNetRoomBytes);
         }
         return count;
+    }
+
+    // ------------------------------------------------------- coming in
+
+    /// A cookie: the time it was made in (the relay's), and what proves it.
+    inline constexpr int kRelayCookieBytes = 12;
+    /// A token: what a console shows to be the one it was (a session taken
+    /// up again from another address).
+    inline constexpr int kRelayTokenBytes = 8;
+    inline constexpr int kRelayHelloBytes = kRelayHeadBytes + 16;
+    inline constexpr int kRelayChallengeBytes = kRelayHeadBytes + kRelayCookieBytes;
+    inline constexpr int kRelayEnterBytes = kRelayHeadBytes + kRelayCookieBytes + kRelayTokenBytes;
+    inline constexpr int kRelayWelcomeBytes = kRelayHeadBytes + 4 + kRelayTokenBytes;
+    static_assert(kRelayChallengeBytes <= kRelayHelloBytes && kRelayWelcomeBytes <= kRelayEnterBytes,
+                  "an answer to one not yet known no bigger than what it said");
+
+    inline int relayHelloWrite(std::uint8_t *out, std::uint32_t nonce)
+    {
+        const int at = relayHeadWrite(out, RelayKind::Hello, nonce);
+        std::memset(out + at, 0, kRelayHelloBytes - at);
+        return kRelayHelloBytes;
+    }
+
+    inline int relayChallengeWrite(std::uint8_t *out, std::uint32_t nonce, const std::uint8_t *cookie)
+    {
+        const int at = relayHeadWrite(out, RelayKind::Challenge, nonce);
+        std::memcpy(out + at, cookie, kRelayCookieBytes);
+        return kRelayChallengeBytes;
+    }
+    /// The cookie of a `Challenge` (kRelayCookieBytes into `cookie`).
+    inline bool relayChallengeRead(const std::uint8_t *bytes, int size, std::uint8_t *cookie)
+    {
+        if (size < kRelayChallengeBytes)
+            return false;
+        std::memcpy(cookie, bytes + kRelayHeadBytes, kRelayCookieBytes);
+        return true;
+    }
+
+    inline int relayEnterWrite(std::uint8_t *out, std::uint32_t nonce, const std::uint8_t *cookie,
+                               const std::uint8_t *token)
+    {
+        const int at = relayHeadWrite(out, RelayKind::Enter, nonce);
+        std::memcpy(out + at, cookie, kRelayCookieBytes);
+        if (token != nullptr)
+            std::memcpy(out + at + kRelayCookieBytes, token, kRelayTokenBytes);
+        else
+            std::memset(out + at + kRelayCookieBytes, 0, kRelayTokenBytes);
+        return kRelayEnterBytes;
+    }
+    /// Where the cookie and the token of an `Enter` are in `bytes`; false if
+    /// it is short.
+    inline bool relayEnterRead(const std::uint8_t *bytes, int size, const std::uint8_t *&cookie,
+                               const std::uint8_t *&token)
+    {
+        if (size < kRelayEnterBytes)
+            return false;
+        cookie = bytes + kRelayHeadBytes;
+        token = cookie + kRelayCookieBytes;
+        return true;
+    }
+
+    inline int relayWelcomeWrite(std::uint8_t *out, std::uint32_t nonce, std::uint32_t session,
+                                 const std::uint8_t *token)
+    {
+        const int at = relayHeadWrite(out, RelayKind::Welcome, nonce);
+        relayPut32(out + at, session);
+        std::memcpy(out + at + 4, token, kRelayTokenBytes);
+        return kRelayWelcomeBytes;
+    }
+    /// The session a `Welcome` gives, and its token (kRelayTokenBytes); false
+    /// if it is short, or gives none.
+    inline bool relayWelcomeRead(const std::uint8_t *bytes, int size, std::uint32_t &session, std::uint8_t *token)
+    {
+        if (size < kRelayWelcomeBytes)
+            return false;
+        session = relayGet32(bytes + kRelayHeadBytes);
+        std::memcpy(token, bytes + kRelayHeadBytes + 4, kRelayTokenBytes);
+        return session != 0;
     }
 
     /// A game frame, and whose it is (0: the host's; else the client's).
