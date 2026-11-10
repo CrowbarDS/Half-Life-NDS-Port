@@ -1307,12 +1307,18 @@ namespace hlrt
         }
         if (!mapKnown_)
             return;
-        // Said to whoever has not heard it. (Those sent the game have no card:
-        // it is nothing to them.)
-        const unsigned here = netlink::clients();
+        // Said to whoever has not heard it -- of those in the match's own
+        // account (clientsWere_: netHostJoin'd), not the link's: online, the
+        // relay's word of a newcomer can come in the middle of a frame, and
+        // an event said before its stream begins is never seen by it. And
+        // again every two seconds, whatever: one lost costs a transfer, a
+        // repeat nothing (mapOffered knows it). (Those sent the game have no
+        // card: it is nothing to them.)
+        const unsigned here = clientsWere_;
         mapSaidTo_ &= here;
-        if ((here & ~mapSaidTo_) != 0)
+        if ((here & ~mapSaidTo_) != 0 || (here != 0 && now - mapSumAt_ >= 120))
         {
+            mapSumAt_ = now;
             netSay(match_, netEvent(NetEventType::MapSum, 0, static_cast<std::int16_t>(mapHash_ & 0xFFFF),
                                     static_cast<std::int16_t>(mapHash_ >> 16), static_cast<std::int16_t>(mapCrc_ & 0xFFFF),
                                     static_cast<std::int16_t>(mapCrc_ >> 16), static_cast<std::int16_t>(mapBytes_ & 0xFFFF),
@@ -1487,10 +1493,11 @@ namespace hlrt
                 return;
             }
         }
-        // (What it says, again now and then until it has it: the host may
-        // have missed it in a change of map.)
-        if (mapKnown_ && mapSays_ != kMapHaveYes && mapStage_ != MapStage::Getting &&
-            Global::vblanks() - mapSaidAt_ >= 60)
+        // (What it says, again now and then -- every second until it has it,
+        // every two once it has: the host may have missed it in a change of
+        // map, or (online) before this console was in its account.)
+        if (mapKnown_ && mapStage_ != MapStage::Getting &&
+            Global::vblanks() - mapSaidAt_ >= (mapSays_ == kMapHaveYes ? 120u : 60u))
             mapSay(mapSays_);
     }
 

@@ -400,6 +400,7 @@ namespace hlrt
         std::uint32_t mapHash_ = 0, mapCrc_ = 0, mapBytes_ = 0;
         bool mapKnown_ = false;
         unsigned mapSaidTo_ = 0;
+        std::uint32_t mapSumAt_ = 0; ///< (when MapSum was last said)
         std::uint8_t mapHave_[hldata::kNetPlayers] = {};
         std::uint16_t mapPermille_[hldata::kNetPlayers] = {};
         std::uint32_t mapHeardAt_[hldata::kNetPlayers] = {};
