@@ -131,9 +131,10 @@
             <summary>Command line on macOS</summary>
             <div class="inner">
               <p class="dim">Unpack the command-line package and run it from Terminal. The first run may need the quarantine flag removed:</p>
-<pre><code>mkdir hlds-convert &amp;&amp; tar -xzf hlds-convert-*-cli-macos-universal.tar.gz -C hlds-convert
-xattr -dr com.apple.quarantine hlds-convert
-./hlds-convert/hlds-convert cook-all ~/Library/Application\ Support/Steam/steamapps/common/Half-Life/valve -o /Volumes/SDCARD --device dsi</code></pre>
+<pre><code>tar -xzf hlds-convert-*-cli-macos-universal.tar.gz
+xattr -dr com.apple.quarantine hlds-convert-cli-macos-universal
+cd hlds-convert-cli-macos-universal
+./hlds-convert cook-all ~/Library/Application\ Support/Steam/steamapps/common/Half-Life/valve -o /Volumes/SDCARD --device dsi</code></pre>
               <p class="dim small"><code>--device</code> says which console the card is for: <code>dsi</code>, <code>3ds</code> (TWiLight Menu++ then offers the wide screen), <code>ds</code> (a DS, DS Lite or DS flashcard; the default) or <code>emulator</code>. A card already converted gets only the ROM, made for its console, with <code>put-rom -o &lt;card&gt; --device &lt;console&gt;</code>.</p>
             </div>
           </details>
@@ -156,8 +157,9 @@ xattr -dr com.apple.quarantine hlds-convert
             <summary>Command line on Linux</summary>
             <div class="inner">
               <p class="dim">The command-line package is a static program with no dependencies, good for headless machines:</p>
-<pre><code>mkdir hlds-convert &amp;&amp; tar -xzf hlds-convert-*-cli-linux-*.tar.gz -C hlds-convert
-./hlds-convert/hlds-convert cook-all ~/.steam/steam/steamapps/common/Half-Life/valve -o /media/$USER/SDCARD --device dsi</code></pre>
+<pre><code>tar -xzf hlds-convert-*-cli-linux-*.tar.gz
+cd hlds-convert-cli-linux-*
+./hlds-convert cook-all ~/.steam/steam/steamapps/common/Half-Life/valve -o /media/$USER/SDCARD --device dsi</code></pre>
               <p class="dim small"><code>--device</code> says which console the card is for: <code>dsi</code>, <code>3ds</code> (TWiLight Menu++ then offers the wide screen), <code>ds</code> (a DS, DS Lite or DS flashcard; the default) or <code>emulator</code>. A card already converted gets only the ROM, made for its console, with <code>put-rom -o &lt;card&gt; --device &lt;console&gt;</code>.</p>
             </div>
           </details>

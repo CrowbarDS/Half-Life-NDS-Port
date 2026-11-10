@@ -98,9 +98,12 @@ jobs:
           done
           ./linuxdeploy --appdir AppDir --output appimage
           mv ./*.AppImage "dist/hlds-convert-${{ matrix.name }}.AppImage"
-          mkdir cli
-          cp build/cli/hlds-convert "$RUNNER_TEMP/ptexconv/ptexconv" THIRD_PARTY_LICENSES LICENSE-HALF-LIFE-SDK cli/
-          tar -C cli -czf "dist/hlds-convert-cli-${{ matrix.name }}.tar.gz" .
+          # (In a folder of its own, named as the archive is: unpacked, it
+          # leaves one folder, not its files strewn where it was opened.)
+          folder="hlds-convert-cli-${{ matrix.name }}"
+          mkdir -p "cli/$folder"
+          cp build/cli/hlds-convert "$RUNNER_TEMP/ptexconv/ptexconv" THIRD_PARTY_LICENSES LICENSE-HALF-LIFE-SDK "cli/$folder/"
+          tar -C cli -czf "dist/$folder.tar.gz" "$folder"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -421,8 +424,10 @@ jobs:
           codesign --force --deep --sign - "$app"
           mkdir -p dist cli
           ditto -c -k --keepParent "$app" dist/hlds-convert-macos-universal.zip
-          cp build/convert/hlds-convert "$RUNNER_TEMP/ptexconv/ptexconv" THIRD_PARTY_LICENSES LICENSE-HALF-LIFE-SDK cli/
-          tar -C cli -czf dist/hlds-convert-cli-macos-universal.tar.gz .
+          # (In a folder of its own, as on Linux.)
+          mkdir -p cli/hlds-convert-cli-macos-universal
+          cp build/convert/hlds-convert "$RUNNER_TEMP/ptexconv/ptexconv" THIRD_PARTY_LICENSES LICENSE-HALF-LIFE-SDK cli/hlds-convert-cli-macos-universal/
+          tar -C cli -czf dist/hlds-convert-cli-macos-universal.tar.gz hlds-convert-cli-macos-universal
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
