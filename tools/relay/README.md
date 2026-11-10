@@ -50,7 +50,11 @@ the console goes back to the menu saying so.
 A console the relay does not know -- one let go without hearing it, or any
 after the relay was started again (it then knows nobody) -- is told so
 (`Unknown`, at most once a second to an address), and goes back to the menu
-saying the relay was restarted. A console that hears nothing from the relay
+saying the relay was restarted -- unless it was the same relay, and the
+console only came from another address (its router gave it another port,
+or the network dropped for a moment): it then takes its session up again,
+in its room and its place, by a token only it was given, from an address
+it has shown is its own. A console that hears nothing from the relay
 for ten seconds while it is listening (it pings each second), or whose Wi-Fi
 connection goes, goes back to the menu too. One looking for games just looks
 again.
@@ -103,7 +107,7 @@ An address says who someone is, near enough, so it is logged no more than
 Once a minute it logs a line of counts:
 
 ```
-stats peers=12 rooms=3 in=21600 in_bytes=9431200 out=64800 out_bytes=27100000 drop_not_ours=0 other_version=0 drop_too_many=0 drop_unknown=0 drop_bad_cookie=0 drop_rate_hello=0 drop_rate_control=0 drop_rate_data=0 drop_rate_voice=0 drop_cap_peers=0 drop_cap_rooms=0 drop_cap_knocks=0 drop_out_budget=0 send_failed=0 full_rounds=0 (last 60 s)
+stats peers=12 rooms=3 in=21600 in_bytes=9431200 out=64800 out_bytes=27100000 drop_not_ours=0 other_version=0 resumed=0 drop_too_many=0 drop_unknown=0 drop_bad_cookie=0 drop_rate_hello=0 drop_rate_control=0 drop_rate_data=0 drop_rate_voice=0 drop_cap_peers=0 drop_cap_rooms=0 drop_cap_knocks=0 drop_out_budget=0 send_failed=0 full_rounds=0 (last 60 s)
 ```
 
 | | |
@@ -113,6 +117,7 @@ stats peers=12 rooms=3 in=21600 in_bytes=9431200 out=64800 out_bytes=27100000 dr
 | `out`, `out_bytes` | datagrams sent, and their bytes |
 | `drop_not_ours` | datagrams that were not this relay's protocol |
 | `other_version` | datagrams of this protocol but another version: a game, or a relay, to be updated (each address is told the relay's version, at most once a second) |
+| `resumed` | consoles that took their session up again from another address (a router gave them another port, or they came back after a drop) |
 | `drop_too_many` | consoles coming in while the relay knew as many as it may (1024) |
 | `drop_unknown` | datagrams from no console the relay knows, or in another session than the one there: a console it let go, a relay started again, or someone making them up |
 | `drop_bad_cookie` | consoles coming in with a cookie the relay did not make for that address, or one too old |

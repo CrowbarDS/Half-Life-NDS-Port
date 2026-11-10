@@ -56,11 +56,17 @@ namespace hlrt::netrelay
         constexpr std::uint32_t kAnswerFrames = 5 * 60; ///< for the relay to answer
         constexpr int kRingSlots = 24;
         constexpr int kHeardSlots = 12; ///< voice packets come, not yet read
-        /// Nothing from the relay for this long, while listening: it is taken
-        /// for gone (it answers a Ping each second).
-        constexpr std::uint32_t kRelayQuietFrames = 10 * 60;
+        /// Nothing from the relay for this long, while listening (it answers
+        /// a Ping each second): the session is taken up again, as from
+        /// another address (the network dropped a moment, or the router gave
+        /// another port).
+        constexpr std::uint32_t kRelayQuietFrames = 3 * 60;
         /// Coming in, not answered for this long: given up.
         constexpr std::uint32_t kEnterFrames = 10 * 60;
+        /// Taking a session up again, not answered for this long: given up --
+        /// sooner than a client takes its host for gone in a match (ten
+        /// seconds, NetGame).
+        constexpr std::uint32_t kResumeFrames = 8 * 60;
         // Why it was let go, apart from the relay's own reasons (RelayBye).
         constexpr std::uint8_t kByeForgotten = 250; ///< the relay does not know it (Unknown)
         constexpr std::uint8_t kByeNoAnswer = 251;  ///< nothing heard from the relay
@@ -103,6 +109,10 @@ namespace hlrt::netrelay
             std::uint8_t enterTries;
             std::uint32_t lastEnter;
             std::uint32_t enterSince;
+            /// Taking its session up again (Enter with its token): the
+            /// session it had, which the Welcome must give back.
+            bool resuming;
+            std::uint32_t oldSession;
             /// When the relay was last heard (in its session), and when the
             /// Wi-Fi was last looked at, and how many times in a row it was down.
             std::uint32_t lastHeard;
@@ -250,7 +260,7 @@ namespace hlrt::netrelay
             if (s.entering == 1)
                 sendRaw(bytes, relayHelloWrite(bytes, s.session));
             else
-                sendRaw(bytes, relayEnterWrite(bytes, s.session, s.cookie, nullptr));
+                sendRaw(bytes, relayEnterWrite(bytes, s.session, s.cookie, s.resuming ? s.token : nullptr));
             s.lastEnter = Global::vblanks();
         }
 
@@ -275,8 +285,20 @@ namespace hlrt::netrelay
             s.byeWhy = why;
             s.in = false;
             s.entering = 0;
+            s.resuming = false;
             if (s.role == Role::Client)
                 s.byeNow = true;
+        }
+
+        /// Its session taken up again, its role and place kept: the relay
+        /// gave it a token for this. (Until answered, nothing else is sent.)
+        TWL_CODE void resume()
+        {
+            if (s.resuming)
+                return;
+            s.resuming = true;
+            s.oldSession = s.session;
+            beginEnter();
         }
 
         /// Coming in: said again until answered (each half a second). An Enter
@@ -364,11 +386,21 @@ namespace hlrt::netrelay
                 std::uint32_t session = 0;
                 if (s.entering == 2 && relayWelcomeRead(bytes, size, session, s.token))
                 {
+                    const bool resumed = s.resuming;
+                    s.resuming = false;
                     s.session = session;
                     s.entering = 0;
                     s.in = true;
                     s.wifiDown = 0;
-                    sayRole();
+                    if (!resumed)
+                        sayRole();
+                    else if (session != s.oldSession)
+                    {
+                        // (Another session: the relay did not know its token
+                        // -- started again since. What it was is gone.)
+                        sendSmall(RelayKind::Bye);
+                        letGoNow(kByeForgotten);
+                    }
                 }
                 break;
             }
@@ -467,9 +499,11 @@ namespace hlrt::netrelay
                 break;
             }
             case RelayKind::Unknown:
-                // The relay does not know it: started again, or it let it go
-                // without its hearing.
-                letGoNow(kByeForgotten);
+                // The relay does not know it here: from another address (its
+                // router gave it another port), or the relay was started
+                // again, or let it go without its hearing. Its session is
+                // taken up again if it can be (the Welcome says).
+                resume();
                 break;
             case RelayKind::Bye:
             {
@@ -530,7 +564,7 @@ namespace hlrt::netrelay
                 // The relay answers a Ping each second: nothing for long
                 // while listening, it is gone. And the console's own Wi-Fi.
                 if (now - s.lastHeard >= kRelayQuietFrames)
-                    letGoNow(kByeNoAnswer);
+                    resume();
                 else if (now - s.lastWifiLook >= 60)
                 {
                     s.lastWifiLook = now;
@@ -549,8 +583,10 @@ namespace hlrt::netrelay
             }
             if (!s.in)
             {
-                // Coming in not answered for long: given up (a host, a client).
-                if (s.entering != 0 && s.role != Role::Scan && now - s.enterSince >= kEnterFrames)
+                // Coming in not answered for long: given up (a host, a client;
+                // anyone taking its session up again).
+                if (s.entering != 0 && (s.role != Role::Scan || s.resuming) &&
+                    now - s.enterSince >= (s.resuming ? kResumeFrames : kEnterFrames))
                     letGoNow(kByeNoAnswer);
                 stepEnter(now);
                 return;
@@ -631,6 +667,7 @@ namespace hlrt::netrelay
                 s.entering = 0;
                 s.relayVersion = 0;
                 s.byeWhy = 0;
+                s.resuming = false;
                 if (!wifiUp && !Wifi_InitDefault(INIT_ONLY | WIFI_ATTEMPT_DSI_MODE))
                 {
                     char text[48];
@@ -820,6 +857,7 @@ namespace hlrt::netrelay
         s.in = false;
         s.entering = 0;
         s.byeWhy = 0;
+        s.resuming = false;
         s.role = Role::None;
         s.roomId = 0;
         s.clientMask = 0;

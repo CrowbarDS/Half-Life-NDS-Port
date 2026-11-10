@@ -74,6 +74,25 @@ namespace hlrelay
             return;
         }
         std::uint8_t welcome[kRelayWelcomeBytes];
+        // Taking a session up again: its token, which only that console was
+        // ever given, and a cookie for where it is now. Its place is kept.
+        if (Peer *again = byToken(token))
+        {
+            if (again->at == from && again->nonce == nonce)
+            {
+                // (Said again, the Welcome lost: the same answer.)
+                again->heardMs = nowMs;
+                say(out, *again, welcome, relayWelcomeWrite(welcome, nonce, again->session, again->token));
+                return;
+            }
+            if (!rebind(*again, from, nowMs, out))
+                return;
+            again->nonce = nonce;
+            again->heardMs = nowMs;
+            ++drops_.resumed;
+            say(out, *again, welcome, relayWelcomeWrite(welcome, nonce, again->session, again->token));
+            return;
+        }
         Peer *me = peer(from);
         // (Said again, the Welcome lost on the way: welcomed again, the same.)
         if (me != nullptr && me->nonce == nonce)
@@ -175,6 +194,73 @@ namespace hlrelay
             return false;
         said = nowMs + 1;
         ++versionCount_;
+        return true;
+    }
+
+    Relay::Peer *Relay::byToken(const std::uint8_t *token)
+    {
+        unsigned any = 0;
+        for (int i = 0; i < kRelayTokenBytes; ++i)
+            any |= token[i];
+        if (any == 0)
+            return nullptr;
+        for (auto &[id, peer] : peers_)
+        {
+            unsigned differ = 0;
+            for (int i = 0; i < kRelayTokenBytes; ++i)
+                differ |= static_cast<unsigned>(peer.token[i] ^ token[i]);
+            if (differ == 0)
+                return &peer;
+        }
+        return nullptr;
+    }
+
+    void Relay::moveCounts(const Peer &peer, std::uint32_t from, std::uint32_t to)
+    {
+        if (from == to)
+            return;
+        uncount(from, &IpCount::peers);
+        ++counted(to).peers;
+        if (peer.slot == 0 && rooms_.count(peer.room) != 0)
+        {
+            uncount(from, &IpCount::rooms);
+            ++counted(to).rooms;
+        }
+        auto room = rooms_.find(peer.knocking);
+        if (room != rooms_.end())
+        {
+            for (Knock &k : room->second.knocks)
+            {
+                if (k.peer == peer.id)
+                {
+                    uncount(k.ip, &IpCount::knocks);
+                    k.ip = to;
+                    ++counted(to).knocks;
+                }
+            }
+        }
+    }
+
+    bool Relay::rebind(Peer &peer, const Address &from, std::uint32_t nowMs, std::vector<Out> &out)
+    {
+        Peer *there = this->peer(from);
+        if (there != nullptr && there != &peer)
+            drop(there->id, out, 0);
+        if (from.ip != peer.at.ip && counted(from.ip).peers >= limits.peersPerIp)
+        {
+            over(from, drops_.capPeers, "consoles at once", nowMs);
+            return false;
+        }
+        if (!(from == peer.at))
+        {
+            note(named(peer) + " came back from " + shown(from));
+            auto old = at_.find(peer.at.key());
+            if (old != at_.end() && old->second == peer.id)
+                at_.erase(old);
+            moveCounts(peer, peer.at.ip, from.ip);
+            peer.at = from;
+            at_[from.key()] = peer.id;
+        }
         return true;
     }
 

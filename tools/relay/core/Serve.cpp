@@ -70,13 +70,14 @@ namespace hlrelay
         char line[640];
         std::snprintf(line, sizeof(line),
                       "stats peers=%zu rooms=%zu in=%llu in_bytes=%llu out=%llu out_bytes=%llu drop_not_ours=%llu "
-                      "other_version=%llu drop_too_many=%llu drop_unknown=%llu drop_bad_cookie=%llu "
+                      "other_version=%llu resumed=%llu drop_too_many=%llu drop_unknown=%llu drop_bad_cookie=%llu "
                       "drop_rate_hello=%llu drop_rate_control=%llu drop_rate_data=%llu drop_rate_voice=%llu "
                       "drop_cap_peers=%llu drop_cap_rooms=%llu drop_cap_knocks=%llu drop_out_budget=%llu "
                       "send_failed=%llu full_rounds=%llu (last %u s)",
                       relay_.peers(), relay_.rooms(), n(now.received, before.received),
                       n(now.receivedBytes, before.receivedBytes), n(now.sent, before.sent),
                       n(now.sentBytes, before.sentBytes), n(d.notOurs, b.notOurs), n(d.otherVersion, b.otherVersion),
+                      n(d.resumed, b.resumed),
                       n(d.tooMany, b.tooMany), n(d.unknown, b.unknown), n(d.badCookie, b.badCookie),
                       n(d.rateHello, b.rateHello), n(d.rateControl, b.rateControl), n(d.rateData, b.rateData),
                       n(d.rateVoice, b.rateVoice), n(d.capPeers, b.capPeers), n(d.capRooms, b.capRooms),

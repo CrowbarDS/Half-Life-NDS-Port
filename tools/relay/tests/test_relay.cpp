@@ -884,7 +884,7 @@ namespace
         // (Three Pongs, and a Bye: by then it had said nothing for longer
         // than the relay waits.)
         const std::string &last = lines.back();
-        check(last.find("stats peers=0 rooms=0 in=4 in_bytes=27 out=4 out_bytes=33 drop_not_ours=1 other_version=0 drop_too_many=0 "
+        check(last.find("stats peers=0 rooms=0 in=4 in_bytes=27 out=4 out_bytes=33 drop_not_ours=1 other_version=0 resumed=0 drop_too_many=0 "
                         "drop_unknown=0 drop_bad_cookie=0 drop_rate_hello=0 drop_rate_control=0 drop_rate_data=0 "
                         "drop_rate_voice=0 drop_cap_peers=0 drop_cap_rooms=0 drop_cap_knocks=0 drop_out_budget=0 "
                         "send_failed=0 full_rounds=0 (last 60 s)") == 0,
@@ -1326,6 +1326,127 @@ namespace
         check(none, "... but what only a relay says (or a Bye): never answered (no two relays answering for ever)");
     }
 
+    /// A console at `from` comes in with `token` (null: none): the Welcome's
+    /// session, and its token into `got` (0 if not let in).
+    std::uint32_t enterWithToken(Relay &relay, const Address &from, const std::uint8_t *token, std::uint32_t now,
+                                 std::uint8_t *got, std::vector<Out> *said = nullptr)
+    {
+        std::vector<Out> out;
+        std::uint8_t bytes[64], cookie[kRelayCookieBytes] = {};
+        const std::uint32_t nonce = ++g_nonce;
+        relay.receive(from, bytes, relayHelloWrite(bytes, nonce), now, out);
+        const auto challenge = sentTo(out, from, RelayKind::Challenge);
+        if (challenge.size() != 1)
+            return 0;
+        relayChallengeRead(challenge[0].data(), static_cast<int>(challenge[0].size()), cookie);
+        out.clear();
+        relay.receive(from, bytes, relayEnterWrite(bytes, nonce, cookie, token), now, out);
+        std::uint32_t session = 0;
+        const auto welcome = sentTo(out, from, RelayKind::Welcome);
+        if (welcome.size() == 1)
+            relayWelcomeRead(welcome[0].data(), static_cast<int>(welcome[0].size()), session, got);
+        if (said != nullptr)
+            said->insert(said->end(), out.begin(), out.end());
+        return session;
+    }
+
+    void testResume()
+    {
+        g_sessions.clear();
+        Relay relay;
+        std::vector<Out> out;
+        std::uint8_t bytes[kRelayMostBytes];
+        std::uint32_t now = 500000;
+        const Address host = at(0), client = at(1);
+        const Address moved = {client.ip, static_cast<std::uint16_t>(client.port + 100)};
+        std::uint8_t hostToken[kRelayTokenBytes], token[kRelayTokenBytes], again[kRelayTokenBytes];
+        const std::uint32_t hostSession = enterWithToken(relay, host, nullptr, now, hostToken);
+        const std::uint32_t session = enterWithToken(relay, client, nullptr, now, token);
+        RelayOpen o;
+        o.most = 8;
+        relay.receive(host, bytes, relayOpenWrite(bytes, hostSession, o), now, out);
+        const auto opened = sentTo(out, host, RelayKind::Opened);
+        std::uint32_t room = 0;
+        relayRoomIdRead(opened[0].data(), static_cast<int>(opened[0].size()), room);
+        out.clear();
+        relay.receive(client, bytes, relayJoinWrite(bytes, session, room, "C"), now, out);
+        int ticket = 0;
+        char name[kNetTextBytes];
+        const auto knocked = sentTo(out, host, RelayKind::Knock);
+        relayKnockRead(knocked[0].data(), static_cast<int>(knocked[0].size()), ticket, name);
+        relay.receive(host, bytes, relayAnswerWrite(bytes, hostSession, ticket, true), now, out);
+
+        // Its router gives it another port: what it says is not known there...
+        now += 2000;
+        out.clear();
+        relay.receive(moved, bytes, relaySmallWrite(bytes, RelayKind::Ping, session), now, out);
+        check(onlyUnknown(out, 1) && out[0].to == moved, "a client's router gives it another port: told it is not known there");
+        // ... so it takes its session up again, with its token.
+        out.clear();
+        const std::uint32_t back = enterWithToken(relay, moved, token, now, again, &out);
+        check(back == session && std::memcmp(again, token, kRelayTokenBytes) == 0 && relay.peers() == 2 &&
+                  relay.drops().resumed == 1 && lastStatus(out, 0) == 0xFFFFu,
+              "... it comes in with its token: the same session, nothing new kept, the host not told of any change");
+        const std::uint8_t frame[3] = {7, 8, 9};
+        out.clear();
+        relay.receive(host, bytes, relayDataWrite(bytes, hostSession, 0, frame, 3), now, out);
+        check(sentTo(out, moved, RelayKind::Data).size() == 1 && sentTo(out, client, RelayKind::Data).empty(),
+              "... the host's frames go to where it is now, not where it was");
+        out.clear();
+        relay.receive(moved, bytes, relayDataWrite(bytes, session, 1, frame, 3), now, out);
+        check(sentTo(out, host, RelayKind::Data).size() == 1, "... its own still reach the host, as client 1");
+        out.clear();
+        relay.receive(client, bytes, relayDataWrite(bytes, session, 1, frame, 3), now, out);
+        check(sentTo(out, host, RelayKind::Data).empty(), "... and what comes from its old address is not passed on");
+
+        // Its Welcome lost: the Enter said again, from where it is now.
+        // (Covered by the nonce: a new one each time; here the same token.)
+        out.clear();
+        check(enterWithToken(relay, moved, token, now + 100, again) == session && relay.peers() == 2,
+              "... taking it up again from the same address (nothing heard for a while): the same session");
+
+        // Not with another's token, nor one made up.
+        std::uint8_t wrong[kRelayTokenBytes];
+        std::memcpy(wrong, token, sizeof(wrong));
+        wrong[0] ^= 1;
+        const Address stranger = at(7);
+        const std::uint32_t other = enterWithToken(relay, stranger, wrong, now, again);
+        check(other != 0 && other != session && std::memcmp(again, token, kRelayTokenBytes) != 0 && relay.peers() == 3,
+              "a token that is no one's: a console of its own, nobody's place taken");
+        // Nor a good token without a cookie for where it is.
+        out.clear();
+        std::uint8_t noCookie[kRelayCookieBytes] = {};
+        relay.receive(at(8), bytes, relayEnterWrite(bytes, 5, noCookie, token), now, out);
+        check(out.empty() && relay.drops().resumed == 2,
+              "a client's token, with no cookie for where it is sent from: nothing (its place not taken)");
+
+        // A host takes its up again: its room with it.
+        const Address hostMoved = {host.ip, static_cast<std::uint16_t>(host.port + 7)};
+        check(enterWithToken(relay, hostMoved, hostToken, now, again) == hostSession && relay.rooms() == 1,
+              "a host takes its session up again from another port: its room still there");
+        out.clear();
+        relay.receive(hostMoved, bytes, relayDataWrite(bytes, hostSession, 0, frame, 3), now, out);
+        check(sentTo(out, moved, RelayKind::Data).size() == 1, "... and its frames still reach its client");
+
+        // A console let go is not taken up again: a new one instead.
+        now += kRelaySilentMs + 1000;
+        relay.receive(moved, bytes, relaySmallWrite(bytes, RelayKind::Ping, session), now - 10, out);
+        out.clear();
+        relay.tick(now, out);
+        const std::uint32_t late = enterWithToken(relay, {client.ip, 9999}, token, now, again);
+        check(late != 0 && late != session, "a console let go (quiet too long): its token takes nothing up, it is new");
+
+        // From another address that has as many as it may: refused.
+        Relay full;
+        full.limits.peersPerIp = 1;
+        std::uint8_t t1[kRelayTokenBytes], t2[kRelayTokenBytes];
+        const Address a = {0x0A0A0001u, 1}, b = {0x0A0A0002u, 1};
+        enterWithToken(full, a, nullptr, now, t1);
+        enterWithToken(full, b, nullptr, now, t2);
+        check(enterWithToken(full, {b.ip, 2}, t1, now + 1000, again) == 0 && full.peers() == 2,
+              "taking a session up from an address that has as many consoles as it may: refused");
+    }
+
     void testByeReasons()
     {
         g_sessions.clear();
@@ -1438,6 +1559,7 @@ int main()
     testOutBudget();
     testByeReasons();
     testUnknown();
+    testResume();
     std::printf("%s (%d failed)\n", g_failures == 0 ? "PASS" : "FAIL", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

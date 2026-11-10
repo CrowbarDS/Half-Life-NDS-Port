@@ -43,6 +43,7 @@ namespace hlrelay
         std::uint64_t tooMany = 0;   ///< a console coming in, while it knows as many as it may
         std::uint64_t unknown = 0;   ///< from no console it knows (or not in its session), and not coming in (answered Unknown, now and then)
         std::uint64_t badCookie = 0; ///< coming in with a cookie it did not make for that address, or too old
+        std::uint64_t resumed = 0;   ///< consoles taken up again from another address (not a drop: counted for the log)
         // Over a limit (Limits.hpp).
         std::uint64_t rateHello = 0;   ///< an address coming in too often
         std::uint64_t rateControl = 0; ///< a console saying too much (but Data and Voice)
@@ -181,6 +182,17 @@ namespace hlrelay
                    std::vector<Out> &out);
         /// Eight bytes no one can guess (keyed by the secret).
         std::uint64_t random();
+        /// The console whose token `token` is (kRelayTokenBytes); null if
+        /// none (or it is all zeros: none given).
+        Peer *byToken(const std::uint8_t *token);
+        /// `peer` taken up again from `from` (its address changed: a router
+        /// gave it another port, or it came back after a drop), its place
+        /// kept; whoever was known at `from` is gone. False if `from`'s
+        /// address may have no more consoles.
+        bool rebind(Peer &peer, const Address &from, std::uint32_t nowMs, std::vector<Out> &out);
+        /// What `from` had counted for `peer` (itself, its room, its knock)
+        /// now counted for `to`.
+        void moveCounts(const Peer &peer, std::uint32_t from, std::uint32_t to);
 
         /// An address before its console is known: how often it comes in,
         /// and when it was last logged as over a limit.
