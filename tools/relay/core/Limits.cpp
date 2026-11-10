@@ -23,6 +23,7 @@ namespace hlrelay
             {"out-bytes-per-s", &Limits::outBytesPerSecond},
             {"empty-room-minutes", &Limits::emptyRoomMinutes, true},
             {"room-max-minutes", &Limits::roomMaxMinutes, true},
+            {"silent-seconds", &Limits::silentSeconds},
         };
     } // namespace
 
@@ -33,6 +34,8 @@ namespace hlrelay
             if (name == one.name)
             {
                 if (one.minutes ? value > kMostMinutes : value == 0)
+                    return false;
+                if (one.field == &Limits::silentSeconds && value > kMostSilentSeconds)
                     return false;
                 this->*one.field = value;
                 return true;
@@ -45,9 +48,9 @@ namespace hlrelay
     {
         return "             hello-per-s        Hello and Enter from one address, before it is known (10)\n"
                "             control-per-s      a console's datagrams other than Data and Voice (30)\n"
-               "             data-per-s         a console's Data datagrams (90)\n"
-               "             host-bytes-per-s   a host's Data bytes, which go to each of its clients (65536)\n"
-               "             client-bytes-per-s a client's Data bytes (24576)\n"
+               "             data-per-s         a console's Data datagrams (400)\n"
+               "             host-bytes-per-s   a host's Data bytes, which go to each of its clients (262144)\n"
+               "             client-bytes-per-s a client's Data bytes (49152)\n"
                "             voice-per-s        a console's Voice datagrams (45)\n"
                "             peers-per-ip       consoles known at one address at once (16)\n"
                "             rooms-per-ip       rooms open from one address at once (4)\n"
@@ -55,6 +58,7 @@ namespace hlrelay
                "             out-bytes-per-s    bytes the relay sends in all (12582912)\n"
                "             empty-room-minutes a room nobody is in or asking to join: closed after (30; 0 never)\n"
                "             room-max-minutes   any room: closed after (0, never)\n"
+               "             silent-seconds     a console saying nothing this long is let go (210; 3600 at most)\n"
                "             Each takes up to twice its rate at once (voice: its rate),\n"
                "             then its rate.\n";
     }

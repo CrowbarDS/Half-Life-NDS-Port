@@ -49,9 +49,14 @@ namespace hldata
     /// Rooms in one list.
     inline constexpr int kRelayListMost = 8;
     /// A console that says nothing for this long is taken for gone by the
-    /// relay (milliseconds): longer than a map takes to load, which says
-    /// nothing all the while.
-    inline constexpr std::uint32_t kRelaySilentMs = 45000;
+    /// relay (milliseconds), unless the relay is told otherwise
+    /// (`--limit silent-seconds`). A console online pings each second, even
+    /// between the stages of a map's load (netrelay::keepAlive): this is for
+    /// one that cannot -- a stage that takes long, a Wi-Fi that drops for a
+    /// while -- and is the owner's choice (2026-11-10), well over any load.
+    /// What it costs: a console switched off keeps its place, as the others
+    /// see it, this long.
+    inline constexpr std::uint32_t kRelaySilentMs = 210000;
     /// How long a console asking to join waits for the host's answer before
     /// it is told the host did not answer (milliseconds).
     inline constexpr std::uint32_t kRelayKnockMs = 30000;

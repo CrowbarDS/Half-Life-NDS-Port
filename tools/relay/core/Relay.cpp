@@ -881,7 +881,7 @@ namespace hlrelay
     {
         std::vector<std::uint32_t> silent;
         for (const auto &[id, peer] : peers_)
-            if (nowMs - peer.heardMs > kRelaySilentMs)
+            if (nowMs - peer.heardMs > limits.silentSeconds * 1000u)
                 silent.push_back(id);
         for (std::uint32_t id : silent)
         {

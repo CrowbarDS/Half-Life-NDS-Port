@@ -41,8 +41,11 @@ build/relay/hlds-relay --port 27500
 | `--limit NAME=VALUE` | one of the limits below; as often as needed |
 | `--quiet` | print nothing while running |
 
-A console that sends nothing for 45 seconds is let go, and with it its room
-if it was a host. Whenever the relay lets a console go it tells it why --
+A console that sends nothing for three and a half minutes (`--limit
+silent-seconds`) is let go, and with it its room if it was a host. A console
+online pings each second, even while a map loads, so this is only for one
+that cannot: a Wi-Fi that drops for a while. It costs this much: a console
+switched off keeps its place, as the others see it, that long. Whenever the relay lets a console go it tells it why --
 its host left or stopped answering, its host sent it away, it said nothing
 for too long, or the relay is stopping (Ctrl-C, or `systemctl stop`) -- and
 the console goes back to the menu saying so.
@@ -64,16 +67,19 @@ again.
 What a game needs, with room to spare; what is over is let fall (and
 counted, and logged once a minute for an address), so that nobody can make
 the relay work or send for others. A host sends a frame each 60th of a
-second (729 bytes at most), a client one (229 bytes at most), a voice packet
-each 27 ms at most, and a ping, its room or a list each second.
+second (729 bytes at most) -- and, while it sends a map to a console that has
+not got it, up to four pieces of 600 bytes with each: about 300 datagrams
+and 190 KB a second. A client sends a frame each 60th (229 bytes at most),
+a voice packet each 27 ms at most, and a ping, its room or a list each
+second.
 
 | `--limit` | default | |
 |---|---|---|
 | `hello-per-s` | 10 | Hello and Enter from one address, before its console is known |
 | `control-per-s` | 30 | a console's datagrams other than game frames and voice |
-| `data-per-s` | 90 | a console's game frames |
-| `host-bytes-per-s` | 65536 | a host's game frames, in bytes: each goes to every client of its room |
-| `client-bytes-per-s` | 24576 | a client's game frames, in bytes |
+| `data-per-s` | 400 | a console's game frames |
+| `host-bytes-per-s` | 262144 | a host's game frames, in bytes: each goes to every client of its room |
+| `client-bytes-per-s` | 49152 | a client's game frames, in bytes |
 | `voice-per-s` | 45 | a console's voice packets |
 | `peers-per-ip` | 16 | consoles known at one address at once (several behind one router) |
 | `rooms-per-ip` | 4 | rooms open from one address at once |
@@ -81,13 +87,16 @@ each 27 ms at most, and a ping, its room or a list each second.
 | `out-bytes-per-s` | 12582912 | bytes the relay sends in all (12 MB/s, about 100 Mbit/s) |
 | `empty-room-minutes` | 30 | a room nobody is in or asking to join is closed after this long (0: never) |
 | `room-max-minutes` | 0 | any room is closed after this long (0: never) |
+| `silent-seconds` | 210 | a console that says nothing this long is let go (3600 at most) |
 
 A room closed for its time sends its host (and any clients) back to the
 menu, saying why.
 
 Each rate may go to twice its rate at once (voice: its rate), then keeps to it.
-A full room of eight sends about 300 KB/s out: `out-bytes-per-s` is what
-the server's link (and its provider's traffic allowance) should bear.
+A full room of eight sends about 300 KB/s out in a match, and about 1.4 MB/s
+while its host sends a map (the relay passes each piece to every client):
+`out-bytes-per-s` is what the server's link (and its provider's traffic
+allowance) should bear.
 
 The system holds what comes in while the relay is busy; the relay asks for
 4 MB of room, but gets no more than `net.core.rmem_max` allows (often

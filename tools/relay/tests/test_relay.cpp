@@ -881,10 +881,9 @@ namespace
             stats = stats || line.rfind("stats ", 0) == 0;
         check(!stats, "no line of counts before its minute");
         serve.round(now + Serve::kStatsMs);
-        // (Three Pongs, and a Bye: by then it had said nothing for longer
-        // than the relay waits.)
+        // (Three Pongs; still known a minute on: the relay waits longer.)
         const std::string &last = lines.back();
-        check(last.find("stats peers=0 rooms=0 in=4 in_bytes=27 out=4 out_bytes=33 drop_not_ours=1 other_version=0 resumed=0 drop_too_many=0 "
+        check(last.find("stats peers=1 rooms=0 in=4 in_bytes=27 out=3 out_bytes=24 drop_not_ours=1 other_version=0 resumed=0 drop_too_many=0 "
                         "drop_unknown=0 drop_bad_cookie=0 drop_rate_hello=0 drop_rate_control=0 drop_rate_data=0 "
                         "drop_rate_voice=0 drop_cap_peers=0 drop_cap_rooms=0 drop_cap_knocks=0 drop_out_budget=0 "
                         "send_failed=0 full_rounds=0 (last 60 s)") == 0,
@@ -1113,6 +1112,21 @@ namespace
         check(named.set("data-per-s", 5) && named.dataPerSecond == 5 && !named.set("nope", 5) &&
                   !named.set("data-per-s", 0) && named.dataPerSecond == 5,
               "limits set by name; not one that is not there, nor to 0");
+        check(named.set("silent-seconds", 60) && named.silentSeconds == 60 && !named.set("silent-seconds", 0) &&
+                  !named.set("silent-seconds", Limits::kMostSilentSeconds + 1),
+              "... the silence a console is let go after: in seconds, not 0, an hour at most");
+        {
+            Relay quiet;
+            quiet.limits.silentSeconds = 60;
+            std::vector<Out> said;
+            comeIn(quiet, 1, 1000);
+            quiet.tick(1000 + 60000, said);
+            check(quiet.peers() == 1, "... a console quiet a minute, the relay set to a minute: still there");
+            quiet.tick(1000 + 60001, said);
+            check(quiet.peers() == 0, "... a moment after: let go");
+            check(Limits().silentSeconds * 1000u == kRelaySilentMs && kRelaySilentMs == 210000u,
+                  "... by default three and a half minutes");
+        }
 
         Relay relay;
         std::vector<std::string> lines;
@@ -1250,19 +1264,46 @@ namespace
             }
         }
         check(passed == sent && r2.drops().rateData == 0, "a game's own frames, host's and client's: every one passed on");
-        // ... twice as many, for ten seconds: held to its rate.
+        // A host sending a map as a game does online (its frame and four
+        // pieces of 600, with their heads, each 60th of a second): every one
+        // passed on, for ten seconds.
+        const int pieceBytes = 620; // (a piece and its head, as NetGame's fetchWrite makes it)
+        int sentNow = 0;
         passed = 0;
-        for (int f = 0; f < 1200; ++f)
+        for (int f = 0; f < 600; ++f)
         {
             out.clear();
-            const std::uint32_t when = t + 20000 + static_cast<std::uint32_t>(f * 1000 / 120);
+            const std::uint32_t when = t + 20000 + static_cast<std::uint32_t>(f * 1000 / 60);
             r2.receive(at(0), bytes, relayDataWrite(bytes, comeIn(r2, 0, t), 0, frame, kNetCmdBytes), when, out);
+            for (int k = 0; k < 4; ++k)
+                r2.receive(at(0), bytes, relayDataWrite(bytes, comeIn(r2, 0, t), 0, frame, pieceBytes), when, out);
+            r2.receive(at(1), bytes, relayDataWrite(bytes, comeIn(r2, 1, t), 1, frame, kNetReplyBytes), when, out);
+            if (f % 60 == 0)
+            {
+                r2.receive(at(0), bytes, relaySmallWrite(bytes, RelayKind::Ping, comeIn(r2, 0, t)), when, out);
+                r2.receive(at(1), bytes, relaySmallWrite(bytes, RelayKind::Ping, comeIn(r2, 1, t)), when, out);
+            }
+            passed += static_cast<int>(sentTo(out, at(1), RelayKind::Data).size() + sentTo(out, at(0), RelayKind::Data).size());
+            sentNow += 6;
+        }
+        check(passed == sentNow && r2.drops().rateData == 0,
+              "a host sending a map online (its frame and four pieces each 60th): every one passed on");
+        // ... twice that: held to its rate.
+        passed = 0;
+        int tried = 0;
+        for (int f = 0; f < 600; ++f)
+        {
+            out.clear();
+            const std::uint32_t when = t + 40000 + static_cast<std::uint32_t>(f * 1000 / 60);
+            for (int k = 0; k < 10; ++k)
+                r2.receive(at(0), bytes, relayDataWrite(bytes, comeIn(r2, 0, t), 0, frame, kNetCmdBytes), when, out);
+            tried += 10;
             passed += static_cast<int>(sentTo(out, at(1), RelayKind::Data).size());
         }
         const std::uint32_t mostBytes = 10 * r2.limits.hostBytesPerSecond + 2 * r2.limits.hostBytesPerSecond;
-        check(passed < 1200 && static_cast<std::uint32_t>(passed) * (kRelayHeadBytes + 1 + kNetCmdBytes) <= mostBytes &&
-                  r2.drops().rateData == static_cast<std::uint64_t>(1200 - passed),
-              "a host sending twice a game's frames: held to its bytes a second, the rest let fall");
+        check(passed < tried && static_cast<std::uint32_t>(passed) * (kRelayHeadBytes + 1 + kNetCmdBytes) <= mostBytes &&
+                  r2.drops().rateData == static_cast<std::uint64_t>(tried - passed),
+              "a host sending twice that: held to its rate, the rest let fall");
     }
 
     void testOutBudget()
