@@ -19,7 +19,7 @@
 # versions.env. Only those two files and fetch.sh go into the image, so it
 # holds the tools and nothing of the game or of this repository.
 
-ARG BLOCKSDS_IMAGE=skylyrac/blocksds:slim-v1.24.0@sha256:779f6193d1030c62e60d1f0f39c3e32cf4045c0bd224a45c0ceadf9d9ab01a51
+ARG BLOCKSDS_IMAGE=skylyrac/blocksds:slim-v1.25.0@sha256:c5f19b95d9c2f312e6a68ea244d2ed5120203b4b82af9785937a349096f8e5e4
 ARG WITH_TEAK=0
 ARG WITH_QT=0
 
