@@ -8,6 +8,7 @@ namespace hlrelay
         {
             const char *name;
             std::uint32_t Limits::*field;
+            bool minutes = false; ///< a time in minutes: 0 is never, and kMostMinutes at most
         };
         constexpr Named kNamed[] = {
             {"hello-per-s", &Limits::helloPerSecond},
@@ -20,17 +21,19 @@ namespace hlrelay
             {"rooms-per-ip", &Limits::roomsPerIp},
             {"knocks-per-ip", &Limits::knocksPerIp},
             {"out-bytes-per-s", &Limits::outBytesPerSecond},
+            {"empty-room-minutes", &Limits::emptyRoomMinutes, true},
+            {"room-max-minutes", &Limits::roomMaxMinutes, true},
         };
     } // namespace
 
     bool Limits::set(const std::string &name, std::uint32_t value)
     {
-        if (value == 0)
-            return false;
         for (const Named &one : kNamed)
         {
             if (name == one.name)
             {
+                if (one.minutes ? value > kMostMinutes : value == 0)
+                    return false;
                 this->*one.field = value;
                 return true;
             }
@@ -50,6 +53,8 @@ namespace hlrelay
                "             rooms-per-ip       rooms open from one address at once (4)\n"
                "             knocks-per-ip      consoles of one address waiting at doors at once (8)\n"
                "             out-bytes-per-s    bytes the relay sends in all (12582912)\n"
+               "             empty-room-minutes a room nobody is in or asking to join: closed after (30; 0 never)\n"
+               "             room-max-minutes   any room: closed after (0, never)\n"
                "             Each takes up to twice its rate at once (voice: its rate),\n"
                "             then its rate.\n";
     }

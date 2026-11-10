@@ -593,6 +593,7 @@ namespace hlrelay
                 if (nextRoom_ == 0)
                     nextRoom_ = 1;
                 room.host = me->id;
+                room.openedMs = room.emptySinceMs = nowMs;
                 it = rooms_.emplace(room.id, room).first;
                 me->room = room.id;
                 me->slot = 0;
@@ -815,6 +816,30 @@ namespace hlrelay
                 continue;
             note(named(*gone) + " went quiet");
             drop(id, out, static_cast<int>(RelayBye::Silent));
+        }
+        // Rooms open too long: nobody in one (nor asking to be) for so long,
+        // or any for longer than the relay lets one be. Its host is told so,
+        // and let go.
+        std::vector<std::pair<std::uint32_t, RelayBye>> expired;
+        for (auto &[id, room] : rooms_)
+        {
+            bool someone = room.count() > 1;
+            for (const Knock &k : room.knocks)
+                someone = someone || k.peer != 0;
+            if (someone)
+                room.emptySinceMs = nowMs;
+            const std::uint32_t empty = limits.emptyRoomMinutes * 60000u, most = limits.roomMaxMinutes * 60000u;
+            if (most != 0 && nowMs - room.openedMs >= most)
+                expired.push_back({room.host, RelayBye::RoomTimeUp});
+            else if (empty != 0 && nowMs - room.emptySinceMs >= empty)
+                expired.push_back({room.host, RelayBye::RoomExpired});
+        }
+        for (const auto &[host, why] : expired)
+        {
+            if (const Peer *gone = byId(host))
+                note(named(*gone) + (why == RelayBye::RoomTimeUp ? "'s room was open as long as it may be"
+                                                                  : "'s room stayed empty too long"));
+            drop(host, out, static_cast<int>(why));
         }
         for (auto &[id, room] : rooms_)
         {

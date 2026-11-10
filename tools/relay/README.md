@@ -79,8 +79,13 @@ each 27 ms at most, and a ping, its room or a list each second.
 | `rooms-per-ip` | 4 | rooms open from one address at once |
 | `knocks-per-ip` | 8 | consoles of one address waiting at doors at once (one more is told so) |
 | `out-bytes-per-s` | 12582912 | bytes the relay sends in all (12 MB/s, about 100 Mbit/s) |
+| `empty-room-minutes` | 30 | a room nobody is in or asking to join is closed after this long (0: never) |
+| `room-max-minutes` | 0 | any room is closed after this long (0: never) |
 
-Each may go to twice its rate at once (voice: its rate), then keeps to it.
+A room closed for its time sends its host (and any clients) back to the
+menu, saying why.
+
+Each rate may go to twice its rate at once (voice: its rate), then keeps to it.
 A full room of eight sends about 300 KB/s out: `out-bytes-per-s` is what
 the server's link (and its provider's traffic allowance) should bear.
 

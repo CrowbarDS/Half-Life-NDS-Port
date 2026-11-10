@@ -1447,6 +1447,85 @@ namespace
               "taking a session up from an address that has as many consoles as it may: refused");
     }
 
+    void testRoomTimes()
+    {
+        g_sessions.clear();
+        std::vector<Out> out;
+        std::uint8_t bytes[kRelayMostBytes];
+        const std::uint32_t t = 600000;
+        hlrelay::Limits named;
+        check(named.set("empty-room-minutes", 0) && named.emptyRoomMinutes == 0 && named.set("room-max-minutes", 90) &&
+                  named.roomMaxMinutes == 90 && !named.set("room-max-minutes", hlrelay::Limits::kMostMinutes + 1),
+              "the rooms' times set by name: 0 is never, and not more than the clock can tell");
+
+        // (A host keeps pinging, so that it is not let go for its silence.)
+        auto keepAlive = [&](Relay &relay, std::uint32_t from, std::uint32_t to, int n)
+        {
+            for (std::uint32_t when = from; when <= to; when += 20000)
+            {
+                for (int k = 0; k < n; ++k)
+                    relay.receive(at(k), bytes, relaySmallWrite(bytes, RelayKind::Ping, comeIn(relay, k, t)), when, out);
+                relay.tick(when, out);
+            }
+        };
+        const std::uint32_t empty = 30 * 60000u;
+        {
+            Relay relay;
+            open(relay, 0, "H", 8, t, out);
+            keepAlive(relay, t, t + empty - 20000, 1);
+            out.clear();
+            relay.tick(t + empty - 1, out);
+            check(relay.rooms() == 1, "a room nobody joins: still there just short of half an hour");
+            relay.tick(t + empty, out);
+            check(relay.rooms() == 0 && relay.peers() == 0 &&
+                      byeTo(out, at(0)) == static_cast<int>(RelayBye::RoomExpired),
+                  "... at half an hour, closed: its host told why, and let go");
+        }
+        g_sessions.clear();
+        {
+            Relay relay;
+            const std::uint32_t id = open(relay, 0, "H", 8, t, out);
+            join(relay, 1, id, t, out);
+            keepAlive(relay, t, t + 2 * empty, 2);
+            check(relay.rooms() == 1, "a room with someone in it: open as long as they play");
+            // The client goes: the half hour counts from then.
+            relay.receive(at(1), bytes, relaySmallWrite(bytes, RelayKind::Bye, comeIn(relay, 1, t)), t + 2 * empty, out);
+            relay.tick(t + 2 * empty + 100, out);
+            g_sessions.erase({&relay, 1});
+            keepAlive(relay, t + 2 * empty + 20000, t + 3 * empty - 20000, 1);
+            check(relay.rooms() == 1, "... the last goes: its half hour from then, not from when it was opened");
+            out.clear();
+            relay.tick(t + 3 * empty + 200, out);
+            check(relay.rooms() == 0, "... and then closed");
+        }
+        g_sessions.clear();
+        {
+            // One at the door, the host not answering yet: not empty.
+            Relay relay;
+            const std::uint32_t id = open(relay, 0, "H", 8, t, out);
+            keepAlive(relay, t, t + empty - 20000, 1);
+            join(relay, 1, id, t + empty - 10000, out, 0, -1);
+            relay.tick(t + empty + 5000, out);
+            check(relay.rooms() == 1, "a room someone is asking to join: not empty");
+        }
+        g_sessions.clear();
+        {
+            // Never closed for being empty, if so set; at most so long, if so set.
+            Relay relay;
+            relay.limits.emptyRoomMinutes = 0;
+            relay.limits.roomMaxMinutes = 90;
+            const std::uint32_t id = open(relay, 0, "H", 8, t, out);
+            join(relay, 1, id, t, out);
+            keepAlive(relay, t, t + 90 * 60000u - 20000, 2);
+            check(relay.rooms() == 1, "rooms never closed for being empty, at most an hour and a half: still there");
+            out.clear();
+            relay.tick(t + 90 * 60000u, out);
+            check(relay.rooms() == 0 && byeTo(out, at(0)) == static_cast<int>(RelayBye::RoomTimeUp) &&
+                      byeTo(out, at(1)) == static_cast<int>(RelayBye::HostLeft),
+                  "... at an hour and a half, closed though they play: the host told why, its client that it went");
+        }
+    }
+
     void testByeReasons()
     {
         g_sessions.clear();
@@ -1560,6 +1639,7 @@ int main()
     testByeReasons();
     testUnknown();
     testResume();
+    testRoomTimes();
     std::printf("%s (%d failed)\n", g_failures == 0 ? "PASS" : "FAIL", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

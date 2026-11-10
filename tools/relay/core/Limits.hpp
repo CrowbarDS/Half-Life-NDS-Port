@@ -66,9 +66,15 @@ namespace hlrelay
         std::uint32_t knocksPerIp = 8;
         // The relay, in all.
         std::uint32_t outBytesPerSecond = 12 * 1024 * 1024;
+        // Rooms (minutes; 0: never).
+        std::uint32_t emptyRoomMinutes = 30; ///< a room nobody is in or asking to join, closed after this
+        std::uint32_t roomMaxMinutes = 0;    ///< any room, closed after this
+        /// The most minutes either may be (the relay's clock goes round in 49 days).
+        static constexpr std::uint32_t kMostMinutes = 20000;
 
         /// One set by its name (as `--limit NAME=VALUE` gives it); false if
-        /// there is no such name, or the value is 0.
+        /// there is no such name, or the value is 0 (but for the rooms' times,
+        /// where 0 is never) or too big.
         bool set(const std::string &name, std::uint32_t value);
         /// The names and what each is, a line each, for --help.
         static const char *help();

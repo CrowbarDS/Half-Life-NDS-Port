@@ -133,6 +133,7 @@ namespace hldata
         Silent = 4,        ///< it said nothing for too long
         RoomExpired = 5,   ///< its room stayed empty too long
         RelayStopping = 6, ///< the relay is stopping (started again, or put away)
+        RoomTimeUp = 7,    ///< its room had been open as long as the relay lets one be
     };
 
     struct RelayHead

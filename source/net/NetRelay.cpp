@@ -1056,6 +1056,7 @@ namespace hlrt::netrelay
         static TWL_DATA const char kSilent[] = "The relay heard nothing from this console for too long.";
         static TWL_DATA const char kExpired[] = "The room closed: nobody joined it for a long time.";
         static TWL_DATA const char kStopping[] = "The relay was stopped (restarted or updated).";
+        static TWL_DATA const char kTimeUp[] = "The room had been open as long as the relay allows.";
         static TWL_DATA const char kOther[] = "The relay let this console go.";
         static TWL_DATA const char kForgot[] = "The relay was restarted, or lost this console.";
         static TWL_DATA const char kQuiet[] = "The relay stopped answering.";
@@ -1070,6 +1071,7 @@ namespace hlrt::netrelay
         case RelayBye::Silent: return kSilent;
         case RelayBye::RoomExpired: return kExpired;
         case RelayBye::RelayStopping: return kStopping;
+        case RelayBye::RoomTimeUp: return kTimeUp;
         default: break;
         }
         switch (s.byeWhy)

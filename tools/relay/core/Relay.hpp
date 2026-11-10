@@ -150,6 +150,8 @@ namespace hlrelay
             bool voice = false; ///< its host lets them talk
             std::uint32_t clients[hldata::kNetPlayers] = {}; ///< ids by slot (0 unused); 0: nobody
             std::uint32_t statusMs = 0;
+            std::uint32_t openedMs = 0;     ///< when it was opened
+            std::uint32_t emptySinceMs = 0; ///< since when nobody is in it, nor asking to be (as last looked)
             Knock knocks[hldata::kRelayKnocksMost];
             std::uint8_t nextTicket = 1;
             int count() const;
