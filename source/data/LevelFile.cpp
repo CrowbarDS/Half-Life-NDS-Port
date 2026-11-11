@@ -120,9 +120,13 @@ namespace hlrt
     /// archive's own tries): which piece, and the card's error, for a report.
     static void cardReadFailed(std::uint32_t piece, std::string &error)
     {
-        char text[96];
-        std::snprintf(text, sizeof(text), "Map could not be read from the card (piece %u, error %d).",
-                      static_cast<unsigned>(piece), errno);
+        // (The archive's words: EIO, the card refused a read; EILSEQ, it
+        // gave bytes that were not the ones written.)
+        const int code = errno;
+        const char *why = code == EIO ? "the card refused a read" : code == EILSEQ ? "the card gave wrong data" : "error";
+        char text[112];
+        std::snprintf(text, sizeof(text), "Map could not be read from the card (piece %u: %s, %d).",
+                      static_cast<unsigned>(piece), why, code);
         error = text;
     }
 #endif
