@@ -9,7 +9,9 @@
 // which holds 255 fragments of the file.
 //
 // For each of the card's biggest map archives (and c1a3, c2a5, c1a3a,
-// c2a2b1 if there): its size and how many fragments it is in, then, with
+// c2a2b1 if there), and each archive NEA's fragmented-archive test left in
+// _nds/hl_nds/fragtest/ (nitro-engine tests/npac_frag, with FRAGTEST_KEEP):
+// its size and how many fragments it is in, then, with
 // fast seek off and on (a table big enough for 2,047 fragments):
 //   cold   the first 4 KB read after the file is opened, far into it
 //   near   4 KB at random sector-aligned places in its first 256 KB
@@ -241,14 +243,6 @@ int main()
         }
         closedir(dir);
     }
-    if (archives.empty())
-    {
-        say(true, "No map archives in %s", maps.c_str());
-        if (out != nullptr)
-            std::fclose(out);
-        for (;;)
-            swiWaitForVBlank();
-    }
     std::sort(archives.begin(), archives.end(), [](const Archive &a, const Archive &b) { return a.size > b.size; });
     std::vector<Archive> chosen;
     for (const char *name : {"c1a3.npac", "c2a5.npac", "c1a3a.npac", "c2a2b1.npac"})
@@ -268,6 +262,34 @@ int main()
             there = there || c.path == a.path;
         if (!there)
             chosen.push_back(a);
+    }
+
+    // What NEA's fragmented-archive test left: archives in many pieces, which
+    // a card that is not freshly written may hold (what seeks cost there).
+    {
+        const std::string frag = root + "fragtest/";
+        if (DIR *dir = opendir(frag.c_str()))
+        {
+            while (const dirent *entry = readdir(dir))
+            {
+                const std::size_t length = std::strlen(entry->d_name);
+                struct stat st;
+                const std::string path = frag + entry->d_name;
+                if (length > 5 && std::strcmp(entry->d_name + length - 5, ".npac") == 0 &&
+                    stat(path.c_str(), &st) == 0)
+                    chosen.push_back({path, static_cast<std::uint32_t>(st.st_size)});
+            }
+            closedir(dir);
+        }
+    }
+
+    if (chosen.empty())
+    {
+        say(true, "No map archives in %s", maps.c_str());
+        if (out != nullptr)
+            std::fclose(out);
+        for (;;)
+            swiWaitForVBlank();
     }
 
     for (const Archive &a : chosen)

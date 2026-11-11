@@ -237,4 +237,15 @@ returns the size it would need and leaves the half-made table on the file
 would then follow it astray. The probe counts each archive's fragments on
 a descriptor it closes at once, for that reason.
 
+It also times the archives NEA's fragmented-archive test left in
+`_nds/hl_nds/fragtest/` (nitro-engine `tests/npac_frag`, run with
+`FRAGTEST_KEEP` beside `FRAGTEST_OK`): archives in 1, 200, 400 and 600
+pieces, which a card written to over time may hold. Their far reads with
+fast seek off are what a map archive costs when NEA falls back to no table.
+
+NEA now looks at what `fatInitLookupCache` answers (NEANPAC.c): an archive in
+more pieces than its table may hold -- 2 KB, 255 pieces, in DS mode; 4 KB,
+511, in DSi mode -- is opened again with no table and seeks the slow way.
+`tools/emu/fragcard.sh` runs that test in melonDS on a card image of its own.
+
 Results: to be filled in (docs/ds-memory-phase0.md).

@@ -38,8 +38,34 @@ Fill in the worst (`most`) figure, in µs; the mean in brackets.
 | DSpico | DS Lite, DS | | | | | | | |
 | DSi SD | DSi, DSi mode | | | | | | | |
 
-Fragments above 255: NEA's lookup table (2 KB) cannot hold the archive.
-Note which archives, if any.
+Fragments: NEA gives an archive a fast-seek table only if it fits 2 KB in
+DS mode (255 pieces) or 4 KB in DSi mode (511 pieces); one in more pieces
+seeks the slow way, its chain followed through the FAT, which costs more the
+further into the file and the more pieces it has. (Before, a 2 KB table was
+always given and its answer not looked at: past 255 pieces, far reads were
+wrong.) The game's `perf.txt` says it per map: `mount:` lines, and `seek`
+in `room:`. Note which archives, if any, are over.
+
+### A card written to over time: archives in many pieces
+
+NEA's `tests/npac_frag` (with `FRAGTEST_OK` and `FRAGTEST_KEEP` on a card
+you can spare) leaves archives in 1, 200, 400 and 600 pieces in
+`_nds/hl_nds/fragtest/`; the probe then times them. Worst far 4 KB read, µs
+(mean in brackets):
+
+| card, console, mode | pieces | fast seek on | fast seek off (what NEA falls back to) |
+|---|---|---|---|
+| melonDS, DS mode, 4 KB clusters (emulator: not a card's times) | 1 | 1543 (1479) | 1557 (1492) |
+| | 200 | 1599 (1550) | 1925 (1695) |
+| | 400 | 1696 (1627) | 2311 (1911) |
+| | 600 | 1793 (1698) | 2735 (2124) |
+| R4-type: | 1 / 200 / 400 / 600 | | |
+| DSpico | 1 / 200 / 400 / 600 | | |
+| DSi SD, DSi mode | 1 / 200 / 400 / 600 | | |
+
+For paging (phase 3), the worst read on a card that falls back is the one to
+judge the 3 ms / 6 ms limits by: the `seek SLOW` maps of that card are held to
+the "fast seek off" column, at their piece count.
 
 ## Heap (from perf.txt)
 
