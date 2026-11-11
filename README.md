@@ -52,6 +52,8 @@ Auto works only with a TwlBg made by TWPatch, which can be asked through its rtc
 
 With a TwlBg made by [TWPatch](https://wiki.ds-homebrew.com/ds-index/rtcom) (rtcom is on by default), the circle pad walks: a light push walks, a full push runs. It works whether TWPatch's C-pad emulation is on or off. With any other TwlBg, use the D-pad or the touch screen as usual.
 
+With the same TwlBg, the gyroscope can aim too: turn on **OPTIONS > TOUCH AIM > 3DS gyro**. Hold the console still for a moment after the game starts, while it learns the gyroscope's rest.
+
 ## Quick start
 
 1. **Get the converter.** Download it for your system from the [download page](https://crowbards.github.io/Half-Life-NDS-Port/download.html), which picks the right file and explains the installation, or from the [Releases](https://github.com/CrowbarDS/Half-Life-NDS-Port/releases) page. It is the only download: the console's ROM is built into it. `SHA256SUMS.txt` lists each file's checksum.

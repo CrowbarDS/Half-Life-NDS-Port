@@ -1344,8 +1344,8 @@ start, before the sound (`arm7/source/Rtcom.cpp`):
    runs in DSi mode only: a DSi's or a DS's clock is a real chip and is
    never sent rtcom commands.
 2. An unknown command, which a TwlBg with rtcom answers `0x82`.
-3. An upload of `Peek11.s`, 364 bytes of ARMv4 that the ARM11 also runs
-   (about 0.3 s: an upload is only right with the long bit delay).
+3. An upload of `Peek11.s`, 1,088 bytes of ARMv4 that the ARM11 also runs
+   (about 0.9 s: an upload is only right with the long bit delay).
 4. A read of the top screen's window edges at `0x1ED02218`/`0x1ED0221C`
    on the ARM11's side: 320 pixels wide on the plain TwlBg (measured on an
    Old 3DS: `0x28`..`0x167`), 384 on the wide one.
@@ -1355,7 +1355,7 @@ The answer goes to the ARM9 once, on `FIFO_USER_02`. The screen setting's
 all this is `tools/hwtest/rtcom`. The wide TwlBg's window has not yet been
 read on hardware; the 384 comes from TWPatch's source.
 
-## The circle pad on a 3DS
+## The circle pad and the gyroscope on a 3DS
 
 TwlBg reads the circle pad every frame itself, to press the D-pad for a DS
 game (its "C-pad emulation"). The game reads that same reading through the
@@ -1368,11 +1368,19 @@ code TwlBg runs at `0x100000` for its input routine: the bytes
 gives the place (`0x12A5B8` on an Old 3DS). X and Y are signed 16-bit,
 already calibrated: about -105..105, exactly 0 at rest.
 
+**The gyroscope.** On an Old 3DS: a chip with an ITG-3200's registers at
+`0xD0` on the third I2C bus (`0x1EC48000` on the ARM11's side). DSi mode
+leaves it asleep; the pad command's first frame wakes it (`0x3E` <- 0,
+`0x16` <- `0x18`: +-2000 degrees a second, 14.375 a degree a second), each
+frame after reads its three rates from `0x1D` (high byte first). Every wait
+on the bus has an end; eight failures in a row and it is left alone.
+
 **Each frame, never waiting.** `hlrtcom::step()` runs in the ARM7's loop
 after each sound block. Once a frame it asks for the pad command, then
 moves on only when the 3DS has answered (the clock's interrupt flag, the
-interrupt itself off): the next byte, then the data byte and the clock's
-second alarm, which carries the other three bytes. Each transfer holds
+interrupt itself off). Two answers, four bytes each (the data byte and the
+clock's second alarm): the pad's X and Y as 8 bits and the gyroscope's X;
+then its Y and Z. Each transfer holds
 interrupts off for its few dozen microseconds; libnds reads the time only at
 start and after a sleep. Measured on an Old 3DS: 368 us a reading, none
 failed in 2,500. Eight failures in a row rest it for about four seconds.
@@ -1385,6 +1393,19 @@ is pushed the D-pad's four directions are left out: with C-pad emulation on
 they are only the same push, so the game works with it on or off. Movement
 stays -1, 0 or 1 as the D-pad's: the physics, demos and matches are those
 of before.
+
+**Aiming.** `gyroStep` (`shared/HlControls.hpp`) learns the chip's zero,
+which is far from 0 (a few hundred raw steps) and drifts as it warms: first
+from half a second of steady readings with the console still (it aims only
+after), then by following readings both steady and within 21 raw of it for
+half a second -- a turn, even a slow steady one, never is. Within 14 raw of
+it nothing turns. The rest is turned as far as the console turned, times
+the setting's speed (OPTIONS > TOUCH AIM > 3DS gyro: off, 1x, 1.5x, 2x, 3x;
+off at first): one raw step for a sixtieth of a second is 0.2111 of a
+65536th of a turn, a Q16 multiply, with what is left kept for the next
+frame. `Player::turn` adds it to the stylus's, narrowed for a zoomed sight;
+up and down follow "Invert up/down". Which of the chip's axes is a turn and
+which a tilt is `kGyroYawAxis` / `kGyroPitchAxis` in `shared/Hl3dsLink.hpp`.
 
 ## Not yet
 
