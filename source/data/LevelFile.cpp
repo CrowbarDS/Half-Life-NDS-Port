@@ -9,6 +9,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <malloc.h>
+#include <utility>
+
+#include "platform/Slot2.hpp"
 
 namespace hlrt
 {
@@ -20,7 +24,74 @@ namespace hlrt
         std::free(block_);
         block_ = nullptr;
         size_ = 0;
+#ifndef HLDS_CHILD
+        // (What is in the Pak is let go with the map: slot2::reset.)
+        for (const std::uint8_t *&at : inPak_)
+            at = nullptr;
+        pakBytes_ = 0;
+#endif
     }
+
+#ifndef HLDS_CHILD
+    std::size_t Level::keepInPak()
+    {
+        using hldata::Section;
+        if (slot2::pakBytes() == 0 || block_ == nullptr)
+            return 0;
+        // Read least: the visibility (a leaf changed, a monster looking),
+        // the light patches (a light switched, a tenth of a second of a
+        // flicker), what is said and written on the screen, the sounds of
+        // the models' moves, the map's names. (The geometry stream is drawn
+        // from every frame, and written to: it stays.)
+        constexpr Section kAway[] = {Section::Vis,       Section::LightPatch,    Section::Messages,
+                                     Section::Sentences, Section::SentenceWords, Section::Speech,
+                                     Section::ModelSounds, Section::Landmarks,   Section::Strings};
+        auto *dir = reinterpret_cast<hldata::SectionDir *>(block_ + sizeof(hldata::LevelHeader));
+        std::size_t moved = 0;
+        for (Section s : kAway)
+        {
+            const hldata::SectionDir &d = dir[static_cast<int>(s)];
+            if (d.size < 256)
+                continue; // (not worth it)
+            std::uint8_t *at = slot2::take(d.size);
+            if (at == nullptr)
+                break;
+            slot2::write(at, block_ + d.offset, d.size);
+            inPak_[static_cast<int>(s)] = at;
+            moved += d.size;
+        }
+        if (moved == 0)
+            return 0;
+        // The rest packed together, in the order it was (each section after
+        // the last one kept, on a word): only ever moved down.
+        int order[hldata::kSectionCount];
+        for (int i = 0; i < hldata::kSectionCount; ++i)
+            order[i] = i;
+        for (int i = 1; i < hldata::kSectionCount; ++i)
+        {
+            for (int k = i; k > 0 && dir[order[k]].offset < dir[order[k - 1]].offset; --k)
+                std::swap(order[k], order[k - 1]);
+        }
+        std::uint32_t end = hldata::kLevelDataStart;
+        for (int i : order)
+        {
+            if (inPak_[i] != nullptr)
+                continue;
+            hldata::SectionDir &d = dir[i];
+            if (d.offset != end)
+                std::memmove(block_ + end, block_ + d.offset, d.size);
+            d.offset = end;
+            end += (d.size + 3) & ~3u;
+        }
+        // (Shrunk where it is: it is the last thing on the heap, and what it
+        // gives back goes back to the top.)
+        if (auto *smaller = static_cast<std::uint8_t *>(std::realloc(block_, end)))
+            block_ = smaller;
+        malloc_trim(0);
+        size_ = end;
+        return moved;
+    }
+#endif
 
     bool Level::peekHeader(const std::string &name, hldata::LevelHeader &header)
     {
@@ -192,6 +263,17 @@ namespace hlrt
         size_ = size;
 #ifdef HLDS_CHILD
         guest::count(hldata::GuestKind::Level, size);
+#else
+        // An Expansion Pak: what is read least, there, and the room it took
+        // here given back. (Looked at again where it now is: the checksum
+        // was of the file as read.)
+        if ((pakBytes_ = keepInPak()) != 0 &&
+            view.open(block_, size, false, inPak_) != hldata::LevelError::Ok)
+        {
+            unload();
+            error = "Map file is damaged. Convert again.";
+            return false;
+        }
 #endif
         return true;
     }

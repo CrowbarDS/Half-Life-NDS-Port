@@ -131,15 +131,28 @@ namespace hldata
         /// is left empty. `checkCrc` exists so a caller that has just computed
         /// the checksum some other way need not pay for it twice; pass true
         /// unless you have.
-        LevelError open(const std::uint8_t *data, std::uint32_t size, bool checkCrc = true);
+        ///
+        /// `elsewhere` (a console with an Expansion Pak, which keeps the
+        /// sections read least there): a section whose entry is not null is
+        /// at that address, not in `data`, and its offset is not looked at.
+        LevelError open(const std::uint8_t *data, std::uint32_t size, bool checkCrc = true,
+                        const std::uint8_t *const *elsewhere = nullptr);
 
     private:
+#ifndef HLDS_CHILD
+        const std::uint8_t *const *elsewhere_ = nullptr;
+#endif
+
         template <class T>
         const T *section(const std::uint8_t *data, const SectionDir *dir, Section s,
                          std::uint32_t &count) const
         {
             const SectionDir &d = dir[static_cast<int>(s)];
             count = d.count;
+#ifndef HLDS_CHILD
+            if (elsewhere_ != nullptr && elsewhere_[static_cast<int>(s)] != nullptr)
+                return reinterpret_cast<const T *>(elsewhere_[static_cast<int>(s)]);
+#endif
             return reinterpret_cast<const T *>(data + d.offset);
         }
 
@@ -152,9 +165,15 @@ namespace hldata
         LevelError validate() const;
     };
 
-    inline LevelError LevelView::open(const std::uint8_t *data, std::uint32_t size, bool checkCrc)
+    inline LevelError LevelView::open(const std::uint8_t *data, std::uint32_t size, bool checkCrc,
+                                      const std::uint8_t *const *elsewhere)
     {
         *this = LevelView();
+#ifndef HLDS_CHILD
+        elsewhere_ = elsewhere;
+#else
+        (void)elsewhere;
+#endif
 
         if (size < kLevelDataStart)
             return LevelError::TooSmall;
@@ -175,8 +194,13 @@ namespace hldata
             const SectionDir &d = dir[i];
             const std::uint32_t record = sectionRecordSize(static_cast<Section>(i));
             // 64-bit sums: a hostile offset must not wrap its way past the check.
-            if ((d.offset & 3) != 0 || d.offset < kLevelDataStart ||
-                static_cast<std::uint64_t>(d.offset) + d.size > size ||
+#ifndef HLDS_CHILD
+            const bool away = elsewhere != nullptr && elsewhere[i] != nullptr;
+#else
+            constexpr bool away = false;
+#endif
+            if ((!away && ((d.offset & 3) != 0 || d.offset < kLevelDataStart ||
+                           static_cast<std::uint64_t>(d.offset) + d.size > size)) ||
                 static_cast<std::uint64_t>(d.count) * record != d.size)
                 return LevelError::BadLayout;
         }

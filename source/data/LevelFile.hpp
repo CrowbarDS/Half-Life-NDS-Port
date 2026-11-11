@@ -49,6 +49,24 @@ namespace hlrt
         /// archive): false, with `error`, if it was found but could not be
         /// had; `got`, whether it was found.
         bool readFiles(hldata::LevelHeader &header, bool &got, std::string &error);
+#ifndef HLDS_CHILD
+        /// With an Expansion Pak: the sections read least -- a few times a
+        /// second at most -- copied into it and the rest of the block packed
+        /// together and shrunk, its tail given back to the heap. How many
+        /// bytes went (0 with no Pak).
+        std::size_t keepInPak();
+        /// Where each section went in the Pak, or null.
+        const std::uint8_t *inPak_[hldata::kSectionCount] = {};
+    public:
+        /// Bytes of the level kept in the Expansion Pak, not in main memory.
+        std::size_t pakBytes() const { return pakBytes_; }
+    private:
+        std::size_t pakBytes_ = 0;
+#else
+    public:
+        std::size_t pakBytes() const { return 0; }
+    private:
+#endif
 
         std::uint8_t *block_ = nullptr;
         std::size_t size_ = 0;
