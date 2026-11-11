@@ -84,6 +84,8 @@ namespace hlds
         result.archiveKb = static_cast<int>(report.cardBytes / 1024);
         result.archiveRawKb = static_cast<int>(report.rawBytes / 1024);
         result.archiveMembers = report.members;
+        result.archiveIndexBytes = report.indexBytes;
+        result.keptSoundKb = static_cast<int>(report.keptSoundBytes / 1024);
         if (report.indexBytes > hldata::kMapIndexMost)
             result.warnings.push_back("its archive's index is " + std::to_string(report.indexBytes) +
                                       " bytes, over the " + std::to_string(hldata::kMapIndexMost) +
@@ -1491,6 +1493,11 @@ namespace hlds
 
         result.ok = true;
         result.levelBytes = bytes.size();
+        {
+            hldata::LevelView view;
+            if (view.open(bytes.data(), static_cast<std::uint32_t>(bytes.size())) == hldata::LevelError::Ok)
+                result.level = reportLevel(view);
+        }
         result.surfaces = report.surfaces;
         result.brushes = report.brushes;
         result.logicRecords = report.logicRecords;

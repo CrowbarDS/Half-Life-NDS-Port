@@ -50,6 +50,7 @@ add_library(hlds_convert_core STATIC
     core/src/EntityParser.cpp
     core/src/FaceBuilder.cpp
     core/src/GxStream.cpp
+    core/src/LevelReport.cpp
     core/src/LevelWriter.cpp
     core/src/LightBake.cpp
     core/src/Lz77.cpp

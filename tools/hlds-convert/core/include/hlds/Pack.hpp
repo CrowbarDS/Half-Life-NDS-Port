@@ -32,6 +32,8 @@ namespace hlds
         std::size_t rawBytes = 0;   ///< what the members come to
         std::size_t cardBytes = 0;  ///< the archive
         std::uint32_t indexBytes = 0; ///< what its index takes on the console (HlArchive.hpp)
+        /// The sounds loaded with the map (soundsKept), as a DS has them.
+        std::size_t keptSoundBytes = 0;
     };
 
     /// <stage>/maps/<map>.hlm and all it names -> <card>/maps/<map>.npac.

@@ -428,8 +428,11 @@ namespace hlds
                     if (pass == 0 && !air && hldata::soundTwinName(ref, twin, sizeof(twin)))
                         packing.add(stage / "snd" / (std::string(twin) + ".hsn"),
                                     std::string("snd/") + twin + ".hsn", false, false);
+                    const std::size_t before = packing.members.size();
                     packing.add(stage / "snd" / (std::string(ref.name) + ".hsn"),
                                 std::string("snd/") + ref.name + ".hsn", false);
+                    if (pass == 0 && packing.members.size() != before)
+                        packing.report->keptSoundBytes += packing.members.back().data.size();
                 }
             }
             return true;

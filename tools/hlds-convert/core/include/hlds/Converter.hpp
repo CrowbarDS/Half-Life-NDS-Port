@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 
+#include "hlds/LevelReport.hpp"
 #include "hlds/Portals.hpp"
 #include "hlds/TitlesFile.hpp"
 #include "HlManifest.hpp"
@@ -129,6 +130,10 @@ namespace hlds
         int archiveKb = 0;    ///< the map's archive on the card
         int archiveRawKb = 0; ///< what is in it, inflated
         int archiveMembers = 0;
+        std::uint32_t archiveIndexBytes = 0; ///< PackReport::indexBytes
+        int keptSoundKb = 0; ///< PackReport::keptSoundBytes
+        /// The cooked level's sections, and what paging its geometry would save.
+        LevelReport level;
     };
 
     /// What was cooked for the card as a whole (UiCook.hpp).

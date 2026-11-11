@@ -11,6 +11,7 @@
 
 #include "HlLevelReader.hpp"
 #include "TestBspBuilder.hpp"
+#include "hlds/LevelReport.hpp"
 #include "hlds/LevelWriter.hpp"
 
 using namespace hlds;
@@ -260,6 +261,113 @@ namespace
         static_assert(rgb555(255, 0, 255) == 0x7C1F);
         static_assert(fxMul(fxFromInt(3), fxFromDouble(0.5)) == fxFromDouble(1.5));
     }
+
+    /// The level `level` writes, opened: false if either fails.
+    bool openLevel(const CookedLevel &level, std::vector<std::uint8_t> &bytes, LevelView &view)
+    {
+        std::string error;
+        return writeLevel(level, bytes, error) &&
+               view.open(bytes.data(), static_cast<std::uint32_t>(bytes.size())) == LevelError::Ok;
+    }
+
+    void testReportSections()
+    {
+        std::vector<std::uint8_t> bytes;
+        LevelView view;
+        check(openLevel(smallLevel(), bytes, view), "the small level opens for its report");
+        const LevelReport r = reportLevel(view, 8);
+        const auto *dir = reinterpret_cast<const SectionDir *>(bytes.data() + sizeof(LevelHeader));
+        bool same = true;
+        std::uint32_t padded = kLevelDataStart;
+        for (int i = 0; i < kSectionCount; ++i)
+        {
+            same = same && r.sectionBytes[i] == dir[i].size;
+            padded += (r.sectionBytes[i] + 3) & ~3u;
+        }
+        check(same, "each section's bytes are its directory's");
+        check(padded == bytes.size(), "and with their padding they make the file");
+        bool named = true;
+        for (int i = 0; i < kSectionCount; ++i)
+        {
+            const char *name = sectionName(static_cast<Section>(i));
+            named = named && std::strcmp(name, "?") != 0;
+            for (int k = 0; k < i; ++k)
+                named = named && std::strcmp(name, sectionName(static_cast<Section>(k))) != 0;
+        }
+        check(named, "every section has a name of its own");
+        check(r.clipHullBytes[0] == sizeof(ClipNode) && r.clipHullBytes[1] == 0 && r.clipHullBytes[2] == 0,
+              "the clip hulls are told apart by the models' roots");
+
+        // Pages of 8 bytes: the first surface (12) is bigger than one.
+        const GxPaging &p = r.paging;
+        check(p.worldBytes == 20 && p.brushBytes == 0, "the world's geometry, and no brush's");
+        check(p.oversize == 1 && p.pages == 3, "a surface bigger than a page has pages of its own");
+        check(p.worstPages == 3 && p.worstExactBytes == 20 && p.worstLeaf == 1,
+              "the one leaf's view needs every page");
+        const GxPaging big = reportLevel(view, 4096).paging;
+        check(big.pages == 1 && big.worstPages == 1 && big.oversize == 0, "all of it in one page of 4 KB");
+        check(big.savingBytes() == 20 - 4096 - 1024, "and paging that costs more than it saves");
+    }
+
+    /// Three rooms: leaf 1 sees itself alone; 2 and 3 see each other, under
+    /// node 1, whose own surface they both draw.
+    void testReportViews()
+    {
+        CookedLevel level = smallLevel();
+        Node root = level.nodes[0];
+        root.children[0] = -2; // leaf 1
+        root.children[1] = 1;  // node 1
+        Node inner = root;
+        inner.children[0] = -3; // leaf 2
+        inner.children[1] = -4; // leaf 3
+        inner.parent = 0;
+        level.nodes = {root, inner};
+        level.nodeSpans = {NodeSpan{0, 0}, NodeSpan{0, 1}};
+        level.nodeMarks = {3};
+
+        Leaf room = level.leaves[1];
+        room.markCount = 1;
+        Leaf one = room, two = room, three = room;
+        one.firstMark = 0;
+        one.visOfs = 0;
+        two.firstMark = 1;
+        two.visOfs = 1;
+        two.parent = 1;
+        three.firstMark = 2;
+        three.visOfs = 1;
+        three.parent = 1;
+        level.leaves = {level.leaves[0], one, two, three};
+        level.marks = {0, 1, 2};
+        level.visLeafCount = 3;
+        level.vis = {0x01, 0x06};
+
+        Surface s = level.surfaces[0];
+        level.surfaces.clear();
+        level.gxStream.clear();
+        for (std::uint32_t i = 0; i < 4; ++i)
+        {
+            s.gxOfs = i * 3;
+            s.gxWords = 3;
+            level.surfaces.push_back(s);
+            level.gxStream.insert(level.gxStream.end(), {i, i, i});
+        }
+        level.models[0].surfaceCount = 4;
+        LightPatch patch{};
+        patch.word = 4;
+        patch.style = kPatchBase;
+        level.lightPatches = {patch};
+
+        std::vector<std::uint8_t> bytes;
+        LevelView view;
+        check(openLevel(level, bytes, view), "the three rooms open");
+        const GxPaging p = reportLevel(view, 16).paging;
+        // Laid out as first needed: s0 (leaf 1), s3 (node 1), s1, s2.
+        check(p.pages == 4 && p.oversize == 0, "a page each");
+        check(p.worstPages == 3 && p.worstExactBytes == 36 && p.worstLeaf == 2,
+              "leaf 2 sees 2 and 3 and the node above them");
+        check(p.meanPageBytes == (1 + 3 + 3) * 16 / 3, "the mean over the three leaves");
+        check(p.worldPatchBytes == sizeof(LightPatch), "a light patch in the world's geometry");
+    }
 } // namespace
 
 int main()
@@ -268,6 +376,8 @@ int main()
     testFileFaults();
     testIndexFaults();
     testCrc();
+    testReportSections();
+    testReportViews();
     if (g_failures == 0)
         std::printf("test_level: ok\n");
     return g_failures == 0 ? 0 : 1;

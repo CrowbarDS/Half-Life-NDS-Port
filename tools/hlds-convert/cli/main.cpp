@@ -1,6 +1,7 @@
 // hlds-convert: turns a Half-Life installation into the files the DS port
 // reads. A thin driver -- everything it does is in hlds_convert_core.
 
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -14,6 +15,7 @@
 #include "BundledRom.hpp"
 #include "Install.hpp"
 #include "RomHeader.hpp"
+#include "HlArchive.hpp"
 #include "HlLevelReader.hpp"
 #include "hlds/TextureFamily.hpp"
 #include "hlds/AtomicWrite.hpp"
@@ -204,8 +206,61 @@ namespace
     void printArchive(const MapResult &r)
     {
         if (r.archiveMembers != 0)
-            std::printf("  on the card: %d KB in one archive of %d files (%d KB inflated)\n", r.archiveKb,
-                        r.archiveMembers, r.archiveRawKb);
+            std::printf("  on the card: %d KB in one archive of %d files (%d KB inflated); its index %u bytes of "
+                        "%u; sounds loaded with the map %d KB\n",
+                        r.archiveKb, r.archiveMembers, r.archiveRawKb, static_cast<unsigned>(r.archiveIndexBytes),
+                        static_cast<unsigned>(hldata::kMapIndexMost), r.keptSoundKb);
+    }
+
+    /// KB, to the nearest.
+    unsigned kb(std::uint32_t bytes) { return (bytes + 512) / 1024; }
+
+    /// What a level is made of (LevelReport.hpp): its sections, biggest
+    /// first, and what paging its geometry would leave a DS.
+    void printLevelReport(const LevelReport &r)
+    {
+        using hldata::Section;
+        int order[hldata::kSectionCount];
+        for (int i = 0; i < hldata::kSectionCount; ++i)
+            order[i] = i;
+        std::stable_sort(order, order + hldata::kSectionCount,
+                         [&](int a, int b) { return r.sectionBytes[a] > r.sectionBytes[b]; });
+        std::string line = "  sections:";
+        std::uint32_t other = 0;
+        const char *comma = "";
+        for (int i : order)
+        {
+            const std::uint32_t bytes = r.sectionBytes[i];
+            if (bytes < 4096)
+            {
+                other += bytes;
+                continue;
+            }
+            char one[160];
+            const auto section = static_cast<Section>(i);
+            if (section == Section::GxStream)
+                std::snprintf(one, sizeof(one), "%s %s %u KB (world %u, brushes %u)", comma, sectionName(section),
+                              kb(bytes), kb(r.paging.worldBytes), kb(r.paging.brushBytes));
+            else if (section == Section::ClipNodes)
+                std::snprintf(one, sizeof(one), "%s %s %u KB (hulls 1/3/2: %u/%u/%u)", comma, sectionName(section),
+                              kb(bytes), kb(r.clipHullBytes[0]), kb(r.clipHullBytes[1]), kb(r.clipHullBytes[2]));
+            else
+                std::snprintf(one, sizeof(one), "%s %s %u", comma, sectionName(section), kb(bytes));
+            line += one;
+            comma = ",";
+        }
+        char rest[48];
+        std::snprintf(rest, sizeof(rest), "%s other %u KB", comma, kb(other));
+        std::printf("%s%s\n", line.c_str(), rest);
+        const GxPaging &p = r.paging;
+        if (p.pages == 0)
+            return;
+        std::printf("  DS paging, %u KB pages: world %u KB in %u pages (%u bigger than a page); worst view %u pages = "
+                    "%u KB (its own %u KB, leaf %d), mean %u KB; light patch on the world %u KB; about %d KB %s "
+                    "on a DS\n",
+                    p.pageBytes / 1024, kb(p.worldBytes), p.pages, p.oversize, p.worstPages,
+                    kb(p.worstPages * p.pageBytes), kb(p.worstExactBytes), p.worstLeaf, kb(p.meanPageBytes),
+                    kb(p.worldPatchBytes), std::abs(p.savingBytes()) / 1024, p.savingBytes() >= 0 ? "less" : "more");
     }
 
     /// --hotspots: each map's worst leaves as seen, where and which way.
@@ -251,6 +306,7 @@ namespace
                 std::printf("    hotspot leaf %d at %d %d %d yaw %d pitch %d: %d polygons / %d vertices\n", spot.leaf,
                             spot.at[0], spot.at[1], spot.at[2], spot.yaw, spot.pitch, spot.polygons, spot.vertices);
         }
+        printLevelReport(r.level);
         printArchive(r);
         if (r.stoodIn != 0)
             std::printf("  a multiplayer map: %d of its pickups are of weapons not in the port yet, and are "
@@ -650,21 +706,14 @@ namespace
 
         const auto *dir = reinterpret_cast<const hldata::SectionDir *>(
             bytes.data() + sizeof(hldata::LevelHeader));
-        static const char *const kNames[hldata::kSectionCount] = {
-            "planes",    "plane types",  "nodes",    "leaves",     "marks",
-            "vis",       "surfaces",     "gx stream", "models",    "clip nodes",
-            "textures",  "entities",     "entity text", "light patch", "brushes",
-            "brush leaves", "logic",     "logic lists", "path corners", "names",
-            "landmarks", "strings",   "models",     "actors",      "path nodes",
-            "path next", "sounds",    "logic sounds", "sentences", "sentence words",
-            "rooms",     "sprites",   "speech",     "messages",    "model sounds"};
         std::printf("%s: ok, version %u, %zu KB\n", fs::path(args[0]).filename().string().c_str(),
                     view.header->version, bytes.size() / 1024);
         for (int i = 0; i < hldata::kSectionCount; ++i)
         {
-            std::printf("  %-12s %7u records %8.1f KB\n", kNames[i], dir[i].count,
-                        dir[i].size / 1024.0);
+            std::printf("  %-14s %7u records %8.1f KB\n", sectionName(static_cast<hldata::Section>(i)),
+                        dir[i].count, dir[i].size / 1024.0);
         }
+        printLevelReport(reportLevel(view));
         std::printf("  every surface decodes: %ld polygons, %ld vertices in all\n", polygons,
                     vertices);
         std::printf("  every polygon leads with a turn, the way its surface faces\n");
