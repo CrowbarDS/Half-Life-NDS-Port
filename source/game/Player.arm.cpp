@@ -133,8 +133,13 @@ namespace hlrt
         const int narrow = camera.zoomed ? Camera::kZoomFovDegrees : camera.fovDegrees;
         const int pitch = hldata::turnOf(input.lookFineY, settings.pitchSpeed) * narrow / camera.fovDegrees;
         const int yaw = hldata::turnOf(input.lookFineX, settings.aimSpeed) * narrow / camera.fovDegrees;
-        camera.yaw = static_cast<std::uint16_t>(camera.yaw - yaw);
-        camera.pitch = static_cast<std::int16_t>(camera.pitch + (settings.invertPitch ? pitch : -pitch));
+        // A 3DS's gyroscope: already in 65536ths of a turn, as far as the
+        // console turned (times its speed); right and up positive.
+        const int gyroYaw = input.gyroTurnX * narrow / camera.fovDegrees;
+        const int gyroPitch = input.gyroTurnY * narrow / camera.fovDegrees;
+        camera.yaw = static_cast<std::uint16_t>(camera.yaw - yaw - gyroYaw);
+        camera.pitch = static_cast<std::int16_t>(camera.pitch + (settings.invertPitch ? pitch : -pitch) +
+                                                 (settings.invertPitch ? -gyroPitch : gyroPitch));
         camera.clampPitch();
     }
 

@@ -59,6 +59,8 @@ public:
     bool hideMapName = true;
     /// How hard a Rumble Pak's motor goes (hldata::RumbleSetting).
     std::uint8_t vibration = 1;
+    /// How a 3DS's gyroscope aims (hldata::ControlSettings::gyroSpeed; 0 off).
+    std::uint8_t gyroSpeed = 0;
     /// The COMMAND line's cheats are let through. While it is on, Cheater
     /// is earned and no other achievement is.
     bool cheats = false;
@@ -79,6 +81,7 @@ public:
         set.tapUse = tapUse;
         set.firmness = firmness;
         set.firmPress = firmPress;
+        set.gyroSpeed = gyroSpeed;
         for (int a = 0; a < hldata::kActionCount; ++a)
             set.keys[a] = keys[a];
         return set;

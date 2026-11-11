@@ -51,6 +51,11 @@ namespace hlrt
             in.circle = true;
             in.circleX = l.padX;
             in.circleY = l.padY;
+            if (!l.gyroPresent)
+                return;
+            in.gyro = true;
+            in.gyroYaw = hldata::gyroAxis(l, hldata::kGyroYawAxis, hldata::kGyroYawSign);
+            in.gyroPitch = hldata::gyroAxis(l, hldata::kGyroPitchAxis, hldata::kGyroPitchSign);
         }
     } // namespace
 #endif
@@ -92,6 +97,8 @@ namespace hlrt
         in.blank = Global::vblanks();
 #ifndef HLDS_CHILD
         readCircle(in);
+        if (in.gyro)
+            gyroSeen_ = true;
 #endif
         // (A touch the menu had, still down: as though it were not.)
         if (touchHeld_ && !(held & KEY_TOUCH))

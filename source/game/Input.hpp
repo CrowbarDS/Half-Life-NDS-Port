@@ -29,6 +29,9 @@ namespace hlrt
         /// do not: a DSi in its own touch mode, an emulator). Seen once, it
         /// is known.
         static bool pressureSeen() { return pressureSeen_; }
+        /// A 3DS's gyroscope has answered (shared/Hl3dsLink.hpp): its
+        /// setting can be used.
+        static bool gyroSeen() { return gyroSeen_; }
         /// The list of a slot's weapons, up over the pad or not (for the
         /// touch screen to draw).
         const hldata::WeaponList &weaponList() const { return weaponList_; }
@@ -52,6 +55,7 @@ namespace hlrt
         bool touchWas_ = false;
         bool touchHeld_ = false;
         static inline bool pressureSeen_ = false;
+        static inline bool gyroSeen_ = false;
     };
 
     HL_ENGINE_OBJECT(Input, input);

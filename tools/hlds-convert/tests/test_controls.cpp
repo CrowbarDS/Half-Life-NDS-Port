@@ -857,6 +857,36 @@ namespace
                   back.vibration == static_cast<std::uint8_t>(RumbleSetting::Light),
               "a file of version 27 keeps its idle minutes, and vibrates lightly");
         data.vibration = 1;
+
+        // The 3DS's gyroscope (version 29): off at first, kept, its speeds
+        // in range; a file of version 28, from before it, read as off.
+        check(SettingsData().gyroSpeed == 0, "the gyroscope is off at first");
+        data.gyroSpeed = 3;
+        written = writeSettings(data);
+        check(readSettings(written.data(), written.size(), back) && back.gyroSpeed == 3, "a gyroscope speed: kept");
+        data.gyroSpeed = kGyroSpeeds;
+        written = writeSettings(data);
+        check(!readSettings(written.data(), written.size(), back), "a gyroscope speed there is not: not read");
+        data.gyroSpeed = 0;
+        SettingsData before28;
+        before28.vibration = static_cast<std::uint8_t>(RumbleSetting::Strong);
+        before28.gyroSpeed = 2; // (not in that version)
+        yas::mem_ostream os28;
+        yas::binary_oarchive<yas::mem_ostream, flags> oa28(os28);
+        before28.serializeTwentyEight(oa28);
+        const auto buf28 = os28.get_intrusive_buffer();
+        SettingsHeader header28{};
+        std::memcpy(header28.magic, kSettingsMagic, sizeof(header28.magic));
+        header28.version = kSettingsVersionTwentyEight;
+        header28.payloadBytes = static_cast<std::uint16_t>(buf28.size);
+        header28.crc32 = crc32(reinterpret_cast<const std::uint8_t *>(buf28.data), static_cast<std::uint32_t>(buf28.size));
+        std::vector<std::uint8_t> file28(sizeof(header28) + buf28.size);
+        std::memcpy(file28.data(), &header28, sizeof(header28));
+        std::memcpy(file28.data() + sizeof(header28), buf28.data, buf28.size);
+        check(readSettings(file28.data(), file28.size(), back) &&
+                  back.vibration == static_cast<std::uint8_t>(RumbleSetting::Strong) && back.gyroSpeed == 0,
+              "a file of version 28 keeps its vibration, and has the gyroscope off");
+
         written = writeSettings(data);
         check(written.size() <= sizeof(SettingsHeader) + kSettingsMostBytes, "... and the settings still fit their most");
 
@@ -1590,6 +1620,115 @@ namespace
         return controlsStep(set, in, state);
     }
 
+    /// A 3DS's gyroscope: its zero learned, then followed while still; a
+    /// dead band; as far as the console turned at 1x; slow turns not lost;
+    /// nothing while off or without one.
+    ControlsOut gyroFrame(const ControlSettings &set, ControlsState &state, int yaw, int pitch, std::uint32_t &blank,
+                          bool there = true)
+    {
+        ControlsIn in;
+        in.blank = ++blank;
+        in.gyro = there;
+        in.gyroYaw = yaw;
+        in.gyroPitch = pitch;
+        return controlsStep(set, in, state);
+    }
+
+    void testGyro()
+    {
+        std::uint32_t blank = 100;
+        ControlSettings set;
+        set.gyroSpeed = 1;
+        ControlsState state;
+        // Its zero at rest: 300 and -120 (as the probe saw, far from 0).
+        const int zeroYaw = 300, zeroPitch = -120;
+        ControlsOut out;
+        for (int f = 0; f < kGyroLearnFrames; ++f)
+        {
+            out = gyroFrame(set, state, zeroYaw, zeroPitch, blank);
+            check(out.gyroTurnX == 0 && out.gyroTurnY == 0, "nothing turns while its zero is learned");
+        }
+        int turned = 0;
+        for (int f = 0; f < 120; ++f)
+            turned += gyroFrame(set, state, zeroYaw + 3, zeroPitch - 5, blank).gyroTurnX;
+        check(turned == 0, "at rest (within the dead band): no drift");
+
+        // 90 degrees a second (1294 raw) for a second: a quarter turn.
+        turned = 0;
+        int looked = 0;
+        for (int f = 0; f < 60; ++f)
+        {
+            out = gyroFrame(set, state, zeroYaw + 1294, zeroPitch - 1294, blank);
+            turned += out.gyroTurnX;
+            looked += out.gyroTurnY;
+        }
+        check(turned > 16384 - 164 && turned < 16384 + 164, "1x: a quarter turn turned, a quarter turn in the game");
+        check(looked < -16384 + 164 && looked > -16384 - 164, "... and the same down");
+
+        // Slowly (2 degrees a second, 29 raw): under a turn unit a frame,
+        // but not lost: about 1/180 of a turn in a second.
+        turned = 0;
+        for (int f = 0; f < 60; ++f)
+            turned += gyroFrame(set, state, zeroYaw + 29, zeroPitch, blank).gyroTurnX;
+        // (Its zero followed the rest readings, 3 above it: about 27 raw,
+        // 342 -- 367 had it stayed at 300.)
+        check(turned >= 330 && turned <= 370, "slow turns add up");
+
+        // Twice the speed at 2x; nothing when off.
+        set.gyroSpeed = 3;
+        turned = 0;
+        for (int f = 0; f < 60; ++f)
+            turned += gyroFrame(set, state, zeroYaw + 1294, zeroPitch, blank).gyroTurnX;
+        check(turned > 2 * 16384 - 328 && turned < 2 * 16384 + 328, "2x: twice as far");
+        set.gyroSpeed = 0;
+        out = gyroFrame(set, state, zeroYaw + 1294, zeroPitch, blank);
+        check(out.gyroTurnX == 0 && out.gyroTurnY == 0, "off: nothing turns");
+
+        // A steady turn (90 degrees a second for 3 s) is never taken for its
+        // zero: the last second turns as far as the first.
+        set.gyroSpeed = 1;
+        for (int f = 0; f < 120; ++f)
+            gyroFrame(set, state, zeroYaw + 1294, zeroPitch, blank);
+        turned = 0;
+        for (int f = 0; f < 60; ++f)
+            turned += gyroFrame(set, state, zeroYaw + 1294, zeroPitch, blank).gyroTurnX;
+        check(turned > 16384 - 164 && turned < 16384 + 164, "a steady turn is not taken for rest");
+
+        // Its zero drifting (warmer: 18 raw more), still: it is followed --
+        // past the dead band at first, then nothing.
+        for (int f = 0; f < 240; ++f)
+            gyroFrame(set, state, zeroYaw + 18, zeroPitch, blank);
+        turned = 0;
+        for (int f = 0; f < 60; ++f)
+            turned += gyroFrame(set, state, zeroYaw + 18 + 13, zeroPitch, blank).gyroTurnX;
+        check(turned == 0, "a zero that drifted while still is followed");
+
+        // Moved while its zero was being learned: learned again, once still.
+        state = ControlsState();
+        for (int f = 0; f < 40; ++f)
+            out = gyroFrame(set, state, zeroYaw + (f % 2 ? 900 : -900), zeroPitch, blank);
+        check(out.gyroTurnX == 0, "moving from the start: not aiming yet");
+        for (int f = 0; f < kGyroLearnFrames; ++f)
+            gyroFrame(set, state, zeroYaw, zeroPitch, blank);
+        turned = 0;
+        for (int f = 0; f < 60; ++f)
+            turned += gyroFrame(set, state, zeroYaw + 1294, zeroPitch, blank).gyroTurnX;
+        check(turned > 16384 - 164 && turned < 16384 + 164, "... then still, it aims from the right zero");
+
+        // Two frames' time in one (the game at 30 a second): twice the turn.
+        state = ControlsState();
+        for (int f = 0; f < kGyroLearnFrames; ++f)
+            gyroFrame(set, state, zeroYaw, zeroPitch, blank);
+        gyroFrame(set, state, zeroYaw + 1294, zeroPitch, blank);
+        blank += 1;
+        const int one = gyroFrame(set, state, zeroYaw + 1294, zeroPitch, blank).gyroTurnX;
+        check(one >= 2 * 273 - 2 && one <= 2 * 273 + 2, "two sixtieths since the last frame: twice the turn");
+
+        // None there: nothing.
+        out = gyroFrame(set, state, 5000, 5000, blank, false);
+        check(out.gyroTurnX == 0 && out.gyroTurnY == 0, "no gyroscope: nothing turns");
+    }
+
     void testCircle()
     {
         std::uint32_t blank = 100;
@@ -1665,6 +1804,7 @@ int main()
     testUseHeld();
     testTalk();
     testCircle();
+    testGyro();
     if (g_failures == 0)
         std::printf("test_controls: ok\n");
     return g_failures == 0 ? 0 : 1;

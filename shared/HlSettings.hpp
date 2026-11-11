@@ -194,6 +194,9 @@ namespace hldata
         /// How hard a Rumble Pak's motor goes (RumbleSetting, HlRumble.hpp;
         /// version 28). Light unless asked otherwise.
         std::uint8_t vibration = 1;
+        /// How a 3DS's gyroscope aims (ControlSettings::gyroSpeed; version
+        /// 29). Off unless asked for.
+        std::uint8_t gyroSpeed = 0;
 
         /// What a file of version 8 held: all but the controls.
         template <class Ar>
@@ -258,9 +261,18 @@ namespace hldata
             // read, it has no room for.)
             ar &hostIdleMinutes;
             ar &vibration;
+            ar &gyroSpeed;
 #endif
         }
 #ifndef HLDS_CHILD
+        /// ... and of version 28: no gyroscope (read as off, the default).
+        template <class Ar>
+        void serializeTwentyEight(Ar &ar)
+        {
+            serializeTwentySix(ar);
+            ar &hostIdleMinutes;
+            ar &vibration;
+        }
         /// ... and of version 27: no vibration (read as light, the default).
         template <class Ar>
         void serializeTwentySeven(Ar &ar)
@@ -385,8 +397,9 @@ namespace hldata
     inline constexpr std::uint8_t kQualityStandard = 0, kQualityHigh = 1, kQualityChoices = 2;
 
     inline constexpr char kSettingsMagic[4] = {'H', 'L', 'S', 'T'};
-    inline constexpr std::uint16_t kSettingsVersion = 28;
-    /// The versions before, which are still read: 27 had no vibration (read
+    inline constexpr std::uint16_t kSettingsVersion = 29;
+    /// The versions before, which are still read: 28 had no gyroscope (read
+    /// as off, the default); 27 had no vibration (read
     /// as light, the default); 26 never sent idle players
     /// away (read as never); 25 had no TALK, nor
     /// talking in a match hosted; 24 had no screen shape
@@ -402,6 +415,7 @@ namespace hldata
     /// 11 had no achievements' pop-ups to turn off; 10 had no autoaim; 9 had
     /// the layouts but no aim speed, custom buttons or stylus pressure; 8 no
     /// controls to choose.
+    inline constexpr std::uint16_t kSettingsVersionTwentyEight = 28;
     inline constexpr std::uint16_t kSettingsVersionTwentySeven = 27;
     inline constexpr std::uint16_t kSettingsVersionTwentySix = 26;
     inline constexpr std::uint16_t kSettingsVersionTwentyFive = 25;
@@ -508,6 +522,8 @@ namespace hldata
             data.serializeTwentySix(ar);
         else if (version == kSettingsVersionTwentySeven)
             data.serializeTwentySeven(ar);
+        else if (version == kSettingsVersionTwentyEight)
+            data.serializeTwentyEight(ar);
 #endif
         else
             ar &data;
@@ -534,7 +550,8 @@ namespace hldata
             return false;
         std::memcpy(&header, bytes, sizeof(header));
         if (std::memcmp(header.magic, kSettingsMagic, sizeof(header.magic)) != 0 ||
-            (header.version != kSettingsVersion && header.version != kSettingsVersionTwentySeven &&
+            (header.version != kSettingsVersion && header.version != kSettingsVersionTwentyEight &&
+             header.version != kSettingsVersionTwentySeven &&
              header.version != kSettingsVersionTwentySix &&
              header.version != kSettingsVersionTwentyFive &&
              header.version != kSettingsVersionTwentyFour &&
@@ -612,7 +629,7 @@ namespace hldata
 #ifndef HLDS_CHILD
         // (A console sent the game hosts nothing, and reads no file: what it
         // does not check, it has no room for.)
-        if (!idleStep(read.hostIdleMinutes) || read.vibration >= kRumbleSettings)
+        if (!idleStep(read.hostIdleMinutes) || read.vibration >= kRumbleSettings || read.gyroSpeed >= kGyroSpeeds)
             return false;
 #endif
         out = read;
