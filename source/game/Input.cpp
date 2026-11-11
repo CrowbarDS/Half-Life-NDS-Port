@@ -3,6 +3,7 @@
 #include <nds.h>
 
 #include "Global.hpp"
+#include "Hl3dsLink.hpp"
 #include "game/Player.hpp"
 #include "Settings.hpp"
 #include "audio/Sound.hpp"
@@ -27,6 +28,33 @@ namespace hlrt
     // A reading the calibration cannot be trusted for (a DSi's own touch
     // mode reads otherwise), or that has no Z, is left at what it was: a
     // pixel, and no pressure.
+#ifndef HLDS_CHILD
+    namespace
+    {
+        // A 3DS's circle pad, written by the ARM7 (arm7/source/Rtcom.cpp),
+        // read here through the uncached mirror. (The Download Play child
+        // runs in DS mode: never a 3DS's.)
+        hldata::Link3ds link3ds __attribute__((aligned(32)));
+        bool link3dsSent = false;
+
+        void readCircle(hldata::ControlsIn &in)
+        {
+            if (!link3dsSent)
+            {
+                link3dsSent = true;
+                DC_FlushRange(&link3ds, sizeof link3ds);
+                fifoSendAddress(FIFO_USER_02, &link3ds);
+            }
+            const hldata::Link3ds &l = *static_cast<const hldata::Link3ds *>(memUncached(&link3ds));
+            if (!l.present)
+                return;
+            in.circle = true;
+            in.circleX = l.padX;
+            in.circleY = l.padY;
+        }
+    } // namespace
+#endif
+
     void Input::fine(int rawX, int rawY, int z1, int z2, hldata::ControlsIn &in)
     {
         const PERSONAL_DATA &data = *PersonalData;
@@ -62,6 +90,9 @@ namespace hlrt
         hldata::ControlsIn in;
         in.held = held;
         in.blank = Global::vblanks();
+#ifndef HLDS_CHILD
+        readCircle(in);
+#endif
         // (A touch the menu had, still down: as though it were not.)
         if (touchHeld_ && !(held & KEY_TOUCH))
             touchHeld_ = false;

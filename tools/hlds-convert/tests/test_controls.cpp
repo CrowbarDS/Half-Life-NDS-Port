@@ -1574,6 +1574,75 @@ namespace
         out = press(set, talking, 0, blank);
         check(!out.talkHeld, "... and not once let go");
     }
+
+    /// A 3DS's circle pad (ControlsIn::circle): eight ways, walk or run by
+    /// how far, the D-pad left out while it is pushed (TwlBg's C-pad
+    /// emulation presses it with the same push), nothing without one.
+    ControlsOut circle(const ControlSettings &set, ControlsState &state, int x, int y, std::uint32_t &blank,
+                       std::uint32_t held = 0, bool there = true)
+    {
+        ControlsIn in;
+        in.held = held;
+        in.blank = ++blank;
+        in.circle = there;
+        in.circleX = x;
+        in.circleY = y;
+        return controlsStep(set, in, state);
+    }
+
+    void testCircle()
+    {
+        std::uint32_t blank = 100;
+        ControlSettings set;
+        ControlsState state;
+
+        // Eight ways at a full push: a run.
+        struct Way
+        {
+            int x, y, forward, side;
+        };
+        const Way ways[8] = {{0, 100, 1, 0},  {71, 71, 1, 1},   {100, 0, 0, 1},  {71, -71, -1, 1},
+                             {0, -100, -1, 0}, {-71, -71, -1, -1}, {-100, 0, 0, -1}, {-71, 71, 1, -1}};
+        for (const Way &w : ways)
+        {
+            const ControlsOut out = circle(set, state, w.x, w.y, blank);
+            check(out.moveForward == w.forward && out.moveSide == w.side && !out.walk,
+                  "the circle pad, pushed all the way, runs its way");
+        }
+        // The slices' edges: within about 22.5 degrees of an axis, that axis alone.
+        ControlsOut out = circle(set, state, 100, 39, blank);
+        check(out.moveSide == 1 && out.moveForward == 0, "a little off the side: the side alone");
+        out = circle(set, state, 100, 40, blank);
+        check(out.moveSide == 1 && out.moveForward == 1, "... a little more: the diagonal");
+
+        // How far: the dead zone, a walk, a run.
+        out = circle(set, state, 10, 15, blank);
+        check(out.moveForward == 0 && out.moveSide == 0, "at rest within the dead zone");
+        out = circle(set, state, 0, 50, blank);
+        check(out.moveForward == 1 && out.walk, "part way: a walk");
+        out = circle(set, state, 0, kCircleRun, blank);
+        check(out.moveForward == 1 && !out.walk, "from kCircleRun on: a run");
+
+        // The D-pad: left out while pushed, its own again at rest.
+        const ControlsOut padUp = press(set, state, kButtonUp, blank);
+        out = circle(set, state, 0, -100, blank, kButtonUp);
+        check(out.moveForward == -1, "pushed back, the D-pad's up (the emulation's echo) does not count");
+        out = circle(set, state, 0, 0, blank, kButtonUp);
+        check(out.moveForward == padUp.moveForward && out.moveSide == padUp.moveSide,
+              "at rest, the D-pad works as it did");
+
+        // A layout where the D-pad turns: the push walks and does not turn.
+        set.padTurns = true;
+        state = ControlsState();
+        out = circle(set, state, 100, 0, blank, kButtonRight);
+        check(out.moveSide == 1 && out.lookDx == 0, "pad turns: the push sidesteps, the echo does not turn");
+
+        // No circle pad: as before, whatever the numbers.
+        set = ControlSettings();
+        state = ControlsState();
+        out = circle(set, state, 100, 100, blank, 0, false);
+        check(out.moveForward == 0 && out.moveSide == 0 && !out.walk, "no circle pad: nothing moves");
+    }
 } // namespace
 
 int main()
@@ -1595,6 +1664,7 @@ int main()
     testSensitivity();
     testUseHeld();
     testTalk();
+    testCircle();
     if (g_failures == 0)
         std::printf("test_controls: ok\n");
     return g_failures == 0 ? 0 : 1;

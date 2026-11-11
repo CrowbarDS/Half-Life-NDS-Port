@@ -342,6 +342,11 @@ namespace hldata
     /// as the stylus dragged this many pixels (three is about 125 degrees a
     /// second), and as much up and down.
     inline constexpr int kPadTurnPixels = 3;
+    /// A 3DS's circle pad (ControlsIn::circle), as TwlBg reads it: about
+    /// -105..105 each way, 0 at rest. Nearer the middle than kCircleDeadZone
+    /// it is at rest; pushed less than kCircleRun it walks, further it runs.
+    inline constexpr int kCircleDeadZone = 20;
+    inline constexpr int kCircleRun = 75;
     inline constexpr int kPadLookPixels = 2;
     /// A stylus's finer reading: sixteenths of a pixel.
     inline constexpr int kFineShift = 4;
@@ -361,7 +366,38 @@ namespace hldata
         /// smaller is firmer. 0: the console cannot say.
         int pressure = 0;
         std::uint32_t blank = 0; ///< the count of sixtieths of a second so far
+        /// A 3DS's circle pad (shared/Hl3dsLink.hpp), where there is one:
+        /// right and up positive, about -105..105, 0 at rest.
+        bool circle = false;
+        int circleX = 0, circleY = 0;
     };
+
+    /// The circle pad as one of eight directions: forward and side each -1,
+    /// 0 or 1, and whether it is pushed only part way (a walk). Nothing
+    /// within the dead zone. An axis counts when it is at least about
+    /// tan(22.5 degrees) of the other (5|a| >= 2|b|): eight even slices.
+    struct CirclePush
+    {
+        int forward = 0, side = 0;
+        bool walk = false;
+        bool pushed = false;
+    };
+
+    inline CirclePush circlePush(int x, int y)
+    {
+        CirclePush p;
+        const int r2 = x * x + y * y;
+        if (r2 < kCircleDeadZone * kCircleDeadZone)
+            return p;
+        p.pushed = true;
+        const int ax = x < 0 ? -x : x, ay = y < 0 ? -y : y;
+        if (5 * ax >= 2 * ay)
+            p.side = x > 0 ? 1 : -1;
+        if (5 * ay >= 2 * ax)
+            p.forward = y > 0 ? 1 : -1;
+        p.walk = r2 < kCircleRun * kCircleRun;
+        return p;
+    }
 
     /// What that means.
     struct ControlsOut
@@ -459,7 +495,12 @@ namespace hldata
     inline ControlsOut controlsStep(const ControlSettings &set, const ControlsIn &in, ControlsState &state)
     {
         ControlsOut out;
-        const std::uint32_t held = in.held;
+        // A 3DS's circle pad pushed: the D-pad's directions are left out
+        // meanwhile -- with TwlBg's C-pad emulation on, they are only the
+        // same push again.
+        const CirclePush circle = in.circle ? circlePush(in.circleX, in.circleY) : CirclePush();
+        const std::uint32_t held =
+            circle.pushed ? in.held & ~(kButtonUp | kButtonDown | kButtonLeft | kButtonRight) : in.held;
         const std::uint32_t pressed = held & ~state.lastHeld;
         const bool classic = set.scheme == kControlsClassic;
         const bool buttonsOnly = set.scheme == kControlsButtons;
@@ -808,6 +849,14 @@ namespace hldata
                    state.crouched || duckHeld || state.longJumping;
         out.walk = (state.touch == kTouchWalk && !set.walkToggle) || (state.walkSlide && state.touching) ||
                    state.walking || walkHeld;
+        // The circle pad moves the way it is pushed, over the pad and the
+        // stylus's stick; part way, a walk.
+        if (circle.pushed)
+        {
+            out.moveForward = circle.forward;
+            out.moveSide = circle.side;
+            out.walk = out.walk || circle.walk;
+        }
         out.touchOn = !state.touching ? kTouchAim
                                       : (state.duckSlide ? kTouchDuck : (state.walkSlide ? kTouchWalk : state.touch));
         out.useHeld = on(kActionUse) || (state.touching && state.touch == kTouchUse) ||
