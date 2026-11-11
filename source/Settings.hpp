@@ -57,6 +57,8 @@ public:
     bool achievementPopups = true;
     /// The map's name left off the loading screen (a match's always shows).
     bool hideMapName = true;
+    /// How hard a Rumble Pak's motor goes (hldata::RumbleSetting).
+    std::uint8_t vibration = 1;
     /// The COMMAND line's cheats are let through. While it is on, Cheater
     /// is earned and no other achievement is.
     bool cheats = false;

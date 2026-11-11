@@ -51,7 +51,7 @@ namespace hlrt
     class TopText;
 
     /// Changed whenever either table or anything they carry changes shape.
-    inline constexpr std::uint32_t kGameApiVersion = 9;
+    inline constexpr std::uint32_t kGameApiVersion = 10;
 
     /// The sizes of what both sides lay out, compared at the handshake: a
     /// library built from other headers, or with other settings, is refused
@@ -111,6 +111,8 @@ namespace hlrt
         void (*topShow)(TopText &, const hldata::MessageRecord &, const char *text);
         void (*topTick)(TopText &, int ms);
         void (*topClear)(TopText &);
+        /// A Rumble Pak's jolt (platform/Rumble.hpp): a shot.
+        void (*rumbleKick)(int strength, int blanks);
         std::uint32_t (*vblanks)();
         // (The profiling build's clock: DebugLog.hpp. Null without it.)
         std::uint32_t (*perfNow)();

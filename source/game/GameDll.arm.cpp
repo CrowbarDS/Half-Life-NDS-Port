@@ -21,6 +21,7 @@
 #include "render/HudDraw.hpp"
 #include "render/ScreenFade.hpp"
 #include "render/TopText.hpp"
+#include "platform/Rumble.hpp"
 
 // Loading the game library, and the engine's table for it (GameApi.hpp).
 // (ARM, the file name says: GCC cannot take the address of the hot code,
@@ -71,6 +72,7 @@ extern "C" const hlrt::EngineFuncs hlEngine = {
     .topShow = [](hlrt::TopText &t, const hldata::MessageRecord &message, const char *text) { t.show(message, text); },
     .topTick = [](hlrt::TopText &t, int ms) { t.tick(ms); },
     .topClear = [](hlrt::TopText &t) { t.clear(); },
+    .rumbleKick = [](int strength, int blanks) { hlrt::rumble::kick(strength, blanks); },
     .vblanks = &Global::vblanks,
 #ifdef HLDS_PROFILE
     .perfNow = &hlrt::DebugLog::Perf::now,

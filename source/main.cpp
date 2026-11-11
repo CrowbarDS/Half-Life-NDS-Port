@@ -28,6 +28,7 @@
 #include "data/SpriteCache.hpp"
 #include "data/TextureCache.hpp"
 #include "data/TextureStream.hpp"
+#include "platform/Rumble.hpp"
 #include "platform/Slot2.hpp"
 #include "game/Game.hpp"
 #include "game/GameApi.hpp"
@@ -566,7 +567,8 @@ namespace
     void dropMap()
     {
         // Silence first: the sounds are the map's, and are played out of its
-        // memory.
+        // memory. (And the motor still.)
+        hlrt::rumble::stop();
         hlrt::sound.unload();
         hlrt::sound.dropMatchWarning();
         hlrt::game.destroy();
@@ -2213,12 +2215,16 @@ int main(int argc, char *argv[])
                         hlrt::game.frame(elapsed);
                         achievements.frame();
                         debugFadeTick();
+                        // (A Rumble Pak: what the step was felt as.)
+                        hlrt::rumble::frame(elapsed);
                     }
                 }
                 else
                 {
                     // (A game between consoles does not stand still for
-                    // one console's menu: it goes on, with nothing held.)
+                    // one console's menu: it goes on, with nothing held --
+                    // and nothing felt.)
+                    hlrt::rumble::stop();
                     const bool startPressed = hlrt::input.startPressed;
                     if (inMatch)
                     {

@@ -13,6 +13,7 @@
 #include "game/GameApi.hpp"
 #include "game/Input.hpp"
 #include "net/NetGame.hpp"
+#include "platform/Rumble.hpp"
 #include "render/Camera.hpp"
 #include "render/HudDraw.hpp"
 
@@ -206,6 +207,7 @@ namespace hlrt
             {
                 arsenal.longJumped = false;
                 viewKick(view, 5 * kViewDegree);
+                rumble::kick(80, 6);
             }
         }
 
@@ -221,6 +223,7 @@ namespace hlrt
                 viewLand(view, speed);
                 if (const int cost = fallDamage(speed, game.logic.flatFalls.value))
                 {
+                    rumble::kick(220, 14);
                     gameApi.hurtPlayer(state, cost, hldata::kDmgFall);
                     game.heard.add(CommonSound::FallPain, nullptr);
                     // (A fall that kills: the game's splat too.)
@@ -231,6 +234,7 @@ namespace hlrt
                 {
                     // (Half of what would hurt: the game's thud.)
                     game.heard.add(CommonSound::JumpLand, nullptr, 100);
+                    rumble::kick(90, 6);
                 }
             }
             if (state.hurt > 0)
@@ -244,6 +248,11 @@ namespace hlrt
                     right = static_cast<fx>((static_cast<std::int64_t>(d[0]) * s - static_cast<std::int64_t>(d[1]) * c) >> 12);
                 }
                 viewHurt(view, state.hurt, forward, right);
+                // (Felt as hard as it hurt: a scratch barely, a blast fully.)
+                {
+                    const int hurt = state.hurt > 64 ? 64 : state.hurt;
+                    rumble::kick(64 + hurt * 3, 6 + (hurt >> 1));
+                }
                 // What hit them came from somewhere: their own blood, a
                 // splash of it in front of them and a stain on whatever
                 // is behind.
@@ -304,6 +313,9 @@ namespace hlrt
                 const int part = static_cast<int>((seed >> 12) & 511) - 256; // -256..255
                 camera.pos[a] += (reach * part) >> 8;
             }
+            // (Felt the while, as hard as it is seen.)
+            const int felt = (reach * 24) >> kFxShift;
+            rumble::hold(felt > 255 ? 255 : felt);
         }
         camera.update();
     }

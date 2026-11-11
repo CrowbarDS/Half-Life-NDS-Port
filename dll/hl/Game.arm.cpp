@@ -20,6 +20,7 @@
 #include "game/Player.hpp"
 #include "audio/Sound.hpp"
 #include "render/HudDraw.hpp"
+#include "platform/Rumble.hpp"
 #include "render/ScreenFade.hpp"
 #include "render/TopText.hpp"
 #include "render/BottomScreen.hpp"
@@ -1124,7 +1125,12 @@ namespace hlrt
             {
                 static std::uint32_t chance = 7;
                 chance = chance * 1664525u + 1013904223u;
-                viewKick(player.view, (did & kWeaponSecondary) ? 10 * kViewDegree : weaponKick(inHand_, chance >> 8));
+                const fx kick = (did & kWeaponSecondary) ? 10 * kViewDegree : weaponKick(inHand_, chance >> 8);
+                viewKick(player.view, kick);
+                // (A Rumble Pak: as hard as the gun kicks -- the .357 most.)
+                const int degrees = (kick < 0 ? -kick : kick) >> kFxShift;
+                if (kick != 0)
+                    rumble::kick(60 + (degrees > 10 ? 10 : degrees) * 18, 3 + (degrees >> 1));
             }
             // (The game's wpn_select is the player's choice of a weapon, heard
             // as it is asked for -- Input -- and not when one is drawn: what

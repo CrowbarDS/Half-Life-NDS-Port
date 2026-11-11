@@ -14,6 +14,7 @@
 #include "game/Player.hpp"
 #include "game/Think.hpp"
 #include "net/NetGame.hpp"
+#include "platform/Rumble.hpp"
 #include "render/BottomScreen.hpp"
 #include "render/Camera.hpp"
 #include "render/HudDraw.hpp"
@@ -87,6 +88,7 @@ namespace hlrt
     void TopText::show(const hldata::MessageRecord &message, const char *text) { hlEngine.topShow(*this, message, text); }
     void TopText::tick(int ms) { hlEngine.topTick(*this, ms); }
     void TopText::clear() { hlEngine.topClear(*this); }
+    void rumble::kick(int strength, int blanks) { hlEngine.rumbleKick(strength, blanks); }
 
 #ifdef HLDS_PROFILE
     namespace DebugLog::Perf

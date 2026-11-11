@@ -1,5 +1,6 @@
 #pragma once
 
+#include "HlRumble.hpp"
 #include "HlCharacters.hpp"
 
 // The player's settings: <card>/_nds/hl_nds/data/settings.dat
@@ -190,6 +191,9 @@ namespace hldata
         /// A match hosted: a player who does nothing for this many minutes
         /// is sent away (kIdleSteps; 0: never).
         std::uint8_t hostIdleMinutes = 0;
+        /// How hard a Rumble Pak's motor goes (RumbleSetting, HlRumble.hpp;
+        /// version 28). Light unless asked otherwise.
+        std::uint8_t vibration = 1;
 
         /// What a file of version 8 held: all but the controls.
         template <class Ar>
@@ -253,8 +257,18 @@ namespace hldata
             // writes a settings file, and hosts nothing -- what it does not
             // read, it has no room for.)
             ar &hostIdleMinutes;
+            ar &vibration;
 #endif
         }
+#ifndef HLDS_CHILD
+        /// ... and of version 27: no vibration (read as light, the default).
+        template <class Ar>
+        void serializeTwentySeven(Ar &ar)
+        {
+            serializeTwentySix(ar);
+            ar &hostIdleMinutes;
+        }
+#endif
         /// ... and of version 26: idle players never sent away (read as
         /// never, the default).
         template <class Ar>
@@ -371,8 +385,9 @@ namespace hldata
     inline constexpr std::uint8_t kQualityStandard = 0, kQualityHigh = 1, kQualityChoices = 2;
 
     inline constexpr char kSettingsMagic[4] = {'H', 'L', 'S', 'T'};
-    inline constexpr std::uint16_t kSettingsVersion = 27;
-    /// The versions before, which are still read: 26 never sent idle players
+    inline constexpr std::uint16_t kSettingsVersion = 28;
+    /// The versions before, which are still read: 27 had no vibration (read
+    /// as light, the default); 26 never sent idle players
     /// away (read as never); 25 had no TALK, nor
     /// talking in a match hosted; 24 had no screen shape
     /// (read as auto); 23 had no buttons that
@@ -387,6 +402,7 @@ namespace hldata
     /// 11 had no achievements' pop-ups to turn off; 10 had no autoaim; 9 had
     /// the layouts but no aim speed, custom buttons or stylus pressure; 8 no
     /// controls to choose.
+    inline constexpr std::uint16_t kSettingsVersionTwentySeven = 27;
     inline constexpr std::uint16_t kSettingsVersionTwentySix = 26;
     inline constexpr std::uint16_t kSettingsVersionTwentyFive = 25;
     inline constexpr std::uint16_t kSettingsVersionTwentyFour = 24;
@@ -490,6 +506,8 @@ namespace hldata
             data.serializeTwentyFive(ar);
         else if (version == kSettingsVersionTwentySix)
             data.serializeTwentySix(ar);
+        else if (version == kSettingsVersionTwentySeven)
+            data.serializeTwentySeven(ar);
 #endif
         else
             ar &data;
@@ -516,7 +534,8 @@ namespace hldata
             return false;
         std::memcpy(&header, bytes, sizeof(header));
         if (std::memcmp(header.magic, kSettingsMagic, sizeof(header.magic)) != 0 ||
-            (header.version != kSettingsVersion && header.version != kSettingsVersionTwentySix &&
+            (header.version != kSettingsVersion && header.version != kSettingsVersionTwentySeven &&
+             header.version != kSettingsVersionTwentySix &&
              header.version != kSettingsVersionTwentyFive &&
              header.version != kSettingsVersionTwentyFour &&
              header.version != kSettingsVersionTwentyThree &&
@@ -593,7 +612,7 @@ namespace hldata
 #ifndef HLDS_CHILD
         // (A console sent the game hosts nothing, and reads no file: what it
         // does not check, it has no room for.)
-        if (!idleStep(read.hostIdleMinutes))
+        if (!idleStep(read.hostIdleMinutes) || read.vibration >= kRumbleSettings)
             return false;
 #endif
         out = read;

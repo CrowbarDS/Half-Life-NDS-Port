@@ -826,6 +826,40 @@ namespace
         written = writeSettings(data);
         check(written.size() <= sizeof(SettingsHeader) + kSettingsMostBytes, "... and the settings still fit their most");
 
+        // A Rumble Pak's vibration: light unless asked; kept; nothing out of
+        // range; a file of version 27, from before it, read as light.
+        check(SettingsData().vibration == static_cast<std::uint8_t>(RumbleSetting::Light), "vibration is light at first");
+        data.vibration = static_cast<std::uint8_t>(RumbleSetting::Strong);
+        written = writeSettings(data);
+        check(readSettings(written.data(), written.size(), back) &&
+                  back.vibration == static_cast<std::uint8_t>(RumbleSetting::Strong),
+              "strong vibration: kept");
+        data.vibration = kRumbleSettings;
+        written = writeSettings(data);
+        check(!readSettings(written.data(), written.size(), back), "a vibration there is not: not read");
+        data.vibration = 0;
+        SettingsData before27;
+        before27.hostIdleMinutes = 5;
+        before27.vibration = 0; // (not in that version)
+        yas::mem_ostream os27;
+        yas::binary_oarchive<yas::mem_ostream, flags> oa27(os27);
+        before27.serializeTwentySeven(oa27);
+        const auto buf27 = os27.get_intrusive_buffer();
+        SettingsHeader header27{};
+        std::memcpy(header27.magic, kSettingsMagic, sizeof(header27.magic));
+        header27.version = kSettingsVersionTwentySeven;
+        header27.payloadBytes = static_cast<std::uint16_t>(buf27.size);
+        header27.crc32 = crc32(reinterpret_cast<const std::uint8_t *>(buf27.data), static_cast<std::uint32_t>(buf27.size));
+        std::vector<std::uint8_t> file27(sizeof(header27) + buf27.size);
+        std::memcpy(file27.data(), &header27, sizeof(header27));
+        std::memcpy(file27.data() + sizeof(header27), buf27.data, buf27.size);
+        check(readSettings(file27.data(), file27.size(), back) && back.hostIdleMinutes == 5 &&
+                  back.vibration == static_cast<std::uint8_t>(RumbleSetting::Light),
+              "a file of version 27 keeps its idle minutes, and vibrates lightly");
+        data.vibration = 1;
+        written = writeSettings(data);
+        check(written.size() <= sizeof(SettingsHeader) + kSettingsMostBytes, "... and the settings still fit their most");
+
         data.controlScheme = kControlsSchemes;
         written = writeSettings(data);
         check(!readSettings(written.data(), written.size(), back), "a layout there is not: not read");

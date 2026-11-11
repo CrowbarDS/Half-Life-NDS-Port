@@ -186,6 +186,7 @@ if(HLDS_BUILD_TESTS)
             test_controls
             test_commands
             test_lineedit
+            test_rumble
             test_avi
             test_net
             test_netmaps

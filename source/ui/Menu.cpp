@@ -120,6 +120,7 @@ namespace hlrt
             kPopups,       ///< the achievements' pop-ups (a setting)
             kAutosave,     ///< the game's own save (a setting)
             kHideMapName,  ///< the map's name left off the loading screen (a setting)
+            kVibration,    ///< how hard a Rumble Pak's motor goes (a setting)
             kCheats,       ///< the COMMAND line's cheats let through (a setting)
             kKeyboard,     ///< where the touch keyboard's letters are (a setting)
             kGameHalfLife, ///< NEW GAME's: the game itself
@@ -991,6 +992,9 @@ namespace hlrt
                                   {Kind::Value, kPopups, "Achievement pop-ups"},
                                   {Kind::Value, kAutosave, "Auto save"},
                                   {Kind::Value, kHideMapName, "Hide map name"},
+#ifndef HLDS_CHILD
+                                  {Kind::Value, kVibration, "Vibration"},
+#endif
                                   {Kind::Value, kCheats, "Cheats"},
                                   {Kind::Value, kKeyboard, "Keyboard"}};
         /// Category `chapter`'s rows (BUTTONS: one an action, made here).
@@ -1412,6 +1416,15 @@ namespace hlrt
             case kPopups: std::snprintf(out, size, "%s", settings.achievementPopups ? "on" : "off"); break;
             case kAutosave: std::snprintf(out, size, "%s", settings.autosave ? "on" : "off"); break;
             case kHideMapName: std::snprintf(out, size, "%s", settings.hideMapName ? "on" : "off"); break;
+#ifndef HLDS_CHILD
+            case kVibration:
+                std::snprintf(out, size, "%s",
+                              !slot2::hasRumble()      ? "no Rumble Pak"
+                              : settings.vibration == 0 ? "off"
+                              : settings.vibration == 1 ? "light"
+                                                        : "strong");
+                break;
+#endif
             case kCheats: std::snprintf(out, size, "%s", settings.cheats ? "on" : "off"); break;
             case kKeyboard:
                 std::snprintf(out, size, "%s", settings.keyboardLayout == hldata::kKeyboardAzerty ? "AZERTY" : "QWERTY");
@@ -1522,6 +1535,9 @@ namespace hlrt
             case kPopups: return "An achievement earned is shown on the top screen as it is. Off, it is still earned.";
             case kAutosave: return "The game saves at a map's save points and on arriving in a map. Off, only your own saves are made.";
             case kHideMapName: return "The loading screen does not say which map is coming. A match's always says it.";
+#ifndef HLDS_CHILD
+            case kVibration: return "How hard a Rumble Pak in the GBA slot shakes when you are hit, shoot, land hard or the ground shakes.";
+#endif
             case kCheats: return "Lets the COMMAND line's cheats work. On, Cheater is earned and no other achievement is until it is off.";
             case kKeyboard: return "Where the letters are on the touch keyboard: QWERTY or AZERTY.";
             case kKey: return "Touch an action, then press its button. START: leave it as it was.";
@@ -1622,6 +1638,13 @@ namespace hlrt
             case kPopups: settings.achievementPopups = !settings.achievementPopups; return true;
             case kAutosave: settings.autosave = !settings.autosave; return true;
             case kHideMapName: settings.hideMapName = !settings.hideMapName; return true;
+#ifndef HLDS_CHILD
+            case kVibration:
+                if (!slot2::hasRumble())
+                    return false;
+                cycle(settings.vibration, hldata::kRumbleSettings);
+                return true;
+#endif
             case kCheats:
                 settings.cheats = !settings.cheats;
                 achievements.cheatsSwitched(settings.cheats);
@@ -2093,7 +2116,7 @@ namespace hlrt
                 constexpr bool nameLocked = false;
 #endif
                 const bool dead = nameLocked || (item.id == kFirmPress && !Input::pressureSeen()) ||
-                                  (item.id == kQuality && !isDSiMode()) || 
+                                  (item.id == kQuality && !isDSiMode()) || (item.id == kVibration && !slot2::hasRumble()) ||
                                   (item.id == kProfSpray && logos.count() == 0) || hostDead(item.id) != nullptr;
                 drawText(band, small, x + 8, textY, item.label, inkFor(small, dead ? kUiGrey : kUiWhite));
                 if (item.kind == Kind::Slider)

@@ -74,6 +74,7 @@ void Settings::load()
         hostVoice = data.hostVoice != 0;
 #ifndef HLDS_CHILD
         hostIdleMinutes = data.hostIdleMinutes;
+        vibration = data.vibration;
 #endif
         maxPlayers = data.maxPlayers;
         allowGuests = data.allowGuests != 0;
@@ -156,6 +157,7 @@ void Settings::reset(int category)
         achievementPopups = first.achievementPopups;
         autosave = first.autosave;
         hideMapName = first.hideMapName;
+        vibration = first.vibration;
         if (cheats && !first.cheats)
             achievements.cheatsSwitched(false);
         cheats = first.cheats;
@@ -221,6 +223,7 @@ bool Settings::save() const
     data.hostVoice = hostVoice ? 1 : 0;
 #ifndef HLDS_CHILD
     data.hostIdleMinutes = hostIdleMinutes;
+    data.vibration = vibration;
 #endif
     data.maxPlayers = maxPlayers;
     data.allowGuests = allowGuests ? 1 : 0;
