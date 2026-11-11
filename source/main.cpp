@@ -28,6 +28,7 @@
 #include "data/SpriteCache.hpp"
 #include "data/TextureCache.hpp"
 #include "data/TextureStream.hpp"
+#include "platform/Slot2.hpp"
 #include "game/Game.hpp"
 #include "game/GameApi.hpp"
 #include "game/Input.hpp"
@@ -573,6 +574,8 @@ namespace
         hlrt::spriteCache.destroy();
         hlrt::modelCache.destroy();
         hlrt::effectDraw.dropSprays();
+        // (What the map kept in the Expansion Pak: its textures, its sounds.)
+        hlrt::slot2::reset();
         // (All of the map gone: anything that wrote where it should not
         // while it was played is found now, by its block.)
         hlrt::guard::check("map left");

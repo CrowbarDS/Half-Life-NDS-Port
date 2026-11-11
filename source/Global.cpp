@@ -13,6 +13,7 @@
 #include "net/AirDevice.hpp"
 #include "net/GuestLoad.hpp"
 #include "data/VramWriter.hpp"
+#include "platform/Slot2.hpp"
 #include <cstddef>
 extern "C" {
 #include <NEAAlloc.h> // (no C++ guard of its own)
@@ -167,6 +168,9 @@ void Global::Init(const char *launchedFrom)
         setCpuClock(true);
         fastClock = true;
     }
+
+    // The GBA slot: an Expansion Pak or a Rumble Pak (none in DSi mode).
+    hlrt::slot2::init();
 
     irqEnable(IRQ_HBLANK);
     irqSet(IRQ_VBLANK, onVblank);

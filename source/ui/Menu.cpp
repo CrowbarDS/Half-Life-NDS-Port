@@ -13,6 +13,7 @@
 #include "Global.hpp"
 #include "Guard.hpp"
 #include "Settings.hpp"
+#include "platform/Slot2.hpp"
 #include "audio/Arm7Audio.hpp"
 #include "audio/DspAudio.hpp"
 #include "game/Input.hpp"
@@ -707,11 +708,20 @@ namespace hlrt
         {
             const FontView &small = touchCanvas.font(kFontSmall);
 #ifndef HLDS_CHILD
+            // (And what is in the GBA slot that the game uses.)
+            const char *slot = slot2::pakBytes() != 0 ? " + Expansion Pak" : (slot2::hasRumble() ? " + Rumble Pak" : "");
             if (!global.dataVersion.empty() && global.dataVersion != hlVersion)
             {
-                char line[64];
-                std::snprintf(line, sizeof(line), "%s, card data %s", hlVersion, global.dataVersion.c_str());
+                char line[80];
+                std::snprintf(line, sizeof(line), "%s%s, card data %s", hlVersion, slot, global.dataVersion.c_str());
                 drawFitted(canvas, small, 8, 176, line, inkFor(small, kUiOrange), 240);
+                return;
+            }
+            if (slot[0] != '\0')
+            {
+                char line[64];
+                std::snprintf(line, sizeof(line), "%s%s", hlVersion, slot);
+                drawTextCentred(canvas, small, 128, 176, line, inkFor(small, kUiGrey));
                 return;
             }
 #endif
