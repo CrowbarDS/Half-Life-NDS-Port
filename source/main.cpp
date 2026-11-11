@@ -359,6 +359,31 @@ namespace
         std::fclose(log);
     }
 
+    /// As a map is left (perf.txt): how far play took the heap past what
+    /// its load left (guard::playRise), what is held now and what room is
+    /// left, and whether the release reserve had to be let go in play.
+    /// (Not in the Download Play child: it has no room, and no card.)
+    void writePlayRoom(const char *map)
+    {
+#ifdef HLDS_CHILD
+        (void)map;
+#else
+        const hlrt::guard::HeapRoom room = hlrt::guard::heapRoom();
+        const hlrt::guard::ReserveState reserve = hlrt::guard::reserveState();
+        const std::uint32_t rise = hlrt::guard::playRise();
+        const std::uint32_t live = hlrt::guard::liveBytes();
+        std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a");
+        if (log == nullptr)
+            return;
+        std::fprintf(log, "play: %s rise %lu, live %lu, top %lu, largest hole %lu; reserve %s (%lu, last %lu bytes)\n",
+                     map, static_cast<unsigned long>(rise), static_cast<unsigned long>(live),
+                     static_cast<unsigned long>(room.top), static_cast<unsigned long>(room.largestHole),
+                     reserve.letGoPlay > 0 ? "LET GO in play" : (reserve.held ? "held" : "none"),
+                     static_cast<unsigned long>(reserve.letGoPlay), static_cast<unsigned long>(reserve.lastAsked));
+        std::fclose(log);
+#endif
+    }
+
 #ifdef HLDS_PROFILE
     /// Where a load went: a line in perf.txt, a stage at a time, in
     /// milliseconds. (The card's share of each can only be judged on a card.)
@@ -652,6 +677,8 @@ namespace
                 hlrt::game.rememberMap(hldata::nameHash(currentMap.c_str()));
             if (changing && !hlrt::netGame.playing())
                 stored = hlrt::SaveGame::leaveMap(currentMap, hlrt::level.view.header->crc32);
+            if (perfLogging())
+                writePlayRoom(currentMap.c_str());
             logPerformance();
         }
         leavingAbandoned = false;
@@ -2065,6 +2092,8 @@ int main(int argc, char *argv[])
         // remembered: it is over.
         if (hlrt::level.loaded())
         {
+            if (perfLogging())
+                writePlayRoom(currentMap.c_str());
             logPerformance();
             dropMap();
             hlrt::level.unload();
@@ -2085,6 +2114,8 @@ int main(int argc, char *argv[])
         hlrt::screenFade.curtainDown();
         if (hlrt::level.loaded())
         {
+            if (perfLogging())
+                writePlayRoom(currentMap.c_str());
             logPerformance();
             dropMap();
             hlrt::level.unload();
