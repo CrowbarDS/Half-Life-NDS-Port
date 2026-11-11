@@ -107,7 +107,7 @@ for map in "$@"; do
         sleep 1
     done
     sleep 3
-    grep -E "^(room|play|load): $map " "$D/perf.txt" > "$OUT/$map.txt" 2>/dev/null
+    grep -E "^(room|play|load|reopen): $map |^mount: " "$D/perf.txt" > "$OUT/$map.txt" 2>/dev/null
     python3 -I - "$OUT/$map.txt" "$map" >> "$OUT/table.txt" <<'EOF'
 import re, sys
 lines = open(sys.argv[1]).read().splitlines()

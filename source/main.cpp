@@ -347,17 +347,78 @@ namespace
         std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a");
         if (log == nullptr)
             return;
+        // (How the map's archive seeks: in many pieces on the card, slowly.)
+        char seek[40] = "";
+#ifndef HLDS_CHILD
+        NEA_NpacSeek info{};
+        if (NEA_NpacSeekInfo("map", &info) == 0)
+            std::snprintf(seek, sizeof(seek), "; seek %s, %ld piece(s)", info.fast ? "fast" : "SLOW",
+                          static_cast<long>(info.fragments));
+#endif
         std::fprintf(log, "room: %s top %lu, largest hole %lu, %lu in holes; copies %d (%d KB); sounds %s%d of %d, "
-                          "%d not tried for room, %d failed, %d in the Pak (%lu KB of it used, level %lu KB); reserve %s\n",
+                          "%d not tried for room, %d failed, %d in the Pak (%lu KB of it used, level %lu KB)%s; reserve %s\n",
                      map, static_cast<unsigned long>(room.top), static_cast<unsigned long>(room.largestHole),
                      static_cast<unsigned long>(room.inHoles), st.copies, st.copiesKb,
                      snd.tableFailed ? "NONE (no room for their list), " : "", snd.loaded, snd.kept,
                      snd.skippedRoom, snd.failed, snd.inPak,
                      static_cast<unsigned long>(hlrt::slot2::used() / 1024),
-                     static_cast<unsigned long>(hlrt::level.pakBytes() / 1024),
+                     static_cast<unsigned long>(hlrt::level.pakBytes() / 1024), seek,
                      reserve.letGoLoad > 0 ? "LET GO in the load" : (reserve.held ? "held" : "none"));
         std::fclose(log);
     }
+
+#if defined(HLDS_DEBUG_BUILD) && !defined(HLDS_CHILD)
+    /// A debug build: an archive that seeks the slow way (in more pieces on
+    /// the card than its fast-seek table may hold) is said on the screen.
+    void warnSlowSeek()
+    {
+        static char text[96];
+        for (const NEA_NpacSeek *seek : {&global.mapSeek, &global.commonSeek})
+        {
+            if (seek->fast || seek->state == NEA_NPAC_SEEK_NOT_FAT)
+                continue;
+            std::snprintf(text, sizeof(text), "SLOW CARD READS: %s in %ld pieces\ncopy maps/ to a fresh card",
+                          seek == &global.mapSeek ? "map" : "common", static_cast<long>(seek->fragments));
+            hlrt::topText.announce(text, 10000);
+            return;
+        }
+    }
+
+    /// A debug build, with debug_reopen.txt on the card: a read of the map's
+    /// archive is made to fail once at the end of the load, so that NEA
+    /// opens it again as it does after a card's failed read in play; what
+    /// that took of the heap, at most and after, goes to perf.txt. (Then
+    /// play's own measure starts again.)
+    void measureReopen(const char *map)
+    {
+        std::FILE *flag = std::fopen(global.dataPath("debug_reopen.txt").c_str(), "r");
+        if (flag == nullptr)
+            return;
+        std::fclose(flag);
+        NEA_NpacMember member;
+        if (NEA_NpacMemberFind(global.mapPath("level.0").c_str(), &member) != 0)
+            return;
+        alignas(4) static std::uint8_t probe[64];
+        const std::uint32_t before = hlrt::guard::liveBytes();
+        hlrt::guard::markPlay();
+        NEA_NpacFailReads(1);
+        const bool read = NEA_NpacMemberRead(&member, 0, probe, sizeof(probe)) == 0;
+        const std::uint32_t rise = hlrt::guard::playRise();
+        const std::uint32_t after = hlrt::guard::liveBytes();
+        hlrt::guard::markPlay();
+        NEA_NpacSeek seek{};
+        NEA_NpacSeekInfo("map", &seek);
+        if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
+        {
+            std::fprintf(log, "reopen: %s read %s; live %lu before, %lu after, at most %lu more; fast seek %s, "
+                              "opened again %lu time(s)\n",
+                         map, read ? "right" : "FAILED", static_cast<unsigned long>(before),
+                         static_cast<unsigned long>(after), static_cast<unsigned long>(rise), seek.fast ? "on" : "off",
+                         static_cast<unsigned long>(seek.plain_reopens));
+            std::fclose(log);
+        }
+    }
+#endif
 
     /// As a map is left (perf.txt): how far play took the heap past what
     /// its load left (guard::playRise), what is held now and what room is
@@ -837,6 +898,10 @@ namespace
         clock.write(name.c_str());
         if (perfLogging())
             writeLoadRoom(name.c_str());
+#if defined(HLDS_DEBUG_BUILD) && !defined(HLDS_CHILD)
+        warnSlowSeek();
+        measureReopen(name.c_str());
+#endif
         if (hlrt::player.debugTrack >= 0)
         {
             hlrt::game.logic.musicRequest = hlrt::player.debugTrack;

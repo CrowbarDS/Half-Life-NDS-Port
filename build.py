@@ -41,7 +41,9 @@ profile += ['HLDS_BOX_TEST=1'] if os.environ.get('HLDS_BOX_TEST') else []
 # header and four bytes after every block, and small blocks held a while once
 # given back. Without it (the release) the blocks are the allocator's own,
 # with nothing added, and its chain is what is checked.
-guard = ['HLDS_GUARD_FULL'] if os.environ.get('HLDS_DEBUG') else []
+# (HLDS_DEBUG_BUILD: what else a debug build says, on the screen and in
+# perf.txt -- an archive that seeks the slow way.)
+guard = ['HLDS_GUARD_FULL', 'HLDS_DEBUG_BUILD'] if os.environ.get('HLDS_DEBUG') else []
 
 # The 64-bit divide goes to the console's divider (source/HwMath.s), and to
 # the library's for what the divider would answer otherwise.

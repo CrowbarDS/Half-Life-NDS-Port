@@ -142,6 +142,13 @@ public:
     /// The common archive, if it is not mounted already. (The 3D engine
     /// lets go of every archive when it is brought up again: InitVideo.)
     void mountCommon();
+#ifndef HLDS_CHILD
+    /// How the map's and the common archive's files seek, as each was last
+    /// mounted (NEA_NpacSeekInfo): one in more pieces on the card than the
+    /// fast-seek table may hold seeks the slow way. Said in perf.txt
+    /// (`mount:`) and, in a debug build, on the screen.
+    NEA_NpacSeek mapSeek{}, commonSeek{};
+#endif
 
     /// Why the game cannot start. Everything below Ok means the card does not
     /// carry a usable conversion, which would otherwise show up as a black

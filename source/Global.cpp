@@ -1,5 +1,6 @@
 #include "Global.hpp"
 #include "render/BottomScreen.hpp"
+#include "Settings.hpp"
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -261,6 +262,30 @@ namespace
             return 0;
         return errno == ENOSPC ? NEA_NpacMount("map", path.c_str()) : -1;
     }
+
+    /// How `drive`'s archive, `file`, seeks now that it is mounted: into
+    /// `seek`, and a `mount:` line in perf.txt (at `log`).
+    void noteSeek(const char *drive, const std::string &file, NEA_NpacSeek &seek, const std::string &log)
+    {
+        seek = NEA_NpacSeek{};
+        if (NEA_NpacSeekInfo(drive, &seek) != 0 || !perfLogging())
+            return;
+        std::FILE *out = std::fopen(log.c_str(), "a");
+        if (out == nullptr)
+            return;
+        const std::size_t slash = file.rfind('/');
+        const char *name = file.c_str() + (slash == std::string::npos ? 0 : slash + 1);
+        static const char *const kWhy[] = {"", "not on a FAT card", "no memory for the table",
+                                           "too many for the table", "opened again after a failed read"};
+        const unsigned why = static_cast<unsigned>(seek.state);
+        if (seek.fast)
+            std::fprintf(out, "mount: %s %s fast seek, %ld piece(s), table %lu bytes\n", drive, name,
+                         static_cast<long>(seek.fragments), static_cast<unsigned long>(seek.table_bytes));
+        else
+            std::fprintf(out, "mount: %s %s NO fast seek, %ld piece(s) (%s)\n", drive, name,
+                         static_cast<long>(seek.fragments), why < 5 ? kWhy[why] : "?");
+        std::fclose(out);
+    }
 #endif
 }
 
@@ -317,8 +342,8 @@ void Global::InitVideo()
     // Bringing the engine up again closed its archives.
     mountCommon();
 #ifndef HLDS_CHILD
-    if (!mapMounted_.empty() && !NEA_NpacIsMounted("map"))
-        mountMapArchive(mapArchive(mapMounted_));
+    if (!mapMounted_.empty() && !NEA_NpacIsMounted("map") && mountMapArchive(mapArchive(mapMounted_)) == 0)
+        noteSeek("map", mapArchive(mapMounted_), mapSeek, dataPath("perf.txt"));
 #endif
 }
 
@@ -333,6 +358,7 @@ bool Global::mountMap(const std::string &name)
 #else
     if (!hasData || mountMapArchive(mapArchive(name)) != 0)
         return false;
+    noteSeek("map", mapArchive(name), mapSeek, dataPath("perf.txt"));
 #endif
     mapMounted_ = name;
     return true;
@@ -354,8 +380,8 @@ void Global::mountCommon()
 #ifndef HLDS_CHILD
     // (A card with no common archive is a game without its own letters and
     // pictures, which is said where each is missed, not here.)
-    if (hasData && !NEA_NpacIsMounted("common"))
-        NEA_NpacMount("common", (dataDir() + "common.npac").c_str());
+    if (hasData && !NEA_NpacIsMounted("common") && NEA_NpacMount("common", (dataDir() + "common.npac").c_str()) == 0)
+        noteSeek("common", "common.npac", commonSeek, dataPath("perf.txt"));
 #endif
 }
 
