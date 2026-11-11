@@ -1344,7 +1344,8 @@ start, before the sound (`arm7/source/Rtcom.cpp`):
    runs in DSi mode only: a DSi's or a DS's clock is a real chip and is
    never sent rtcom commands.
 2. An unknown command, which a TwlBg with rtcom answers `0x82`.
-3. An upload of `Peek11.s`, 88 bytes of ARMv4 that the ARM11 also runs.
+3. An upload of `Peek11.s`, 364 bytes of ARMv4 that the ARM11 also runs
+   (about 0.3 s: an upload is only right with the long bit delay).
 4. A read of the top screen's window edges at `0x1ED02218`/`0x1ED0221C`
    on the ARM11's side: 320 pixels wide on the plain TwlBg (measured on an
    Old 3DS: `0x28`..`0x167`), 384 on the wide one.
@@ -1353,6 +1354,37 @@ The answer goes to the ARM9 once, on `FIFO_USER_02`. The screen setting's
 "auto" follows it, and "4:3" and "16:10" override it. The probe that found
 all this is `tools/hwtest/rtcom`. The wide TwlBg's window has not yet been
 read on hardware; the 384 comes from TWPatch's source.
+
+## The circle pad on a 3DS
+
+TwlBg reads the circle pad every frame itself, to press the D-pad for a DS
+game (its "C-pad emulation"). The game reads that same reading through the
+rtcom session the widescreen check opened, which is left open for it.
+
+**Finding it.** `Peek11.s`'s second command (`0x50`) looks once through the
+code TwlBg runs at `0x100000` for its input routine: the bytes
+`61 68 08 05 00 0D A8 81 08 02` split the pad's word into X and Y, kept at
++12 and +14 of a block loaded into `r5` just before. That `ldr`'s literal
+gives the place (`0x12A5B8` on an Old 3DS). X and Y are signed 16-bit,
+already calibrated: about -105..105, exactly 0 at rest.
+
+**Each frame, never waiting.** `hlrtcom::step()` runs in the ARM7's loop
+after each sound block. Once a frame it asks for the pad command, then
+moves on only when the 3DS has answered (the clock's interrupt flag, the
+interrupt itself off): the next byte, then the data byte and the clock's
+second alarm, which carries the other three bytes. Each transfer holds
+interrupts off for its few dozen microseconds; libnds reads the time only at
+start and after a sleep. Measured on an Old 3DS: 368 us a reading, none
+failed in 2,500. Eight failures in a row rest it for about four seconds.
+
+**To the ARM9.** A small block (`shared/Hl3dsLink.hpp`) the ARM9 owns and
+sends the address of once on `FIFO_USER_02`; `Input::poll` reads it
+uncached. `controlsStep` makes it one of eight directions, a walk when
+pushed less than `kCircleRun`, nothing within `kCircleDeadZone`. While it
+is pushed the D-pad's four directions are left out: with C-pad emulation on
+they are only the same push, so the game works with it on or off. Movement
+stays -1, 0 or 1 as the D-pad's: the physics, demos and matches are those
+of before.
 
 ## Not yet
 

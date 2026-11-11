@@ -48,6 +48,10 @@ On a 3DS, the game can fill the wider top screen at 16:10. It sees more to the s
 
 Auto works only with a TwlBg made by TWPatch, which can be asked through its rtcom channel. With any other TwlBg, set the screen yourself.
 
+### Circle pad on a 3DS
+
+With a TwlBg made by [TWPatch](https://wiki.ds-homebrew.com/ds-index/rtcom) (rtcom is on by default), the circle pad walks: a light push walks, a full push runs. It works whether TWPatch's C-pad emulation is on or off. With any other TwlBg, use the D-pad or the touch screen as usual.
+
 ## Quick start
 
 1. **Get the converter.** Download it for your system from the [download page](https://crowbards.github.io/Half-Life-NDS-Port/download.html), which picks the right file and explains the installation, or from the [Releases](https://github.com/CrowbarDS/Half-Life-NDS-Port/releases) page. It is the only download: the console's ROM is built into it. `SHA256SUMS.txt` lists each file's checksum.
