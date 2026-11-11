@@ -6,6 +6,7 @@
 #include "global_header.hpp"
 #include "net/GuestLoad.hpp"
 
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -114,6 +115,18 @@ namespace hlrt
                hldata::levelVersionOk(header.version, header.minReader);
     }
 
+#ifndef HLDS_CHILD
+    /// Said when the card would not give a piece of the level (after the
+    /// archive's own tries): which piece, and the card's error, for a report.
+    static void cardReadFailed(std::uint32_t piece, std::string &error)
+    {
+        char text[96];
+        std::snprintf(text, sizeof(text), "Map could not be read from the card (piece %u, error %d).",
+                      static_cast<unsigned>(piece), errno);
+        error = text;
+    }
+#endif
+
     bool Level::readFiles(hldata::LevelHeader &header, bool &got, std::string &error)
     {
         // (Not in an archive -- sent over the air, or packed in a way that
@@ -190,36 +203,50 @@ namespace hlrt
             // read: the whole of it, here. Small: the header and the
             // sections' list.)
             alignas(4) static std::uint8_t first[hldata::kLevelDataStart];
-            got = member.size == sizeof(first) && cardReadMember(member, 0, first, sizeof(first));
-            std::memcpy(&header, first, sizeof(header));
-            const std::uint32_t size = header.fileSize;
-            if (got && (size < hldata::kLevelDataStart || size > 8 * 1024 * 1024))
+            if (member.size != sizeof(first))
             {
                 error = "Map file is damaged. Convert again.";
                 return false;
             }
-            if (got)
+            if (!cardReadMember(member, 0, first, sizeof(first)))
             {
-                block_ = static_cast<std::uint8_t *>(std::malloc(size));
-                if (block_ == nullptr)
-                {
-                    error = "Not enough memory for this map.";
-                    return false;
-                }
-                std::memcpy(block_, first, sizeof(first));
-                for (std::uint32_t piece = 1; got && piece < hldata::levelPieces(size); ++piece)
-                {
-                    char name[16];
-                    std::snprintf(name, sizeof(name), "level.%u", static_cast<unsigned>(piece));
-                    const std::uint32_t bytes = hldata::levelPieceBytes(size, piece);
-                    got = NEA_NpacMemberFind(global.mapPath(name).c_str(), &member) == 0 &&
-                          cardMemberReadable(member) && member.size == bytes &&
-                          cardReadMember(member, 0, block_ + hldata::levelPieceStart(piece), bytes);
-                }
-                if (!got)
+                cardReadFailed(0, error);
+                return false;
+            }
+            got = true;
+            std::memcpy(&header, first, sizeof(header));
+            const std::uint32_t size = header.fileSize;
+            if (size < hldata::kLevelDataStart || size > 8 * 1024 * 1024)
+            {
+                error = "Map file is damaged. Convert again.";
+                return false;
+            }
+            block_ = static_cast<std::uint8_t *>(std::malloc(size));
+            if (block_ == nullptr)
+            {
+                error = "Not enough memory for this map.";
+                return false;
+            }
+            std::memcpy(block_, first, sizeof(first));
+            for (std::uint32_t piece = 1; piece < hldata::levelPieces(size); ++piece)
+            {
+                char name[16];
+                std::snprintf(name, sizeof(name), "level.%u", static_cast<unsigned>(piece));
+                const std::uint32_t bytes = hldata::levelPieceBytes(size, piece);
+                // (A piece missing from the archive, or not the length the
+                // header says, is the file's fault; one there that the card
+                // will not give is the card's.)
+                if (NEA_NpacMemberFind(global.mapPath(name).c_str(), &member) != 0 ||
+                    !cardMemberReadable(member) || member.size != bytes)
                 {
                     unload();
-                    error = "Map could not be read from the card.";
+                    error = "Map file is damaged. Convert again.";
+                    return false;
+                }
+                if (!cardReadMember(member, 0, block_ + hldata::levelPieceStart(piece), bytes))
+                {
+                    unload();
+                    cardReadFailed(piece, error);
                     return false;
                 }
             }
