@@ -1,4 +1,5 @@
 #include "data/TextureStream.hpp"
+#include "platform/Slot2.hpp"
 #include "net/NetGame.hpp"
 #include "audio/Sound.hpp"
 #include "Guard.hpp"
@@ -302,6 +303,28 @@ namespace hlrt
             stageHead = 0;
             return tail;
         }
+
+        /// A copy kept in the Expansion Pak, not on the heap.
+        bool inPak(const void *p)
+        {
+            const auto at = reinterpret_cast<std::uintptr_t>(p);
+            return at >= 0x08000000 && at < 0x0A000000;
+        }
+
+        /// Picture `id`, just read into `stage`, kept in the Expansion Pak.
+        /// False with no Pak, or none of it left.
+        bool keepInPak(int id, const TextureHeader &header, std::size_t body)
+        {
+            std::uint8_t *copy = slot2::take(sizeof(header) + body);
+            if (copy == nullptr)
+                return false;
+            slot2::write(copy, &header, sizeof(header));
+            slot2::write(copy + sizeof(header), stage, body);
+            ram[id] = copy;
+            ramBytes += sizeof(header) + body;
+            ++ramCount;
+            return true;
+        }
     } // namespace
 
     bool TextureStream::loadNow(int id, std::uint32_t texelOffset, std::uint32_t paletteOffset)
@@ -356,6 +379,8 @@ namespace hlrt
         if (id < 0 || id >= kStreamMaxTextures || ram[id] != nullptr || !fileFor(id, header, stage, kStageBytes))
             return;
         const std::size_t body = header.texelBytes + header.indexBytes + header.paletteBytes;
+        if (keepInPak(id, header, body))
+            return;
         auto *copy = static_cast<std::uint8_t *>(std::malloc(sizeof(header) + body));
         if (copy == nullptr)
             return;
@@ -692,6 +717,24 @@ namespace hlrt
         // what is left past what play will take (`keepBack`).
         if (!active_ || streamedTotal == 0)
             return;
+        // With an Expansion Pak: every streamed picture of the map, there and
+        // not in main memory -- none is read off the card again, and the heap
+        // goes to the sounds and the models.
+        if (slot2::pakBytes() != 0)
+        {
+            const int count = planner.count();
+            for (int i = 0; i < count; ++i)
+            {
+                if (ram[i] != nullptr || !infos[i].streamed)
+                    continue;
+                TextureHeader header;
+                if (!fileFor(i, header, stage, kStageBytes))
+                    continue;
+                if (!keepInPak(i, header, header.texelBytes + header.indexBytes + header.paletteBytes))
+                    break; // (full)
+            }
+            return;
+        }
         const std::size_t headroom = global.heapHeadroom();
         const std::size_t room =
             headroom > keepBack ? std::min<std::size_t>((headroom - keepBack) / 3, kCacheMost) : 0;
@@ -765,7 +808,9 @@ namespace hlrt
         freeRetired(true);
         for (int i = 0; i < kStreamMaxTextures && !keepRam; ++i)
         {
-            std::free(ram[i]);
+            // (The Pak's are let go with the map: slot2::reset.)
+            if (!inPak(ram[i]))
+                std::free(ram[i]);
             ram[i] = nullptr;
         }
         if (!keepRam)

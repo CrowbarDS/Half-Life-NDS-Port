@@ -80,7 +80,8 @@ namespace hlrt
         void keepFromStream(int id);
         /// Once the map and the game are in: copies in main memory of the
         /// pictures that change often, from what the heap has left past
-        /// `keepBack` bytes (what play will take).
+        /// `keepBack` bytes (what play will take). With an Expansion Pak:
+        /// every streamed picture, in the Pak, and none on the heap.
         void makeCopies(std::size_t keepBack);
         /// A console in DSi mode: on with asking the host for the textures it
         /// has not (those wanted first, then the widest, as long as the map
