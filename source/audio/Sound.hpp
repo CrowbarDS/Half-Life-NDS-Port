@@ -115,6 +115,7 @@ namespace hlrt
             int failed = 0;           ///< tried, and could not be read or had no memory
             int lateSkippedRoom = 0;  ///< read when first played: too little left
             int lateFailed = 0;       ///< ... tried, and not read
+            int inPak = 0;            ///< not in memory, kept in the Expansion Pak
         };
         const LoadStats &loadStats() const { return stats_; }
         /// How many voices each layer has just now (for the readout).
@@ -243,10 +244,26 @@ namespace hlrt
         /// it is first played, into one of a few places, the one played
         /// longest ago (and over) given up for it.
         std::uint8_t *lazy_ = nullptr;
-        static constexpr int kLazyClips = 4;
-        int lazyClip_[kLazyClips] = {-1, -1, -1, -1};
+        /// Left free past a clip copied in from the Expansion Pak while
+        /// playing: a few at once (lazySlots), each let go when it is over.
+        static constexpr std::size_t kPakLateKeep = 64 * 1024;
+        /// (Twice as many with an Expansion Pak: lazySlots.)
+        static constexpr int kLazyClips = 8;
+        int lazyClip_[kLazyClips] = {-1, -1, -1, -1, -1, -1, -1, -1};
         std::uint32_t lazyPlayed_[kLazyClips] = {};
         void lazyTouch(int sound);
+        int lazySlots() const { return pak_ != nullptr ? kLazyClips : kLazyClips / 2; }
+        /// With an Expansion Pak (a DS's GBA slot): where in it each of the
+        /// map's sounds not in memory is kept -- its SoundHeader, then its
+        /// samples -- or null. Taken from it when played instead of off the
+        /// card, which is quicker and asks for less room (lateRoom).
+        const std::uint8_t **pak_ = nullptr;
+        int pakCount_ = 0;
+        void keepInPak();
+        /// Sound `index` of the map into `clip`: from the Pak, or the card.
+        bool readLate(int index, Clip &clip);
+        /// Whether the heap has room to read sound `index` while playing.
+        bool lateRoom(int index) const;
         public:
         /// A console in DSi mode, nothing else to ask for: the next it has not.
         bool fetchAhead();

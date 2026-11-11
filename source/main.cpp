@@ -347,11 +347,13 @@ namespace
         if (log == nullptr)
             return;
         std::fprintf(log, "room: %s top %lu, largest hole %lu, %lu in holes; copies %d (%d KB); sounds %s%d of %d, "
-                          "%d not tried for room, %d failed; reserve %s\n",
+                          "%d not tried for room, %d failed, %d in the Pak (%lu KB of it used, level %lu KB); reserve %s\n",
                      map, static_cast<unsigned long>(room.top), static_cast<unsigned long>(room.largestHole),
                      static_cast<unsigned long>(room.inHoles), st.copies, st.copiesKb,
                      snd.tableFailed ? "NONE (no room for their list), " : "", snd.loaded, snd.kept,
-                     snd.skippedRoom, snd.failed,
+                     snd.skippedRoom, snd.failed, snd.inPak,
+                     static_cast<unsigned long>(hlrt::slot2::used() / 1024),
+                     static_cast<unsigned long>(hlrt::level.pakBytes() / 1024),
                      reserve.letGoLoad > 0 ? "LET GO in the load" : (reserve.held ? "held" : "none"));
         std::fclose(log);
     }

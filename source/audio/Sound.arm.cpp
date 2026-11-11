@@ -1,5 +1,6 @@
 #include "audio/Sound.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -8,6 +9,7 @@
 
 
 #include "Global.hpp"
+#include "platform/Slot2.hpp"
 #include "net/GuestLoad.hpp"
 #include "net/NetGame.hpp"
 #ifdef HLDS_CHILD
@@ -328,8 +330,107 @@ namespace hlrt
                 lazy_[i] = 1;
         }
         std::free(kept);
+        keepInPak();
         lastVblank_ = Global::vblanks();
         resumeMusic();
+    }
+
+    void Sound::keepInPak()
+    {
+        // Every sound of the map that is not in memory -- those read when
+        // first played, the words of its lines, those there was no room for
+        // -- with an Expansion Pak, read into it now, once.
+        if (slot2::pakBytes() == 0 || lazy_ == nullptr)
+            return;
+        const LevelView &view = level.view;
+        const int count = static_cast<int>(view.soundCount);
+        // (The list of where each is, in the Pak too: a tight map has not the
+        // heap for it. Words: the Pak takes no bytes.)
+        std::uint8_t *table = slot2::take((count + 1) * sizeof(*pak_));
+        if (table == nullptr)
+            return;
+        alignas(4) std::uint8_t piece[1024] = {};
+        for (std::size_t at = 0; at < (count + 1) * sizeof(*pak_); at += sizeof(piece))
+            slot2::write(table + at, piece, std::min<std::size_t>(sizeof(piece), (count + 1) * sizeof(*pak_) - at));
+        pak_ = reinterpret_cast<const std::uint8_t **>(table);
+        pakCount_ = count;
+        for (int i = 0; i < count; ++i)
+        {
+            if (view.sounds[i].name[0] == '\0' || (i < count_ && clips_[i].data != nullptr))
+                continue;
+            const std::string inArchive = std::string("snd/") + view.sounds[i].name + ".hsn";
+            std::FILE *file = std::fopen(global.mapPath(inArchive).c_str(), "rb");
+            if (file == nullptr)
+                file = std::fopen(global.commonPath(inArchive).c_str(), "rb");
+            if (file == nullptr)
+                continue;
+            std::fseek(file, 0, SEEK_END);
+            const long size = std::ftell(file);
+            std::fseek(file, 0, SEEK_SET);
+            SoundHeader header;
+            std::uint8_t *at = nullptr;
+            if (size > static_cast<long>(sizeof(header)) && size < 4 * 1024 * 1024 &&
+                std::fread(&header, sizeof(header), 1, file) == 1 &&
+                soundHeaderValid(header, static_cast<std::uint32_t>(size)))
+                at = slot2::take(sizeof(header) + header.dataBytes);
+            bool ok = at != nullptr;
+            if (ok)
+            {
+                slot2::write(at, &header, sizeof(header));
+                for (std::uint32_t done = 0; ok && done < header.dataBytes;)
+                {
+                    const std::uint32_t n = std::min<std::uint32_t>(sizeof(piece), header.dataBytes - done);
+                    ok = std::fread(piece, 1, n, file) == n;
+                    if (ok)
+                        slot2::write(at + sizeof(header) + done, piece, n);
+                    done += n;
+                }
+            }
+            std::fclose(file);
+            if (!ok)
+                continue; // (a Pak that is full keeps what it took: the map lets it go)
+            // (Those read when first played, and the words of lines, are read
+            // from here -- and the map's own things' that had no room, as
+            // long as they do not loop: a clip read late can be let go while
+            // a loop of it still plays.)
+            slot2::write(reinterpret_cast<std::uint8_t *>(&pak_[i]), &at, sizeof(at));
+            ++stats_.inPak;
+            if (i < count_ && clips_[i].data == nullptr && header.loopWord == hldata::kSoundNoLoop)
+                lazy_[i] = 1;
+        }
+    }
+
+    bool Sound::readLate(int index, Clip &clip)
+    {
+        if (pak_ == nullptr || index < 0 || index >= pakCount_ || pak_[index] == nullptr)
+            return readClip(level.view.sounds[index].name, clip);
+        clip = Clip();
+        SoundHeader header;
+        std::memcpy(&header, pak_[index], sizeof(header));
+        auto *data = static_cast<std::uint8_t *>(std::malloc(header.dataBytes));
+        if (data == nullptr)
+            return false;
+        std::memcpy(data, pak_[index] + sizeof(header), header.dataBytes);
+        // (As readClip: the ARM7 plays it out of memory.)
+        DC_FlushRange(data, header.dataBytes);
+        clip.data = data;
+        clip.bytes = header.dataBytes;
+        clip.loopWord = header.loopWord;
+        clip.rate = header.rate;
+        clip.ms = static_cast<std::uint32_t>((static_cast<std::uint64_t>(header.samples) * 1000) / header.rate);
+        return true;
+    }
+
+    bool Sound::lateRoom(int index) const
+    {
+        // Off the card, a clip is read whole while play goes on: it is only
+        // tried with plenty of room. From the Pak it is copied in a moment,
+        // so play's own reserve is all it must leave.
+        if (pak_ == nullptr || index < 0 || index >= pakCount_ || pak_[index] == nullptr)
+            return global.heapHeadroom() >= 200 * 1024;
+        SoundHeader header;
+        std::memcpy(&header, pak_[index], sizeof(header));
+        return global.heapHeadroom() >= header.dataBytes + kPakLateKeep;
     }
 
     void Sound::holdMusic()
@@ -489,6 +590,9 @@ namespace hlrt
         lazy_ = nullptr;
         for (int k = 0; k < kLazyClips; ++k)
             lazyClip_[k] = -1;
+        // (It, and what it points at, are let go with the map: slot2::reset.)
+        pak_ = nullptr;
+        pakCount_ = 0;
         std::free(clips_);
         clips_ = nullptr;
         std::free(kept_);
@@ -695,7 +799,8 @@ namespace hlrt
             return;
         }
         const std::uint32_t now = Global::vblanks();
-        for (int k = 0; k < kLazyClips; ++k)
+        const int slots = lazySlots();
+        for (int k = 0; k < slots; ++k)
         {
             if (lazyClip_[k] == sound)
             {
@@ -707,12 +812,12 @@ namespace hlrt
         // it is over, at the slowest it may be played (twice as long) and a
         // half second more.
         int place = -1;
-        for (int k = 0; k < kLazyClips && place < 0; ++k)
+        for (int k = 0; k < slots && place < 0; ++k)
             place = lazyClip_[k] < 0 ? k : -1;
         if (place < 0)
         {
             std::uint32_t oldest = 0;
-            for (int k = 0; k < kLazyClips; ++k)
+            for (int k = 0; k < slots; ++k)
             {
                 const std::uint32_t ago = now - lazyPlayed_[k];
                 const std::uint32_t lasts = clips_[lazyClip_[k]].ms * 2 * 60 / 1000 + 30;
@@ -733,12 +838,12 @@ namespace hlrt
             clips_[gone] = Clip();
             lazyClip_[place] = -1;
         }
-        if (global.heapHeadroom() < 200 * 1024)
+        if (!lateRoom(sound))
         {
             ++stats_.lateSkippedRoom;
             return;
         }
-        if (!readClip(level.view.sounds[sound].name, clips_[sound]))
+        if (!readLate(sound, clips_[sound]))
         {
             ++stats_.lateFailed;
             return;
@@ -923,12 +1028,12 @@ namespace hlrt
         if (index >= static_cast<int>(level.view.soundCount) || level.view.sounds[index].name[0] == '\0' ||
             (index < count_ && clips_[index].data != nullptr))
             return;
-        if (global.heapHeadroom() < 200 * 1024)
+        if (!lateRoom(index))
         {
             ++stats_.lateSkippedRoom;
             return;
         }
-        if (!readClip(level.view.sounds[index].name, speech.clip[other]))
+        if (!readLate(index, speech.clip[other]))
         {
             ++stats_.lateFailed;
             return;
