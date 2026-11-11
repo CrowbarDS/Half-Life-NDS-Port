@@ -111,3 +111,11 @@ source/BuildId.gen.cpp
 # The Download Play child (child/build.py): its ROM and what a test build links in.
 child/out/
 child/generated/
+
+# The owner's TwlBg / TWL_FIRM dumps: Nintendo code, never committed
+tools/3ds/dumps/
+tools/3ds/twlbg-patcher/payload/feed.bin
+tools/3ds/twlbg-patcher/payload/feed.elf
+tools/3ds/twlbg-patcher/payload/feed.map
+tools/3ds/twlbg-patcher/payload/pass.bin
+tools/3ds/twlbg-patcher/payload/pass.elf
