@@ -210,3 +210,31 @@ First run on an Old 3DS, 2026-11-08 (TWPatch TwlBg, plain, not wide):
 Still to run: the wide TwlBg, the bus check and dump with SCL `5<<8`, the
 codec stream. melonDS (no 3DS) only checks the DSi path: `3DS: no`, the
 MCU's 0x71 keeps `D2`, nothing sent to the clock.
+
+## cardread/ — what a read of a map's archive costs during play
+
+For the DS-mode map archives (docs/ds-memory-phase0.md): whether the world's
+geometry can be read from the card a 4 KB page at a time while a map is
+played. A DS reads its card on the ARM9 (DLDI), so the game waits for every
+read; what matters is the worst read, not the mean.
+
+The probe takes the card's biggest map archives (and c1a3, c2a5, c1a3a,
+c2a2b1 when there), says how many fragments each file is in, and times
+4 KB reads with FatFs's fast seek off and on: at random sector-aligned
+places near the start (`near`) and in the last quarter (`far`), the same 4
+bytes past a sector (`far+4`, a member on a word as archives are now),
+one after the other (`seq`), 16 KB at once (`16K`), and the first read
+after opening (`cold`). Least, mean, 95th percentile and most, in µs.
+Everything is appended to `_nds/hl_nds/cardread.txt`; nothing else on the
+card is written.
+
+Fast seek is compiled into BlocksDS's FatFs (`FF_USE_FASTSEEK 1`) and is on
+for a file only once it has a lookup table (`fatInitLookupCache`). NEA gives
+each mounted archive a 2 KB one (NEANPAC.c), which holds 255 fragments.
+For a file in more fragments than its table holds, `fatInitLookupCache`
+returns the size it would need and leaves the half-made table on the file
+(libnds 1.25.0, checked in its object code): seeks past the 255th fragment
+would then follow it astray. The probe counts each archive's fragments on
+a descriptor it closes at once, for that reason.
+
+Results: to be filled in (docs/ds-memory-phase0.md).
