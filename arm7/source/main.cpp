@@ -132,7 +132,6 @@ int main()
     while (!exitLoop)
     {
         hlaudio::waitAndRun();
-        hlrtcom::step();
         if (isDSiMode())
         {
             markHandlers();

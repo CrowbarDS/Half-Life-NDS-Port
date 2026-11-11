@@ -16,13 +16,6 @@
 namespace hlrtcom
 {
     /// Asks, and tells the ARM9 (shared/HlRtcom.hpp). Before the sound starts: it takes up to a
-    /// tenth of a second, longer than a sound block may wait. When rtcom
-    /// answered, its session is left open for step().
+    /// tenth of a second, longer than a sound block may wait.
     void detect();
-
-    /// The circle pad, once a frame, into the ARM9's block (shared/Hl3dsLink.hpp,
-    /// its address on FIFO_USER_02). From the main loop, between sound blocks:
-    /// never waits (each call goes one step on if the 3DS has answered). Does
-    /// nothing where detect() found no rtcom.
-    void step();
 } // namespace hlrtcom

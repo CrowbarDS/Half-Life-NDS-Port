@@ -75,7 +75,6 @@ void Settings::load()
 #ifndef HLDS_CHILD
         hostIdleMinutes = data.hostIdleMinutes;
         vibration = data.vibration;
-        gyroSpeed = data.gyroSpeed;
 #endif
         maxPlayers = data.maxPlayers;
         allowGuests = data.allowGuests != 0;
@@ -136,7 +135,6 @@ void Settings::reset(int category)
         invertPitch = first.invertPitch;
         firmness = first.firmness;
         firmPress = first.firmPress;
-        gyroSpeed = first.gyroSpeed;
         break;
     case 4:
         // No buttons of one's own: the layout they were made from goes too.
@@ -226,7 +224,6 @@ bool Settings::save() const
 #ifndef HLDS_CHILD
     data.hostIdleMinutes = hostIdleMinutes;
     data.vibration = vibration;
-    data.gyroSpeed = gyroSpeed;
 #endif
     data.maxPlayers = maxPlayers;
     data.allowGuests = allowGuests ? 1 : 0;

@@ -4,7 +4,6 @@
 
 #include <nds.h>
 
-#include "Hl3dsLink.hpp"
 #include "HlRtcom.hpp"
 
 // The program uploaded (Peek11.s).
@@ -23,15 +22,10 @@ namespace hlrtcom
         // status), and the commands that reach them, sent high bit first.
         constexpr std::uint8_t kWriteData = 0x6C, kReadData = 0x6D, kWriteStatus = 0x6E, kReadStatus = 0x6F;
         // Statuses. To the 3DS: a command below 0x80, the next byte, "say
-        // no". From it: yes, no (or done).
-        constexpr std::uint8_t kNext = 0x81, kSayNo = 0x83;
+        // no", close. From it: yes, no (or done).
+        constexpr std::uint8_t kNext = 0x81, kSayNo = 0x83, kClose = 0xFE;
         constexpr std::uint8_t kYes = 0x80, kNo = 0x82;
         constexpr std::uint8_t kUpload = 0x41, kMakeRunnable = 0x42, kRun = 0x44;
-        // Peek11.s's commands (call 0's byte).
-        constexpr std::uint8_t kPeek = 0x00, kPad = 0x50;
-        // The clock's second alarm: three bytes, read whole (Peek11.s's
-        // second channel back).
-        constexpr std::uint8_t kReadAlarm2 = 0x6B;
 
         // The top screen's window, left and right edge, on the ARM11's side.
         constexpr std::uint32_t kWindowLeft = 0x1ED02218, kWindowRight = 0x1ED0221C;
@@ -150,7 +144,7 @@ namespace hlrtcom
         /// The word at `address` on the ARM11's side.
         bool peek(std::uint32_t address, std::uint32_t &value)
         {
-            if (!ask(kRun, kPeek))
+            if (!ask(kRun, 0))
                 return false;
             value = 0;
             for (int k = 0; k < 4; ++k)
@@ -166,96 +160,6 @@ namespace hlrtcom
                 value |= static_cast<std::uint32_t>(read(kReadData)) << (8 * k);
             }
             return true;
-        }
-
-        /// The second alarm's three bytes.
-        void readAlarm2(std::uint8_t bytes[3])
-        {
-            transfer(kReadAlarm2, -1);
-            for (int k = 0; k < 3; ++k)
-                bytes[k] = clockIn();
-            end();
-        }
-
-        // --- The circle pad, each frame ------------------------------------
-        //
-        // Never a wait: each call of step() looks whether the 3DS has
-        // answered (the clock's interrupt flag; the interrupt itself stays
-        // off) and goes on from there. A request is sent once a frame.
-
-        enum class Pad : std::uint8_t
-        {
-            Off,      // no session, or given up for good
-            Idle,     // waiting for the next frame
-            WaitRun,  // asked to run the pad command
-            WaitNext,  // asked for its first answer (the pad, the gyroscope's X)
-            WaitNext2, // asked for its second (the gyroscope's Y and Z)
-        };
-
-        Pad pad = Pad::Off;
-        hldata::Link3ds *link = nullptr;
-        std::uint16_t lastLine = 0; // REG_VCOUNT at the last step
-        bool frameDue = false;
-        int waited = 0;   // steps since the request was sent
-        int failures = 0; // in a row
-        int restAt = 0;   // steps left before trying again after a run of failures
-        // The first answer, kept for the second (Peek11.s).
-        std::int8_t padX = 0, padY = 0;
-        std::int16_t gyroX = 0;
-        // Peek11.s's "no gyroscope", in all three rates.
-        constexpr std::int16_t kNoGyro = -32768;
-
-        /// The 3DS's answer byte and the second alarm's three, read together.
-        void take(std::uint8_t &low, std::uint8_t rest[3])
-        {
-            const int ime = enterCriticalSection();
-            low = read(kReadData);
-            readAlarm2(rest);
-            leaveCriticalSection(ime);
-        }
-
-        // A step comes every sound block (2 ms): about 50 ms.
-        constexpr int kWaitSteps = 25;
-        constexpr int kFailuresToRest = 8;
-        constexpr int kRestSteps = 2000; // about 4 s
-
-        /// One request: the data byte, then the status, interrupts held off
-        /// so that nothing else uses the clock's lines meanwhile (libnds
-        /// reads the time after a sleep).
-        void request(std::uint8_t status, std::uint8_t data)
-        {
-            const int ime = enterCriticalSection();
-            REG_IF = IRQ_RTC;
-            write(kWriteData, data);
-            write(kWriteStatus, status);
-            leaveCriticalSection(ime);
-            waited = 0;
-        }
-
-        /// The 3DS's status if it has answered, else -1.
-        int answer()
-        {
-            if (!(REG_IF & IRQ_RTC))
-                return -1;
-            const int ime = enterCriticalSection();
-            REG_IF = IRQ_RTC;
-            const int status = read(kReadStatus);
-            leaveCriticalSection(ime);
-            return status;
-        }
-
-        void failed()
-        {
-            if (++failures >= kFailuresToRest)
-            {
-                link->present = 0;
-                link->padX = 0;
-                link->padY = 0;
-                link->gyroPresent = 0;
-                failures = 0;
-                restAt = kRestSteps;
-            }
-            pad = Pad::Idle;
         }
 
         /// A 3DS: its MCU does not keep what is written to 0x71 (a DSi's
@@ -286,137 +190,17 @@ namespace hlrtcom
                 told = hldata::kRtcomAnswered;
                 bitDelay = 14;
                 std::uint32_t left = 0, right = 0;
-                const bool loaded = upload();
-                if (loaded && peek(kWindowLeft, left) && peek(kWindowRight, right) && right > left &&
+                if (upload() && peek(kWindowLeft, left) && peek(kWindowRight, right) && right > left &&
                     right - left + 1 > 320)
                     told |= hldata::kRtcomWide;
-                // Left open, the short bit delay from now on: the circle
-                // pad is read each frame (step()).
-                if (loaded)
-                {
-                    bitDelay = 1;
-                    pad = Pad::Idle;
-                }
+                // Closed as the known clients close it.
+                write(kWriteStatus, kClose);
+                wait();
+                write(kWriteStatus, kNo);
             }
             REG_IF = IRQ_RTC;
-            if (pad == Pad::Off)
-                REG_RCNT = savedRcnt;
+            REG_RCNT = savedRcnt;
         }
         fifoSendValue32(FIFO_USER_02, told);
-    }
-
-    void step()
-    {
-        if (pad == Pad::Off)
-            return;
-        if (link == nullptr)
-        {
-            if (!fifoCheckAddress(FIFO_USER_02))
-                return;
-            link = static_cast<hldata::Link3ds *>(fifoGetAddress(FIFO_USER_02));
-        }
-        // A new frame: the line count has come round.
-        const std::uint16_t line = REG_VCOUNT;
-        if (line < lastLine)
-            frameDue = true;
-        lastLine = line;
-
-        switch (pad)
-        {
-        case Pad::Idle:
-            if (restAt > 0)
-            {
-                --restAt;
-                return;
-            }
-            if (!frameDue)
-                return;
-            frameDue = false;
-            request(kRun, kPad);
-            pad = Pad::WaitRun;
-            return;
-        case Pad::WaitRun:
-        {
-            const int status = answer();
-            if (status < 0)
-            {
-                if (++waited > kWaitSteps)
-                    failed();
-                return;
-            }
-            if (status != kYes)
-            {
-                failed();
-                return;
-            }
-            request(kNext, 0);
-            pad = Pad::WaitNext;
-            return;
-        }
-        case Pad::WaitNext:
-        {
-            const int status = answer();
-            if (status < 0)
-            {
-                if (++waited > kWaitSteps)
-                    failed();
-                return;
-            }
-            if (status != kYes)
-            {
-                failed();
-                return;
-            }
-            std::uint8_t low = 0, rest[3] = {0, 0, 0};
-            take(low, rest);
-            if (rest[0] == 0x80)
-            {
-                // TwlBg's pad was not found: nothing to read, ever.
-                link->present = 0;
-                link->gyroPresent = 0;
-                pad = Pad::Off;
-                return;
-            }
-            padX = static_cast<std::int8_t>(low);
-            padY = static_cast<std::int8_t>(rest[0]);
-            gyroX = static_cast<std::int16_t>(rest[1] | rest[2] << 8);
-            request(kNext, 0);
-            pad = Pad::WaitNext2;
-            return;
-        }
-        case Pad::WaitNext2:
-        {
-            const int status = answer();
-            if (status < 0)
-            {
-                if (++waited > kWaitSteps)
-                    failed();
-                return;
-            }
-            if (status != kYes)
-            {
-                failed();
-                return;
-            }
-            std::uint8_t low = 0, rest[3] = {0, 0, 0};
-            take(low, rest);
-            const std::int16_t gyroY = static_cast<std::int16_t>(low | rest[0] << 8);
-            const std::int16_t gyroZ = static_cast<std::int16_t>(rest[1] | rest[2] << 8);
-            failures = 0;
-            pad = Pad::Idle;
-            link->padX = padX;
-            link->padY = padY;
-            link->present = 1;
-            const bool gyro = !(gyroX == kNoGyro && gyroY == kNoGyro && gyroZ == kNoGyro);
-            link->gyroX = gyro ? gyroX : 0;
-            link->gyroY = gyro ? gyroY : 0;
-            link->gyroZ = gyro ? gyroZ : 0;
-            link->gyroPresent = gyro ? 1 : 0;
-            link->count = link->count + 1;
-            return;
-        }
-        case Pad::Off:
-            return;
-        }
     }
 } // namespace hlrtcom

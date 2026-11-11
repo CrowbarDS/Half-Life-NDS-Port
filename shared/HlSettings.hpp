@@ -194,8 +194,9 @@ namespace hldata
         /// How hard a Rumble Pak's motor goes (RumbleSetting, HlRumble.hpp;
         /// version 28). Light unless asked otherwise.
         std::uint8_t vibration = 1;
-        /// How a 3DS's gyroscope aims (ControlSettings::gyroSpeed; version
-        /// 29). Off unless asked for.
+        /// Version 29's byte for a 3DS's gyroscope, which the game read for a
+        /// while and no longer does: kept in the file, so that version 29 is
+        /// one format, and not used.
         std::uint8_t gyroSpeed = 0;
 
         /// What a file of version 8 held: all but the controls.
@@ -398,8 +399,8 @@ namespace hldata
 
     inline constexpr char kSettingsMagic[4] = {'H', 'L', 'S', 'T'};
     inline constexpr std::uint16_t kSettingsVersion = 29;
-    /// The versions before, which are still read: 28 had no gyroscope (read
-    /// as off, the default); 27 had no vibration (read
+    /// The versions before, which are still read: 28 had no gyroscope's
+    /// byte (29's, no longer used); 27 had no vibration (read
     /// as light, the default); 26 never sent idle players
     /// away (read as never); 25 had no TALK, nor
     /// talking in a match hosted; 24 had no screen shape
@@ -629,7 +630,7 @@ namespace hldata
 #ifndef HLDS_CHILD
         // (A console sent the game hosts nothing, and reads no file: what it
         // does not check, it has no room for.)
-        if (!idleStep(read.hostIdleMinutes) || read.vibration >= kRumbleSettings || read.gyroSpeed >= kGyroSpeeds)
+        if (!idleStep(read.hostIdleMinutes) || read.vibration >= kRumbleSettings)
             return false;
 #endif
         out = read;

@@ -180,9 +180,6 @@ namespace hldata
         bool longJump = false;
         std::uint8_t firmness = 0; ///< 0..kFirmnessMost
         std::uint8_t firmPress = kFirmOff;
-        /// A 3DS's gyroscope: 0 off, else kGyroGain's speed (1: as far as
-        /// the console turns).
-        std::uint8_t gyroSpeed = 0;
         /// CUSTOM: each action's buttons (kButton*; any of them does it).
         std::uint16_t keys[kActionCount] = {};
         /// A match between consoles is on: the touch screen has SPRAY
@@ -345,11 +342,6 @@ namespace hldata
     /// as the stylus dragged this many pixels (three is about 125 degrees a
     /// second), and as much up and down.
     inline constexpr int kPadTurnPixels = 3;
-    /// A 3DS's circle pad (ControlsIn::circle), as TwlBg reads it: about
-    /// -105..105 each way, 0 at rest. Nearer the middle than kCircleDeadZone
-    /// it is at rest; pushed less than kCircleRun it walks, further it runs.
-    inline constexpr int kCircleDeadZone = 20;
-    inline constexpr int kCircleRun = 75;
     inline constexpr int kPadLookPixels = 2;
     /// A stylus's finer reading: sixteenths of a pixel.
     inline constexpr int kFineShift = 4;
@@ -369,43 +361,7 @@ namespace hldata
         /// smaller is firmer. 0: the console cannot say.
         int pressure = 0;
         std::uint32_t blank = 0; ///< the count of sixtieths of a second so far
-        /// A 3DS's circle pad (shared/Hl3dsLink.hpp), where there is one:
-        /// right and up positive, about -105..105, 0 at rest.
-        bool circle = false;
-        int circleX = 0, circleY = 0;
-        /// ... and its gyroscope, where there is one: the chip's rate turning
-        /// right (yaw) and tilting the top back (pitch), raw (14.375 a degree
-        /// a second, with its own zero at rest).
-        bool gyro = false;
-        int gyroYaw = 0, gyroPitch = 0;
     };
-
-    /// The circle pad as one of eight directions: forward and side each -1,
-    /// 0 or 1, and whether it is pushed only part way (a walk). Nothing
-    /// within the dead zone. An axis counts when it is at least about
-    /// tan(22.5 degrees) of the other (5|a| >= 2|b|): eight even slices.
-    struct CirclePush
-    {
-        int forward = 0, side = 0;
-        bool walk = false;
-        bool pushed = false;
-    };
-
-    inline CirclePush circlePush(int x, int y)
-    {
-        CirclePush p;
-        const int r2 = x * x + y * y;
-        if (r2 < kCircleDeadZone * kCircleDeadZone)
-            return p;
-        p.pushed = true;
-        const int ax = x < 0 ? -x : x, ay = y < 0 ? -y : y;
-        if (5 * ax >= 2 * ay)
-            p.side = x > 0 ? 1 : -1;
-        if (5 * ay >= 2 * ax)
-            p.forward = y > 0 ? 1 : -1;
-        p.walk = r2 < kCircleRun * kCircleRun;
-        return p;
-    }
 
     /// What that means.
     struct ControlsOut
@@ -445,10 +401,6 @@ namespace hldata
         int lookFineX = 0;
         int lookFineY = 0;
         bool firm = false; ///< the stylus is pressed hard on the aim pad
-        /// A 3DS's gyroscope: how far to turn right and look up this frame,
-        /// in 65536ths of a turn (not the stylus's pixels: as the console
-        /// turned, times its speed).
-        int gyroTurnX = 0, gyroTurnY = 0;
     };
 
     /// What has to be remembered from one frame to the next.
@@ -493,94 +445,7 @@ namespace hldata
         /// was pressed under it (else, let go of soon, it was a reload).
         std::uint32_t shiftBlank = 0;
         bool shiftUsed = false;
-        /// The gyroscope: its zero at rest (sixteenths of a raw step),
-        /// learned from the first readings and then whenever it is still;
-        /// the readings so far toward the first, its last, how long it has
-        /// been steady, and what is left over of a turn (Q16).
-        int gyroBiasYaw = 0, gyroBiasPitch = 0;
-        int gyroLearned = 0;
-        int gyroLastYaw = 0, gyroLastPitch = 0;
-        int gyroSteady = 0;
-        std::int64_t gyroRestYaw = 0, gyroRestPitch = 0;
     };
-
-    /// A 3DS's gyroscope (ControlsIn::gyro). Its zero at rest is learned
-    /// from kGyroLearnFrames readings in a row that each change less than
-    /// kGyroSteady from the one before (the console held still; any move
-    /// starts again), and it aims only after. Then readings as steady and
-    /// within kGyroDrift of that zero for kGyroSteadyFrames are taken as at
-    /// rest and the zero follows them (the chip's drifts with its warmth); a
-    /// turn, even a slow steady one, is further than that. Nearer its zero
-    /// than kGyroDead, nothing turns. (Raw steps: 14.375 a degree a second.)
-    inline constexpr int kGyroLearnFrames = 30;
-    inline constexpr int kGyroSteady = 21;
-    inline constexpr int kGyroDrift = 21;
-    inline constexpr int kGyroSteadyFrames = 30;
-    inline constexpr int kGyroDead = 14;
-    /// One raw step for one sixtieth of a second, in 65536ths of a turn, Q16:
-    /// 65536 / 360 / 14.375 / 60 = 0.2111; by each speed (off, 1x, 1.5x, 2x,
-    /// 3x).
-    inline constexpr int kGyroSpeeds = 5;
-    inline constexpr std::int32_t kGyroGain[kGyroSpeeds] = {0, 13835, 20753, 27670, 41505};
-
-    /// One frame of the gyroscope, `blanks` sixtieths of a second long.
-    inline void gyroStep(const ControlSettings &set, const ControlsIn &in, ControlsState &state, int blanks,
-                         ControlsOut &out)
-    {
-        if (!in.gyro)
-        {
-            state.gyroLearned = 0;
-            state.gyroSteady = 0;
-            state.gyroRestYaw = state.gyroRestPitch = 0;
-            return;
-        }
-        const int yaw16 = in.gyroYaw * 16, pitch16 = in.gyroPitch * 16;
-        const int changeYaw = in.gyroYaw - state.gyroLastYaw, changePitch = in.gyroPitch - state.gyroLastPitch;
-        state.gyroLastYaw = in.gyroYaw;
-        state.gyroLastPitch = in.gyroPitch;
-        const bool steady = changeYaw < kGyroSteady && changeYaw > -kGyroSteady && changePitch < kGyroSteady &&
-                            changePitch > -kGyroSteady;
-        if (state.gyroLearned < kGyroLearnFrames)
-        {
-            if (state.gyroLearned == 0 || !steady)
-            {
-                state.gyroBiasYaw = yaw16;
-                state.gyroBiasPitch = pitch16;
-                state.gyroLearned = 1;
-            }
-            else
-            {
-                state.gyroBiasYaw += (yaw16 - state.gyroBiasYaw) >> 2;
-                state.gyroBiasPitch += (pitch16 - state.gyroBiasPitch) >> 2;
-                ++state.gyroLearned;
-            }
-            return;
-        }
-        const int offYaw = in.gyroYaw - (state.gyroBiasYaw >> 4), offPitch = in.gyroPitch - (state.gyroBiasPitch >> 4);
-        const bool still = steady && offYaw < kGyroDrift && offYaw > -kGyroDrift && offPitch < kGyroDrift &&
-                           offPitch > -kGyroDrift;
-        state.gyroSteady = still ? (state.gyroSteady < kGyroSteadyFrames ? state.gyroSteady + 1 : kGyroSteadyFrames) : 0;
-        if (state.gyroSteady >= kGyroSteadyFrames)
-        {
-            state.gyroBiasYaw += (yaw16 - state.gyroBiasYaw) >> 3;
-            state.gyroBiasPitch += (pitch16 - state.gyroBiasPitch) >> 3;
-        }
-        if (set.gyroSpeed == 0 || set.gyroSpeed >= kGyroSpeeds)
-            return;
-        auto rate = [](int raw, int bias16) {
-            int r = raw - (bias16 >> 4);
-            if (r < kGyroDead && r > -kGyroDead)
-                return 0;
-            return r > 32767 ? 32767 : (r < -32767 ? -32767 : r);
-        };
-        const std::int64_t gain = static_cast<std::int64_t>(kGyroGain[set.gyroSpeed]) * blanks;
-        state.gyroRestYaw += rate(in.gyroYaw, state.gyroBiasYaw) * gain;
-        state.gyroRestPitch += rate(in.gyroPitch, state.gyroBiasPitch) * gain;
-        out.gyroTurnX = static_cast<int>(state.gyroRestYaw >> 16);
-        out.gyroTurnY = static_cast<int>(state.gyroRestPitch >> 16);
-        state.gyroRestYaw -= static_cast<std::int64_t>(out.gyroTurnX) << 16;
-        state.gyroRestPitch -= static_cast<std::int64_t>(out.gyroTurnY) << 16;
-    }
 
     /// How far a stylus step of `fine` sixteenths of a pixel turns the view,
     /// in 65536ths of a turn, at aim speed `speed` (10: 1/512 of a turn a
@@ -594,12 +459,7 @@ namespace hldata
     inline ControlsOut controlsStep(const ControlSettings &set, const ControlsIn &in, ControlsState &state)
     {
         ControlsOut out;
-        // A 3DS's circle pad pushed: the D-pad's directions are left out
-        // meanwhile -- with TwlBg's C-pad emulation on, they are only the
-        // same push again.
-        const CirclePush circle = in.circle ? circlePush(in.circleX, in.circleY) : CirclePush();
-        const std::uint32_t held =
-            circle.pushed ? in.held & ~(kButtonUp | kButtonDown | kButtonLeft | kButtonRight) : in.held;
+        const std::uint32_t held = in.held;
         const std::uint32_t pressed = held & ~state.lastHeld;
         const bool classic = set.scheme == kControlsClassic;
         const bool buttonsOnly = set.scheme == kControlsButtons;
@@ -808,11 +668,6 @@ namespace hldata
         // The two sticks, an axis at a time.
         std::uint32_t blanks = in.blank - state.lastBlank;
         blanks = blanks < 1 ? 1 : (blanks > 4 ? 4 : blanks);
-#ifndef HLDS_CHILD
-        // (The Download Play child runs in DS mode: never a 3DS's gyroscope,
-        // and no room for its code.)
-        gyroStep(set, in, state, static_cast<int>(blanks), out);
-#endif
         // (BUTTONS ONLY has its D-pad looking already: the sticks' choices
         // are not its.)
         const bool padTurns = set.padTurns && !buttonsOnly, padLooks = set.padLooks && !buttonsOnly;
@@ -953,14 +808,6 @@ namespace hldata
                    state.crouched || duckHeld || state.longJumping;
         out.walk = (state.touch == kTouchWalk && !set.walkToggle) || (state.walkSlide && state.touching) ||
                    state.walking || walkHeld;
-        // The circle pad moves the way it is pushed, over the pad and the
-        // stylus's stick; part way, a walk.
-        if (circle.pushed)
-        {
-            out.moveForward = circle.forward;
-            out.moveSide = circle.side;
-            out.walk = out.walk || circle.walk;
-        }
         out.touchOn = !state.touching ? kTouchAim
                                       : (state.duckSlide ? kTouchDuck : (state.walkSlide ? kTouchWalk : state.touch));
         out.useHeld = on(kActionUse) || (state.touching && state.touch == kTouchUse) ||

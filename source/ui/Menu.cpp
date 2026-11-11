@@ -107,7 +107,6 @@ namespace hlrt
             kAimSpeed,
             kPitchSpeed,
             kInvert,
-            kGyro,      ///< how a 3DS's gyroscope aims (a setting)
             kFirmness,
             kFirmPress,
             kKey,     ///< an action's button (which, by its row: buttonActions)
@@ -986,9 +985,6 @@ namespace hlrt
         const Row kTouchRows[] = {{Kind::Slider, kAimSpeed, "Aim speed"},
                                   {Kind::Slider, kPitchSpeed, "Up/down speed"},
                                   {Kind::Value, kInvert, "Invert up/down"},
-#ifndef HLDS_CHILD
-                                  {Kind::Value, kGyro, "3DS gyro"},
-#endif
                                   {Kind::Slider, kFirmness, "Firmness"},
                                   {Kind::Value, kFirmPress, "Firm press"}};
         const Row kOtherRows[] = {{Kind::Value, kBob, "View bob"},
@@ -1465,15 +1461,6 @@ namespace hlrt
                                                                            : (settings.tapJump ? "on" : "off"));
                 break;
             case kInvert: std::snprintf(out, size, "%s", settings.invertPitch ? "on" : "off"); break;
-#ifndef HLDS_CHILD
-            case kGyro:
-            {
-                static const char *const kSpeeds[hldata::kGyroSpeeds] = {"off", "1x", "1.5x", "2x", "3x"};
-                std::snprintf(out, size, "%s",
-                              !Input::gyroSeen() ? "no gyro" : kSpeeds[settings.gyroSpeed % hldata::kGyroSpeeds]);
-                break;
-            }
-#endif
             case kFirmPress:
                 std::snprintf(out, size, "%s", Input::pressureSeen() ? kFirmName[settings.firmPress % kFirmActions] : "n/a here");
                 break;
@@ -1541,9 +1528,6 @@ namespace hlrt
             case kAimSpeed: return "How far the view turns across for a stroke of the stylus.";
             case kPitchSpeed: return "How far the view turns up and down for a stroke of the stylus.";
             case kInvert: return "The stylus moved down looks up.";
-#ifndef HLDS_CHILD
-            case kGyro: return "Turning the 3DS turns the view (with a TwlBg made by TWPatch).";
-#endif
             case kFirmness: return "How light a touch of the stylus is ignored.";
             case kFirmPress: return "What pressing the stylus hard does, where the console can tell.";
             case kBob: return "The view bobs with a walk and leans into a step aside, as the game's does.";
@@ -1715,13 +1699,6 @@ namespace hlrt
                 settings.tapJump = !settings.tapJump;
                 return true;
             case kInvert: settings.invertPitch = !settings.invertPitch; return true;
-#ifndef HLDS_CHILD
-            case kGyro:
-                if (!Input::gyroSeen())
-                    return false;
-                cycle(settings.gyroSpeed, hldata::kGyroSpeeds);
-                return true;
-#endif
             case kFirmPress:
                 if (!Input::pressureSeen())
                     return false;
@@ -2138,12 +2115,7 @@ namespace hlrt
 #else
                 constexpr bool nameLocked = false;
 #endif
-#ifdef HLDS_CHILD
-                constexpr bool gyroLocked = false;
-#else
-                const bool gyroLocked = item.id == kGyro && !Input::gyroSeen();
-#endif
-                const bool dead = nameLocked || gyroLocked || (item.id == kFirmPress && !Input::pressureSeen()) ||
+                const bool dead = nameLocked || (item.id == kFirmPress && !Input::pressureSeen()) ||
                                   (item.id == kQuality && !isDSiMode()) || (item.id == kVibration && !slot2::hasRumble()) ||
                                   (item.id == kProfSpray && logos.count() == 0) || hostDead(item.id) != nullptr;
                 drawText(band, small, x + 8, textY, item.label, inkFor(small, dead ? kUiGrey : kUiWhite));
