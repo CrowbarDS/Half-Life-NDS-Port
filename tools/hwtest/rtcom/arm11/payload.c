@@ -16,9 +16,12 @@ typedef volatile uint32_t vu32;
 // The clock as the DS sees it: its control byte, and the second alarm's
 // three bytes (the DS's first byte at the top).
 #define RTC_CNT (*(vu8 *)0x1EC47100)
+#define RTC_ALARM1 ((vu8 *)0x1EC47130)
 #define RTC_ALARM2 ((vu8 *)0x1EC47134)
 // Set after writing the alarm, so that the DS reads the new bytes.
 #define RTC_ALARM2_NEW 0x40
+// The first alarm's, a guess from the order of the others (date 0x10).
+#define RTC_ALARM1_NEW 0x20
 
 // The I2C buses (OP_I2C_BUS picks one; the third by default: the
 // gyroscope, the infrared, the New 3DS's extra controls). Data, control,
@@ -43,10 +46,40 @@ static uint32_t bus = 0x1EC48000;
 static uint8_t command = 0;
 static uint32_t address = 0;
 static uint32_t word = 0;
+static uint32_t padAt = 0; // the circle pad in TwlBg's memory, once found
 static uint8_t device = 0, reg = 0;
 static uint8_t buffer[16] = {0};
 static uint8_t i2cReady = 0;
 static uint8_t lastCnt = 0; // the control byte after the last byte sent
+
+// TwlBg's run-time code: where to look for its input routine.
+#define TWLBG_LOW 0x100000
+#define TWLBG_LOW_END 0x127B00
+
+static uint32_t padFind(void)
+{
+    static const uint8_t split[10] = {0x61, 0x68, 0x08, 0x05, 0x00, 0x0D, 0xA8, 0x81, 0x08, 0x02};
+    for (uint32_t a = TWLBG_LOW; a < TWLBG_LOW_END - sizeof split; a += 2)
+    {
+        unsigned k = 0;
+        while (k < sizeof split && ((const vu8 *)a)[k] == split[k])
+            ++k;
+        if (k < sizeof split)
+            continue;
+        // The nearest "ldr r5, [pc, #imm]" before it.
+        for (uint32_t back = 2; back < 0x80; back += 2)
+        {
+            const uint16_t insn = *(const vu16 *)(a - back);
+            if (insn >> 8 == 0x4D)
+            {
+                const uint32_t lit = ((a - back + 4) & ~3u) + (insn & 0xFFu) * 4;
+                return *(const vu32 *)lit + 12;
+            }
+        }
+        return 0;
+    }
+    return 0;
+}
 
 static void alarmSet(uint8_t a, uint8_t b, uint8_t c)
 {
@@ -203,6 +236,32 @@ __attribute__((section(".text.entry"), target("arm"))) uint32_t payloadEntry(uin
             i2cIdle();
         }
         return lastCnt;
+    case OP_RTC_FILL:
+        if (iter != 1)
+            return 0;
+        RTC_ALARM1[2] = (uint8_t)byte;
+        RTC_ALARM1[1] = (uint8_t)(byte + 1);
+        RTC_ALARM1[0] = (uint8_t)(byte + 2);
+        RTC_CNT |= RTC_ALARM1_NEW;
+        alarmSet((uint8_t)(byte + 3), (uint8_t)(byte + 4), (uint8_t)(byte + 5));
+        return RTC_CNT;
+    case OP_PAD_FIND:
+        if (iter == 1)
+        {
+            padAt = padFind();
+            return padAt != 0;
+        }
+        return iter <= 5 ? (padAt >> (8 * (iter - 2))) & 0xFF : 0;
+    case OP_PAD_READ:
+        if (iter != 1)
+            return 0;
+        if (!padAt)
+            padAt = padFind();
+        if (!padAt)
+            return 0;
+        word = *(vu32 *)padAt;
+        alarmSet((uint8_t)(word >> 8), (uint8_t)(word >> 16), (uint8_t)(word >> 24));
+        return word & 0xFF;
     case OP_I2C_BUS:
         if (iter == 1 && byte < 3)
         {

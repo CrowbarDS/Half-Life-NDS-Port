@@ -29,5 +29,24 @@
 // until told otherwise. Returns 1.
 #define OP_I2C_BUS 0x07
 
+// iter 1: a pattern byte p. Fills the clock's first alarm (0x1EC47130..32)
+// with p, p+1, p+2 and the second (0x1EC47134..36) with p+3, p+4, p+5, the
+// DS's first byte at the highest address, and sets their "new" bits.
+// Returns the control byte after. (Can these carry any byte, for a feed of
+// our own that the ARM7 reads with plain clock reads?)
+#define OP_RTC_FILL 0x08
+// iter 1: finds the circle pad TwlBg reads each frame (for its D-pad): its
+// input routine, in the code it runs at 0x100000, splits the pad's word into
+// X and Y kept at +12 and +14 of a block it loads into r5 just before; the
+// block's literal gives the place. Returns 1 found, 0 not. iter 2-5: the
+// address of X (Y follows), low byte first. Read it then with OP_PEEK.
+#define OP_PAD_FIND 0x09
+// iter 1: the circle pad, read where OP_PAD_FIND found it (found again if
+// not yet): returns X's low byte; the alarm gets X's high byte, then Y's low
+// and high. X and Y are signed 16-bit, 0 in the middle (TwlBg's own
+// calibrated values; measured on an Old 3DS: about -150..150). Two exchanges
+// instead of OP_PEEK's five.
+#define OP_PAD_READ 0x0A
+
 #define PAYLOAD_HELLO 0xA5
 #define PAYLOAD_UNKNOWN 0xEE

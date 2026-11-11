@@ -13,6 +13,12 @@
 //     what does it give?
 //  5. Can the ARM7 read the circle pad itself, through the codec's 3DS
 //     stream (page 0xFB), as Linux for the 3DS does?
+//  6. Do the clock's two alarms carry any byte the ARM11 puts there to a
+//     plain clock read (our own TwlBg's feed to the game: no rtcom)?
+//  8. The circle pad as TwlBg itself reads it (its D-pad emulation), found
+//     by the ARM11 in TwlBg's code and read every frame through rtcom.
+//  7. With our own TwlBg (tools/3ds/twlbg.py build): does its feed arrive,
+//     every frame, with the circle pad in it? Needs no rtcom.
 
 #pragma once
 
@@ -28,6 +34,9 @@ enum ProbeCommand
     PROBE_PAD_ON,    // ... after setting page 67's sampling bits (may stop touch)
     PROBE_HID_LIVE,  // the 3DS's own button register, read every frame
     PROBE_BUS_SCAN,  // every address of I2C bus 3: which answer
+    PROBE_CHANNEL,   // 6: patterns through both alarms
+    PROBE_FEED,      // 7: our TwlBg's feed, read every frame
+    PROBE_PAD_TWL,   // 8: the circle pad in TwlBg's memory, every frame
     PROBE_STOP,
 };
 
@@ -94,6 +103,33 @@ typedef struct ProbeShared
     volatile uint32_t padReads;
     volatile uint8_t cdc67[3]; // page 67 regs 24, 25, 26 as found
     volatile int32_t padOn;    // the sampling bits were set
+
+    // 6: for each alarm and byte (the DS's order), the bits that did not come
+    // back as written over all patterns; what 0x55 gave; the control byte
+    // after each fill; one plain 3-byte read with the short bit delay.
+    volatile int32_t chanRan;      // patterns done
+    volatile int32_t chanFailed;   // fills that got no answer
+    volatile uint8_t chanLost[2][3];
+    volatile uint8_t chanGot55[2][3];
+    volatile uint8_t chanCnt[8];
+    volatile uint32_t chanReadTicks;
+
+    // 7: the two alarms as read (DS order), decoded; reads, reads with our
+    // mark, and how often the frame count had moved since the last read.
+    volatile uint8_t feedRaw[6];
+    volatile int32_t feedX, feedY; // 8-bit
+    volatile int32_t feedGyro;     // the gyro flag
+    volatile int32_t feedYaw, feedPitch; // the 12-bit sums as read
+    volatile int32_t feedTurnYaw, feedTurnPitch; // summed changes since Y
+    volatile uint32_t feedReads, feedMarked, feedMoved;
+    volatile uint32_t feedTicks;   // the two reads
+
+    // 8: where (0: not found, -1 not asked yet), X and Y as read (signed,
+    // 0 in the middle), their range, reads and failures, and one read's time.
+    volatile int32_t twlPadAt;
+    volatile uint32_t twlPadWord;
+    volatile int32_t twlX, twlY, twlXmin, twlXmax, twlYmin, twlYmax;
+    volatile uint32_t twlReads, twlFails, twlTicks;
 } ProbeShared;
 
 

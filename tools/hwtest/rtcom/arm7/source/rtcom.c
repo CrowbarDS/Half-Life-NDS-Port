@@ -121,6 +121,12 @@ void rtcomReadExtra(uint8_t bytes[3])
     transfer(&out, 1, bytes, 3);
 }
 
+void rtcomReadAlarm1(uint8_t bytes[3])
+{
+    const uint8_t out = 0x69;
+    transfer(&out, 1, bytes, 3);
+}
+
 int rtcomWait(void)
 {
     // About 100 ms: a 3DS frame is 16.7, the hook may be busy for one.

@@ -242,6 +242,15 @@ static void gyroScan(void)
             shared->gyroAddr = devs[d];
         }
     }
+    // Measured on an Old 3DS: D0 answers but its WHO_AM_I reads 00, and
+    // 0x3E (the ITG family's power register) reads 0x40, its sleep bit:
+    // asleep, as the 3DS leaves it in DSi mode. Take it as that family so
+    // that "gyro live" wakes it.
+    if (shared->gyroKind == GYRO_NONE && shared->gyroAck[0][0] >= 0)
+    {
+        shared->gyroKind = GYRO_ITG;
+        shared->gyroAddr = 0xD0;
+    }
 }
 
 static void gyroWake(void)
@@ -380,6 +389,145 @@ static void padStart(bool enable)
     shared->padReads = 0;
 }
 
+// --- 6: the alarms as a feed ------------------------------------------------
+
+static void channelTest(void)
+{
+    where("channel");
+    static const uint8_t patterns[8] = {0x00, 0xFF, 0x55, 0xAA, 0x01, 0x80, 0x3C, 0xC3};
+    uint8_t lost[2][3] = {{0}};
+    shared->chanRan = 0;
+    shared->chanFailed = 0;
+    rtcomSetFast(true);
+    for (int n = 0; n < 8; ++n)
+    {
+        const uint8_t p = patterns[n];
+        uint8_t reply = 0;
+        if (!rtcomRun(OP_RTC_FILL, &reply) || !rtcomNext(p, &reply))
+        {
+            shared->chanFailed++;
+            continue;
+        }
+        shared->chanCnt[n] = reply;
+        uint8_t got[2][3];
+        rtcomReadAlarm1(got[0]);
+        const uint32_t t0 = ticks();
+        rtcomReadExtra(got[1]);
+        shared->chanReadTicks = ticks() - t0;
+        for (int a = 0; a < 2; ++a)
+            for (int k = 0; k < 3; ++k)
+            {
+                lost[a][k] |= got[a][k] ^ (uint8_t)(p + 3 * a + k);
+                if (p == 0x55)
+                    shared->chanGot55[a][k] = got[a][k];
+            }
+        shared->chanRan = n + 1;
+    }
+    for (int a = 0; a < 2; ++a)
+        for (int k = 0; k < 3; ++k)
+            shared->chanLost[a][k] = lost[a][k];
+}
+
+// --- 8: the circle pad in TwlBg's memory ---------------------------------------
+
+static bool padFindTwl(void)
+{
+    uint8_t found = 0, b = 0;
+    if (!rtcomRun(OP_PAD_FIND, &found) || !rtcomNext(0, &found))
+        return false;
+    uint32_t at = 0;
+    for (int k = 0; k < 4; ++k)
+    {
+        if (!rtcomNext(0, &b))
+            return false;
+        at |= (uint32_t)b << (8 * k);
+    }
+    shared->twlPadAt = found ? (int32_t)at : 0;
+    return true;
+}
+
+static void padTwlRead(void)
+{
+    rtcomSetFast(true);
+    if (shared->twlPadAt < 0 && !padFindTwl())
+    {
+        shared->twlFails++;
+        return;
+    }
+    if (shared->twlPadAt <= 0)
+        return;
+    const uint32_t t0 = ticks();
+    uint8_t b0 = 0, extra[3] = {0};
+    if (!rtcomRun(OP_PAD_READ, &b0) || !rtcomNext(0, &b0))
+    {
+        shared->twlFails++;
+        return;
+    }
+    rtcomReadExtra(extra);
+    shared->twlTicks = ticks() - t0;
+    const uint32_t word = b0 | (uint32_t)extra[0] << 8 | (uint32_t)extra[1] << 16 | (uint32_t)extra[2] << 24;
+    shared->twlPadWord = word;
+    const int x = (int16_t)(word & 0xFFFF), y = (int16_t)(word >> 16);
+    if (shared->twlReads == 0)
+    {
+        shared->twlXmin = shared->twlXmax = x;
+        shared->twlYmin = shared->twlYmax = y;
+    }
+    shared->twlX = x;
+    shared->twlY = y;
+    if (x < shared->twlXmin)
+        shared->twlXmin = x;
+    if (x > shared->twlXmax)
+        shared->twlXmax = x;
+    if (y < shared->twlYmin)
+        shared->twlYmin = y;
+    if (y > shared->twlYmax)
+        shared->twlYmax = y;
+    shared->twlReads++;
+}
+
+// --- 7: our TwlBg's feed ---------------------------------------------------
+
+static void feedRead(void)
+{
+    static uint8_t lastCount = 0xFF;
+    uint8_t a[3], b[3];
+    rtcomSetFast(true);
+    const uint32_t t0 = ticks();
+    rtcomReadAlarm1(a);
+    rtcomReadExtra(b);
+    shared->feedTicks = ticks() - t0;
+    for (int k = 0; k < 3; ++k)
+    {
+        shared->feedRaw[k] = a[k];
+        shared->feedRaw[3 + k] = b[k];
+    }
+    shared->feedReads++;
+    // tools/3ds/twlbg-patcher/payload/feed.h
+    if ((a[0] & 0xF0) != 0xB0)
+        return;
+    shared->feedMarked++;
+    const uint8_t count = (a[0] >> 2) & 3;
+    if (count != lastCount)
+        shared->feedMoved++;
+    lastCount = count;
+    shared->feedGyro = a[0] & 1;
+    shared->feedX = a[1];
+    shared->feedY = a[2];
+    const int32_t yaw = b[0] << 4 | b[1] >> 4, pitch = (b[1] & 0x0F) << 8 | b[2];
+    static int32_t lastYaw = -1, lastPitch = -1;
+    if (lastYaw >= 0)
+    {
+        // Signed 12-bit differences.
+        shared->feedTurnYaw += (int32_t)((uint32_t)(yaw - lastYaw) << 20) >> 20;
+        shared->feedTurnPitch += (int32_t)((uint32_t)(pitch - lastPitch) << 20) >> 20;
+    }
+    lastYaw = yaw;
+    lastPitch = pitch;
+    shared->feedYaw = yaw;
+    shared->feedPitch = pitch;
+}
+
 // --- the session ----------------------------------------------------------
 
 static bool sessionOpen = false;
@@ -436,6 +584,7 @@ int main(void)
         swiWaitForVBlank();
     shared = (ProbeShared *)fifoGetAddress(PROBE_FIFO);
     shared->busScanned = -1;
+    shared->twlPadAt = -1;
     detect();
 
     bool gyroAwake = false;
@@ -490,6 +639,24 @@ int main(void)
                 closeSession();
             }
             shared->command = PROBE_IDLE;
+            break;
+        case PROBE_CHANNEL:
+            if (payloadIn && openSession())
+            {
+                channelTest();
+                closeSession();
+            }
+            shared->command = PROBE_IDLE;
+            break;
+        case PROBE_PAD_TWL:
+            if (payloadIn && openSession())
+            {
+                padTwlRead();
+                closeSession();
+            }
+            break;
+        case PROBE_FEED:
+            feedRead();
             break;
         case PROBE_HID_LIVE:
             if (payloadIn && openSession())

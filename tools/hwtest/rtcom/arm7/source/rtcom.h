@@ -39,6 +39,8 @@ void rtcomWriteStatus(uint8_t value);
 // The alarm's three bytes (the payload's extra channel).
 void rtcomWriteExtra(const uint8_t bytes[3]);
 void rtcomReadExtra(uint8_t bytes[3]);
+// The first alarm's three bytes (command 0x69), a plain clock read.
+void rtcomReadAlarm1(uint8_t bytes[3]);
 
 // A request and its answer: true if the 3DS said yes (0x80).
 bool rtcomAsk(uint8_t status, uint8_t data);

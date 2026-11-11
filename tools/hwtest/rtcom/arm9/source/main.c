@@ -20,6 +20,9 @@ static const char *commandName(uint32_t c)
     case PROBE_PAD_ON: return "pad on";
     case PROBE_HID_LIVE: return "3DS buttons";
     case PROBE_BUS_SCAN: return "bus scan";
+    case PROBE_CHANNEL: return "alarms";
+    case PROBE_FEED: return "feed";
+    case PROBE_PAD_TWL: return "3DS pad";
     default: return "?";
     }
 }
@@ -117,6 +120,68 @@ static void pageBus(ProbeShared *s)
            s->busCnt[0x4A >> 1], s->busCnt[0xEE >> 1]);
 }
 
+static void pageChannel(ProbeShared *s)
+{
+    if (!s->chanRan && !s->chanFailed)
+    {
+        printf("not run yet (A first, then X)\n");
+        return;
+    }
+    printf("alarm feed: %ld/8 patterns, %ld failed\n", (long)s->chanRan, (long)s->chanFailed);
+    for (int a = 0; a < 2; ++a)
+        printf("alarm %d lost bits %02X %02X %02X\n", a + 1, s->chanLost[a][0], s->chanLost[a][1],
+               s->chanLost[a][2]);
+    printf("(00 00 00: every bit carried)\n");
+    for (int a = 0; a < 2; ++a)
+        printf("0x55 -> alarm %d %02X %02X %02X\n", a + 1, s->chanGot55[a][0], s->chanGot55[a][1],
+               s->chanGot55[a][2]);
+    printf(" (want 55 56 57 / 58 59 5A)\n");
+    printf("control after fill:\n");
+    for (int n = 0; n < 8; ++n)
+        printf(" %02X", s->chanCnt[n]);
+    printf("\nplain 3-byte read: %lu ticks\n", (unsigned long)s->chanReadTicks);
+}
+
+static void pageTwlPad(ProbeShared *s)
+{
+    printf("circle pad from TwlBg (rtcom)\n");
+    if (s->twlPadAt < 0)
+    {
+        printf("not looked for yet (A first)\n");
+        return;
+    }
+    if (s->twlPadAt == 0)
+    {
+        printf("NOT FOUND in TwlBg's code\n");
+        return;
+    }
+    printf("found at %08lX\n", (unsigned long)s->twlPadAt);
+    printf("word %08lX\n", (unsigned long)s->twlPadWord);
+    printf("X %5ld [%5ld..%5ld]\n", (long)s->twlX, (long)s->twlXmin, (long)s->twlXmax);
+    printf("Y %5ld [%5ld..%5ld]\n", (long)s->twlY, (long)s->twlYmin, (long)s->twlYmax);
+    printf("(signed, 0 = middle)\n");
+    printf("reads %lu fails %lu\n", (unsigned long)s->twlReads, (unsigned long)s->twlFails);
+    printf("one read %lu ticks (%lu us)\n", (unsigned long)s->twlTicks, (unsigned long)(s->twlTicks / 34));
+    printf("(move the stick round its edge)\n");
+}
+
+static void pageFeed(ProbeShared *s)
+{
+    printf("our TwlBg's feed (no rtcom)\n");
+    printf("reads %lu  marked %lu  moved %lu\n", (unsigned long)s->feedReads, (unsigned long)s->feedMarked,
+           (unsigned long)s->feedMoved);
+    printf("(moved ~ reads: alive each frame)\n");
+    printf("raw %02X %02X %02X | %02X %02X %02X\n", s->feedRaw[0], s->feedRaw[1], s->feedRaw[2], s->feedRaw[3],
+           s->feedRaw[4], s->feedRaw[5]);
+    printf("(want Bx: B, gyro bit 0)\n");
+    printf("pad X %3ld  Y %3ld (of 255)\n", (long)s->feedX, (long)s->feedY);
+    printf("gyro %s  sums %03lX %03lX\n", s->feedGyro ? "on" : "OFF", (unsigned long)s->feedYaw,
+           (unsigned long)s->feedPitch);
+    printf("turned since Y: yaw %ld pitch %ld\n", (long)s->feedTurnYaw, (long)s->feedTurnPitch);
+    printf(" (27 units ~ 1 degree)\n");
+    printf("two reads: %lu ticks\n", (unsigned long)s->feedTicks);
+}
+
 int main(void)
 {
     consoleDemoInit();
@@ -143,8 +208,8 @@ int main(void)
         }
         if (down & KEY_UP)
         {
-            shared->command = PROBE_PAD_SCAN;
-            page = 2;
+            shared->command = PROBE_PAD_TWL;
+            page = 6;
         }
         if (down & KEY_DOWN)
             shared->command = PROBE_HID_LIVE;
@@ -158,10 +223,20 @@ int main(void)
             shared->command = PROBE_PAD_ON;
             page = 2;
         }
+        if (down & KEY_X)
+        {
+            shared->command = PROBE_CHANNEL;
+            page = 4;
+        }
+        if (down & KEY_Y)
+        {
+            shared->command = PROBE_FEED;
+            page = 5;
+        }
         if (down & KEY_B)
             shared->command = PROBE_IDLE;
         if (down & KEY_SELECT)
-            page = (page + 1) % 4;
+            page = (page + 1) % 7;
         if (down & KEY_START)
             break;
 
@@ -173,9 +248,15 @@ int main(void)
             pageGyroRegs(shared);
         else if (page == 2)
             pagePad(shared);
-        else
+        else if (page == 3)
             pageBus(shared);
-        printf("A auto L gyro R regs Up pad\nRt pad+on Lt bus Dn keys B stop");
+        else if (page == 4)
+            pageChannel(shared);
+        else if (page == 5)
+            pageFeed(shared);
+        else
+            pageTwlPad(shared);
+        printf("A auto L gyro R regs Up 3DSpad\nX alarms Y feed Rt codec Lt bus Dn keys B stop");
     }
     return 0;
 }
