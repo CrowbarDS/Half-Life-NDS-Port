@@ -188,7 +188,8 @@ namespace hlrtcom
             Off,      // no session, or given up for good
             Idle,     // waiting for the next frame
             WaitRun,  // asked to run the pad command
-            WaitNext, // asked for its answer
+            WaitNext,  // asked for its first answer (the pad, the gyroscope's X)
+            WaitNext2, // asked for its second (the gyroscope's Y and Z)
         };
 
         Pad pad = Pad::Off;
@@ -198,6 +199,20 @@ namespace hlrtcom
         int waited = 0;   // steps since the request was sent
         int failures = 0; // in a row
         int restAt = 0;   // steps left before trying again after a run of failures
+        // The first answer, kept for the second (Peek11.s).
+        std::int8_t padX = 0, padY = 0;
+        std::int16_t gyroX = 0;
+        // Peek11.s's "no gyroscope", in all three rates.
+        constexpr std::int16_t kNoGyro = -32768;
+
+        /// The 3DS's answer byte and the second alarm's three, read together.
+        void take(std::uint8_t &low, std::uint8_t rest[3])
+        {
+            const int ime = enterCriticalSection();
+            low = read(kReadData);
+            readAlarm2(rest);
+            leaveCriticalSection(ime);
+        }
 
         // A step comes every sound block (2 ms): about 50 ms.
         constexpr int kWaitSteps = 25;
@@ -234,7 +249,9 @@ namespace hlrtcom
             if (++failures >= kFailuresToRest)
             {
                 link->present = 0;
-                link->padX = link->padY = 0;
+                link->padX = 0;
+                link->padY = 0;
+                link->gyroPresent = 0;
                 failures = 0;
                 restAt = kRestSteps;
             }
@@ -351,25 +368,51 @@ namespace hlrtcom
                 return;
             }
             std::uint8_t low = 0, rest[3] = {0, 0, 0};
-            {
-                const int ime = enterCriticalSection();
-                low = read(kReadData);
-                readAlarm2(rest);
-                leaveCriticalSection(ime);
-            }
-            failures = 0;
-            pad = Pad::Idle;
-            if (low == 0 && rest[0] == 0xFF && rest[1] == 0xFF && rest[2] == 0xFF)
+            take(low, rest);
+            if (rest[0] == 0x80)
             {
                 // TwlBg's pad was not found: nothing to read, ever.
                 link->present = 0;
+                link->gyroPresent = 0;
                 pad = Pad::Off;
                 return;
             }
-            link->padX = static_cast<std::int16_t>(low | rest[0] << 8);
-            link->padY = static_cast<std::int16_t>(rest[1] | rest[2] << 8);
-            link->count = link->count + 1;
+            padX = static_cast<std::int8_t>(low);
+            padY = static_cast<std::int8_t>(rest[0]);
+            gyroX = static_cast<std::int16_t>(rest[1] | rest[2] << 8);
+            request(kNext, 0);
+            pad = Pad::WaitNext2;
+            return;
+        }
+        case Pad::WaitNext2:
+        {
+            const int status = answer();
+            if (status < 0)
+            {
+                if (++waited > kWaitSteps)
+                    failed();
+                return;
+            }
+            if (status != kYes)
+            {
+                failed();
+                return;
+            }
+            std::uint8_t low = 0, rest[3] = {0, 0, 0};
+            take(low, rest);
+            const std::int16_t gyroY = static_cast<std::int16_t>(low | rest[0] << 8);
+            const std::int16_t gyroZ = static_cast<std::int16_t>(rest[1] | rest[2] << 8);
+            failures = 0;
+            pad = Pad::Idle;
+            link->padX = padX;
+            link->padY = padY;
             link->present = 1;
+            const bool gyro = !(gyroX == kNoGyro && gyroY == kNoGyro && gyroZ == kNoGyro);
+            link->gyroX = gyro ? gyroX : 0;
+            link->gyroY = gyro ? gyroY : 0;
+            link->gyroZ = gyro ? gyroZ : 0;
+            link->gyroPresent = gyro ? 1 : 0;
+            link->count = link->count + 1;
             return;
         }
         case Pad::Off:
