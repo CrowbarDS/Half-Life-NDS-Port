@@ -132,6 +132,10 @@ namespace
             }
         }
         check(kept, "what a controller is doing is kept in a save");
+        bool roped = true;
+        for (const AiSchedule *s : {&grunt::slRepel, &grunt::slRepelAttack, &grunt::slRepelLand})
+            roped = roped && aiScheduleId(s) >= 0 && aiScheduleById(aiScheduleId(s)) == s;
+        check(roped, "... and what a soldier on a rope is doing");
     }
 
     /// A squad of three grunts: one taken away by a killtarget, one whose

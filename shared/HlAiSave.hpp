@@ -68,6 +68,8 @@ namespace hldata
             // last, so that what is in a save already keeps its place
             &controller::slControllerChaseEnemy, &controller::slControllerStrafe,
             &controller::slControllerTakeCover, &controller::slControllerFail,
+            // a soldier's on a rope (hgrunt.cpp), likewise
+            &grunt::slRepel, &grunt::slRepelAttack, &grunt::slRepelLand,
         };
         count = static_cast<int>(sizeof(kAll) / sizeof(kAll[0]));
         return kAll;
