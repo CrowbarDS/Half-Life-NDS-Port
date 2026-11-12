@@ -1179,9 +1179,14 @@ namespace hldata
             fx forward[3], right[3], up[3];
             const fx none[3] = {0, 0, 0};
             aimVectors(c, none, forward, right, up);
+            // Its gun's pivot, posed as it flies (GetAttachment(1)); without
+            // one, under its nose.
             fx gun[3];
-            for (int k = 0; k < 3; ++k)
-                gun[k] = c.me.pos[k] + forward[k] * 90 - up[k] * 50; // (under its nose)
+            if (!actorAttachment(c.a, c.me, 1, gun))
+            {
+                for (int k = 0; k < 3; ++k)
+                    gun[k] = c.me.pos[k] + forward[k] * 90 - up[k] * 50;
+            }
             fx to[3] = {posTarget(c)[0] - gun[0], posTarget(c)[1] - gun[1], posTarget(c)[2] - gun[2]};
             unit(to);
             const fx out[3] = {dot(forward, to), -dot(right, to), dot(up, to)};
@@ -1205,6 +1210,25 @@ namespace hldata
                 // (aimVectors' parts are at most 8192, its sums 12288: 16-bit.)
                 barrel[k] = fxMulShort(fxMulShort(forward[k], cy) - fxMulShort(right[k], sy), cp) + fxMulShort(up[k], sp);
             unit(barrel);
+            // ... or as its model has it, the gun turned: from the pivot to
+            // the barrel's end (GetAttachment(0) less 1).
+            {
+                static const int kGun[2] = {1, 0};
+                fx posed[2][3];
+                if (actorAttachments(c.a, c.me, kGun, 2, posed))
+                {
+                    fx along[3] = {posed[1][0] - posed[0][0], posed[1][1] - posed[0][1], posed[1][2] - posed[0][2]};
+                    if (fxLength(along) > 0)
+                    {
+                        unit(along);
+                        for (int k = 0; k < 3; ++k)
+                        {
+                            gun[k] = posed[0][k];
+                            barrel[k] = along[k];
+                        }
+                    }
+                }
+            }
             if (dot(barrel, to) <= fxDot(0.98))
                 return false;
             // FireBullets, a 4 degree cone.

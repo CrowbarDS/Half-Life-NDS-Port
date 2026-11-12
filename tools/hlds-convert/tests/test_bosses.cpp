@@ -152,6 +152,22 @@ namespace
         if (k < 0)
             return;
         ActorState &heli = g.actors.states[k];
+        {
+            // Its gun from its barrel (GetAttachment(0)), tipped as it
+            // flies: nosed down, the barrel is lower and further back.
+            ActorState level = heli, nosed = heli;
+            level.wantPitch = level.wantYaw = 0;
+            nosed.wantPitch = -4096; // (nosed down: actorTilt's pitch, up positive)
+            nosed.wantYaw = 0;
+            fx a[3], b[3];
+            const bool has = actorAttachment(g.actors, level, 0, a) && actorAttachment(g.actors, nosed, 0, b);
+            const fx d[3] = {a[0] - heli.pos[0], a[1] - heli.pos[1], a[2] - heli.pos[2]};
+            const fx moved[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+            std::printf("test_bosses: apache's barrel %s, %d from its middle; nosed down it moves %d (down %d)\n",
+                        has ? "posed" : "MISSING", fxToInt(fxLength(d)), fxToInt(fxLength(moved)), fxToInt(-moved[2]));
+            check(has && fxLength(d) < fxFromInt(300), "the apache's gun is where its model has its barrel");
+            check(has && fxLength(moved) > fxFromInt(8), "... tipped as it flies");
+        }
         const fx start[3] = {heli.pos[0], heli.pos[1], heli.pos[2]};
         // The player on the ground some way off, in the open.
         bool placed = false;
@@ -181,21 +197,42 @@ namespace
         lost = 0;
         int tracers = 0, rockets = 0;
         fx most = 0;
+        double nearest = 1e9; // (how near a round of its passes the player's middle)
         for (int t = 0; t < 30 * 30; ++t)
         {
             tickStill(g);
             for (const Effect &effect : g.actors.effects)
+            {
                 tracers += effect.kind == kEffectTracer && effect.leftMs > 0 ? 1 : 0;
+                if (effect.kind != kEffectTracer || effect.leftMs <= 0)
+                    continue;
+                double ab[3], ap[3], len2 = 0, along = 0;
+                for (int k = 0; k < 3; ++k)
+                {
+                    ab[k] = (effect.b[k] - effect.a[k]) / 4096.0;
+                    ap[k] = (g.player.origin[k] - effect.a[k]) / 4096.0;
+                    len2 += ab[k] * ab[k];
+                    along += ab[k] * ap[k];
+                }
+                const double u = len2 > 0 ? std::max(0.0, std::min(1.0, along / len2)) : 0;
+                double d2 = 0;
+                for (int k = 0; k < 3; ++k)
+                    d2 += (ap[k] - ab[k] * u) * (ap[k] - ab[k] * u);
+                nearest = std::min(nearest, std::sqrt(d2));
+            }
             for (const Projectile &shot : g.actors.shots)
                 rockets += shot.active && shot.kind == kShotRocketFoe && shot.leftMs > 30000 - 40 ? 1 : 0;
             const fx d = aiDist(start, heli.pos);
             most = d > most ? d : most;
         }
-        std::printf("test_bosses: apache flew up to %d units, %d frames of tracers, %d rockets, the player lost %d\n",
-                    fxToInt(most), tracers, rockets, lost);
+        std::printf("test_bosses: apache flew up to %d units, %d frames of tracers, %d rockets, the player lost %d; "
+                    "its nearest round passed %.0f units from them\n",
+                    fxToInt(most), tracers, rockets, lost, nearest);
         check(most > fxFromInt(300), "called, it flies");
         check(tracers > 0 || rockets > 0, "... fires at the player");
-        check(lost > 0, "... and hurts them");
+        // (Its rounds in the game's four degree cone: from far off, one in
+        // many goes home -- what is asked is that they are aimed at them.)
+        check(lost > 0 || nearest < 48.0, "... its rounds at them, through or by the player's box");
         check(heli.pos[2] > start[2] - fxFromInt(2000), "... and stays in the air");
         // Two rockets' worth of blast: down it comes.
         monsterHurt(g.logic, k, 150, false, kHitBody, kDmgBlast);

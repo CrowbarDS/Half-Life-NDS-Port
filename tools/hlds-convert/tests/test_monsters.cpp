@@ -970,6 +970,17 @@ namespace
                   g.times(CommonSound::TurretDeploy) == 1,
               "it sees the player, comes out, turns to them and hurts them");
         check(along > 0.99, "... its gun on them when it does");
+        {
+            // Its rounds come from its muzzle (GetAttachment(0)): hung from
+            // the ceiling, below where it is fixed, as it is drawn.
+            fx muzzle[3];
+            const bool has = actorAttachment(g.actors, actor, 0, muzzle);
+            const fx d[3] = {muzzle[0] - actor.pos[0], muzzle[1] - actor.pos[1], muzzle[2] - actor.pos[2]};
+            std::printf("test_monsters: miniturret's muzzle %s, %d below where it hangs, %d from it\n",
+                        has ? "posed" : "MISSING", fxToInt(-d[2]), fxToInt(fxLength(d)));
+            check(has && d[2] < -fxFromInt(4) && fxLength(d) < fxFromInt(64),
+                  "... from its muzzle, below it as it hangs");
+        }
         check(g.loudestHeard[static_cast<std::size_t>(CommonSound::TurretAlert)] == 64 &&
                   g.loudestHeard[static_cast<std::size_t>(CommonSound::TurretDeploy)] == 64,
               "... its alarm and its opening at half of full, as the game's TURRET_MACHINE_VOLUME");

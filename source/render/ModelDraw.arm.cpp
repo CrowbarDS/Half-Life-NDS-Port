@@ -1033,39 +1033,16 @@ namespace hlrt
         {
             const ActorState &actor = actors.states[order[n]];
             const ModelView &model = *actorModel(actors, actor);
-            // Turned about the vertical, the way it faces.
-            fx sine, cosine;
-            fxSinCos(actor.yaw, sine, cosine);
-            fx turn[9] = {cosine, -sine, 0, sine, cosine, 0, 0, 0, kFxOne};
-            std::int32_t tiltPitch = 0, tiltRoll = 0;
-            if (actorTilt(actor, tiltPitch, tiltRoll))
-            {
-                // ... and, swimming or flying, nosed up or down and rolled
-                // (actorTilt): its forward, left and up are the columns.
-                fx sp, cp, sr, cr;
-                fxSinCos(static_cast<std::uint16_t>(tiltPitch), sp, cp);
-                fxSinCos(static_cast<std::uint16_t>(tiltRoll), sr, cr);
-                // (Sines and cosines, and products of them: all 16-bit.)
-                const fx forward[3] = {fxMulShort(cp, cosine), fxMulShort(cp, sine), sp};
-                const fx left0[3] = {-sine, cosine, 0};
-                const fx up0[3] = {-fxMulShort(sp, cosine), -fxMulShort(sp, sine), cp};
-                for (int r = 0; r < 3; ++r)
-                {
-                    turn[r * 3 + 0] = forward[r];
-                    turn[r * 3 + 1] = fxMulShort(left0[r], cr) + fxMulShort(up0[r], sr);
-                    turn[r * 3 + 2] = fxMulShort(up0[r], cr) - fxMulShort(left0[r], sr);
-                }
-            }
-            // A turret under a ceiling (or scenery the map turns over) is
-            // the same model upside down: turned over about the way it faces
-            // (the game's half turn of pitch, and of yaw to make up for it).
-            const fx over[9] = {cosine, sine, 0, sine, -cosine, 0, 0, 0, -kFxOne};
-            const bool ceiling = actorHungOver(actor.kind, actor.flags);
+            // Turned as it faces -- tipped as it flies or swims, or turned
+            // over under a ceiling (actorOrientation: the same that says
+            // where on it a shot comes from).
+            fx turn[9];
+            actorOrientation(actor, turn);
             const int seeThrough = seeThroughLook(actors, actor, order[n], glow_);
             if (seeThrough < 0)
                 continue;
-            drawActor(actor, model, actor.model, ceiling ? over : turn, order[n], level_[n]);
-            drawGun(actor, model, ceiling ? over : turn, order[n]);
+            drawActor(actor, model, actor.model, turn, order[n], level_[n]);
+            drawGun(actor, model, turn, order[n]);
             glow_ = false;
             if (seeThrough > 0)
                 modelAlpha(31);

@@ -676,6 +676,44 @@ namespace hldata
         return false;
     }
 
+    /// How its model is turned in the world, as it is drawn: a matrix
+    /// whose columns are the model's forward, left and up (Q12, row by
+    /// row). About the upright the way it faces; swimming or flying, nosed
+    /// up or down and rolled too (actorTilt); hung from a ceiling, turned
+    /// over about the way it faces (the game's half turn of pitch, and of
+    /// yaw to make up for it).
+    inline void actorOrientation(const ActorState &actor, fx *turn)
+    {
+        fx sine, cosine;
+        fxSinCos(actor.yaw, sine, cosine);
+        if (actorHungOver(actor.kind, actor.flags))
+        {
+            const fx over[9] = {cosine, sine, 0, sine, -cosine, 0, 0, 0, -kFxOne};
+            for (int k = 0; k < 9; ++k)
+                turn[k] = over[k];
+            return;
+        }
+        const fx flat[9] = {cosine, -sine, 0, sine, cosine, 0, 0, 0, kFxOne};
+        for (int k = 0; k < 9; ++k)
+            turn[k] = flat[k];
+        std::int32_t tiltPitch = 0, tiltRoll = 0;
+        if (!actorTilt(actor, tiltPitch, tiltRoll))
+            return;
+        fx sp, cp, sr, cr;
+        fxSinCos(static_cast<std::uint16_t>(tiltPitch), sp, cp);
+        fxSinCos(static_cast<std::uint16_t>(tiltRoll), sr, cr);
+        // (Sines and cosines, and products of them: all 16-bit.)
+        const fx forward[3] = {fxMulShort(cp, cosine), fxMulShort(cp, sine), sp};
+        const fx left0[3] = {-sine, cosine, 0};
+        const fx up0[3] = {-fxMulShort(sp, cosine), -fxMulShort(sp, sine), cp};
+        for (int r = 0; r < 3; ++r)
+        {
+            turn[r * 3 + 0] = forward[r];
+            turn[r * 3 + 1] = fxMulShort(left0[r], cr) + fxMulShort(up0[r], sr);
+            turn[r * 3 + 2] = fxMulShort(up0[r], cr) - fxMulShort(left0[r], sr);
+        }
+    }
+
     /// Back to what it does when nothing directs it.
     inline void actorRest(ActorState &actor)
     {

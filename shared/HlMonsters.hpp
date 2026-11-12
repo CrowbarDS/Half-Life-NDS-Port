@@ -2426,6 +2426,8 @@ namespace hldata
         return true;
     }
 
+    inline bool actorAttachment(const ActorWorld &a, const ActorState &actor, int which, fx *out); // (below)
+
     namespace detail
     {
         inline void turretEye(const ActorState &actor, fx *eye)
@@ -2726,7 +2728,11 @@ namespace hldata
                 if (actor.struck && (onTarget || actor.attack))
                 {
                     monsterClip(a, actor, "fire", false);
-                    turretShoot(w, player, actor, kind, eye, forward);
+                    // (From its muzzle, posed as the gun is turned -- and
+                    // upside down under a ceiling: GetAttachment(0). It
+                    // looks from its eye, as the game's does.)
+                    fx muzzle[3];
+                    turretShoot(w, player, actor, kind, actorAttachment(a, actor, 0, muzzle) ? muzzle : eye, forward);
                 }
                 else
                 {
@@ -4036,22 +4042,9 @@ namespace hldata
         poseModel(model, actor.clip, actor.frame, bones, controlled ? controls : nullptr, actor.blend.value);
         return attachmentPoint(model, bones, which, at);
     }
-    inline bool actorAttachment(const ActorWorld &a, const ActorState &actor, int which, fx *out)
-    {
-        const ModelView *model = actorModel(a, actor);
-        fx at[3];
-        if (model == nullptr || !attachmentPosed(*model, actor, which, at))
-            return false;
-        fx sine, cosine;
-        fxSinCos(actor.yaw, sine, cosine);
-        out[0] = actor.pos[0] + fxMul(at[0], cosine) - fxMul(at[1], sine);
-        out[1] = actor.pos[1] + fxMul(at[0], sine) + fxMul(at[1], cosine);
-        out[2] = actor.pos[2] + at[2];
-        return true;
-    }
     /// Several of them at once, the model posed the once: `count` of them,
     /// `which` each, into `out`. False (and `out` untouched) if its model
-    /// has not every one. For what stands upright: turned as it faces.
+    /// has not every one. Turned as it is drawn (actorOrientation).
     inline bool actorAttachments(const ActorWorld &a, const ActorState &actor, const int *which, int count,
                                  fx (*out)[3])
     {
@@ -4067,17 +4060,26 @@ namespace hldata
         std::int32_t controls[kModelControls];
         const bool controlled = actorControls(actor, controls);
         poseModel(*model, actor.clip, actor.frame, bones, controlled ? controls : nullptr, actor.blend.value);
-        fx sine, cosine;
-        fxSinCos(actor.yaw, sine, cosine);
+        fx turn[9];
+        actorOrientation(actor, turn);
         for (int n = 0; n < count; ++n)
         {
             fx at[3];
             if (!attachmentPoint(*model, bones, which[n], at))
                 return false;
-            out[n][0] = actor.pos[0] + fxMul(at[0], cosine) - fxMul(at[1], sine);
-            out[n][1] = actor.pos[1] + fxMul(at[0], sine) + fxMul(at[1], cosine);
-            out[n][2] = actor.pos[2] + at[2];
+            for (int r = 0; r < 3; ++r)
+                out[n][r] = actor.pos[r] + fxMul(turn[r * 3], at[0]) + fxMul(turn[r * 3 + 1], at[1]) +
+                            fxMul(turn[r * 3 + 2], at[2]);
         }
+        return true;
+    }
+    inline bool actorAttachment(const ActorWorld &a, const ActorState &actor, int which, fx *out)
+    {
+        fx at[1][3];
+        if (!actorAttachments(a, actor, &which, 1, at))
+            return false;
+        for (int k = 0; k < 3; ++k)
+            out[k] = at[0][k];
         return true;
     }
 
