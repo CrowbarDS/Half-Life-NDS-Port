@@ -543,6 +543,8 @@ namespace hldata
         /// How long the map's Section::Speech is (LogicWorld::speech): past
         /// the soldiers' table, what the people say. The map's, not saved.
         int speechCount = 0;
+        /// Where the people's talk table starts in it (LevelView::talkAt).
+        int talkAt = kTalkTableAt;
     };
 
     struct AiCtx;

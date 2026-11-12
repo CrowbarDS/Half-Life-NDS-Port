@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 63;
+    inline constexpr std::uint16_t kLevelVersion = 64;
     /// The oldest level format this build reads. (49: a map's textures are
     /// stored in its archive as they are, never compressed, so that one that
     /// streams is read straight in during play. 50: each texture's record
@@ -100,7 +100,10 @@ namespace hldata
     /// leaves alone: it climbs its bounds, as it did. 63: how far a brush's
     /// collision reaches past its box, in Brush::pad, which a build before
     /// leaves alone: it passes over the brush by its box, as it did.)
-    inline constexpr std::uint16_t kLevelMinReader = 56;
+    /// 64: a twelfth group in the soldiers' table (what they call out at
+    /// the sight of an alien), which moves the people's talk table after
+    /// it: a build before would read it from the wrong place.
+    inline constexpr std::uint16_t kLevelMinReader = 64;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,
     /// 28 -> 29 a func_train's global name (extra[3], 0 before: read as
@@ -1203,7 +1206,11 @@ namespace hldata
     inline constexpr int kSpeakAnswer = 8;
     inline constexpr int kSpeakClear = 9;   ///< "all clear", the answer to ...
     inline constexpr int kSpeakCheck = 10;  ///< ... "check in" (HG_CLEAR, HG_CHECK)
-    inline constexpr int kSpeechGroups = 11;
+    inline constexpr int kSpeakMonster = 11; ///< at the sight of an alien
+    inline constexpr int kSpeechGroups = 12;
+    /// A level before version 64 has no kSpeakMonster group: its talk table
+    /// is a group earlier (talkTableAt).
+    inline constexpr int kSpeechGroupsBefore64 = 11;
     inline constexpr int kSpeechLines = 6;
 
     // What the people of the place say (the game's talkmonster groups):
@@ -1249,6 +1256,11 @@ namespace hldata
     /// Where the talk table starts in Section::Speech, and how long its
     /// heading (first, count for each group) is.
     inline constexpr int kTalkTableAt = kSpeechGroups * kSpeechLines;
+    /// Where the talk table starts in a level of `version`.
+    inline constexpr int talkTableAt(std::uint16_t version)
+    {
+        return (version >= 64 ? kSpeechGroups : kSpeechGroupsBefore64) * kSpeechLines;
+    }
     inline constexpr int kTalkHeading = kTalkGroups * 2;
     /// The most lines of a group a map is given (all of the game's would be
     /// several hundred, and each a sound the map must name).

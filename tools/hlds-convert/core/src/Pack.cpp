@@ -169,7 +169,7 @@ namespace hlds
     void talkWords(const hldata::LevelView &view, std::vector<char> &word)
     {
         word.assign(view.soundCount + 1, 0);
-        const std::uint32_t start = hldata::kTalkTableAt + hldata::kTalkHeading;
+        const std::uint32_t start = view.talkAt + hldata::kTalkHeading;
         for (std::uint32_t i = start; i < view.speechCount; ++i)
         {
             const hldata::SentenceRecord &sentence = view.sentences[view.speech[i]];

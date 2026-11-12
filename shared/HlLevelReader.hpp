@@ -90,6 +90,9 @@ namespace hldata
         const RoomRecord *rooms = nullptr;
         const std::uint16_t *speech = nullptr;
         std::uint32_t speechCount = 0;
+        /// Where the talk table starts in `speech`: the soldiers' table is
+        /// a group shorter in a level before version 64 (talkTableAt).
+        std::uint32_t talkAt = kTalkTableAt;
         const MessageRecord *messages = nullptr;
         std::uint32_t messageCount = 0;
         const LightPatch *lightPatches = nullptr;
@@ -241,6 +244,7 @@ namespace hldata
         rooms = section<RoomRecord>(data, dir, Section::Rooms, roomCount);
         sprites = section<SpriteRef>(data, dir, Section::Sprites, spriteCount);
         speech = section<std::uint16_t>(data, dir, Section::Speech, speechCount);
+        talkAt = static_cast<std::uint32_t>(talkTableAt(h->version));
         messages = section<MessageRecord>(data, dir, Section::Messages, messageCount);
         modelSounds = section<ModelSound>(data, dir, Section::ModelSounds, modelSoundCount);
         lightPatches = section<LightPatch>(data, dir, Section::LightPatch, lightPatchCount);
@@ -388,7 +392,7 @@ namespace hldata
         // map has.
         // (Then, from version 32, what the people say: a heading of each
         // group's lines, which are after it.)
-        const std::uint32_t soldiers = static_cast<std::uint32_t>(kTalkTableAt);
+        const std::uint32_t soldiers = talkAt;
         const std::uint32_t talkStart = soldiers + static_cast<std::uint32_t>(kTalkHeading);
         if (speechCount != 0 && speechCount != soldiers && speechCount < talkStart)
             return LevelError::BadIndex;

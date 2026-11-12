@@ -4323,7 +4323,7 @@ namespace hlds
         {
             static const char *const kGroups[kSpeechGroups] = {"HG_GREN",   "HG_ALERT", "HG_COVER", "HG_THROW",
                                                                "HG_TAUNT",  "HG_CHARGE", "HG_IDLE",  "HG_QUEST",
-                                                               "HG_ANSWER", "HG_CLEAR", "HG_CHECK"};
+                                                               "HG_ANSWER", "HG_CLEAR", "HG_CHECK",  "HG_MONST"};
             for (int g = 0; g < kSpeechGroups; ++g)
             {
                 int kept = 0;

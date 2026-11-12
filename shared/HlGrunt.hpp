@@ -16,9 +16,6 @@
 // and shoots on the way down, and lands (slRepel, slRepelAttack,
 // slRepelLand); the rope moves him (HlMilitary.hpp).
 //
-// What the game's does that this one does not yet: call out at the sight
-// of an alien (the level has no lines for it).
-//
 // Included at the end of HlMonsters.hpp. std-only and inline.
 
 namespace hldata
@@ -339,7 +336,9 @@ namespace hldata
             ActorWorld &a = c.a;
             a.speakMs = 1500 + aiRandomLong(a, 0, 500);
             c.m.count1 = kSentenceNone;
-            if (c.w.speech == nullptr || c.w.heard == nullptr || group < 0)
+            // (A level before version 64 has no lines for kSpeakMonster.)
+            if (c.w.speech == nullptr || c.w.heard == nullptr || group < 0 ||
+                (group + 1) * kSpeechLines > c.ai.talkAt || (group + 1) * kSpeechLines > c.ai.speechCount)
                 return;
             const std::uint16_t *lines = c.w.speech + group * kSpeechLines;
             int count = 0;
@@ -994,7 +993,7 @@ namespace hldata
                                 say(c, kSpeakAlert);
                             else if (known && t.cls != kClassPlayerAlly && t.cls != kClassHumanPassive &&
                                      t.cls != kClassMachine)
-                                say(c, -1); // (HG_MONST: the level has no such lines)
+                                say(c, kSpeakMonster);
                         }
                         if (aiHas(c, kCondCanRangeAttack1))
                             return scheduleOfType(c, kSchedSuppress);

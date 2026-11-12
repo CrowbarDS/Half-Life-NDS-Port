@@ -313,6 +313,7 @@ namespace hlrt
             if (aiMonsters_ != nullptr && aiSlots_ != nullptr && aiHeld_ != nullptr)
                 aiAttach(actors, ai_, aiMonsters_, thinkers, aiSlots_, aiHeld_, actors.count);
             ai_.speechCount = static_cast<int>(view.speechCount);
+            ai_.talkAt = static_cast<int>(view.talkAt);
         }
         // (Their long thinking, outside the frame: game/Think.cpp.)
         hlrt::think.attach(logic);

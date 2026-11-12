@@ -279,8 +279,10 @@ namespace
                   "its soldiers are cooked, each with the head and gun of what he carries");
             check(g.view.speechCount >= static_cast<std::uint32_t>(kSpeechGroups * kSpeechLines) &&
                       g.view.speech[kSpeakAlert * kSpeechLines] != 0xFFFF &&
-                      g.view.speech[kSpeakGrenade * kSpeechLines] != 0xFFFF,
-                  "... and with what soldiers call out");
+                      g.view.speech[kSpeakGrenade * kSpeechLines] != 0xFFFF &&
+                      g.view.speech[kSpeakMonster * kSpeechLines] != 0xFFFF &&
+                      g.view.talkAt == static_cast<std::uint32_t>(kTalkTableAt),
+                  "... and with what soldiers call out, at the player and at aliens");
             const int one = findKind(g, ActorKind::Grunt);
             const ModelView *model = one >= 0 ? actorModel(g.actors, g.actors.states[one]) : nullptr;
             check(model != nullptr && model->findClip(nameHash("standing_mp5")) >= 0 &&

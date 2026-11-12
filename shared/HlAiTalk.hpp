@@ -190,11 +190,12 @@ namespace hldata
         /// one of the group's), or -1.
         inline int lineOf(AiCtx &c, int slot)
         {
-            const int start = kTalkTableAt + kTalkHeading;
+            const int at = c.ai.talkAt;
+            const int start = at + kTalkHeading;
             if (c.w.speech == nullptr || c.ai.speechCount < start || slot < 0 || slot >= kTalkSlots)
                 return -1;
             const int group = voiceOf(c.me.kind) * kTalkSlots + slot;
-            const int first = c.w.speech[kTalkTableAt + group * 2], count = c.w.speech[kTalkTableAt + group * 2 + 1];
+            const int first = c.w.speech[at + group * 2], count = c.w.speech[at + group * 2 + 1];
             if (count == 0)
                 return -1;
             return c.w.speech[start + first + aiRandomLong(c.a, 0, count - 1)];

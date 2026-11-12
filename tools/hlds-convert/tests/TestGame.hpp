@@ -352,6 +352,7 @@ namespace hldstest
         actorsInit(g.actors, v.actors, static_cast<int>(v.actorCount), v.nameHashes, g.move);
         g.attachAi();
         g.ai.speechCount = static_cast<int>(v.speechCount);
+        g.ai.talkAt = static_cast<int>(v.talkAt);
 
         g.player = PlayerState();
         for (std::uint32_t i = 0; i < v.entityCount; ++i)
