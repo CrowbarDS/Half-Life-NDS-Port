@@ -60,6 +60,16 @@ namespace hlds
                 return true;
             return false;
         }
+
+        /// Classes (and flags) the player USEs (the game's FCAP_IMPULSE_USE
+        /// and FCAP_CONTINUOUS_USE).
+        bool isUsable(const std::string &cls, int spawnflags)
+        {
+            if (cls == "func_button" || cls == "func_rot_button" || cls == "momentary_rot_button" ||
+                cls == "func_healthcharger" || cls == "func_recharge")
+                return true;
+            return (cls == "func_door" || cls == "func_door_rotating") && (spawnflags & 256);
+        }
     } // namespace
 
     std::vector<BrushInfo> analyseBrushes(const BspFile &bsp, const std::vector<Entity> &entities)
@@ -104,6 +114,7 @@ namespace hlds
                 continue;
             }
             info.solid = !isPassable(info.className, spawnflags);
+            info.usable = isUsable(info.className, spawnflags);
             info.startsOff = info.className == "func_wall_toggle" && (spawnflags & 1);
 
             switch (mode)

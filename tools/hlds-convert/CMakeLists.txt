@@ -198,6 +198,7 @@ if(HLDS_BUILD_TESTS)
             test_boxes
             test_families
             test_incident
+            test_blastpit
             test_mixer
             test_roomdsp
             test_audiolink

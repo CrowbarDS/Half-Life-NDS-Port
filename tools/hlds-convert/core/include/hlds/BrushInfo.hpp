@@ -45,6 +45,11 @@ namespace hlds
         /// that shows it: cooked as drawn, and kept unseen until then.
         bool startsUnseen = false;
         bool hasPivot = false;     ///< it has an "origin": it was built to turn
+        /// The player can USE it: a button, a charger, a door that opens
+        /// by hand. Kept as a brush when neither seen nor in the way, for
+        /// its box is what USE looks for (c1a4f's lift button, inside the
+        /// car, is both).
+        bool usable = false;
         double origin[3] = {0, 0, 0};
 
         bool drawn() const { return renderClass != hldata::RenderClass::Hidden; }

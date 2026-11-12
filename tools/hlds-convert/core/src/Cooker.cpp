@@ -1142,14 +1142,15 @@ namespace hlds
         report.droppedClipNodes =
             static_cast<int>(bsp.clipNodes.size() - level.clipNodes.size());
 
-        // --- Brush records: every brush entity that is seen or is in the way.
-        // A volume that is neither -- a trigger, a ladder -- has nothing for
-        // the renderer or the collision to know yet.
+        // --- Brush records: every brush entity that is seen, is in the way,
+        // or is USEd (its box is what USE looks for). A volume that is none
+        // of these -- a trigger, a ladder -- has nothing for the renderer or
+        // the collision to know yet.
         std::vector<int> brushRecordOfEntity(entities.size(), -1);
         std::vector<std::array<double, 3>> restLo, restHi; // each brush's box where it was built
         for (const BrushInfo &info : brushes)
         {
-            if (!info.drawn() && !info.solid)
+            if (!info.drawn() && !info.solid && !info.usable)
                 continue;
             brushRecordOfEntity[info.entity] = static_cast<int>(level.brushes.size());
             const BspModel &src = bsp.models[info.model];
