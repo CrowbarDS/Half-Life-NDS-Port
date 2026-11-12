@@ -430,6 +430,9 @@ namespace hldata
 
     inline constexpr std::uint8_t kThinkPlan = 1;  ///< walkPlan: where to make for next
     inline constexpr std::uint8_t kThinkDetour = 2; ///< walkTriangulate: a way round what is in the way
+    /// walkLookRound: a wall ahead on its way, seen coming, and a way round
+    /// it (it goes on walking meanwhile).
+    inline constexpr std::uint8_t kThinkLook = 3;
 
     inline constexpr std::uint8_t kThinkFree = 0;
     inline constexpr std::uint8_t kThinkAsked = 1;

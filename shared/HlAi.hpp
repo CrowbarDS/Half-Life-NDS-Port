@@ -85,6 +85,10 @@ namespace hldata
     inline constexpr std::uint32_t kMemoryMoveFailed = 1u << 5;
     inline constexpr std::uint32_t kMemoryFlinched = 1u << 6;
     inline constexpr std::uint32_t kMemoryKilled = 1u << 7;
+    /// (The port's.) Its look ahead has taken it round a wall once on this
+    /// route: not again until it has a new one -- what it meets at its nose
+    /// is aiHeldUp's.
+    inline constexpr std::uint32_t kMemoryLookedRound = 1u << 8;
     inline constexpr std::uint32_t kMemoryCustom4 = 1u << 28;
     inline constexpr std::uint32_t kMemoryCustom3 = 1u << 29;
     inline constexpr std::uint32_t kMemoryCustom2 = 1u << 30;

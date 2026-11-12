@@ -305,6 +305,7 @@ namespace hldata
     inline constexpr int kWalkCrouched = 1;
     inline constexpr int kWalkLarge = 2;
 
+
     /// One step of a walk: `feet` moved by (dx, dy) if something that size
     /// can make it -- lifted a stair's height, nothing in the way; then let
     /// down, floor within two stairs' height. `feet` is changed only if so.
@@ -518,6 +519,64 @@ namespace hldata
         }
         return false;
     }
+
+#ifndef HLDS_CHILD
+    /// CheckLocalMove's look along the way, for the world: how far
+    /// something that size can walk from `from` towards `to`, `look` units
+    /// at most, in whole steps of 16 -- `look` if all of it (or as far as
+    /// `to`). The world and its brushes only: whoever stands in the way is
+    /// aiLookAhead's to see to.
+    inline fx walkClearAhead(const MoveWorld &world, const fx *from, int small, const fx *to, fx look)
+    {
+        MoveWorld bare = world;
+        bare.boxes = nullptr;
+        bare.boxCount = 0;
+        const fx whole[3] = {to[0] - from[0], to[1] - from[1], 0};
+        const fx length = fxLength(whole);
+        if (length <= kWalkStep)
+            return look;
+        if (look > length)
+            look = length;
+        fx at[3] = {from[0], from[1], from[2]};
+        fx gone = 0;
+        int pause = 0;
+        while (gone + kWalkStep <= look)
+        {
+            thinkPoint(pause, 5);
+            // (Each step towards `to` from where the last left it, as
+            // walkClear goes: what that finds clear, this does.)
+            const fx d[3] = {to[0] - at[0], to[1] - at[1], 0};
+            const fx left = fxLength(d);
+            if (left <= kWalkStep)
+                return look;
+            const fx dx = static_cast<fx>((static_cast<std::int64_t>(d[0]) * kWalkStep) / left);
+            const fx dy = static_cast<fx>((static_cast<std::int64_t>(d[1]) * kWalkStep) / left);
+            if (!walkStep(bare, nullptr, -1, small, at, dx, dy))
+                return gone;
+            gone += kWalkStep;
+        }
+        return look;
+    }
+
+    /// A wall `look` units or less ahead on the way from `from` to `aim`,
+    /// seen coming (CheckLocalMove), and a way round it from where the way
+    /// is clear to (FTriangulate, past what is in the way): into `apex`.
+    /// False if nothing is in the way, or there is no way round.
+    inline bool walkLookRound(const MoveWorld &world, const ActorWorld *a, int index, int small, const fx *from,
+                              const fx *aim, fx size, fx look, fx *apex)
+    {
+        const fx clear = walkClearAhead(world, from, small, aim, look);
+        if (clear >= look)
+            return false;
+        // (Stopped by the last of the way, by where it is going -- the room
+        // about someone it goes for, a corner by its waypoint: nothing to go
+        // round; it stops short there, or goes on from it.)
+        const fx d[3] = {aim[0] - from[0], aim[1] - from[1], 0};
+        if (clear + fxFromInt(48) >= fxLength(d))
+            return false;
+        return walkTriangulate(world, a, index, small, from, aim, size, clear, apex);
+    }
+#endif
 
     /// The path node to make for from `feet`: the nearest that can be seen
     /// from there, of the three nearest; -1 if there is none.

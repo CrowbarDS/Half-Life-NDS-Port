@@ -62,6 +62,16 @@ namespace hldata
                                            fxFromInt(asked.reach), fxFromInt(asked.least), answer.out);
             break;
         }
+#ifndef HLDS_CHILD
+        case kThinkLook:
+        {
+            // (From where it is now: it goes on walking meanwhile.)
+            const ActorState &walker = a.states[index];
+            answer.found = walkLookRound(*w.world, &a, index, asked.small, walker.pos, asked.at, fxFromInt(asked.reach),
+                                         fxFromInt(asked.least), answer.out);
+            break;
+        }
+#endif
         default:
             answer.found = false;
             break;

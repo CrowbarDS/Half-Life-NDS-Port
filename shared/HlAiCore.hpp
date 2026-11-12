@@ -459,7 +459,7 @@ namespace hldata
         c.m.movementGoal = kMoveGoalNone;
         c.m.movementActivity = kActIdle;
         c.m.round.detouring = c.m.round.asking = false;
-        aiForgetMemory(c, kMemoryMoveFailed);
+        aiForgetMemory(c, kMemoryMoveFailed | kMemoryLookedRound);
     }
     inline bool aiRouteClearNow(const AiCtx &c) { return c.m.movementGoal == kMoveGoalNone; }
 
@@ -475,6 +475,7 @@ namespace hldata
         c.m.moveBlockedMs = 0;
         c.m.moveAsked = false;
         c.m.round.detouring = c.m.round.asking = false;
+        aiForgetMemory(c, kMemoryLookedRound);
         c.me.thinkMs = 0;
         c.me.hasGoal = false;
         c.me.goalNode = c.me.fromNode = -1;
@@ -3200,6 +3201,52 @@ namespace hldata
         return false;
     }
 
+#ifndef HLDS_CHILD
+    /// CheckLocalMove, for the world: a wall `kAiLookAhead` units or less
+    /// along its way to `aim`, seen coming, and a way round it (into
+    /// round.apex) -- worked out outside the frame where there is a worker
+    /// to do it (asked now, its answer taken up at a later look). True when
+    /// there is one to go round by now.
+    inline constexpr int kAiLookAhead = 200; // (DIST_TO_CHECK)
+    inline bool aiWallRound(AiCtx &c, const fx *aim)
+    {
+        AiMoveRound &round = c.m.round;
+        const MonsterKind &kind = monsterKind(c.me.kind);
+        ThinkQueue *q = c.a.think;
+        ThinkSlot *slot = q != nullptr && q->deferred && c.index < q->count ? &q->slots[c.index] : nullptr;
+        if (slot == nullptr)
+            return walkLookRound(*c.w.world, &c.a, c.index, aiHull(c), c.me.pos, aim, kind.half * 2,
+                                 fxFromInt(kAiLookAhead), round.apex);
+        if (slot->kind == kThinkLook && slot->state == kThinkDone)
+        {
+            slot->state = kThinkFree;
+            if (!slot->found)
+            {
+                // (Nothing in the way, or no way round it: not asked again
+                // for half a second -- the worker has the others' to do.)
+                round.lookMs = 500;
+                return false;
+            }
+            for (int k = 0; k < 3; ++k)
+                round.apex[k] = slot->out[k];
+            return true;
+        }
+        // (Asked when the slot is free: not over a plan of the walker's own,
+        // nor over a look still being worked out.)
+        if (slot->state != kThinkFree)
+            return false;
+        slot->kind = kThinkLook;
+        slot->state = kThinkAsked;
+        for (int k = 0; k < 3; ++k)
+            slot->at[k] = aim[k];
+        slot->small = static_cast<std::int16_t>(aiHull(c));
+        slot->reach = static_cast<std::int16_t>(fxToInt(kind.half * 2));
+        slot->least = static_cast<std::int16_t>(kAiLookAhead);
+        slot->basis = -1;
+        return false;
+    }
+#endif
+
     /// CheckLocalMove, for the others: the first actor whose box the
     /// walker's own would meet on the next `look` units towards `aim`, and
     /// how far on that is (`checked`). Not the one it is going for (a move
@@ -3374,6 +3421,21 @@ namespace hldata
             const std::int16_t blocker = aiLookAhead(c, aim, fxFromInt(200), checked);
             if (blocker != kAiNone && !aiHeldUp(c, blocker, checked, aim))
                 return;
+            // ... and for a wall: one seen coming is gone round before it
+            // is at its nose (a wall met there is aiHeldUp's, below). (Not
+            // on a console sent the game: no room in it for this, and its
+            // monsters are the demo's.)
+#ifndef HLDS_CHILD
+            if (blocker == kAiNone && !round.detouring && !aiHasMemory(c, kMemoryLookedRound) &&
+                aiWallRound(c, aim))
+            {
+                aiRemember(c, kMemoryLookedRound);
+                round.detouring = true;
+                aiReplan(c);
+                for (int k = 0; k < 3; ++k)
+                    dest[k] = round.apex[k];
+            }
+#endif
         }
         const MonsterKind &kind = monsterKind(c.me.kind);
         // (Move: MakeIdealYaw to the way it is going, and ChangeYaw at its

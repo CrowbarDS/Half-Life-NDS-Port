@@ -628,8 +628,12 @@ namespace
                 if (now == "TakeCover" && m->movementGoal == kMoveGoalLocation && changed == false &&
                     m->scheduleIndex == 6 && m->taskStatus != kTaskStatusNew)
                 {
+                    // (Hidden as the game judges it: FindCover from a node
+                    // by the threat's own eye height over it, the lateral
+                    // kind by the soldier's. Seen at both is no cover.)
                     const fx there[3] = {m->moveGoal[0], m->moveGoal[1], m->moveGoal[2] + fxFromInt(73)};
-                    badCover += lineClear(g.move, eye, there) ? 1 : 0;
+                    const fx low[3] = {m->moveGoal[0], m->moveGoal[1], m->moveGoal[2] + g.player.viewHeight};
+                    badCover += lineClear(g.move, eye, there) && lineClear(g.move, eye, low) ? 1 : 0;
                 }
                 if (changed && now == "RangeAttack2")
                 {

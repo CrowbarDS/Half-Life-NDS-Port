@@ -464,7 +464,10 @@ namespace
         for (int nth = 0; nth < 8 && z < 0; ++nth)
         {
             const int candidate = findKind(g, ActorKind::Zombie, nth);
-            if (candidate >= 0 && g.actors.states[candidate].name == 0 && standAt(g, candidate, 300))
+            // (Near: its blows land as it fights, not as it chases -- a
+            // chase is not broken off for a light blow, in the game's
+            // either, and with room it goes round what is in its way.)
+            if (candidate >= 0 && g.actors.states[candidate].name == 0 && standAt(g, candidate, 120))
                 z = candidate;
         }
         if (z < 0)
@@ -1020,6 +1023,85 @@ namespace
     /// for one that is on its way somewhere; goes round one that stands
     /// where there is room to; and where there is none (a corridor), stops
     /// and makes its route again at once, not after seconds of it.
+    /// A wall between two path nodes the game's graph joins, seen coming
+    /// (CheckLocalMove looks 200 units on): the walker sets off round it
+    /// before it is at its nose, and gets there.
+    void testWallAhead(const char *dir)
+    {
+        for (const char *map : {"c1a1c", "c1a2", "c2a2", "c1a3"})
+        {
+            auto game = load(dir, map);
+            if (!game)
+                continue;
+            Game &g = *game;
+            int k = -1;
+            for (ActorKind kind : {ActorKind::Zombie, ActorKind::Scientist, ActorKind::Guard, ActorKind::Grunt})
+                k = k < 0 ? findKind(g, kind) : k;
+            if (k < 0)
+                continue;
+            alone(g, {k});
+            ActorState &a = g.actors.states[k];
+            const int hull = monsterHull(a.kind);
+            const fx size = monsterKind(a.kind).half * 2;
+            // Two nodes joined for its size, 150 to 400 apart, a straight
+            // walk between them stopped in the middle, and a way round.
+            int from = -1, to = -1;
+            fx blockedAt = 0;
+            for (int n = 0; n < g.actors.nodeCount && from < 0; ++n)
+            {
+                const PathNode &node = g.actors.nodes[n];
+                for (int l = node.firstLink; l < node.firstLink + node.linkCount && from < 0; ++l)
+                {
+                    const PathLink &link = g.actors.links[l];
+                    if (!(link.flags & kPathLinkHuman) || link.length < 150 || link.length > 400)
+                        continue;
+                    const fx *p = node.pos;
+                    const fx *q = g.actors.nodes[link.to].pos;
+                    const fx far = fxFromInt(link.length);
+                    const fx clear = walkClearAhead(g.move, p, hull, q, far);
+                    fx apex[3];
+                    if (clear >= fxFromInt(64) && clear + fxFromInt(48) < far &&
+                        walkTriangulate(g.move, &g.actors, k, hull, p, q, size, clear, apex))
+                    {
+                        from = n;
+                        to = link.to;
+                        blockedAt = clear;
+                    }
+                }
+            }
+            if (from < 0)
+                continue;
+            for (int c = 0; c < 3; ++c)
+                a.pos[c] = g.actors.nodes[from].pos[c];
+            actorPlaceBox(g.actors, k);
+            AiMonster &m = mind(g, k);
+            AiCtx c = aiCtx(g.logic, g.player, k, m, *aiKindOf(a.kind));
+            m.moveWaitFinished = 0;
+            aiRouteClear(c);
+            aiClear(c, kCondTaskFailed);
+            const fx goal[3] = {g.actors.nodes[to].pos[0], g.actors.nodes[to].pos[1], g.actors.nodes[to].pos[2]};
+            aiMoveToLocation(c, kActWalk, 2000, goal);
+            const fx start[3] = {a.pos[0], a.pos[1], a.pos[2]};
+            fx goneAtDetour = -1;
+            bool arrived = false;
+            for (int t = 0; t < 30 * 10 && !arrived; ++t)
+            {
+                moveFrame(g, k);
+                trace(g, k, t * 33);
+                if (goneAtDetour < 0 && m.round.detouring)
+                    goneAtDetour = aiDist2D(start, a.pos);
+                arrived = aiDist2D(goal, a.pos) < fxFromInt(48);
+            }
+            std::printf("test_ai: %s: nodes %d to %d, a wall %d units on; the detour began %d units out; there %d\n",
+                        map, from, to, fxToInt(blockedAt), fxToInt(goneAtDetour), arrived ? 1 : 0);
+            check(goneAtDetour >= 0 && goneAtDetour + fxFromInt(16) < blockedAt,
+                  "a walker sets off round a wall it sees coming, before it is at it");
+            check(arrived, "... and gets where it was going");
+            return;
+        }
+        check(false, "a map with a wall between two joined path nodes");
+    }
+
     void testBlockedWalk(const char *dir)
     {
         auto game = load(dir, "c1a2a");
@@ -1425,6 +1507,7 @@ int main()
         testHoundeyes(dir);
         testBarnacle(dir);
         testMoveEndsShort(dir);
+        testWallAhead(dir);
         testBlockedWalk(dir);
         testNoMerging(dir);
         testPlayerNoises();
