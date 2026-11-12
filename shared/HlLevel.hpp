@@ -109,9 +109,10 @@ namespace hldata
     /// actor, which a build of 65 leaves alone: it makes three at once.
     /// 67: the alien slave by its other name, monster_vortigaunt, and a
     /// monster_flyer on its own, after every other actor: a build before
-    /// reads them as what they are. 68: the switched light over a roach's
-    /// floor, in its item's top bits, which a build before leaves alone.)
-    inline constexpr std::uint16_t kLevelMinReader = 65;
+    /// reads them as what they are.) 68: the switched light over a roach's
+    /// floor, in its item's top bits, which a build before reads as a
+    /// squad's name and may refuse the map for.
+    inline constexpr std::uint16_t kLevelMinReader = 68;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,
     /// 28 -> 29 a func_train's global name (extra[3], 0 before: read as

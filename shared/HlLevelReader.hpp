@@ -386,7 +386,10 @@ namespace hldata
                      ? !itemWordOk(actors[i].item, stringsSize, sentenceCount)
                      : actors[i].kind == static_cast<std::uint8_t>(ActorKind::Xen)
                            ? (actors[i].item & 0xFFu) >= static_cast<std::uint32_t>(XenPlant::Count)
-                           : (actors[i].item >> kActorSquadShift) >= nameCount) ||
+                           // (A roach's top bits are the light over it, plus one: not a squad.)
+                           : actors[i].kind == static_cast<std::uint8_t>(ActorKind::Cockroach)
+                                 ? (actors[i].item >> kRoachLightShift) > static_cast<std::uint32_t>(kLightStyles)
+                                 : (actors[i].item >> kActorSquadShift) >= nameCount) ||
                 actors[i].target >= nameCount)
                 return LevelError::BadIndex;
         }

@@ -338,6 +338,9 @@ namespace
                     style, fxToInt(stayed), scaredInDark ? 1 : 0, fxToInt(ran), scared ? 1 : 0);
         check(!scaredInDark, "... stays where it is in the dark");
         check(scared && ran > stayed, "... and runs when its light comes on");
+        // (A map with fewer names than its roaches' lights: what it notes is
+        // no squad's name, and the reader takes it.)
+        check(load(dir, "t0a0b1") != nullptr, "t0a0b1, its roaches knowing their lights, is read");
     }
 
     /// What they shoot from is where their models have it, posed as they
