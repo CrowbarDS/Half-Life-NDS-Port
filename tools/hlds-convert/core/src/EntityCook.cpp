@@ -88,7 +88,8 @@ namespace hlds
                 "func_tank", "func_tanklaser", "func_tankrocket", "func_tankmortar", "func_tankcontrols",
                 "func_mortar_field", "momentary_rot_button", "momentary_door", "monster_tentacle",
                 "monster_apache", "monster_bigmomma", "info_bigmomma", "monster_nihilanth",
-                "monster_flyer_flock", "monster_grunt_repel", "func_traincontrols"};
+                "monster_flyer_flock", "monster_grunt_repel", "func_traincontrols",
+                "monster_vortigaunt", "monster_flyer"};
             for (const char *name : kClasses)
             {
                 if (cls == name)
@@ -301,6 +302,10 @@ namespace hlds
             const bool repel = cls == "monster_grunt_repel";
             if (repel)
                 cls = "monster_human_grunt";
+            // The game's other name for the alien slave (islave.cpp links
+            // both to CISlave).
+            if (cls == "monster_vortigaunt")
+                cls = "monster_alien_slave";
             // The campaign's suit is not an item_suit: it is a "world_items"
             // of type 45 (44 is a battery; the antidote and the security
             // card, 42 and 43, were never finished in the game either).
@@ -443,9 +448,11 @@ namespace hlds
                          "grenadethrow", "die_simple"},
                         "idle1"};
             }
-            else if (cls == "monster_flyer_flock")
+            else if (cls == "monster_flyer_flock" || cls == "monster_flyer")
             {
-                // (Its boids: cooked as many as it has, below.)
+                // (A flock's boids: cooked as many as it has, below. One on
+                // its own is a flock of one, its own leader: CFlockingFlyer
+                // with no squad leads itself.)
                 info = {true, ActorKind::Boid, "models/boid.mdl", {"idle"}, "idle"};
                 info.solid = false;
             }
@@ -681,7 +688,7 @@ namespace hlds
                 return static_cast<int>(ActorKind::Zombie);
             if (cls == "monster_barnacle")
                 return static_cast<int>(ActorKind::Barnacle);
-            if (cls == "monster_alien_slave")
+            if (cls == "monster_alien_slave" || cls == "monster_vortigaunt")
                 return static_cast<int>(ActorKind::Slave);
             if (cls == "monster_bullchicken")
                 return static_cast<int>(ActorKind::Bullsquid);
@@ -3491,7 +3498,7 @@ namespace hlds
             ActorRecord actor;
         };
         std::vector<MakerMore> makerMore;
-        for (int round = 0; round < 9; ++round)
+        for (int round = 0; round < 10; ++round)
         for (std::size_t e = 0; e < entities.size(); ++e)
         {
             const Entity &entity = entities[e];
@@ -3506,7 +3513,15 @@ namespace hlds
             // (Round 6: level version 39's -- Xen's plants, and three items.)
             const bool round6 = info.kind == ActorKind::Xen ||
                                 static_cast<int>(info.item) >= static_cast<int>(ItemKind::Antidote);
-            const int itemRound = info.kind == ActorKind::Rat ? 8 // (level version 65's)
+            // (Round 9: what a build before 67 left out -- the slave by its
+            // other name, a flyer on its own.)
+            const std::string named = lowered(entity.className());
+            const bool round9 = named == "monster_vortigaunt" || named == "monster_flyer" ||
+                                (named == "monstermaker" &&
+                                 (lowered(entity.value("monstertype")) == "monster_vortigaunt" ||
+                                  lowered(entity.value("monstertype")) == "monster_flyer"));
+            const int itemRound = round9 ? 9 // (level version 67's)
+                                  : info.kind == ActorKind::Rat ? 8 // (level version 65's)
                                   : info.item == ItemKind::LongJump ? 7 // (level version 45's)
                                   : round6 ? 6
                                   : round5 ? 5
@@ -3851,7 +3866,7 @@ namespace hlds
                 if (record >= 0)
                     out.records[record].extra[0] = static_cast<std::uint32_t>(out.actors.size());
             }
-            if (info.kind == ActorKind::Boid)
+            if (info.kind == ActorKind::Boid && lowered(entity.className()) == "monster_flyer_flock")
             {
                 // SpawnFlock: iFlockSize boids within flFlockRadius about it
                 // (by the map's own numbers, the same each cook), the first

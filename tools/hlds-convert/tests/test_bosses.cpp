@@ -588,6 +588,70 @@ namespace
         std::printf("test_bosses: the rat's state after a blast: ai %d\n", g.actors.states[k].ai);
         check(g.actors.states[k].ai >= kAiDying, "... and a blast kills one");
     }
+    /// The alien slave by its other name, and a flyer on its own (a flock
+    /// of one, its own leader): cooked, and after what was there before.
+    void testOtherNames(const char *dir)
+    {
+        BoxRoom room;
+        room.mins[0] = room.mins[1] = -512;
+        room.maxs[0] = room.maxs[1] = 512;
+        room.maxs[2] = 384;
+        room.extraEntities = "{\n\"classname\" \"monster_vortigaunt\"\n\"origin\" \"-300 0 0\"\n}\n"
+                             "{\n\"classname\" \"monster_flyer\"\n\"origin\" \"200 200 200\"\n}\n"
+                             "{\n\"classname\" \"monstermaker\"\n\"monstertype\" \"monster_vortigaunt\"\n"
+                             "\"targetname\" \"more\"\n\"monstercount\" \"2\"\n\"origin\" \"-300 200 0\"\n}\n"
+                             "{\n\"classname\" \"monster_headcrab\"\n\"origin\" \"300 -300 0\"\n}\n"
+                             "{\n\"classname\" \"info_player_start\"\n\"origin\" \"0 0 36\"\n}\n";
+        auto game = std::make_unique<Game>();
+        std::string error;
+        check(game->bsp.parse(buildBoxRoom(room), error), "the room of other names parses");
+        finish(*game, nullptr, dir);
+        check(game->ok, "... and cooks");
+        if (!game->ok)
+            return;
+        Game &g = *game;
+        int slaves = 0, boids = 0, boid = -1, crab = -1, firstSlave = -1;
+        for (std::uint32_t i = 0; i < g.view.actorCount; ++i)
+        {
+            const std::uint8_t kind = g.view.actors[i].kind;
+            if (kind == static_cast<std::uint8_t>(ActorKind::Boid))
+            {
+                ++boids;
+                boid = static_cast<int>(i);
+            }
+            if (kind == static_cast<std::uint8_t>(ActorKind::Headcrab))
+                crab = static_cast<int>(i);
+            if (kind == static_cast<std::uint8_t>(ActorKind::Slave))
+            {
+                ++slaves; // (the maker's places among them, empty until it makes one)
+                firstSlave = firstSlave < 0 ? static_cast<int>(i) : firstSlave;
+            }
+        }
+        std::printf("test_bosses: other names: %d slaves, %d boids, the crab at %d, the first slave at %d\n", slaves,
+                    boids, crab, firstSlave);
+        check(slaves == 3, "a vortigaunt is an alien slave, and so is what its maker makes");
+        check(boids == 1 && g.view.actors[boid].item == 0, "a flyer on its own is one boid, its own leader");
+        check(crab >= 0 && firstSlave > crab, "... both after what a build before cooked");
+        if (boid < 0)
+            return;
+        // The player in sight of it: it flies, and not into the walls.
+        g.player.origin[0] = 0;
+        g.player.origin[1] = 0;
+        g.player.origin[2] = fxFromInt(36);
+        const fx start[3] = {g.actors.states[boid].pos[0], g.actors.states[boid].pos[1], g.actors.states[boid].pos[2]};
+        fx most = 0;
+        bool walled = false;
+        for (int t = 0; t < 30 * 20; ++t)
+        {
+            tickStill(g);
+            const ActorState &b = g.actors.states[boid];
+            most = std::max(most, aiDist(start, b.pos));
+            walled = walled || pointContents(g.move, b.pos) == kContentsSolid;
+        }
+        std::printf("test_bosses: the lone flyer flew %d units; in a wall %d\n", fxToInt(most), walled ? 1 : 0);
+        check(most > fxFromInt(200), "the lone flyer flies");
+        check(!walled, "... and not into the walls");
+    }
 } // namespace
 
 int main()
@@ -606,6 +670,7 @@ int main()
     testRepel(valve);
     testRepelFight(valve);
     testRats(valve);
+    testOtherNames(valve);
     if (g_failures == 0)
         std::printf("test_bosses: ok\n");
     return g_failures == 0 ? 0 : 1;

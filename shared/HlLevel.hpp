@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 66;
+    inline constexpr std::uint16_t kLevelVersion = 67;
     /// The oldest level format this build reads. (49: a map's textures are
     /// stored in its archive as they are, never compressed, so that one that
     /// streams is read straight in during play. 50: each texture's record
@@ -106,7 +106,10 @@ namespace hldata
     /// hazard course's rats, a kind a build before has not got, and their
     /// model marked as a DSi's only (kModelRefDsiOnly), which it refuses.
     /// (66: a monstermaker's places past its first three, after every other
-    /// actor, which a build of 65 leaves alone: it makes three at once.)
+    /// actor, which a build of 65 leaves alone: it makes three at once.
+    /// 67: the alien slave by its other name, monster_vortigaunt, and a
+    /// monster_flyer on its own, after every other actor: a build before
+    /// reads them as what they are.)
     inline constexpr std::uint16_t kLevelMinReader = 65;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,
