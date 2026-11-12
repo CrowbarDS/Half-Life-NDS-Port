@@ -786,9 +786,8 @@ namespace hldata
 
     namespace fly
     {
-        /// Where a flier's middle is, for its traces: the standing hull's,
-        /// above its feet (the game's controller is a box 64 across; the
-        /// console has the person's box to try a way with).
+        /// Where a flier's middle is, for the person's box: the standing
+        /// hull's, above its feet.
         inline void middle(const fx *feet, fx *at)
         {
             at[0] = feet[0];
@@ -796,13 +795,39 @@ namespace hldata
             at[2] = feet[2] + kStandingFeet;
         }
 
-        /// A straight flight from `from` to `to` (feet), nothing in the way.
-        inline bool clear(AiCtx &c, const fx *from, const fx *to)
+        /// The middle of the world's large hull above the feet: the game's
+        /// controller is a box 64 across and 64 high (its CheckLocalMove
+        /// sweeps that, from 32 up).
+        inline constexpr fx kLargeMiddle = fxFromInt(32);
+
+        /// Its flight from `from` to `to` (feet), as far as it gets; the
+        /// trace's endPos is where its feet are then. Its own size against
+        /// the world (the large hull); the person's box against what moves
+        /// and who is about, which have no hull of its size. (Started where
+        /// its size has no room, by the person's box alone, to get out.)
+        inline Trace sweep(AiCtx &c, const fx *from, const fx *to)
         {
             fx a[3], b[3];
             middle(from, a);
             middle(to, b);
-            const Trace t = detail::walkerTrace(*c.w.world, &c.a, c.index, false, a, b);
+            Trace t = detail::walkerTrace(*c.w.world, &c.a, c.index, false, a, b);
+            t.endPos[2] -= kStandingFeet;
+            const Hull &large = c.w.world->large;
+            if (large.nodes == nullptr || t.startSolid)
+                return t;
+            const fx la[3] = {from[0], from[1], from[2] + kLargeMiddle};
+            const fx lb[3] = {to[0], to[1], to[2] + kLargeMiddle};
+            Trace big = traceHull(large, la, lb);
+            if (big.startSolid || big.fraction >= t.fraction)
+                return t;
+            big.endPos[2] -= kLargeMiddle;
+            return big;
+        }
+
+        /// A straight flight from `from` to `to` (feet), nothing in the way.
+        inline bool clear(AiCtx &c, const fx *from, const fx *to)
+        {
+            const Trace t = sweep(c, from, to);
             return !t.startSolid && t.fraction >= kFractionOne;
         }
 
@@ -950,15 +975,17 @@ namespace hldata
             step[k] = static_cast<fx>((static_cast<std::int64_t>(c.me.velocity[k]) * ms) / 1000);
         if ((step[0] | step[1] | step[2]) == 0)
             return;
-        fly::middle(c.me.pos, from);
         for (int k = 0; k < 3; ++k)
+        {
+            from[k] = c.me.pos[k];
             to[k] = from[k] + step[k];
-        const Trace t = detail::walkerTrace(*c.w.world, &c.a, c.index, false, from, to);
+        }
+        const Trace t = fly::sweep(c, from, to);
         if (t.startSolid)
             return;
         c.me.pos[0] = t.endPos[0];
         c.me.pos[1] = t.endPos[1];
-        c.me.pos[2] = t.endPos[2] - kStandingFeet;
+        c.me.pos[2] = t.endPos[2];
         actorPlaceBox(c.a, c.index);
         if (t.fraction < kFractionOne && (c.m.moveBlockedMs += ms) > 2000 && c.m.movementGoal != kMoveGoalNone)
         {

@@ -703,11 +703,20 @@ namespace
         const fx start[3] = {con.pos[0], con.pos[1], con.pos[2]};
         std::printf("test_aliens: controller at %d %d %d, the player at %d %d %d\n", fxToInt(con.pos[0]), fxToInt(con.pos[1]),
                     fxToInt(con.pos[2]), fxToInt(g.player.origin[0]), fxToInt(g.player.origin[1]), fxToInt(g.player.origin[2]));
-        int balls = 0, taken = 0;
+        int balls = 0, taken = 0, squeezed = 0;
+        // (Its own size, 64 across: the large hull's middle, 32 above its
+        // feet, never in the world's solid once it has room.)
+        auto roomy = [&]()
+        {
+            const fx mid[3] = {con.pos[0], con.pos[1], con.pos[2] + fxFromInt(32)};
+            return hullPointContents(g.move.large, g.move.large.root, mid) != kContentsSolid;
+        };
+        const bool hadRoom = roomy();
         for (int t = 0; t < 30 * 15; ++t)
         {
             const int before = g.player.health;
             tickStill(g);
+            squeezed += hadRoom && con.ai < kAiDying && !roomy() ? 1 : 0;
             balls = std::max(balls, shotsOf(g, kShotZapBall) + shotsOf(g, kShotHeadBall));
             taken += before - g.player.health > 0 ? before - g.player.health : 0;
             g.player.health = 100;
@@ -716,7 +725,51 @@ namespace
         std::printf("test_aliens: controller: moved %d units, %d balls in the air at most, %d taken, schedule %s\n",
                     fxToInt(moved), balls, taken,
                     aiFind(g.actors, k) && aiFind(g.actors, k)->schedule ? aiFind(g.actors, k)->schedule->name : "-");
+        std::printf("test_aliens: controller: room for its size at the start %d; frames squeezed into less %d\n",
+                    hadRoom ? 1 : 0, squeezed);
         check(moved > fxFromInt(32), "a controller flies");
+        check(g.move.large.nodes != nullptr && squeezed == 0, "... with its own size, never where that has no room");
+        {
+            // Its flights tried from the nodes in the air, sixteen ways and
+            // 384 units each: some the person's box would make are too
+            // narrow or low for its own (CheckLocalMove's large hull), and
+            // none it makes ends where its size has no room.
+            AiMonster *m = aiFind(g.actors, k);
+            const AiKind *kind = aiKindOf(con.kind);
+            int narrower = 0, tried = 0, cramped = 0;
+            for (int n = 0; m != nullptr && kind != nullptr && n < g.actors.nodeCount; ++n)
+            {
+                if (!(g.actors.nodes[n].flags & kPathNodeAir))
+                    continue;
+                AiCtx c = aiCtx(g.logic, g.player, k, *m, *kind);
+                const fx feet[3] = {g.actors.nodes[n].pos[0], g.actors.nodes[n].pos[1], g.actors.nodes[n].pos[2]};
+                const fx mid[3] = {feet[0], feet[1], feet[2] + fxFromInt(32)};
+                if (hullPointContents(g.move.large, g.move.large.root, mid) == kContentsSolid)
+                    continue;
+                for (int turn = 0; turn < 16; ++turn)
+                {
+                    fx sine, cosine;
+                    fxSinCos(static_cast<std::uint16_t>(turn * 4096), sine, cosine);
+                    const fx to[3] = {feet[0] + cosine * 384, feet[1] + sine * 384, feet[2]};
+                    const fx a[3] = {feet[0], feet[1], feet[2] + kStandingFeet};
+                    const fx b[3] = {to[0], to[1], to[2] + kStandingFeet};
+                    const Trace person = hldata::detail::walkerTrace(g.move, &g.actors, k, false, a, b);
+                    const Trace own = fly::sweep(c, feet, to);
+                    ++tried;
+                    narrower += !person.startSolid && !own.startSolid && own.fraction < person.fraction ? 1 : 0;
+                    const fx ended[3] = {own.endPos[0], own.endPos[1], own.endPos[2] + fxFromInt(32)};
+                    cramped += !own.startSolid &&
+                                       hullPointContents(g.move.large, g.move.large.root, ended) == kContentsSolid
+                                   ? 1
+                                   : 0;
+                }
+            }
+            std::printf("test_aliens: controller: %d flights tried, %d stopped sooner by its own size, %d ended "
+                        "cramped\n",
+                        tried, narrower, cramped);
+            check(tried > 0 && narrower > 0, "... some ways too narrow for its size, which it does not take");
+            check(cramped == 0, "... and none ending where it has no room");
+        }
         check(balls >= 1, "... throws its balls of energy");
         check(taken > 0, "... which hurt the player");
         // Killed in the air: down it comes.
