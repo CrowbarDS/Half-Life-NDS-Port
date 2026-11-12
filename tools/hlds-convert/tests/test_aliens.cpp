@@ -278,6 +278,68 @@ namespace
         check(g.times(CommonSound::RoachSmash) + g.times(CommonSound::RoachDie) >= 1, "... heard");
     }
 
+    /// A roach under a switched light runs when it comes on (the hazard
+    /// course's dark rooms, t0a0b), and stays while it stays off.
+    void testRoachLight(const char *dir)
+    {
+        auto game = load(dir, "t0a0b");
+        if (!game)
+            return;
+        Game &g = *game;
+        int lit = 0, r = -1;
+        for (int i = 0; i < g.actors.recordCount; ++i)
+        {
+            if (g.actors.records[i].kind != static_cast<std::uint8_t>(ActorKind::Cockroach) ||
+                (g.actors.records[i].item >> kRoachLightShift) == 0)
+                continue;
+            ++lit;
+            r = r < 0 ? i : r;
+        }
+        std::printf("test_aliens: t0a0b: %d roaches know the switched light over them\n", lit);
+        check(lit > 0 && r >= 0, "a roach under a switched light knows it");
+        if (r < 0)
+            return;
+        const int style = static_cast<int>(g.actors.records[r].item >> kRoachLightShift) - 1;
+        // Its light off from the start, whatever the map says; the player
+        // far off, out of its sight.
+        std::vector<int> lights;
+        for (int i = 0; i < g.logic.recordCount; ++i)
+            if (g.logic.records[i].kind == static_cast<std::uint8_t>(LogicKind::Light) &&
+                static_cast<int>(g.logic.records[i].extra[0]) == style)
+                lights.push_back(i);
+        check(!lights.empty(), "... a light the map switches");
+        for (int i : lights)
+            g.logic.states[i].bits = 1;
+        alone(g, {r});
+        ActorState &roach = g.actors.states[r];
+        g.player.origin[0] = roach.pos[0];
+        g.player.origin[1] = roach.pos[1];
+        g.player.origin[2] = roach.pos[2] + fxFromInt(20000);
+        const fx at[3] = {roach.pos[0], roach.pos[1], roach.pos[2]};
+        bool scaredInDark = false;
+        for (int t = 0; t < 30 * 3; ++t)
+        {
+            tickStill(g);
+            const AiMonster *m = aiFind(g.actors, r);
+            scaredInDark = scaredInDark || (m != nullptr && m->count1 == 3);
+        }
+        const fx stayed = aiDist2D(at, roach.pos);
+        for (int i : lights)
+            logicUse(g.logic, g.player, i, -1, kUseOn);
+        bool scared = false;
+        for (int t = 0; t < 30 * 3; ++t)
+        {
+            tickStill(g);
+            const AiMonster *m = aiFind(g.actors, r);
+            scared = scared || (m != nullptr && m->count1 == 3);
+        }
+        const fx ran = aiDist2D(at, roach.pos);
+        std::printf("test_aliens: roach under style %d: %d units in the dark (scared %d), %d once lit (scared %d)\n",
+                    style, fxToInt(stayed), scaredInDark ? 1 : 0, fxToInt(ran), scared ? 1 : 0);
+        check(!scaredInDark, "... stays where it is in the dark");
+        check(scared && ran > stayed, "... and runs when its light comes on");
+    }
+
     /// A roach goes to food it smells.
     void testRoachFood(const char *dir)
     {
@@ -652,6 +714,7 @@ int main()
     }
     testCooked(valve);
     testRoach(valve);
+    testRoachLight(valve);
     testRoachFood(valve);
     testSnark(valve);
     testAgrunt(valve);

@@ -30,6 +30,7 @@
 #include "HlAchEvents.hpp"
 #include "HlActors.hpp"
 #include "HlLevelReader.hpp"
+#include "HlLightStyle.hpp"
 #include "HlPlayerMove.hpp"
 #include "HlSound.hpp"
 #include "HlSkill.hpp"

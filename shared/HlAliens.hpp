@@ -203,6 +203,22 @@ namespace hldata
             return false;
         }
 
+        /// How lit it stands (GETENTITYILLUM), as far as that changes: the
+        /// strength now of the switched light the map lights its floor with
+        /// most (the converter's, in its record's item, plus one, top 16
+        /// bits); -1 for none.
+        inline int lightHere(const AiCtx &c)
+        {
+            if (c.a.records == nullptr || c.index >= c.a.recordCount)
+                return -1;
+            const int style = static_cast<int>(c.a.records[c.index].item >> kRoachLightShift) - 1;
+            if (style < 32)
+                return -1;
+            // (The tenth of a second it is: a multiply, not a divide.)
+            const auto tick = static_cast<std::uint32_t>((static_cast<std::uint64_t>(c.ai.now) * 10486u) >> 20);
+            return lightStyleValue(style, tick, c.w.stylesOff, c.w.stylePattern.value.data());
+        }
+
         /// MonsterThink, the roach's: ten times a second where the player
         /// may see it, once a second or so otherwise.
         inline void think(AiCtx &c)
@@ -211,6 +227,20 @@ namespace hldata
             c.m.time1 = c.ai.now;
             if (c.me.ai >= kAiDying)
                 return;
+            // A second for the world to be lit, then the light where it
+            // stands is taken, once (m_fLightHacked, m_flLastLightLevel:
+            // flag2, flag3 and value1).
+            if (!c.m.flag2)
+            {
+                c.m.flag2 = true;
+                c.m.thinkMs += 900;
+                return;
+            }
+            if (!c.m.flag3)
+            {
+                c.m.flag3 = true;
+                c.m.value1 = lightHere(c);
+            }
             const bool seen = aiClientInPvs(c);
             if (!seen)
                 c.m.thinkMs += aiRandomMs(c.a, 900, 1400);
@@ -236,10 +266,14 @@ namespace hldata
                             eat(c, 30 + aiRandomLong(c.a, 0, 14));
                     }
                 }
-                // Food, if it is hungry and is only standing about. (The
-                // game's roach also runs from a light that comes on: the
-                // console has no light to measure where it stands.)
-                if (c.m.count1 == kIdle && shouldEat(c))
+                // Someone has put the lights on: away. Otherwise food, if it
+                // is hungry and is only standing about.
+                if (c.m.count1 == kIdle && lightHere(c) > c.m.value1)
+                {
+                    pickNewDest(c, kScaredByLight);
+                    aiSetActivity(c, kActWalk);
+                }
+                else if (c.m.count1 == kIdle && shouldEat(c))
                 {
                     const AiSound *food = smellFood(c);
                     if (food != nullptr && food->origin[2] - c.me.pos[2] <= fxFromInt(3) &&

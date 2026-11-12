@@ -463,6 +463,76 @@ namespace hlds
                 return 0;
             return most + 1 > kBrushReachMost ? kBrushReachMost : most + 1;
         }
+
+        /// The switched light (style 32 on) that lights the floor under
+        /// `feet` most -- the world's face that looks up, just below, with
+        /// the point inside it -- or -1: what a roach measures as the light
+        /// it stands in (GETENTITYILLUM), as far as that can change.
+        int switchedStyleUnder(const BspFile &bsp, const LightBake &light, const double *feet)
+        {
+            if (bsp.models.empty())
+                return -1;
+            const BspModel &world = bsp.models[0];
+            const BspFace *best = nullptr;
+            double bestGap = 1e30;
+            for (int f = world.firstFace; f < world.firstFace + world.faceCount; ++f)
+            {
+                const BspFace &face = bsp.faces[static_cast<std::size_t>(f)];
+                const BspPlane &plane = bsp.planes[face.plane];
+                const double sign = face.side ? -1.0 : 1.0;
+                const double n[3] = {plane.normal[0] * sign, plane.normal[1] * sign, plane.normal[2] * sign};
+                if (n[2] < 0.7 || face.edgeCount < 3)
+                    continue;
+                const double dist = plane.dist * sign;
+                const double z = (dist - n[0] * feet[0] - n[1] * feet[1]) / n[2];
+                const double gap = feet[2] - z;
+                if (gap < -2.0 || gap > 24.0 || gap >= bestGap)
+                    continue;
+                // (Inside it, seen from above: on the same side of each
+                // edge, the face's vertices going round the one way.)
+                bool inside = true;
+                int turn = 0;
+                for (int i = 0; i < face.edgeCount && inside; ++i)
+                {
+                    const BspVertex &a = bsp.faceVertex(face, i);
+                    const BspVertex &b = bsp.faceVertex(face, (i + 1) % face.edgeCount);
+                    const double cross = (b.point[0] - a.point[0]) * (feet[1] - a.point[1]) -
+                                         (b.point[1] - a.point[1]) * (feet[0] - a.point[0]);
+                    const int side = cross > 1e-6 ? 1 : (cross < -1e-6 ? -1 : 0);
+                    if (side != 0 && turn != 0 && side != turn)
+                        inside = false;
+                    if (side != 0)
+                        turn = side;
+                }
+                if (!inside)
+                    continue;
+                best = &face;
+                bestGap = gap;
+            }
+            if (best == nullptr || best->lightOfs < 0)
+                return -1;
+            const BspTexInfo &ti = bsp.texInfos[static_cast<std::size_t>(best->texInfo)];
+            const double at[3] = {feet[0], feet[1], feet[2] - bestGap};
+            const double s = at[0] * ti.vecs[0][0] + at[1] * ti.vecs[0][1] + at[2] * ti.vecs[0][2] + ti.vecs[0][3];
+            const double t = at[0] * ti.vecs[1][0] + at[1] * ti.vecs[1][1] + at[2] * ti.vecs[1][2] + ti.vecs[1][3];
+            int style = -1, most = 4; // (a glimmer is no light to run from)
+            for (int layer = 0; layer < 4; ++layer)
+            {
+                const int which = best->styles[layer];
+                if (which == 255)
+                    break;
+                if (which < 32 || which >= kLightStyles)
+                    continue;
+                const Rgb rgb = light.sampleLayers(*best, s, t, 1u << layer);
+                const int bright = std::max({static_cast<int>(rgb.r), static_cast<int>(rgb.g), static_cast<int>(rgb.b)});
+                if (bright > most)
+                {
+                    most = bright;
+                    style = which;
+                }
+            }
+            return style;
+        }
     } // namespace
 
     bool cookLevel(const BspFile &bsp, const CookOptions &options, const TexturePlan &plan,
@@ -1254,6 +1324,19 @@ namespace hlds
                     level.viewModel = static_cast<std::uint16_t>(m + 1);
             }
             level.actors = std::move(logic.actors);
+            // A roach knows which switched light lights its floor (it runs
+            // when one comes on: roach::lightHere).
+            for (ActorRecord &actor : level.actors)
+            {
+                if (actor.kind != static_cast<std::uint8_t>(ActorKind::Cockroach))
+                    continue;
+                const double feet[3] = {static_cast<double>(actor.origin[0]) / kFxOne,
+                                        static_cast<double>(actor.origin[1]) / kFxOne,
+                                        static_cast<double>(actor.origin[2]) / kFxOne};
+                const int style = switchedStyleUnder(bsp, light, feet);
+                actor.item = (actor.item & 0xFFFFu) |
+                             (static_cast<std::uint32_t>(style >= 0 ? style + 1 : 0) << kRoachLightShift);
+            }
             // A model only what a DS leaves out wears is a DSi's only.
             for (std::size_t m = 0; m < level.modelRefs.size(); ++m)
             {
