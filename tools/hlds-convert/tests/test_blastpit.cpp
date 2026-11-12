@@ -187,11 +187,30 @@ namespace
         check(half > 32000 && half < 33500, "... and their view turned with it, half a turn");
     }
 
-    // What the cook makes of the Blast Pit's odd actors: c1a4d's bubbles in
-    // their pipes are turned over ("angles" 180 0 0), drawn as a turret
-    // under a ceiling is.
+    // What the cook makes of the Blast Pit's odd actors: c1a4f's barnacle
+    // buried in its ceiling is left out (the game never shows it), its
+    // three others kept; c1a4d's bubbles in their pipes are turned over
+    // ("angles" 180 0 0), drawn as a turret under a ceiling is.
     void testActors(const char *dir)
     {
+        {
+            const std::unique_ptr<Game> game = load(dir, "c1a4f");
+            check(game != nullptr, "c1a4f cooks");
+            if (game == nullptr)
+                return;
+            int barnacles = 0;
+            bool buried = false;
+            for (std::uint32_t i = 0; i < game->view.actorCount; ++i)
+            {
+                const ActorRecord &a = game->view.actors[i];
+                if (a.kind != static_cast<std::uint8_t>(ActorKind::Barnacle))
+                    continue;
+                ++barnacles;
+                buried = buried || (fxToInt(a.origin[0]) == 438 && fxToInt(a.origin[1]) == 266);
+            }
+            std::printf("test_blastpit: c1a4f has %d barnacles%s\n", barnacles, buried ? ", the buried one too" : "");
+            check(barnacles == 3 && !buried, "c1a4f's barnacle in the ceiling is left out, the other three kept");
+        }
         const std::unique_ptr<Game> game = load(dir, "c1a4d");
         check(game != nullptr, "c1a4d cooks");
         if (game == nullptr)

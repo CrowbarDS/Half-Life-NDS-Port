@@ -100,6 +100,38 @@ namespace hlds
 
     namespace
     {
+        /// Whether a box reaches any leaf of the world that is not solid.
+        /// The game sends nobody an entity that touches none (SV_LinkEdict
+        /// finds it no leaf): it is never seen.
+        bool boxTouchesOpen(const BspFile &bsp, int child, const double *mins, const double *maxs)
+        {
+            while (child >= 0)
+            {
+                const BspNode &node = bsp.nodes[child];
+                const BspPlane &plane = bsp.planes[node.plane];
+                // The box's nearest and furthest corners along the plane.
+                double near = -plane.dist, far = -plane.dist;
+                for (int a = 0; a < 3; ++a)
+                {
+                    const double lo = plane.normal[a] * mins[a], hi = plane.normal[a] * maxs[a];
+                    near += lo < hi ? lo : hi;
+                    far += lo < hi ? hi : lo;
+                }
+                if (near >= 0)
+                    child = node.children[0];
+                else if (far < 0)
+                    child = node.children[1];
+                else
+                {
+                    if (boxTouchesOpen(bsp, node.children[0], mins, maxs))
+                        return true;
+                    child = node.children[1];
+                }
+            }
+            const int leaf = -(child + 1);
+            return leaf > 0 && leaf < static_cast<int>(bsp.leaves.size()) && bsp.leaves[leaf].contents != kContentsSolid;
+        }
+
         /// For a trigger volume whose brush is not one plain box: its model,
         /// for the game's touch test -- the player's origin inside the
         /// brush's own hull, not just their box in its bounds (a slab lying
@@ -3469,6 +3501,19 @@ namespace hlds
                 ++out.unsupported[std::string(entity.className())];
                 continue;
             }
+            // A barnacle the map has buried in its ceiling (c1a4f's at 438
+            // 266 1664, in solid all round) is never seen in the game, and
+            // its tongue never comes down: left out. (The game's box for one
+            // hangs from where it is fixed. One with a name may be wanted.)
+            if (info.kind == ActorKind::Barnacle && entity.value("targetname").empty())
+            {
+                double at[3] = {0, 0, 0};
+                entity.vec3("origin", at);
+                const double lo[3] = {at[0] - 16, at[1] - 16, at[2] - 32};
+                const double hi[3] = {at[0] + 16, at[1] + 16, at[2]};
+                if (!boxTouchesOpen(bsp, bsp.models[0].headNode[0], lo, hi))
+                    continue;
+            }
             // (A maker whose model is missing keeps a record that makes
             // nothing: it has no places.)
             ActorRecord actor{};
@@ -3575,9 +3620,6 @@ namespace hlds
                 else if (pitch != 0 || roll != 0)
                     ++out.unsupported[std::string(entity.className()) + " tipped (drawn upright)"];
             }
-            // (SF_MONSTER_FADECORPSE: its body fades once it has fallen.)
-            if (entity.className().rfind("monster_", 0) == 0 && (static_cast<int>(numberKey(entity, "spawnflags")) & 512))
-                actor.light |= kActorLightFadeCorpse;
             // (SF_MONSTER_FADECORPSE: its body fades once it has fallen.)
             if (entity.className().rfind("monster_", 0) == 0 && (static_cast<int>(numberKey(entity, "spawnflags")) & 512))
                 actor.light |= kActorLightFadeCorpse;
