@@ -204,15 +204,16 @@ namespace hldata
         }
 
         /// How lit it stands (GETENTITYILLUM), as far as that changes: the
-        /// strength now of the switched light the map lights its floor with
-        /// most (the converter's, in its record's item, plus one, top 16
-        /// bits); -1 for none.
+        /// strength now of the light that changes -- switched, or flickering
+        /// by itself -- that the map lights its floor with most (the
+        /// converter's, in its record's item, plus one, top 16 bits); -1 for
+        /// none.
         inline int lightHere(const AiCtx &c)
         {
             if (c.a.records == nullptr || c.index >= c.a.recordCount)
                 return -1;
             const int style = static_cast<int>(c.a.records[c.index].item >> kRoachLightShift) - 1;
-            if (style < 32)
+            if (style < 1)
                 return -1;
             // (The tenth of a second it is: a multiply, not a divide.)
             const auto tick = static_cast<std::uint32_t>((static_cast<std::uint64_t>(c.ai.now) * 10486u) >> 20);

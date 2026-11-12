@@ -290,7 +290,7 @@ namespace
         for (int i = 0; i < g.actors.recordCount; ++i)
         {
             if (g.actors.records[i].kind != static_cast<std::uint8_t>(ActorKind::Cockroach) ||
-                (g.actors.records[i].item >> kRoachLightShift) == 0)
+                (g.actors.records[i].item >> kRoachLightShift) < 33)
                 continue;
             ++lit;
             r = r < 0 ? i : r;
@@ -341,6 +341,49 @@ namespace
         // (A map with fewer names than its roaches' lights: what it notes is
         // no squad's name, and the reader takes it.)
         check(load(dir, "t0a0b1") != nullptr, "t0a0b1, its roaches knowing their lights, is read");
+    }
+
+    /// A roach under a light that flickers by itself (a style of the
+    /// game's own, 1 to 12) scatters when it swells past what it saw when
+    /// it took its light (as the game's, by GETENTITYILLUM).
+    void testRoachFlicker(const char *dir)
+    {
+        for (const char *map : {"c1a2", "c2a2", "c2a4a", "c1a3", "c2a1", "c2a2a", "c2a2b1", "c2a2c", "c3a1"})
+        {
+            auto game = load(dir, map);
+            if (!game)
+                continue;
+            Game &g = *game;
+            int r = -1, style = -1;
+            for (int i = 0; i < g.actors.recordCount && r < 0; ++i)
+            {
+                const int s = static_cast<int>(g.actors.records[i].item >> kRoachLightShift) - 1;
+                if (g.actors.records[i].kind == static_cast<std::uint8_t>(ActorKind::Cockroach) && s >= 1 &&
+                    s <= 12 && g.actors.states[i].active)
+                {
+                    r = i;
+                    style = s;
+                }
+            }
+            if (r < 0)
+                continue;
+            alone(g, {r});
+            ActorState &roach = g.actors.states[r];
+            g.player.origin[0] = roach.pos[0];
+            g.player.origin[1] = roach.pos[1];
+            g.player.origin[2] = roach.pos[2] + fxFromInt(20000);
+            bool scared = false;
+            for (int t = 0; t < 30 * 12 && !scared; ++t)
+            {
+                tickStill(g);
+                const AiMonster *m = aiFind(g.actors, r);
+                scared = m != nullptr && m->count1 == 3;
+            }
+            std::printf("test_aliens: %s: a roach under flickering style %d scattered %d\n", map, style, scared ? 1 : 0);
+            check(scared, "a roach under a light that flickers by itself scatters as it swells");
+            return;
+        }
+        check(false, "a roach under a light that flickers by itself, on the maps tried");
     }
 
     /// What they shoot from is where their models have it, posed as they
@@ -812,6 +855,7 @@ int main()
     testCooked(valve);
     testRoach(valve);
     testRoachLight(valve);
+    testRoachFlicker(valve);
     testAttachments(valve);
     testRoachFood(valve);
     testSnark(valve);

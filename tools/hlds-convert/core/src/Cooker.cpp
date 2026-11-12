@@ -464,11 +464,12 @@ namespace hlds
             return most + 1 > kBrushReachMost ? kBrushReachMost : most + 1;
         }
 
-        /// The switched light (style 32 on) that lights the floor under
-        /// `feet` most -- the world's face that looks up, just below, with
-        /// the point inside it -- or -1: what a roach measures as the light
-        /// it stands in (GETENTITYILLUM), as far as that can change.
-        int switchedStyleUnder(const BspFile &bsp, const LightBake &light, const double *feet)
+        /// The light that changes -- switched (style 32 on) or flickering by
+        /// itself (1 to 12) -- that lights the floor under `feet` most --
+        /// the world's face that looks up, just below, with the point inside
+        /// it -- or -1: what a roach measures as the light it stands in
+        /// (GETENTITYILLUM), as far as that can change.
+        int changingStyleUnder(const BspFile &bsp, const LightBake &light, const double *feet)
         {
             if (bsp.models.empty())
                 return -1;
@@ -521,7 +522,7 @@ namespace hlds
                 const int which = best->styles[layer];
                 if (which == 255)
                     break;
-                if (which < 32 || which >= kLightStyles)
+                if (which < 1 || which >= kLightStyles)
                     continue;
                 const Rgb rgb = light.sampleLayers(*best, s, t, 1u << layer);
                 const int bright = std::max({static_cast<int>(rgb.r), static_cast<int>(rgb.g), static_cast<int>(rgb.b)});
@@ -1324,8 +1325,8 @@ namespace hlds
                     level.viewModel = static_cast<std::uint16_t>(m + 1);
             }
             level.actors = std::move(logic.actors);
-            // A roach knows which switched light lights its floor (it runs
-            // when one comes on: roach::lightHere).
+            // A roach knows which light that changes lights its floor (it
+            // runs when it brightens: roach::lightHere).
             for (ActorRecord &actor : level.actors)
             {
                 if (actor.kind != static_cast<std::uint8_t>(ActorKind::Cockroach))
@@ -1333,7 +1334,7 @@ namespace hlds
                 const double feet[3] = {static_cast<double>(actor.origin[0]) / kFxOne,
                                         static_cast<double>(actor.origin[1]) / kFxOne,
                                         static_cast<double>(actor.origin[2]) / kFxOne};
-                const int style = switchedStyleUnder(bsp, light, feet);
+                const int style = changingStyleUnder(bsp, light, feet);
                 actor.item = (actor.item & 0xFFFFu) |
                              (static_cast<std::uint32_t>(style >= 0 ? style + 1 : 0) << kRoachLightShift);
             }

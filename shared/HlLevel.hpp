@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 68;
+    inline constexpr std::uint16_t kLevelVersion = 69;
     /// The oldest level format this build reads. (49: a map's textures are
     /// stored in its archive as they are, never compressed, so that one that
     /// streams is read straight in during play. 50: each texture's record
@@ -111,7 +111,8 @@ namespace hldata
     /// monster_flyer on its own, after every other actor: a build before
     /// reads them as what they are.) 68: the switched light over a roach's
     /// floor, in its item's top bits, which a build before reads as a
-    /// squad's name and may refuse the map for.
+    /// squad's name and may refuse the map for. (69: that light may be one
+    /// that flickers by itself, which a build of 68 takes as none.)
     inline constexpr std::uint16_t kLevelMinReader = 68;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,
@@ -1601,7 +1602,9 @@ namespace hldata
     inline constexpr int kActorSkinShift = 8;
     inline constexpr int kActorSquadShift = 16;
     /// A roach's in the same top 16 bits (from level version 68): the
-    /// switched light style that lights its floor most, plus one (0: none).
+    /// light style that changes -- switched (32 on), and from version 69
+    /// one that flickers by itself (1 to 12) too -- that lights its floor
+    /// most, plus one (0: none).
     inline constexpr int kRoachLightShift = 16;
     /// ActorRecord::light, its top bit: the map's SF_MONSTER_FADECORPSE --
     /// dead, it fades away (the game's FadeMonster). The rest is the light.
