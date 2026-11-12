@@ -12,9 +12,12 @@
 // drops his gun when he dies, and calls out (Section::Speech's lines) when
 // nobody else of his kind has just done so.
 //
-// What the game's does that this one does not yet: slide down a rope from
-// an Osprey (monster_grunt_repel), call out at the sight of an alien (the
-// level has no lines for it).
+// Let down on a rope (an osprey's, or monster_grunt_repel), he looks out
+// and shoots on the way down, and lands (slRepel, slRepelAttack,
+// slRepelLand); the rope moves him (HlMilitary.hpp).
+//
+// What the game's does that this one does not yet: call out at the sight
+// of an alien (the level has no lines for it).
 //
 // Included at the end of HlMonsters.hpp. std-only and inline.
 
@@ -272,6 +275,36 @@ namespace hldata
             {kTaskSetSchedule, kSchedWaitFaceEnemy}, // (not to run straight after throwing)
         };
         inline constexpr AiSchedule slRangeAttack2 = {tlRangeAttack2, 4, 0, 0, "RangeAttack2"};
+
+        // On a rope (HlMilitary.hpp's ropeStart): sliding down, looking out;
+        // shooting at an enemy on the way; and down.
+        inline constexpr AiTask tlRepel[] = {
+            {kTaskStopMoving, 0},
+            {kTaskFaceIdeal, 0},
+            {kTaskPlaySequence, kActGlide},
+        };
+        inline constexpr AiSchedule slRepel = {
+            tlRepel, 3, kCondSeeEnemy | kCondNewEnemy | kCondLightDamage | kCondHeavyDamage | kCondHearSound,
+            kSoundDanger | kSoundCombat | kSoundPlayer, "Repel"};
+
+        inline constexpr AiTask tlRepelAttack[] = {
+            {kTaskStopMoving, 0},
+            {kTaskFaceEnemy, 0},
+            {kTaskPlaySequence, kActFly},
+        };
+        inline constexpr AiSchedule slRepelAttack = {tlRepelAttack, 3, kCondEnemyOccluded, 0, "Repel Attack"};
+
+        inline constexpr AiTask tlRepelLand[] = {
+            {kTaskStopMoving, 0},
+            {kTaskPlaySequence, kActLand},
+            {kTaskGetPathToLastPosition, 0},
+            {kTaskRunPath, 0},
+            {kTaskWaitForMovement, 0},
+            {kTaskClearLastPosition, 0},
+        };
+        inline constexpr AiSchedule slRepelLand = {
+            tlRepelLand, 6, kCondSeeEnemy | kCondNewEnemy | kCondLightDamage | kCondHeavyDamage | kCondHearSound,
+            kSoundDanger | kSoundCombat | kSoundPlayer, "Repel Land"};
 
         // ------------------------------------------------------------ him
 
@@ -923,6 +956,15 @@ namespace hldata
         inline const AiSchedule *getSchedule(AiCtx &c)
         {
             c.m.count1 = kSentenceNone;
+            // On a rope, or just off one (the game's MOVETYPE_FLY; a
+            // barnacle's catch is not this).
+            if (c.ai.held[c.index] & kHeldLanded)
+            {
+                c.ai.held[c.index] &= static_cast<std::uint8_t>(~kHeldLanded);
+                return scheduleOfType(c, kSchedRepelLand);
+            }
+            if (c.ai.held[c.index] & kHeldRope)
+                return scheduleOfType(c, c.m.state == kStateCombat ? kSchedRepelAttack : kSchedRepel);
             if (aiHas(c, kCondHearSound))
             {
                 const AiSound *heard = aiBestSound(c);
@@ -1070,6 +1112,12 @@ namespace hldata
                 return &slHideReload;
             case kSchedFoundEnemy:
                 return &slFoundEnemy;
+            case kSchedRepel:
+                return &slRepel;
+            case kSchedRepelAttack:
+                return &slRepelAttack;
+            case kSchedRepelLand:
+                return &slRepelLand;
             case kSchedVictoryDance:
                 if (aiInSquad(c) && !aiIsLeader(c))
                     return &slFail;
@@ -1127,6 +1175,7 @@ namespace hldata
             {"standing_shotgun", 0, kBurst1}, {"crouching_shotgun", 0, kBurst1}, {"reload_mp5", 47, kReload},
             {"reload_shotgun", 47, kReload}, {"throwgrenade", 36, kGrenToss}, {"launchgrenade", 16, kGrenLaunch},
             {"drop_grenade", 22, kGrenDrop}, {"frontkick", 14, kKick},     {"advance_signal", 1, kCaughtEnemy},
+            {"repel_shoot", 1, kBurst1},  {"repel_shoot", 3, kBurst2},   {"repel_shoot", 5, kBurst3},
             {"diesimple", 3, kDropGun},     {"dieback1", 5, kDropGun},      {"diebackwards", 6, kDropGun},
             {"dieforward", 3, kDropGun},    {"dieheadshot", 1, kDropGun},   {"diegutshot", 0, kDropGun},
             {nullptr, 0, 0}};

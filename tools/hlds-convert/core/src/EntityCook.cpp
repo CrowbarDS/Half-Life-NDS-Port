@@ -404,7 +404,7 @@ namespace hlds
                 if (weapons & 4)
                     clips.push_back("launchgrenade");
                 if (repel)
-                    clips.insert(clips.end(), {"repel_repel", "repel_land"});
+                    clips.insert(clips.end(), {"repel_repel", "repel_shoot", "repel_land"});
                 info = {true, ActorKind::Grunt, "models/hgrunt.mdl", clips, "idle1"};
             }
             else if (cls == "monster_tripmine")
@@ -1048,6 +1048,7 @@ namespace hlds
                 continue;
             ModelNeed &grunt = needOf("models/hgrunt.mdl");
             add(grunt, "repel_repel");
+            add(grunt, "repel_shoot");
             add(grunt, "repel_land");
         }
         // ... and what a guard drops: his pistol.

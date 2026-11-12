@@ -3508,15 +3508,19 @@ namespace hldata
         aiAnimEvents(c);
         if (kind->frame != nullptr)
             kind->frame(c, ms);
-        if (aiHeld(a, index))
+        // (A soldier on a rope thinks -- he looks out, turns and shoots --
+        // but the rope moves him: HlMilitary.hpp's ropeDown.)
+        const bool roped = aiHeld(a, index) && !(a.ai->held[index] & 1);
+        if (aiHeld(a, index) && !roped)
             return; // (a barnacle's: it is where the barnacle has it)
         {
             const AiSpentScope spent(2);
-            if (m->inAir)
+            if (m->inAir && !roped)
                 aiAirTick(c, ms);
             // (Turned after it moves: a think clears `turning`, and the
             // frame after one would otherwise not turn while it walks.)
-            aiMoveTick(c, ms);
+            if (!roped)
+                aiMoveTick(c, ms);
             aiTurnTick(c, ms);
         }
         m->thinkMs -= ms;

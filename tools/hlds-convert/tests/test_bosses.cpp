@@ -468,6 +468,66 @@ namespace
                   !(g.actors.ai != nullptr && (g.actors.ai->held[k] & kHeldRope)),
               "... to the floor, and off it");
     }
+    /// A soldier on a rope with the player in sight: he turns to them and
+    /// shoots on the way down (slGruntRepelAttack), and lands
+    /// (slGruntRepelLand) once he is down.
+    void testRepelFight(const char *dir)
+    {
+        BoxRoom room;
+        room.mins[0] = -512;
+        room.maxs[0] = 512;
+        room.maxs[2] = 640;
+        room.extraEntities = "{\n\"classname\" \"monster_grunt_repel\"\n\"targetname\" \"rope\"\n"
+                             "\"origin\" \"-300 0 600\"\n\"angle\" \"0\"\n}\n"
+                             "{\n\"classname\" \"info_player_start\"\n\"origin\" \"300 0 36\"\n}\n";
+        auto game = std::make_unique<Game>();
+        std::string error;
+        check(game->bsp.parse(buildBoxRoom(room), error), "the fighting rope's room parses");
+        finish(*game, nullptr, dir);
+        check(game->ok, "... and cooks");
+        if (!game->ok)
+            return;
+        Game &g = *game;
+        int rope = -1;
+        for (std::uint32_t i = 0; i < g.view.logicCount; ++i)
+        {
+            if (g.view.logic[i].kind == static_cast<std::uint8_t>(LogicKind::Repel))
+                rope = static_cast<int>(i);
+        }
+        check(rope >= 0, "the fighting soldier's rope is a record");
+        if (rope < 0)
+            return;
+        const int k = static_cast<int>(g.view.logic[rope].extra[0]);
+        g.player.origin[0] = fxFromInt(300);
+        g.player.origin[1] = 0;
+        g.player.origin[2] = fxFromInt(36);
+        lost = 0;
+        logicUse(g.logic, g.player, rope, -1, kUseToggle);
+        bool attacked = false, landed = false, shotFromRope = false;
+        int lostOnRope = 0;
+        for (int t = 0; t < 30 * 8; ++t)
+        {
+            const int before = lost;
+            const bool wasOnRope = g.actors.ai != nullptr && (g.actors.ai->held[k] & kHeldRope);
+            tickStill(g);
+            if (wasOnRope)
+                lostOnRope += lost - before;
+            const bool onRope = g.actors.ai != nullptr && (g.actors.ai->held[k] & kHeldRope);
+            const AiMonster *m = aiFind(g.actors, k);
+            if (m == nullptr)
+                continue;
+            if (onRope && m->schedule == &grunt::slRepelAttack)
+                attacked = true;
+            if (!onRope && m->schedule == &grunt::slRepelLand)
+                landed = true;
+        }
+        shotFromRope = lostOnRope > 0;
+        std::printf("test_bosses: on his rope he fought %d; the player lost %d to him there, %d in all; landed %d\n",
+                    attacked ? 1 : 0, lostOnRope, lost, landed ? 1 : 0);
+        check(attacked, "a soldier on a rope turns on the player he sees");
+        check(shotFromRope, "... and shoots on the way down");
+        check(landed, "... and lands at the foot of it");
+    }
 } // namespace
 
 int main()
@@ -484,6 +544,7 @@ int main()
     testNihilanth(valve);
     testFlock(valve);
     testRepel(valve);
+    testRepelFight(valve);
     if (g_failures == 0)
         std::printf("test_bosses: ok\n");
     return g_failures == 0 ? 0 : 1;

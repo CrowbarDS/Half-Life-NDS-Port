@@ -830,8 +830,11 @@ namespace hldata
             playerWeaponVolume(w.actors->ai->sounds, volume);
     }
     /// In AiWorld::held: a soldier let down on a rope by an osprey
-    /// (HlMilitary.hpp): he does nothing until he is down.
+    /// (HlMilitary.hpp): the rope moves him; he looks out and shoots.
     inline constexpr std::uint8_t kHeldRope = 2;
+    /// In AiWorld::held: that soldier has just come off his rope; his next
+    /// schedule is the landing (the game's MOVETYPE_FLY on the ground).
+    inline constexpr std::uint8_t kHeldLanded = 4;
     /// Whether a barnacle has hold of actor `index`, or a rope.
     inline bool aiHeld(const ActorWorld &a, int index)
     {

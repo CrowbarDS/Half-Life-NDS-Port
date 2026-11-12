@@ -39,7 +39,20 @@ namespace hldata
         grunt.velocity[2] = -fxFromInt(aiRandomLong(a, 128, 196));
         actorPlay(a, grunt, nameHash("repel_repel"), false);
         if (a.ai != nullptr)
-            a.ai->held[i] |= kHeldRope;
+        {
+            a.ai->held[i] = static_cast<std::uint8_t>((a.ai->held[i] & ~kHeldLanded) | kHeldRope);
+            // Where he will stand: the foot of the rope (m_vecLastPosition,
+            // the ground under it), for his landing to step back to.
+            if (AiMonster *m = aiOf(a, i))
+            {
+                const fx down[3] = {src[0], src[1], src[2] - fxFromInt(4096)};
+                const Shot floor = traceShot(world, src, down);
+                m->lastPosition[0] = src[0];
+                m->lastPosition[1] = src[1];
+                m->lastPosition[2] = src[2] - static_cast<fx>((static_cast<std::int64_t>(fxFromInt(4096)) * floor.fraction) >>
+                                                             kFractionShift);
+            }
+        }
         actorPlaceBox(a, i);
     }
 
@@ -64,9 +77,9 @@ namespace hldata
         bool still = true;
         if (t.startSolid || t.fraction < kFractionOne)
         {
-            a.ai->held[i] &= static_cast<std::uint8_t>(~kHeldRope);
+            // (His schedule plays the landing: HlGrunt.hpp's slRepelLand.)
+            a.ai->held[i] = static_cast<std::uint8_t>((a.ai->held[i] & ~kHeldRope) | kHeldLanded);
             grunt.velocity[2] = 0;
-            actorPlay(a, grunt, nameHash("repel_land"), true);
             still = false;
         }
         actorPlaceBox(a, i);
