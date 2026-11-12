@@ -340,6 +340,47 @@ namespace
         check(scared && ran > stayed, "... and runs when its light comes on");
     }
 
+    /// What they shoot from is where their models have it, posed as they
+    /// stand (GetAttachment): the alien grunt's gun arm, the controller's
+    /// head and hand, the nihilanth's hands.
+    void testAttachments(const char *dir)
+    {
+        struct Want
+        {
+            const char *map;
+            ActorKind kind;
+            int which[2];
+            int count;
+            int reach; ///< how far from its feet each may be
+        };
+        const Want kWant[] = {{"c2a4d", ActorKind::AlienGrunt, {0, 0}, 1, 128},
+                              {"c4a1a", ActorKind::Controller, {0, 2}, 2, 128},
+                              {"c4a3", ActorKind::Nihilanth, {2, 3}, 2, 900}};
+        for (const Want &want : kWant)
+        {
+            auto game = load(dir, want.map);
+            if (!game)
+                continue;
+            Game &g = *game;
+            const int k = findKind(g, want.kind);
+            check(k >= 0, "the map has the monster");
+            if (k < 0)
+                continue;
+            for (int t = 0; t < 10; ++t)
+                tickStill(g);
+            const ActorState &me = g.actors.states[k];
+            fx at[2][3];
+            const bool has = actorAttachments(g.actors, me, want.which, want.count, at);
+            fx most = 0;
+            for (int n = 0; has && n < want.count; ++n)
+                most = std::max(most, aiDist(me.pos, at[n]));
+            std::printf("test_aliens: %s: kind %d's attachments %s, at most %d from its feet\n", want.map,
+                        static_cast<int>(want.kind), has ? "posed" : "MISSING", fxToInt(most));
+            check(has && most > fxFromInt(8) && most < fxFromInt(want.reach),
+                  "... where its model has what it shoots from");
+        }
+    }
+
     /// A roach goes to food it smells.
     void testRoachFood(const char *dir)
     {
@@ -715,6 +756,7 @@ int main()
     testCooked(valve);
     testRoach(valve);
     testRoachLight(valve);
+    testAttachments(valve);
     testRoachFood(valve);
     testSnark(valve);
     testAgrunt(valve);

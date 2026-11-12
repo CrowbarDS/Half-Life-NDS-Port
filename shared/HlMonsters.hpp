@@ -4020,11 +4020,17 @@ namespace hldata
     /// ... in its model's own frame, posed as `actor` is: before it is put
     /// where the actor is and turned as it is (the gun in hand is turned
     /// as the view is: ModelDraw::heldMuzzle).
+    /// (Where a pose is worked out, for what thinks: one, not one each.)
+    inline BoneMatrix *attachmentBones()
+    {
+        static BoneMatrix bones[kModelMaxBones];
+        return bones;
+    }
     inline bool attachmentPosed(const ModelView &model, const ActorState &actor, int which, fx *at)
     {
         if (actor.clip < 0 || which >= model.header->attachmentCount)
             return false;
-        static BoneMatrix bones[kModelMaxBones];
+        BoneMatrix *bones = attachmentBones();
         std::int32_t controls[kModelControls];
         const bool controlled = actorControls(actor, controls);
         poseModel(model, actor.clip, actor.frame, bones, controlled ? controls : nullptr, actor.blend.value);
@@ -4041,6 +4047,37 @@ namespace hldata
         out[0] = actor.pos[0] + fxMul(at[0], cosine) - fxMul(at[1], sine);
         out[1] = actor.pos[1] + fxMul(at[0], sine) + fxMul(at[1], cosine);
         out[2] = actor.pos[2] + at[2];
+        return true;
+    }
+    /// Several of them at once, the model posed the once: `count` of them,
+    /// `which` each, into `out`. False (and `out` untouched) if its model
+    /// has not every one. For what stands upright: turned as it faces.
+    inline bool actorAttachments(const ActorWorld &a, const ActorState &actor, const int *which, int count,
+                                 fx (*out)[3])
+    {
+        const ModelView *model = actorModel(a, actor);
+        if (model == nullptr || actor.clip < 0)
+            return false;
+        for (int n = 0; n < count; ++n)
+        {
+            if (which[n] < 0 || which[n] >= model->header->attachmentCount)
+                return false;
+        }
+        BoneMatrix *bones = attachmentBones();
+        std::int32_t controls[kModelControls];
+        const bool controlled = actorControls(actor, controls);
+        poseModel(*model, actor.clip, actor.frame, bones, controlled ? controls : nullptr, actor.blend.value);
+        fx sine, cosine;
+        fxSinCos(actor.yaw, sine, cosine);
+        for (int n = 0; n < count; ++n)
+        {
+            fx at[3];
+            if (!attachmentPoint(*model, bones, which[n], at))
+                return false;
+            out[n][0] = actor.pos[0] + fxMul(at[0], cosine) - fxMul(at[1], sine);
+            out[n][1] = actor.pos[1] + fxMul(at[0], sine) + fxMul(at[1], cosine);
+            out[n][2] = actor.pos[2] + at[2];
+        }
         return true;
     }
 

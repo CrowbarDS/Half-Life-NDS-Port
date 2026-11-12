@@ -617,6 +617,15 @@ namespace hldata
             controls[1] = static_cast<std::int16_t>(actor.aimPitch);
             return controls[0] != 0 || controls[1] != 0;
         }
+        if (actor.kind == static_cast<std::uint8_t>(ActorKind::Gargantua))
+        {
+            // Its arms turned to its flames' aim (FlameControls: m_flameY,
+            // m_flameX; the model's pitch is the way HlAliens.hpp keeps it,
+            // down positive).
+            controls[0] = static_cast<std::int16_t>(actor.aimYaw);
+            controls[1] = static_cast<std::int16_t>(actor.aimPitch);
+            return controls[0] != 0 || controls[1] != 0;
+        }
         if (actor.kind == static_cast<std::uint8_t>(ActorKind::Ichthyosaur))
         {
             // Its tail, against its turn (the game's yaw_adj / 4).

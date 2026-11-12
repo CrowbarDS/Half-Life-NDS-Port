@@ -304,6 +304,38 @@ namespace
         std::printf("test_military: gargantua near: the player lost %d, flames %d\n", near, flame ? 1 : 0);
         check(flame, "up close, it throws its flames");
         check(near > 0, "... which burn the player");
+        {
+            // ... from its forearms, as its model has them posed (the
+            // game's attachments 1 and 2), turned with its aim.
+            static const int kArms[2] = {1, 2};
+            auto arms = [&](int aimYaw, int aimPitch, fx (*at)[3])
+            {
+                ActorState posed = garg;
+                posed.aimYaw = aimYaw;
+                posed.aimPitch = aimPitch;
+                return actorAttachments(g.actors, posed, kArms, 2, at);
+            };
+            fx level[2][3], up[2][3], down[2][3], left[2][3];
+            const bool has = arms(0, 0, level) && arms(0, -4096, up) && arms(0, 4096, down) && arms(4096, 0, left);
+            check(has, "its model has the two forearms the flames come from");
+            if (has)
+            {
+                const fx apart = aiDist(level[0], level[1]);
+                const fx height = (level[0][2] + level[1][2]) / 2 - garg.pos[2];
+                fx sideways[3];
+                aiRight(garg.yaw, sideways);
+                fx leftShift = 0;
+                for (int k = 0; k < 2; ++k)
+                    leftShift -= fxMul(sideways[k], (left[0][k] + left[1][k]) / 2 - (level[0][k] + level[1][k]) / 2);
+                const fx upShift = (up[0][2] + up[1][2]) / 2 - (down[0][2] + down[1][2]) / 2;
+                std::printf("test_military: gargantua's arms %d apart, %d up; aimed up they rise %d, aimed left they "
+                            "go %d left\n",
+                            fxToInt(apart), fxToInt(height), fxToInt(upShift), fxToInt(leftShift));
+                check(apart > fxFromInt(20) && height > fxFromInt(40) && height < fxFromInt(220),
+                      "... two arms apart, at arm's height");
+                check(upShift > 0 && leftShift > 0, "... which turn up and left as it aims up and left");
+            }
+        }
         // Far: it stomps.
         room = false;
         for (int far : {700, 600, 800, 500})

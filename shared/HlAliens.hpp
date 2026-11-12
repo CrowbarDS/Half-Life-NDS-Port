@@ -555,11 +555,14 @@ namespace hldata
             return c.m.activity == kActTurnLeft || c.m.activity == kActTurnRight ? 110 : 100;
         }
 
-        /// Where its gun arm is (the model's first attachment, as the game's
-        /// m_HackedGunPos has it: 24 to its right, 64 ahead, 48 up -- made
-        /// a little nearer, the console's model being drawn whole).
+        /// Where its gun arm is: the model's first attachment, posed as it
+        /// stands (GetAttachment(0)). (Without one: where the game's
+        /// m_HackedGunPos has it, 24 to its right, 64 ahead, 48 up -- made a
+        /// little nearer.)
         inline void armPos(const AiCtx &c, fx *at)
         {
+            if (actorAttachment(c.a, c.me, 0, at))
+                return;
             fx forward[3], right[3];
             aiForward(c.me.yaw, forward);
             aiRight(c.me.yaw, right);
@@ -1011,15 +1014,21 @@ namespace hldata
 
         inline int yawSpeed(AiCtx &) { return 120; }
 
-        /// Its head, where the big ball comes from; its hands, the small ones.
+        /// Its head, where the big ball comes from; its hand, the small ones:
+        /// the model's attachments 0 and 2, posed as it is (GetAttachment).
+        /// (Without them: about where they are held.)
         inline void headPos(const AiCtx &c, fx *at)
         {
+            if (actorAttachment(c.a, c.me, 0, at))
+                return;
             at[0] = c.me.pos[0];
             at[1] = c.me.pos[1];
             at[2] = c.me.pos[2] + fxFromInt(64);
         }
         inline void handPos(const AiCtx &c, fx *at)
         {
+            if (actorAttachment(c.a, c.me, 2, at))
+                return;
             fx forward[3];
             aiForward(c.me.yaw, forward);
             at[0] = c.me.pos[0] + forward[0] * 32;
@@ -1690,17 +1699,24 @@ namespace hldata
             return c.m.activity == kActTurnLeft || c.m.activity == kActTurnRight ? 180 : 60;
         }
 
-        /// Where a flame comes out: its two arms. (The game's attachments 1
-        /// and 2, on the forearms; this port does not pose a monster to
-        /// think, so they are where the arms are held to throw it.)
-        inline void nozzle(const AiCtx &c, int side, fx *at)
+        /// Where the flames come out: its two forearms, the model's
+        /// attachments 1 and 2, posed as it stands with its arms turned to
+        /// its aim (GetAttachment). (Without them: where the arms are held
+        /// to throw it.)
+        inline void nozzles(const AiCtx &c, fx (*at)[3])
         {
+            static const int kArms[2] = {1, 2};
+            if (actorAttachments(c.a, c.me, kArms, 2, at))
+                return;
             fx forward[3], right[3];
             aiForward(c.me.yaw, forward);
             aiRight(c.me.yaw, right);
-            for (int k = 0; k < 3; ++k)
-                at[k] = c.me.pos[k] + forward[k] * 48 + right[k] * (side == 0 ? 40 : -40);
-            at[2] += fxFromInt(100);
+            for (int side = 0; side < 2; ++side)
+            {
+                for (int k = 0; k < 3; ++k)
+                    at[side][k] = c.me.pos[k] + forward[k] * 48 + right[k] * (side == 0 ? 40 : -40);
+                at[side][2] += fxFromInt(100);
+            }
         }
 
         /// FlameDamage: whatever is near the flame's line and that it can
@@ -1763,10 +1779,12 @@ namespace hldata
             fxSinCos(yaw, sine, cosine);
             fxSinCos(static_cast<std::uint16_t>(-c.me.aimPitch), ps, pc);
             const fx forward[3] = {fxMulShort(cosine, pc), fxMulShort(sine, pc), ps};
+            fx arms[2][3];
+            nozzles(c, arms);
             for (int side = 0; side < 2; ++side)
             {
-                fx start[3], end[3];
-                nozzle(c, side, start);
+                fx end[3];
+                const fx *start = arms[side];
                 aiTraceLine(c, start, forward, kFlameLength, end);
                 Effect &outer = effectAdd(c.a, kEffectBeam, start, end, 12, 150);
                 outer.colour = 0x2E1F; // (255, 130, 90)
@@ -3929,10 +3947,12 @@ namespace hldata
                 c.w.heard->add(sound, c.me.pos, 127, sound == CommonSound::NihilDie ? 10000 : 5000); // (attn 0.2; dying 0.1)
         }
 
-        /// Where its hands and its head are (the game's attachments, as the
-        /// model is held: no bones are posed to think).
+        /// Where its hands are: the model's attachments 2 and 3, posed as it
+        /// is (GetAttachment). (Without them: about where they are held.)
         inline void hand(const AiCtx &c, int side, fx *at)
         {
+            if (actorAttachment(c.a, c.me, side == 0 ? 2 : 3, at))
+                return;
             fx forward[3], right[3];
             aiForward(c.me.yaw, forward);
             aiRight(c.me.yaw, right);
