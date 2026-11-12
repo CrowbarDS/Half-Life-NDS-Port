@@ -1201,8 +1201,8 @@ namespace hldata
     inline constexpr int kSpeakIdle = 6;    ///< nothing doing
     inline constexpr int kSpeakQuestion = 7; ///< ... a question, and the answer to one
     inline constexpr int kSpeakAnswer = 8;
-    inline constexpr int kSpeakCheck = 9;   ///< "check in", and "all clear"
-    inline constexpr int kSpeakClear = 10;
+    inline constexpr int kSpeakClear = 9;   ///< "all clear", the answer to ...
+    inline constexpr int kSpeakCheck = 10;  ///< ... "check in" (HG_CLEAR, HG_CHECK)
     inline constexpr int kSpeechGroups = 11;
     inline constexpr int kSpeechLines = 6;
 
