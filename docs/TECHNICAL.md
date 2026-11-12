@@ -295,8 +295,8 @@ Milestone 11, "levels of detail".
   They move by the game's own rule for things that walk (a step is made if,
   lifted a stair's height, nothing is in the way and there is floor where it
   ends), straight at the player where that can be walked and otherwise from
-  path node to path node: the converter joins the map's nodes up and works
-  out the way from each to each, so the console only looks it up.
+  path node to path node, by a route the console finds when it needs one
+  (Finding the way, below).
   Monstermakers make them.
 - Weapons: the crowbar, the pistol and the shotgun, found where the game
   leaves them, with its numbers at the middle difficulty (a zombie shrugs off
@@ -370,8 +370,8 @@ Milestone 11, "levels of detail".
   into it, nearer and quicker while it is not looked at, charges, bites, and
   floats belly up when it dies; it is drawn nosed up or down and rolled. The
   assassin leaps, shoots as it falls, throws a grenade once it is frustrated
-  and runs for cover (it is cloaked only at the game's hard skill, which
-  this port is not). The baby crab is a smaller, weaker headcrab that leaps
+  and runs for cover; at the game's hard skill it is cloaked, as there.
+  The baby crab is a smaller, weaker headcrab that leaps
   from closer; the dead in their suits lie as the game poses them.
 - Round 5, the rest of them (`test_bosses`, `test_tanks`). The tentacle
   rises out of its pit to the height of what it hears and strikes there,
@@ -388,7 +388,9 @@ Milestone 11, "levels of detail".
   death only in its head once its crystals are gone and it has opened. The
   flocks of flyers keep together behind a leader that steers off the walls.
   A soldier told to comes down a rope (monster_grunt_repel), as the
-  osprey's do.
+  osprey's do; on the way down he looks out, turns on an enemy and shoots,
+  and he lands. Soldiers call out at the sight of an alien. The hazard
+  course's rats stand about and die, on a DSi: a DS leaves them out.
 - Guns on mounts (func_tank, and its laser, rocket and mortar kinds): they
   turn to the player within their reach and at their rates, and fire on
   target for as long as they have lately seen them. At a func_tankcontrols,
@@ -1356,19 +1358,20 @@ read on hardware; the 384 comes from TWPatch's source.
 
 ## Not yet
 
-Friends who follow and talk; the rest of the game's weapons;
-`env_bubbles`; the suit's voice, the chatter of scientists
-and guards; a track train's starting sound. Soldiers fight the player only
-(not the aliens), do not drop their guns, and are
-not eaten by barnacles; the player cannot yet lay a tripmine. What breaks
-still comes apart into plain scraps (it is monsters, and what the maps throw
-out, that have the game's pieces). Scientists and guards do not
-think: they stand where the map puts them and go, in a straight line, where a
-script sends them. A script whose actor this port does not have is taken as
-played after a few seconds, so that what waits on it still happens. Monsters
-do not open doors or jump gaps. A map that is come back to starts as it
-started, except that what was broken, killed or picked up stays so.
-The converter counts what it does not handle rather than refusing a map.
+The roach does not run from a light that comes on (the console has no
+light to measure at its feet). Monsters the game has but no stock map
+places are left out by the converter: `monster_bloater`,
+`monster_tentaclemaw`, the `monster_cine*` actors, a lone `monster_flyer`,
+and `monster_vortigaunt` under that name. Fliers find their way with a
+person's hull, not their own; the gargantua's flame and the alien grunt's
+gun arm start from fixed places, not from the posed model. A walking
+monster does not plan its way round a wall ahead: it plans again after a
+second of getting nowhere. A roach maker keeps at most three of its swarm
+alive at once. What breaks comes apart into patches of its own texture,
+not the game's shard models. A script whose actor this port does not have
+is taken as played after a few tries, so that what waits on it still
+happens. The converter counts what it does not handle rather than refusing
+a map.
 
 ## Tests, the DSP program, timing
 
@@ -1672,9 +1675,9 @@ afterwards. He leaves alone what a scene is playing and what the map
 keeps caged. The player's rounds turn him by the game's rule: in a fight
 they are strays; with no enemy about, one plainly aimed at him -- or a
 second of any kind -- makes him an enemy, who follows nobody
-(`shared/HlPeople.hpp`, `test_people`). What he does not do yet: monsters
-still have eyes only for the player, so nothing fights him back; turrets
-and barnacles he ignores; he says nothing. (A save keeps his grudge and
+(`shared/HlPeople.hpp`, `test_people`). Monsters see him as the game's do,
+by its table of who hates whom (`shared/HlRelation.hpp`), and fight him
+back; he talks as the game's guards do (`shared/HlAiTalk.hpp`). (A save keeps his grudge and
 his drawn pistol with everything else.) People stand on what is under them, brushes included, go where a
 lift they stand on goes, and fall when it breaks or is gone; the places
 that hurt hurt them as they hurt the player -- which is what c1a1's

@@ -2,20 +2,15 @@
 
 // What fights, what it is fought with, and what is picked up on the way.
 //
-// MONSTERS are actors (HlActors.hpp) with a little mind. Each is a state --
-// idle, chasing, attacking, in the air, flinching, dying -- and moves by the
-// game's own rule for things that walk: a step forward is allowed if, lifted
-// a stair's height, nothing is in the way, and there is floor under where it
-// ends. They find the player in a straight line when one can be walked, and
-// otherwise from path node to path node, by a table the converter worked out
-// (PathNext): there is no searching on the console.
-//
-//   headcrab  runs at the player and leaps from 256 units; it hurts what it
-//             lands on.
-//   zombie    walks up and swings; each swing hurts if the player is still
-//             in reach when it lands.
-//   barnacle  hangs, with a tongue down to the floor; what walks into the
-//             tongue is pulled up and bitten.
+// MONSTERS are actors (HlActors.hpp) with the game's mind: its schedules,
+// tasks and conditions (HlAi.hpp, HlAiCore.hpp), and each kind's own on top
+// (HlAiMonsters.hpp, HlGrunt.hpp, HlAliens.hpp, HlMilitary.hpp; the people
+// in HlAiPeople.hpp). They walk by the game's own rule (HlWalk.hpp): a step
+// forward is allowed if, lifted a stair's height, nothing is in the way, and
+// there is floor under where it ends; straight there when that can be
+// walked, otherwise from path node to path node by a route found when it is
+// needed. This file has what they share: what each kind is in numbers, the
+// makers, chargers, turrets, mines and tanks, and the frame that runs them.
 //
 // A scripted sequence that has taken a monster has it: it does not think
 // until the script lets it go.

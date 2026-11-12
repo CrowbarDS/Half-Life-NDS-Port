@@ -5,8 +5,8 @@
 // A step is the game's own: allowed if, lifted a stair's height, nothing is
 // in the way, and there is floor under where it ends. A walk to somewhere is
 // straight there when every step of that can be made, and otherwise from
-// path node to path node by the table the converter worked out (PathNext) --
-// the console looks its way up; it never searches.
+// path node to path node, by a route found when it is needed over the
+// map's links as they are then (pathStep).
 //
 // Monsters chase with this (HlMonsters.hpp), and people sent somewhere by a
 // script walk there with it (HlLogic.hpp).

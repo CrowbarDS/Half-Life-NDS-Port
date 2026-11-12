@@ -14,8 +14,7 @@
 // functions on top of these (AiKind), as the game's are its classes'.
 //
 // What it thinks lives in a side table (AiWorld, reached by a pointer in
-// ActorWorld): not saved. A monster in a loaded game starts from its saved
-// health, place and state (ActorState::ai), and chooses afresh.
+// ActorWorld), which a save keeps (HlAiSave.hpp).
 //
 // Moving is the port's own (HlWalk.hpp, walkTick, from node to node); the
 // tasks that make a route say where to, and the walking is done each frame.

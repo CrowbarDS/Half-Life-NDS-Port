@@ -10,8 +10,8 @@
 // what a map's wiring does; this file is the actor itself and the parts of it
 // that need no wiring.
 //
-// There is no thinking here. An actor does not see, hear or decide; it goes
-// where a script sends it, in a straight line.
+// There is no thinking here: what sees, hears and decides is HlAi.hpp's,
+// on top of this.
 //
 // std-only and inline: the host tests run it.
 
