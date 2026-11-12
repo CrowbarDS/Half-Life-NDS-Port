@@ -532,6 +532,26 @@ namespace hldata
         inline bool boxInMover(const LogicWorld &w, int record, int mover);
         inline bool boxStandsOn(LogicWorld &w, int record, int mover);
         inline void crushPlayer(LogicWorld &w, PlayerState &player, int index, int ms);
+        inline bool playerStuckBesides(LogicWorld &w, const PlayerState &player, int index);
+
+        /// One riding what turns about the upright is turned with it, by
+        /// `turn` about `pivot`: where they stand on it, and their view.
+        inline void turnRider(LogicWorld &w, PlayerState &player, const fx *pivot, std::int16_t turn)
+        {
+            if (turn == 0)
+                return;
+            const fx x = player.origin[0] - pivot[0];
+            const fx y = player.origin[1] - pivot[1];
+            std::int32_t sine, cosine;
+            fxSinCosFine(static_cast<std::uint16_t>(turn), sine, cosine);
+            player.origin[0] = pivot[0] + static_cast<fx>((static_cast<std::int64_t>(x) * cosine -
+                                                           static_cast<std::int64_t>(y) * sine) >>
+                                                          kNormalShift);
+            player.origin[1] = pivot[1] + static_cast<fx>((static_cast<std::int64_t>(x) * sine +
+                                                           static_cast<std::int64_t>(y) * cosine) >>
+                                                          kNormalShift);
+            w.viewTurn += turn;
+        }
 
         /// Move a brush to `pos`, carrying the player if they stand on it and
         /// pushing them if it runs into them -- and likewise the boxes that
@@ -1286,9 +1306,26 @@ namespace hldata
                     angles[axis] + state.bits +
                     static_cast<std::uint32_t>(
                         (static_cast<std::int64_t>(state.travel[0]) * phase) >> kFractionShift));
+                // Whoever stands on it turns with it (SV_PushRotate): c1a4f's
+                // bucket swings the player across its shaft. About the
+                // upright only, on a hinge that is not itself tipped.
+                const bool rider = axis == kYaw && angles[0] == 0 && angles[2] == 0 && player.onGround &&
+                                   player.groundMover == static_cast<std::int16_t>(record.brush);
+                const auto turn = static_cast<std::int16_t>(angles[axis] - before);
+                const fx stood[3] = {player.origin[0], player.origin[1], player.origin[2]};
+                const bool stuckBefore = rider && playerStuckBesides(w, player, record.brush);
+                if (rider)
+                    turnRider(w, player, state.base, turn);
                 logicPlaceBrushTurned(w, record.brush, state.base, angles);
-                if (playerInsideBrush(w, player, record.brush))
+                if (playerInsideBrush(w, player, record.brush) ||
+                    (rider && !stuckBefore && playerStuckBesides(w, player, record.brush)))
                 {
+                    if (rider)
+                    {
+                        for (int a = 0; a < 3; ++a)
+                            player.origin[a] = stood[a];
+                        w.viewTurn -= turn;
+                    }
                     angles[axis] = before;
                     logicPlaceBrushTurned(w, record.brush, state.base, angles);
                     crushPlayer(w, player, index, ms);
@@ -2773,25 +2810,9 @@ namespace hldata
             const bool stuckBefore = checked && playerStuckBesides(w, player, index);
             if (rider)
             {
-                fx x = player.origin[0] - state.pos[0];
-                fx y = player.origin[1] - state.pos[1];
-                if (turn != 0)
-                {
-                    std::int32_t sine, cosine;
-                    fxSinCosFine(static_cast<std::uint16_t>(turn), sine, cosine);
-                    const fx tx = static_cast<fx>((static_cast<std::int64_t>(x) * cosine -
-                                                   static_cast<std::int64_t>(y) * sine) >>
-                                                  kNormalShift);
-                    const fx ty = static_cast<fx>((static_cast<std::int64_t>(x) * sine +
-                                                   static_cast<std::int64_t>(y) * cosine) >>
-                                                  kNormalShift);
-                    x = tx;
-                    y = ty;
-                    w.viewTurn += turn;
-                }
-                player.origin[0] = pos[0] + x;
-                player.origin[1] = pos[1] + y;
-                player.origin[2] += pos[2] - state.pos[2];
+                turnRider(w, player, state.pos, turn);
+                for (int a = 0; a < 3; ++a)
+                    player.origin[a] += pos[a] - state.pos[a];
             }
             const std::uint16_t angles[3] = {0, yaw, 0};
             logicPlaceBrushTurned(w, index, pos, angles);
