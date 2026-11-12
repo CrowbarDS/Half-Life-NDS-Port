@@ -1358,14 +1358,12 @@ read on hardware; the 384 comes from TWPatch's source.
 
 ## Not yet
 
-A roach measures only the switched lights over its floor (the converter
-notes the strongest), not lights that flicker by themselves. Monsters the
-game has but no stock map places, and whose models the game does not
-ship, are left out by the converter: `monster_bloater`,
-`monster_tentaclemaw` and the `monster_cine*` actors. The apache's gun
-and the turrets' eyes still start from fixed places, not from the posed
-model. A walker
-looks ahead for a wall once a route; one it meets after that it goes
+A roach measures the one light that changes most over its floor --
+switched, or flickering by itself (the converter notes it) -- not all the
+light there. Monsters the game has but no stock map places, and whose
+models the game does not ship, are left out by the converter:
+`monster_bloater`, `monster_tentaclemaw` and the `monster_cine*` actors.
+A walker looks ahead for a wall once a route; one it meets after that it goes
 round at its nose. On a console sent the game, walkers only go round a
 wall at their nose. A roach maker keeps at most three of its swarm alive
 at once. What breaks comes apart into patches of its own texture,
