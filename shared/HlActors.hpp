@@ -816,6 +816,18 @@ namespace hldata
             box.mins[2] = actor.pos[2] - halfHigh;
             box.maxs[2] = actor.pos[2] + halfHigh;
         }
+        // (A barnacle hangs from where it is fixed: the game's box for it is
+        // 32 square and 32 deep, below -- not up in the ceiling.)
+        if (actor.kind == static_cast<std::uint8_t>(ActorKind::Barnacle))
+        {
+            for (int i = 0; i < 2; ++i)
+            {
+                box.mins[i] = actor.pos[i] - fxFromInt(16);
+                box.maxs[i] = actor.pos[i] + fxFromInt(16);
+            }
+            box.mins[2] = actor.pos[2] - fxFromInt(32);
+            box.maxs[2] = actor.pos[2];
+        }
         // (A turret is where it is fixed, as much below as above; under a
         // ceiling, all below.)
         if (isTurret(actor.kind))
