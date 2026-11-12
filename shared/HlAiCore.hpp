@@ -3250,9 +3250,9 @@ namespace hldata
     /// CheckLocalMove, for the others: the first actor whose box the
     /// walker's own would meet on the next `look` units towards `aim`, and
     /// how far on that is (`checked`). Not the one it is going for (a move
-    /// into it is the move it means). Not the world, which its way is
-    /// planned round; nor the player, whom it walks up to and stops in front
-    /// of (walkTick). kAiNone if none.
+    /// into it is the move it means). Not the world (aiWallRound looks for
+    /// that); nor the player, whom it walks up to and stops in front of
+    /// (walkTick). kAiNone if none.
     inline std::int16_t aiLookAhead(const AiCtx &c, const fx *aim, fx look, fx &checked)
     {
         const fx d[3] = {aim[0] - c.me.pos[0], aim[1] - c.me.pos[1], 0};
@@ -3334,8 +3334,8 @@ namespace hldata
             return false;
         if (!found)
         {
-            // (The game's look ahead finds walls far off and plans round
-            // them; what the port's walker meets at its nose is its own
+            // (A wall seen coming is gone round before it is reached
+            // (aiWallRound); one met at its nose with no way round is its
             // planning's to mend -- walkTick plans again after a second of
             // getting nowhere -- and the player steps aside. Only another
             // in the way fails the move at once.)

@@ -1358,16 +1358,17 @@ read on hardware; the 384 comes from TWPatch's source.
 
 ## Not yet
 
-The roach does not run from a light that comes on (the console has no
-light to measure at its feet). Monsters the game has but no stock map
-places are left out by the converter: `monster_bloater`,
-`monster_tentaclemaw`, the `monster_cine*` actors, a lone `monster_flyer`,
-and `monster_vortigaunt` under that name. Fliers find their way with a
-person's hull, not their own; the gargantua's flame and the alien grunt's
-gun arm start from fixed places, not from the posed model. A walking
-monster does not plan its way round a wall ahead: it plans again after a
-second of getting nowhere. A roach maker keeps at most three of its swarm
-alive at once. What breaks comes apart into patches of its own texture,
+A roach measures only the switched lights over its floor (the converter
+notes the strongest), not lights that flicker by themselves. Monsters the
+game has but no stock map places, and whose models the game does not
+ship, are left out by the converter: `monster_bloater`,
+`monster_tentaclemaw` and the `monster_cine*` actors. The apache's gun
+and the turrets' eyes still start from fixed places, not from the posed
+model. A walker
+looks ahead for a wall once a route; one it meets after that it goes
+round at its nose. On a console sent the game, walkers only go round a
+wall at their nose. A roach maker keeps at most three of its swarm alive
+at once. What breaks comes apart into patches of its own texture,
 not the game's shard models. A script whose actor this port does not have
 is taken as played after a few tries, so that what waits on it still
 happens. The converter counts what it does not handle rather than refusing
