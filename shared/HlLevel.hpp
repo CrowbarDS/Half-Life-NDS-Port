@@ -1141,6 +1141,16 @@ namespace hldata
     /// for nobody. The things glimpsed during the cascade are these.
     inline constexpr std::uint8_t kActorPrisoner = 16;
     inline constexpr std::uint8_t kActorCeiling = 4;
+    /// Drawn upside down, turned over about the way it faces: a turret
+    /// under a ceiling; or scenery the map has turned over (a half turn of
+    /// pitch: c1a4d's bubbles in their pipes), which keeps the same bit.
+    inline bool actorHungOver(std::uint8_t kind, std::uint8_t flags)
+    {
+        return (flags & kActorCeiling) != 0 &&
+               (isTurret(kind) || kind == static_cast<std::uint8_t>(ActorKind::Cycler) ||
+                kind == static_cast<std::uint8_t>(ActorKind::Generic) ||
+                kind == static_cast<std::uint8_t>(ActorKind::Furniture));
+    }
     inline constexpr std::uint8_t kActorAuto = 8;
     /// A tripmine: armed a second after the map starts, not two and a half.
     inline constexpr std::uint8_t kActorQuick = kActorAuto;

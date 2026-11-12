@@ -1056,11 +1056,11 @@ namespace hlrt
                     turn[r * 3 + 2] = fxMulShort(up0[r], cr) - fxMulShort(left0[r], sr);
                 }
             }
-            // A turret under a ceiling is the same model upside down: turned
-            // over about the way it faces (the game's half turn of pitch,
-            // and of yaw to make up for it).
+            // A turret under a ceiling (or scenery the map turns over) is
+            // the same model upside down: turned over about the way it faces
+            // (the game's half turn of pitch, and of yaw to make up for it).
             const fx over[9] = {cosine, sine, 0, sine, -cosine, 0, 0, 0, -kFxOne};
-            const bool ceiling = isTurret(actor.kind) && (actor.flags & kActorCeiling) != 0;
+            const bool ceiling = actorHungOver(actor.kind, actor.flags);
             const int seeThrough = seeThroughLook(actors, actor, order[n], glow_);
             if (seeThrough < 0)
                 continue;

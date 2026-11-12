@@ -111,7 +111,7 @@ namespace hldata
         // its height up, and one round its head -- someone in a doorway has
         // their middle in the frame and their head in the room. (Hung from
         // a ceiling, it is all below where it is fixed.)
-        const int up = isTurret(actor.kind) && (actor.flags & kActorCeiling) ? -top : top;
+        const int up = actorHungOver(actor.kind, actor.flags) ? -top : top;
         add(z + up / 2);
         add(z + up);
         if (clipDown < -radius)

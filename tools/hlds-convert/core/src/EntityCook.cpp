@@ -3553,6 +3553,31 @@ namespace hlds
             actor.light = 24;
             if (static_cast<int>(numberKey(entity, "spawnflags")) & 16)
                 actor.flags |= kActorPrisoner;
+            // Scenery the map turns over (c1a4b and c1a4d's bubbles in their
+            // pipes: "angles" 180 0 0): a half turn of pitch is a half turn
+            // of yaw and one about the way it then faces, which is how a
+            // turret under a ceiling is drawn (actorHungOver). The game's
+            // models are turned no other way but about the upright.
+            if (info.kind == ActorKind::Cycler || info.kind == ActorKind::Generic ||
+                info.kind == ActorKind::Furniture)
+            {
+                auto half = [](double degrees)
+                {
+                    const long turns = std::lround(std::fmod(std::fabs(degrees), 360.0));
+                    return turns == 180 ? 1 : (turns == 0 || turns == 360 ? 0 : -1);
+                };
+                const int pitch = half(angles[0]), roll = half(angles[2]);
+                if (pitch == 1 && roll == 0)
+                {
+                    actor.flags |= kActorCeiling;
+                    actor.yaw = static_cast<std::uint16_t>(actor.yaw + 32768);
+                }
+                else if (pitch != 0 || roll != 0)
+                    ++out.unsupported[std::string(entity.className()) + " tipped (drawn upright)"];
+            }
+            // (SF_MONSTER_FADECORPSE: its body fades once it has fallen.)
+            if (entity.className().rfind("monster_", 0) == 0 && (static_cast<int>(numberKey(entity, "spawnflags")) & 512))
+                actor.light |= kActorLightFadeCorpse;
             // (SF_MONSTER_FADECORPSE: its body fades once it has fallen.)
             if (entity.className().rfind("monster_", 0) == 0 && (static_cast<int>(numberKey(entity, "spawnflags")) & 512))
                 actor.light |= kActorLightFadeCorpse;

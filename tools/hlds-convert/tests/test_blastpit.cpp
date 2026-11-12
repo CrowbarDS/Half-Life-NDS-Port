@@ -187,6 +187,28 @@ namespace
         check(half > 32000 && half < 33500, "... and their view turned with it, half a turn");
     }
 
+    // What the cook makes of the Blast Pit's odd actors: c1a4d's bubbles in
+    // their pipes are turned over ("angles" 180 0 0), drawn as a turret
+    // under a ceiling is.
+    void testActors(const char *dir)
+    {
+        const std::unique_ptr<Game> game = load(dir, "c1a4d");
+        check(game != nullptr, "c1a4d cooks");
+        if (game == nullptr)
+            return;
+        int over = 0, cyclers = 0;
+        for (std::uint32_t i = 0; i < game->view.actorCount; ++i)
+        {
+            const ActorRecord &a = game->view.actors[i];
+            if (a.kind != static_cast<std::uint8_t>(ActorKind::Cycler))
+                continue;
+            ++cyclers;
+            // (A half turn of pitch: turned over, and faced the other way.)
+            over += actorHungOver(a.kind, a.flags) && a.yaw == 32768;
+        }
+        std::printf("test_blastpit: c1a4d has %d cyclers, %d turned over\n", cyclers, over);
+        check(cyclers == 2 && over == 2, "c1a4d's two bubble pipes are drawn turned over");
+    }
 } // namespace
 
 int main()
@@ -199,6 +221,7 @@ int main()
     }
     testLift(dir);
     testBucket(dir);
+    testActors(dir);
     if (g_failures == 0)
         std::printf("test_blastpit: ok\n");
     return g_failures == 0 ? 0 : 1;
