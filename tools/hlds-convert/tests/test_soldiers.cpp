@@ -1089,6 +1089,51 @@ namespace
     }
 
     /// The bodies a map marks to fade (SF_MONSTER_FADECORPSE) do; others lie.
+    /// A maker keeps as many places as the map lets be alive at once
+    /// (c1a2's headcrabs, five), but a roach swarm only three.
+    void testMakerPlaces(const char *dir)
+    {
+        for (const char *name : {"c1a2", "c1a3"})
+        {
+            auto game = load(dir, name);
+            check(game != nullptr, "a map with makers loads");
+            if (!game)
+                continue;
+            Game &g = *game;
+            int crabs = 0, roaches = 0, wrongPlaces = 0, more = 0, firstMore = -1;
+            for (std::uint32_t i = 0; i < g.view.logicCount; ++i)
+            {
+                const LogicRecord &r = g.view.logic[i];
+                if (r.kind != static_cast<std::uint8_t>(LogicKind::Maker) || r.extra[0] >= static_cast<std::uint32_t>(g.actors.count))
+                    continue;
+                const int places = makerPlaces(r);
+                const std::uint8_t kind = g.actors.states[r.extra[0]].kind;
+                // (Its places past three after every other actor the map
+                // places, so that a save made before keeps them where they
+                // were; each a place for what it makes.)
+                for (int n = 0; n < places; ++n)
+                {
+                    const int place = makerPlace(r, n);
+                    if (place >= g.actors.count || g.actors.states[place].kind != kind)
+                        ++wrongPlaces;
+                    if (n >= static_cast<int>(r.extra[1]))
+                        firstMore = firstMore < 0 ? place : std::min(firstMore, place);
+                }
+                more += static_cast<int>(r.extra[3] >> 16);
+                if (kind == static_cast<std::uint8_t>(ActorKind::Headcrab))
+                    crabs = std::max(crabs, places);
+                if (kind == static_cast<std::uint8_t>(ActorKind::Cockroach))
+                    roaches = std::max(roaches, places);
+            }
+            std::printf("test_soldiers: %s: a crab maker keeps up to %d places, a roach maker %d\n", name, crabs, roaches);
+            if (std::string(name) == "c1a2")
+                check(crabs == 5, "c1a2's crab maker keeps five places, as many as may be alive");
+            check(roaches <= 3, "... and a roach maker no more than three");
+            check(wrongPlaces == 0, "... each place one for what it makes");
+            check(more == 0 || firstMore == static_cast<int>(g.view.actorCount) - more,
+                  "... those past three after every other actor");
+        }
+    }
     void testFadeCorpse(const char *dir)
     {
         auto game = load(dir, "c4a1a");
@@ -1143,6 +1188,7 @@ int main()
         testLauncher(dir);
         testCasingNeeds(dir);
         testShotgun(dir);
+        testMakerPlaces(dir);
         testFadeCorpse(dir);
         testMade(dir);
     }

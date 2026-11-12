@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <vector>
 
 #include "TestGame.hpp"
 #include "hlds/AtomicWrite.hpp"
@@ -173,8 +174,22 @@ namespace
                 continue;
             Game &g = *game;
             int first = -1, lastOld = -1;
+            // (Not a maker's places past its first three: those go after
+            // everything, round 3's too -- level version 66's.)
+            std::vector<bool> later(static_cast<std::size_t>(g.actors.recordCount), false);
+            for (std::uint32_t r = 0; r < g.view.logicCount; ++r)
+            {
+                const LogicRecord &maker = g.view.logic[r];
+                if (maker.kind != static_cast<std::uint8_t>(LogicKind::Maker))
+                    continue;
+                for (int n = static_cast<int>(maker.extra[1]); n < makerPlaces(maker); ++n)
+                    if (makerPlace(maker, n) < g.actors.recordCount)
+                        later[static_cast<std::size_t>(makerPlace(maker, n))] = true;
+            }
             for (int i = 0; i < g.actors.recordCount; ++i)
             {
+                if (later[static_cast<std::size_t>(i)])
+                    continue;
                 const std::uint8_t kind = g.actors.records[i].kind;
                 if (kind >= static_cast<std::uint8_t>(ActorKind::Cockroach))
                     first = first < 0 ? i : first;

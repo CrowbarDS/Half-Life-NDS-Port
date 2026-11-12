@@ -270,6 +270,13 @@ namespace hlds
                    kind == ActorKind::Gman || kind == ActorKind::Generic;
         }
 
+        /// The most places a monstermaker keeps for what it makes (the
+        /// game's largest, a snark pit's, is fifteen). The first
+        /// kMakerPlacesInPlace are kept after its record's actor; the rest
+        /// after every other actor (level version 66), so that none moves.
+        constexpr int kMaxMakerPlaces = 16;
+        constexpr int kMakerPlacesInPlace = 3;
+
         ActorInfo actorOf(const Entity &entity)
         {
             ActorInfo info;
@@ -278,12 +285,14 @@ namespace hlds
             int spare = 0;
             if (cls == "monstermaker")
             {
-                // It is what it makes, a few times over: as many as may be
-                // alive at once, and never more than three.
+                // It is what it makes, a few times over: as many as the map
+                // lets be alive at once (m_iMaxLiveChildren). A swarm of
+                // roaches is scenery, and each is a place kept: three.
                 cls = lowered(entity.value("monstertype"));
                 const int count = static_cast<int>(numberKey(entity, "monstercount"));
                 const int alive = static_cast<int>(numberKey(entity, "m_imaxlivechildren"));
-                spare = std::clamp(alive > 0 ? alive : (count > 0 ? count : 2), 1, 3);
+                const int most = cls == "monster_cockroach" ? 3 : kMaxMakerPlaces;
+                spare = std::clamp(alive > 0 ? alive : (count > 0 ? count : 2), 1, most);
                 if (count > 0)
                     spare = std::min(spare, count);
             }
@@ -3474,6 +3483,14 @@ namespace hlds
         // so an actor a save points at keeps its place -- the later items,
         // then the last ones, then round 3's monsters, then round 4's, then
         // round 5's ... then the rats, level version 65's.)
+        // (A maker's places past its first three, to go last.)
+        struct MakerMore
+        {
+            int record;
+            int count;
+            ActorRecord actor;
+        };
+        std::vector<MakerMore> makerMore;
         for (int round = 0; round < 9; ++round)
         for (std::size_t e = 0; e < entities.size(); ++e)
         {
@@ -3813,12 +3830,15 @@ namespace hlds
                 // A maker's children: places kept, nobody in them yet.
                 actor.flags |= kActorDormant;
                 const int record = out.recordOfEntity[e];
+                const int here = std::min(info.spare, kMakerPlacesInPlace);
                 if (record >= 0)
                 {
                     out.records[record].extra[0] = static_cast<std::uint32_t>(out.actors.size());
-                    out.records[record].extra[1] = static_cast<std::uint32_t>(info.spare);
+                    out.records[record].extra[1] = static_cast<std::uint32_t>(here);
+                    if (info.spare > here)
+                        makerMore.push_back({record, info.spare - here, actor});
                 }
-                for (int n = 1; n < info.spare; ++n)
+                for (int n = 1; n < here; ++n)
                     out.actors.push_back(actor);
             }
             if (actorClass == "monster_grunt_repel")
@@ -3984,6 +4004,16 @@ namespace hlds
             item.light = 24;
             item.item = static_cast<std::uint32_t>(what->kind);
             out.actors.push_back(item);
+        }
+
+        // (And last of all, a maker's places past its first three: level
+        // version 66's.)
+        for (const MakerMore &more : makerMore)
+        {
+            out.records[more.record].extra[3] =
+                static_cast<std::uint32_t>(out.actors.size()) | (static_cast<std::uint32_t>(more.count) << 16);
+            for (int n = 0; n < more.count; ++n)
+                out.actors.push_back(more.actor);
         }
 
         // Where a train is driven from (CFuncTrainControls::Find and the

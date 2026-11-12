@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 65;
+    inline constexpr std::uint16_t kLevelVersion = 66;
     /// The oldest level format this build reads. (49: a map's textures are
     /// stored in its archive as they are, never compressed, so that one that
     /// streams is read straight in during play. 50: each texture's record
@@ -105,6 +105,8 @@ namespace hldata
     /// it: a build before would read it from the wrong place. 65: the
     /// hazard course's rats, a kind a build before has not got, and their
     /// model marked as a DSi's only (kModelRefDsiOnly), which it refuses.
+    /// (66: a monstermaker's places past its first three, after every other
+    /// actor, which a build of 65 leaves alone: it makes three at once.)
     inline constexpr std::uint16_t kLevelMinReader = 65;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,
@@ -566,7 +568,9 @@ namespace hldata
         /// may make in all (0: no end to them), `waitMs` the time between
         /// two while it is on (kLogicStartOpen: on from the start;
         /// kLogicToggle: one each time it is used instead). Its target is
-        /// fired for each one made.
+        /// fired for each one made. From version 66, extra[3]: more places,
+        /// past its first three, in a block after every other actor (the
+        /// first in its low 16 bits, how many in its top 16): makerPlace.
         Maker,
         /// A wall unit that gives health (or, the other, armour) while USE
         /// is held on it. How much it holds is the game's level's
@@ -1617,6 +1621,18 @@ namespace hldata
         std::uint16_t model;     ///< into Models; 0 = none
         std::uint32_t reserved[2];
     };
+
+    /// How many places a monstermaker's record keeps, and which actor its
+    /// `n`th is: extra[1] of them from extra[0], then extra[3]'s block.
+    inline int makerPlaces(const LogicRecord &r)
+    {
+        return static_cast<int>(r.extra[1] + (r.extra[3] >> 16));
+    }
+    inline int makerPlace(const LogicRecord &r, int n)
+    {
+        return n < static_cast<int>(r.extra[1]) ? static_cast<int>(r.extra[0]) + n
+                                                : static_cast<int>(r.extra[3] & 0xFFFFu) + n - static_cast<int>(r.extra[1]);
+    }
 
     static_assert(sizeof(SectionDir) == 12);
     static_assert(sizeof(LevelHeader) == 64);

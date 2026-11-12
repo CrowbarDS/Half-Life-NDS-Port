@@ -539,7 +539,8 @@ namespace hldata
                 (r.kind == static_cast<std::uint8_t>(LogicKind::Camera) && r.extra[0] > 7))
                 return LevelError::BadIndex;
             if (r.kind == static_cast<std::uint8_t>(LogicKind::Maker) &&
-                (r.extra[0] > actorCount || r.extra[1] > actorCount - r.extra[0]))
+                (r.extra[0] > actorCount || r.extra[1] > actorCount - r.extra[0] ||
+                 (r.extra[3] & 0xFFFFu) > actorCount || (r.extra[3] >> 16) > actorCount - (r.extra[3] & 0xFFFFu)))
                 return LevelError::BadIndex;
             if (r.kind == static_cast<std::uint8_t>(LogicKind::TrackChange) &&
                 ((r.extra[1] != kNoCorner && r.extra[1] >= cornerCount) ||

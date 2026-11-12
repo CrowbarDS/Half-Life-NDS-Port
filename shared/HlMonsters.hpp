@@ -1049,9 +1049,10 @@ namespace hldata
             // Its children who have fallen fade away (ShouldFadeOnDeath: one
             // that came from a spawner does), and their places are free once
             // they are gone.
-            for (int n = 0; n < static_cast<int>(record.extra[1]); ++n)
+            const int count = makerPlaces(record);
+            for (int n = 0; n < count; ++n)
             {
-                const int child = static_cast<int>(record.extra[0]) + n;
+                const int child = makerPlace(record, n);
                 if (child < a.count && a.states[child].active && a.states[child].ai == kAiDead)
                     corpseFadeStart(a.states[child]);
             }
@@ -1071,23 +1072,24 @@ namespace hldata
                 return;
             // A place of its own that is free: never used, or whose last
             // tenant is dead and has lain a while.
-            const int first = static_cast<int>(record.extra[0]);
-            const int count = static_cast<int>(record.extra[1]);
             int slot = -1;
-            for (int n = 0; n < count && first + n < a.recordCount; ++n)
+            for (int n = 0; n < count; ++n)
             {
-                const ActorState &there = a.states[first + n];
+                const int place = makerPlace(record, n);
+                if (place >= a.recordCount)
+                    continue;
+                const ActorState &there = a.states[place];
                 if (there.active && there.ai != kAiDead)
                     continue;
                 if (!there.active)
                 {
-                    slot = first + n;
+                    slot = place;
                     break;
                 }
                 // (A body still fading: its place, if no other is free --
                 // the game makes the next while the last is going.)
                 if (slot < 0 && there.ai == kAiDead)
-                    slot = first + n;
+                    slot = place;
             }
             if (slot < 0)
             {
