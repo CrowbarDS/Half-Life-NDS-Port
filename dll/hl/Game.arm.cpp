@@ -295,6 +295,7 @@ namespace hlrt
         logicInit(logic);
         moverReachAll(world);
         actorsInit(actors, view.actors, static_cast<int>(view.actorCount), view.nameHashes, world);
+        consoleActors(logic, isDSiMode());
         actors.nodes = view.pathNodes;
         actors.links = view.pathLinks;
         actors.nodeCount = static_cast<int>(view.pathNodeCount);
@@ -629,6 +630,7 @@ namespace hlrt
         std::memset(styleValues_, 0xFF, sizeof(styleValues_));
         inHand_ = -1;
         consoleLimits(actors, logic, isDSiMode());
+        consoleActors(logic, isDSiMode());
     }
 
     std::uint32_t Game::storedBytes()

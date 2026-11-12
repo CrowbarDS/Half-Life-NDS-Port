@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 64;
+    inline constexpr std::uint16_t kLevelVersion = 65;
     /// The oldest level format this build reads. (49: a map's textures are
     /// stored in its archive as they are, never compressed, so that one that
     /// streams is read straight in during play. 50: each texture's record
@@ -102,8 +102,10 @@ namespace hldata
     /// leaves alone: it passes over the brush by its box, as it did.)
     /// 64: a twelfth group in the soldiers' table (what they call out at
     /// the sight of an alien), which moves the people's talk table after
-    /// it: a build before would read it from the wrong place.
-    inline constexpr std::uint16_t kLevelMinReader = 64;
+    /// it: a build before would read it from the wrong place. 65: the
+    /// hazard course's rats, a kind a build before has not got, and their
+    /// model marked as a DSi's only (kModelRefDsiOnly), which it refuses.
+    inline constexpr std::uint16_t kLevelMinReader = 65;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,
     /// 28 -> 29 a func_train's global name (extra[3], 0 before: read as
@@ -1017,6 +1019,13 @@ namespace hldata
     {
         return ref.name[sizeof(ref.name) - 1] == kModelRefLazy;
     }
+    /// A model only actors a DS leaves out wear (actorDsiOnly): a DS does
+    /// not load it.
+    inline constexpr char kModelRefDsiOnly = 2;
+    inline bool modelRefDsiOnly(const ModelRef &ref)
+    {
+        return ref.name[sizeof(ref.name) - 1] == kModelRefDsiOnly;
+    }
 
     /// What an actor is: how it behaves when nothing is directing it.
     enum class ActorKind : std::uint8_t
@@ -1073,6 +1082,7 @@ namespace hldata
         /// of ActorRecord::item, and for a light, its glow's colour (RGB555)
         /// in the top 16.
         Xen,
+        Rat, ///< the hazard course's: stands about, looks round, dies (monster_rat)
         Count
     };
 
@@ -1094,6 +1104,13 @@ namespace hldata
         return kind == static_cast<std::uint8_t>(ActorKind::Miniturret) ||
                kind == static_cast<std::uint8_t>(ActorKind::Sentry) ||
                kind == static_cast<std::uint8_t>(ActorKind::Turret);
+    }
+
+    /// The kinds a DS leaves out of a map, and their models: its heap has
+    /// no room for them on the tightest (the rats: t0a0b).
+    inline bool actorDsiOnly(std::uint8_t kind)
+    {
+        return kind == static_cast<std::uint8_t>(ActorKind::Rat);
     }
 
     /// The kinds that think as the game's monsters do (HlAi.hpp).
@@ -1128,6 +1145,7 @@ namespace hldata
         case ActorKind::BigMomma:
         case ActorKind::Nihilanth:
         case ActorKind::Boid:
+        case ActorKind::Rat:
             return true;
         default:
             return false;

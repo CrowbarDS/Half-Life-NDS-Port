@@ -528,6 +528,66 @@ namespace
         check(shotFromRope, "... and shoots on the way down");
         check(landed, "... and lands at the foot of it");
     }
+    /// The hazard course's rats (CRat): there, thinking as a plain monster
+    /// does, and they die.
+    void testRats(const char *dir)
+    {
+        auto game = load(dir, "t0a0b");
+        check(game != nullptr, "t0a0b loads");
+        if (!game)
+            return;
+        Game &g = *game;
+        const int rats = countKind(g, ActorKind::Rat);
+        const int k = findKind(g, ActorKind::Rat);
+        std::printf("test_bosses: t0a0b has %d rats\n", rats);
+        check(rats == 3 && k >= 0, "t0a0b's three rats");
+        {
+            // After every other actor the map places (a save made before
+            // they were points at those by where they are; the places kept
+            // for what is dropped come last, as they always have).
+            int lastOther = -1, firstRat = -1;
+            for (std::uint32_t i = 0; i < g.view.actorCount; ++i)
+            {
+                if (g.view.actors[i].kind == static_cast<std::uint8_t>(ActorKind::Rat))
+                    firstRat = firstRat < 0 ? static_cast<int>(i) : firstRat;
+                else if (!(g.view.actors[i].flags & kActorDormant))
+                    lastOther = static_cast<int>(i);
+            }
+            check(firstRat > lastOther, "... cooked after every other actor the map places");
+        }
+        if (k < 0)
+            return;
+        const ModelView *model = actorModel(g.actors, g.actors.states[k]);
+        check(model != nullptr && model->findClip(nameHash("die1")) >= 0, "... with their model and its death");
+        const std::uint16_t ref = g.view.actors[k].model;
+        check(ref < g.view.modelRefCount && modelRefDsiOnly(g.view.modelRefs[ref]),
+              "... which is a DSi's only (a DS has no room for it there)");
+        {
+            // On a DS: not there.
+            auto ds = load(dir, "t0a0b");
+            if (ds)
+            {
+                consoleActors(ds->logic, false);
+                int there = 0;
+                for (int i = 0; i < ds->actors.count; ++i)
+                    there += ds->actors.states[i].active &&
+                                     ds->actors.states[i].kind == static_cast<std::uint8_t>(ActorKind::Rat)
+                                 ? 1
+                                 : 0;
+                check(there == 0, "... and a DS leaves them out");
+            }
+        }
+        for (int t = 0; t < 30 * 3; ++t)
+            tickStill(g);
+        const AiMonster *m = aiFind(g.actors, k);
+        check(g.actors.states[k].active && m != nullptr && m->schedule != nullptr, "... thinking as the game's do");
+        const fx at[3] = {g.actors.states[k].pos[0], g.actors.states[k].pos[1], g.actors.states[k].pos[2] + fxFromInt(4)};
+        radiusDamage(g.logic, g.player, at, 50, 64, -1);
+        for (int t = 0; t < 30 * 3; ++t)
+            tickStill(g);
+        std::printf("test_bosses: the rat's state after a blast: ai %d\n", g.actors.states[k].ai);
+        check(g.actors.states[k].ai >= kAiDying, "... and a blast kills one");
+    }
 } // namespace
 
 int main()
@@ -545,6 +605,7 @@ int main()
     testFlock(valve);
     testRepel(valve);
     testRepelFight(valve);
+    testRats(valve);
     if (g_failures == 0)
         std::printf("test_bosses: ok\n");
     return g_failures == 0 ? 0 : 1;

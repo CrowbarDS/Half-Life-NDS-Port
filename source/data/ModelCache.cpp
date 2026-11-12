@@ -829,6 +829,9 @@ namespace hlrt
                 lazy_[i].bundles = hldata::bundlesOf(name);
                 continue;
             }
+            // (Worn only by what a DS leaves out of the map: consoleActors.)
+            if (!global.isDSi && hldata::modelRefDsiOnly(level.view.modelRefs[i]))
+                continue;
 #ifdef HLDS_CHILD
             // (Sent the game: a model of the group's base was kept when it
             // came, and is borrowed -- never this cache's to free.)

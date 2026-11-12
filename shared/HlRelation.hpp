@@ -100,6 +100,7 @@ namespace hldata
         case ActorKind::Nihilanth:
             return kClassAlienMilitary;
         case ActorKind::Cockroach:
+        case ActorKind::Rat:
         case ActorKind::Leech:
         case ActorKind::Boid:
             return kClassInsect;

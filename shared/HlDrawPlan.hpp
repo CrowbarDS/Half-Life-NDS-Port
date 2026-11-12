@@ -39,6 +39,7 @@ namespace hldata
         // enemy that never is.)
         if (actor.kind == static_cast<std::uint8_t>(ActorKind::Cockroach) ||
             actor.kind == static_cast<std::uint8_t>(ActorKind::Leech) ||
+            actor.kind == static_cast<std::uint8_t>(ActorKind::Rat) ||
             actor.kind == static_cast<std::uint8_t>(ActorKind::Boid))
             return kDrawProp;
         if (fights(actor.kind))

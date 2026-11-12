@@ -364,6 +364,9 @@ namespace hlds
                 const char *name = view.modelRefs[i].name;
                 if (hldata::modelRefLazy(view.modelRefs[i]))
                     continue;
+                // (A console sent the game is a DS: not what only a DSi has.)
+                if (air && hldata::modelRefDsiOnly(view.modelRefs[i]))
+                    continue;
                 const bool player = coloured && std::strcmp(name, kPlayerModel) == 0;
                 const std::size_t skinsBefore = skins.size();
                 if (packing.add(player ? playerModel : stage / "mdl" / map / (std::string(name) + ".hmd"),

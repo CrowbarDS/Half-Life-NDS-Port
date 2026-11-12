@@ -339,6 +339,7 @@ namespace hldata
         {"monster_bigmomma", ActorKind::BigMomma},      {"bigmomma", ActorKind::BigMomma},
         {"monster_nihilanth", ActorKind::Nihilanth},    {"nihilanth", ActorKind::Nihilanth},
         {"monster_flyer", ActorKind::Boid},             {"boid", ActorKind::Boid},
+        {"monster_rat", ActorKind::Rat},                {"rat", ActorKind::Rat},
     };
     /// ActorKind::Count if there is no such monster.
     inline ActorKind kindOfName(const char *name)

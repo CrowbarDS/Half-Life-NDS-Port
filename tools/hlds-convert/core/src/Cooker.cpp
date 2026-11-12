@@ -1254,6 +1254,23 @@ namespace hlds
                     level.viewModel = static_cast<std::uint16_t>(m + 1);
             }
             level.actors = std::move(logic.actors);
+            // A model only what a DS leaves out wears is a DSi's only.
+            for (std::size_t m = 0; m < level.modelRefs.size(); ++m)
+            {
+                ModelRef &ref = level.modelRefs[m];
+                if (modelRefLazy(ref))
+                    continue;
+                bool worn = false, dsiOnly = true;
+                for (const ActorRecord &actor : level.actors)
+                {
+                    if (actor.model != m)
+                        continue;
+                    worn = true;
+                    dsiOnly = dsiOnly && actorDsiOnly(actor.kind);
+                }
+                if (worn && dsiOnly)
+                    ref.name[sizeof(ref.name) - 1] = kModelRefDsiOnly;
+            }
             if (level.actors.size() > static_cast<std::size_t>(kMaxMapActors))
             {
                 error = "the map has " + std::to_string(level.actors.size()) + " actors, more than the " +

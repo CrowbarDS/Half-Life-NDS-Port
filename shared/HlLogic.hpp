@@ -885,6 +885,23 @@ namespace hldata
             actors.pieces[i].kind = 0;
     }
 
+    /// What a DS leaves out of the map (actorDsiOnly): not there, and never
+    /// made. After actorsInit, and again after a state is laid back (one
+    /// from a DSi has them).
+    inline void consoleActors(LogicWorld &w, bool dsi)
+    {
+        if (dsi || w.actors == nullptr || w.actors->records == nullptr)
+            return;
+        ActorWorld &a = *w.actors;
+        for (int i = 0; i < a.recordCount && i < a.count; ++i)
+        {
+            if (!actorDsiOnly(a.records[i].kind))
+                continue;
+            a.states[i].active = false;
+            actorPlaceBox(a, i);
+        }
+    }
+
     inline void logicUseTargets(LogicWorld &w, PlayerState &player, int index, int useType,
                                 int depth)
     {

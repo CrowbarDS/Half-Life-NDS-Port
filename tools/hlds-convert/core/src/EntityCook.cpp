@@ -84,7 +84,7 @@ namespace hlds
                 "xen_hair", "xen_spore_small", "xen_spore_medium", "xen_spore_large", "xen_tree", "xen_plantlight",
                 "item_antidote", "item_security", "item_airtank", "item_longjump",
                 "monster_gargantua", "monster_babycrab", "monster_hevsuit_dead",
-                "monster_human_assassin", "monster_ichthyosaur",
+                "monster_human_assassin", "monster_ichthyosaur", "monster_rat",
                 "func_tank", "func_tanklaser", "func_tankrocket", "func_tankmortar", "func_tankcontrols",
                 "func_mortar_field", "momentary_rot_button", "momentary_door", "monster_tentacle",
                 "monster_apache", "monster_bigmomma", "info_bigmomma", "monster_nihilanth",
@@ -354,6 +354,10 @@ namespace hlds
                 info = {true, ActorKind::Cockroach, "models/roach.mdl", {}, ""};
                 info.firstSequence = true;
                 info.solid = false; // (stepped on, not walked into)
+            }
+            else if (cls == "monster_rat")
+            {
+                info = {true, ActorKind::Rat, "models/bigrat.mdl", {}, "idle7"}; // (the heaviest idle: a DS keeps only it)
             }
             else if (cls == "monster_leech")
             {
@@ -3469,8 +3473,8 @@ namespace hlds
         // the format added comes after everything that was there before it,
         // so an actor a save points at keeps its place -- the later items,
         // then the last ones, then round 3's monsters, then round 4's, then
-        // round 5's.)
-        for (int round = 0; round < 8; ++round)
+        // round 5's ... then the rats, level version 65's.)
+        for (int round = 0; round < 9; ++round)
         for (std::size_t e = 0; e < entities.size(); ++e)
         {
             const Entity &entity = entities[e];
@@ -3485,7 +3489,8 @@ namespace hlds
             // (Round 6: level version 39's -- Xen's plants, and three items.)
             const bool round6 = info.kind == ActorKind::Xen ||
                                 static_cast<int>(info.item) >= static_cast<int>(ItemKind::Antidote);
-            const int itemRound = info.item == ItemKind::LongJump ? 7 // (level version 45's)
+            const int itemRound = info.kind == ActorKind::Rat ? 8 // (level version 65's)
+                                  : info.item == ItemKind::LongJump ? 7 // (level version 45's)
                                   : round6 ? 6
                                   : round5 ? 5
                                   : round4 ? 4

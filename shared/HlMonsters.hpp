@@ -78,7 +78,8 @@ namespace hldata
                kind == static_cast<std::uint8_t>(ActorKind::Tentacle) ||
                kind == static_cast<std::uint8_t>(ActorKind::BigMomma) ||
                kind == static_cast<std::uint8_t>(ActorKind::Nihilanth) ||
-               kind == static_cast<std::uint8_t>(ActorKind::Boid);
+               kind == static_cast<std::uint8_t>(ActorKind::Boid) ||
+               kind == static_cast<std::uint8_t>(ActorKind::Rat);
     }
 
     inline bool isGrunt(std::uint8_t kind)
@@ -204,6 +205,9 @@ namespace hldata
         // them by what they are for, idle and walk.)
         static const MonsterKind kCockroach = {1, true, fxFromInt(4), fxFromInt(4), fxFromInt(60),
                                                "run", "run", "run", "run"};
+        // (The rat is no size at all in the game: a little, as the roach.)
+        static const MonsterKind kRat = {8, true, fxFromInt(6), fxFromInt(8), fxFromInt(40),
+                                         "idle7", "walk2", "idle7", "die1"};
         static const MonsterKind kLeech = {2, true, fxFromInt(6), fxFromInt(6), fxFromInt(100),
                                            "swim", "swim", "swim", "death"};
         static const MonsterKind kAlienGrunt = {90, false, fxFromInt(32), fxFromInt(64), fxFromInt(150),
@@ -264,6 +268,7 @@ namespace hldata
         case ActorKind::BigMomma:   return kBigMomma;
         case ActorKind::Nihilanth:  return kNihilanth;
         case ActorKind::Boid:       return kBoid;
+        case ActorKind::Rat:        return kRat;
         default:                    break;
         }
         if (kind == static_cast<std::uint8_t>(ActorKind::Grunt))

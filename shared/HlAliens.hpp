@@ -309,6 +309,31 @@ namespace hldata
         }
     } // namespace roach
 
+    // =================================================================== rat
+
+    /// CRat: no more than a monster -- the game's own schedules, nothing of
+    /// its own; it stands about, looks round at what it hears, and dies.
+    namespace rat
+    {
+        inline int yawSpeed(AiCtx &) { return 45; }
+
+        inline const AiKind &kind()
+        {
+            static const AiKind k = []
+            {
+                AiKind k;
+                k.kind = static_cast<std::uint8_t>(ActorKind::Rat);
+                k.health = 8;
+                k.eye = fxFromInt(6);
+                k.fov = fxDot(0.5);
+                k.blood = kBloodRed;
+                k.yawSpeed = yawSpeed;
+                return k;
+            }();
+            return k;
+        }
+    } // namespace rat
+
     // ================================================================= snark
 
     namespace snark
@@ -4776,6 +4801,7 @@ namespace hldata
         case ActorKind::BigMomma:   return &momma::kind();
         case ActorKind::Nihilanth:  return &nihilanth::kind();
         case ActorKind::Boid:       return &boid::kind();
+        case ActorKind::Rat:        return &rat::kind();
         default:                    return aiMilitaryKindOf(kind);
         }
     }

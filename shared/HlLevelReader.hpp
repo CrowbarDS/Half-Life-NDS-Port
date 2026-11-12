@@ -366,9 +366,11 @@ namespace hldata
         for (std::uint32_t i = 0; i < modelRefCount; ++i)
         {
             // The name becomes a file name on the card: it must end (before
-            // the last byte, which says whether it is a lazy weapon's).
+            // the last byte, which says whether it is a lazy weapon's, or
+            // a DSi's only).
             const char last = modelRefs[i].name[sizeof(modelRefs[i].name) - 1];
-            if (modelRefs[i].name[sizeof(modelRefs[i].name) - 2] != '\0' || (last != '\0' && last != kModelRefLazy))
+            if (modelRefs[i].name[sizeof(modelRefs[i].name) - 2] != '\0' ||
+                (last != '\0' && last != kModelRefLazy && last != kModelRefDsiOnly))
                 return LevelError::BadIndex;
         }
         // (The sky's six pictures, from the one the header names.)
