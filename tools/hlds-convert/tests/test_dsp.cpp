@@ -12,6 +12,7 @@
 #include <random>
 
 #include "HlAnim.hpp"
+#include "HlCull.hpp"
 #include "HlDsp.hpp"
 #include "HlPlayerMove.hpp"
 
@@ -500,12 +501,143 @@ namespace
         }
         check(wrong == 0, "a key's w as through 64 bits");
     }
+    // The view's culling as it was, with 32-bit multiplies: the 16-bit ones
+    // must say the same of every box and sphere.
+    bool boxOutsideBefore(const CullPlane *planes, int count, const std::int16_t *mins, const std::int16_t *maxs)
+    {
+        for (int p = 0; p < count; ++p)
+        {
+            const CullPlane &plane = planes[p];
+            const std::int32_t d = plane.normal[0] * (plane.normal[0] >= 0 ? maxs[0] : mins[0]) +
+                                   plane.normal[1] * (plane.normal[1] >= 0 ? maxs[1] : mins[1]) +
+                                   plane.normal[2] * (plane.normal[2] >= 0 ? maxs[2] : mins[2]);
+            if (d < plane.dist)
+                return true;
+        }
+        return false;
+    }
+    bool sphereOutsideBefore(const CullPlane *planes, int count, const std::int16_t *center, std::int32_t radius)
+    {
+        const std::int32_t reach = radius << 12;
+        for (int p = 0; p < count; ++p)
+        {
+            const CullPlane &plane = planes[p];
+            const std::int32_t d = plane.normal[0] * center[0] + plane.normal[1] * center[1] + plane.normal[2] * center[2];
+            if (d - plane.dist < -reach)
+                return true;
+        }
+        return false;
+    }
+
+    void testCull()
+    {
+        // The bound: whatever the camera's sines and axes, within what each
+        // is at most (HlCull.hpp), every normal is within kCullNormalMost --
+        // at the corners of that range and inside it.
+        int wrong = 0;
+        std::mt19937 random(37);
+        const std::int32_t sines[] = {-kCullSineMost, -1, 0, 1, kCullSineMost};
+        const std::int32_t fronts[] = {-kCullForwardMost, -1, 0, 1, kCullForwardMost};
+        const std::int32_t sides[] = {-kCullSideMost, -1, 0, 1, kCullSideMost};
+        for (const std::int32_t f : fronts)
+            for (const std::int32_t r : sides)
+                for (const std::int32_t u : sides)
+                    for (const std::int32_t sh : sines)
+                        for (const std::int32_t ch : sines)
+                            for (const std::int32_t sv : sines)
+                                for (const std::int32_t cv : sines)
+                                {
+                                    const std::int32_t forward[3] = {f, -f, f}, right[3] = {r, -r, 0}, up[3] = {u, -u, r};
+                                    CullPlane planes[5] = {};
+                                    cullNormals(forward, right, up, sh, ch, sv, cv, planes);
+                                    wrong += !cullNormalsFit(planes, 5);
+                                }
+        const auto within = [&random](std::int32_t most)
+        { return static_cast<std::int32_t>(random() % static_cast<std::uint32_t>(2 * most + 1)) - most; };
+        for (int n = 0; n < 200000; ++n)
+        {
+            const std::int32_t forward[3] = {within(kCullForwardMost), within(kCullForwardMost), within(kCullForwardMost)};
+            const std::int32_t right[3] = {within(kCullSideMost), within(kCullSideMost), within(kCullSideMost)};
+            const std::int32_t up[3] = {within(kCullSideMost), within(kCullSideMost), within(kCullSideMost)};
+            CullPlane planes[5] = {};
+            cullNormals(forward, right, up, within(kCullSineMost), within(kCullSineMost), within(kCullSineMost),
+                        within(kCullSineMost), planes);
+            wrong += !cullNormalsFit(planes, 5);
+        }
+        check(wrong == 0, "the cull planes' normals within 12288 for any camera");
+        CullPlane over[1] = {{{kCullNormalMost + 1, 0, 0}, 0}};
+        CullPlane under[1] = {{{-kCullNormalMost, kCullNormalMost, 0}, 0}};
+        check(!cullNormalsFit(over, 1) && cullNormalsFit(under, 1), "cullNormalsFit holds them to it");
+
+        // The tests themselves: the same answer as with 32-bit multiplies,
+        // at the edges of every range and through a large random set.
+        wrong = 0;
+        const std::int32_t normals[] = {-kCullNormalMost, -1, 0, 1, kCullNormalMost};
+        const std::int16_t corners[] = {-32768, -1, 0, 1, 32767};
+        for (const std::int32_t nx : normals)
+            for (const std::int32_t ny : normals)
+                for (const std::int32_t nz : normals)
+                    for (const std::int16_t lo : corners)
+                        for (const std::int16_t hi : corners)
+                        {
+                            const std::int16_t mins[3] = {lo, hi, lo}, maxs[3] = {hi, lo, hi};
+                            const std::int64_t at = static_cast<std::int64_t>(nx) * (nx >= 0 ? maxs[0] : mins[0]) +
+                                                    static_cast<std::int64_t>(ny) * (ny >= 0 ? maxs[1] : mins[1]) +
+                                                    static_cast<std::int64_t>(nz) * (nz >= 0 ? maxs[2] : mins[2]);
+                            // (On the plane, and a unit either side of it.)
+                            for (const std::int64_t off : {-1, 0, 1})
+                            {
+                                const CullPlane plane[1] = {{{nx, ny, nz}, static_cast<std::int32_t>(at + off)}};
+                                wrong += cullBoxOutside(plane, 1, mins, maxs) != boxOutsideBefore(plane, 1, mins, maxs);
+                                const std::int64_t centre = static_cast<std::int64_t>(nx) * mins[0] +
+                                                            static_cast<std::int64_t>(ny) * mins[1] +
+                                                            static_cast<std::int64_t>(nz) * mins[2];
+                                for (const std::int32_t radius : {0, 1, 100})
+                                {
+                                    const CullPlane round[1] = {{{nx, ny, nz}, static_cast<std::int32_t>(centre + off - (radius << 12))}};
+                                    wrong += cullSphereOutside(round, 1, mins, radius) != sphereOutsideBefore(round, 1, mins, radius);
+                                    const CullPlane far[1] = {{{nx, ny, nz}, static_cast<std::int32_t>(centre + off + (radius << 12))}};
+                                    wrong += cullSphereOutside(far, 1, mins, radius) != sphereOutsideBefore(far, 1, mins, radius);
+                                }
+                            }
+                        }
+        const auto corner = [&random] { return static_cast<std::int16_t>(static_cast<std::int32_t>(random() % 65536) - 32768); };
+        int outside = 0;
+        for (int n = 0; n < 2000000; ++n)
+        {
+            CullPlane planes[5];
+            for (CullPlane &plane : planes)
+            {
+                for (std::int32_t &part : plane.normal)
+                    part = within(kCullNormalMost);
+                // (A view's dist: its normal by where it stands, 32768 units at most out.)
+                plane.dist = static_cast<std::int32_t>(random() % 2400000001u) - 1200000000;
+            }
+            std::int16_t mins[3], maxs[3], centre[3];
+            for (int k = 0; k < 3; ++k)
+            {
+                const std::int16_t a = corner(), b = corner();
+                mins[k] = a < b ? a : b;
+                maxs[k] = a < b ? b : a;
+                centre[k] = corner();
+            }
+            const std::int32_t radius = static_cast<std::int32_t>(random() % (1u << 18));
+            const bool box = cullBoxOutside(planes, 5, mins, maxs);
+            wrong += box != boxOutsideBefore(planes, 5, mins, maxs);
+            wrong += cullSphereOutside(planes, 5, centre, radius) != sphereOutsideBefore(planes, 5, centre, radius);
+            wrong += cullSphereOutside(planes, 4, centre, radius) != sphereOutsideBefore(planes, 4, centre, radius);
+            outside += box ? 1 : 0;
+        }
+        check(wrong == 0, "the view's culling with 16-bit multiplies as with 32-bit");
+        check(outside > 100000 && outside < 1900000, "the random set has boxes both outside and not");
+    }
 } // namespace
 
 int main()
 {
     testSine();
     testUnit();
+    testCull();
     testDefinition();
     testUses();
     testBones();

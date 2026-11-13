@@ -19,17 +19,13 @@
 
 #include <nds.h>
 
+#include "HlCull.hpp"
 #include "HlFixed.hpp"
 
 namespace hlrt
 {
-    /// Inside when dot(normal, point) - dist >= 0. `normal` is Q12 and points
-    /// are whole Half-Life units, so both sides of the comparison are Q12.
-    struct CullPlane
-    {
-        std::int32_t normal[3];
-        std::int32_t dist;
-    };
+    /// (shared/HlCull.hpp: so the host's tests have it.)
+    using CullPlane = hldata::CullPlane;
 
     class Camera
     {

@@ -1,6 +1,7 @@
 #include "render/Camera.hpp"
 
 #include "Global.hpp"
+#include "Guard.hpp"
 #include "HlFog.hpp"
 #include "Settings.hpp"
 
@@ -191,18 +192,13 @@ namespace hlrt
         // Side planes: forward tilted towards the middle by the half-angle.
         const std::int32_t sinH = zoomed ? kZoomSinH : kSinH, cosH = zoomed ? kZoomCosH : kCosH;
         const std::int32_t sinV = zoomed ? kZoomSinV : kSinV, cosV = zoomed ? kZoomCosV : kCosV;
-        for (int i = 0; i < 3; ++i)
-        {
-            const std::int32_t fh = mulQ12(forward[i], sinH);
-            const std::int32_t rh = mulQ12(right[i], cosH);
-            const std::int32_t fv = mulQ12(forward[i], sinV);
-            const std::int32_t uv = mulQ12(up[i], cosV);
-            planes[0].normal[i] = fh + rh; // left edge: inside is to its right
-            planes[1].normal[i] = fh - rh;
-            planes[2].normal[i] = fv + uv; // bottom
-            planes[3].normal[i] = fv - uv;
-            planes[4].normal[i] = -forward[i]; // far
-        }
+        hldata::cullNormals(forward, right, up, sinH, cosH, sinV, cosV, planes);
+        // The culling multiplies them as 16-bit numbers (HlCull.hpp says why
+        // they are): if that were ever not so, it would cull wrongly and
+        // quietly -- stopped here instead, where it shows.
+        if (!hldata::cullNormalsFit(planes, kPlaneCount))
+            guard::crash("cull plane normal not 16-bit", static_cast<std::uint32_t>(planes[0].normal[0]),
+                         static_cast<std::uint32_t>(planes[2].normal[0]), static_cast<std::uint32_t>(roll));
         for (int p = 0; p < 4; ++p)
             planes[p].dist = dotPos(planes[p].normal, pos);
         // (How far the world is drawn is the player's to say: no farther

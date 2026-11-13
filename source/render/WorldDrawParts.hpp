@@ -21,38 +21,18 @@ namespace hlrt::worldparts
         constexpr int kWalkStack = 512;
         inline std::int16_t walkStack[kWalkStack];
 
-        /// True when the box is entirely behind one of the planes.
+        /// True when the box is entirely behind one of the planes
+        /// (shared/HlCull.hpp: 16-bit multiplies).
         inline bool boxOutside(const CullPlane *planes, const std::int16_t *mins,
                                const std::int16_t *maxs)
         {
-            for (int p = 0; p < Camera::kPlaneCount; ++p)
-            {
-                const CullPlane &plane = planes[p];
-                // The corner furthest along the normal: if even that is behind
-                // the plane, the whole box is.
-                const std::int32_t d =
-                    plane.normal[0] * (plane.normal[0] >= 0 ? maxs[0] : mins[0]) +
-                    plane.normal[1] * (plane.normal[1] >= 0 ? maxs[1] : mins[1]) +
-                    plane.normal[2] * (plane.normal[2] >= 0 ? maxs[2] : mins[2]);
-                if (d < plane.dist)
-                    return true;
-            }
-            return false;
+            return cullBoxOutside(planes, Camera::kPlaneCount, mins, maxs);
         }
 
         inline bool sphereOutside(const CullPlane *planes, const std::int16_t *center,
                                   std::int32_t radius, int planeCount = Camera::kPlaneCount)
         {
-            const std::int32_t reach = radius << 12;
-            for (int p = 0; p < planeCount; ++p)
-            {
-                const CullPlane &plane = planes[p];
-                const std::int32_t d = plane.normal[0] * center[0] + plane.normal[1] * center[1] +
-                                       plane.normal[2] * center[2];
-                if (d - plane.dist < -reach)
-                    return true;
-            }
-            return false;
+            return cullSphereOutside(planes, planeCount, center, radius);
         }
 
         /// Descend the render tree to the leaf holding `pos`.
