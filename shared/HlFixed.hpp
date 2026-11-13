@@ -141,6 +141,21 @@ namespace hldata
         return static_cast<fx>(isqrt64(static_cast<std::uint64_t>(sum)));
     }
 
+    namespace detail
+    {
+        // fxSinCos's quarter wave at 14 bits, two more than the answer has, so
+        // that the interpolation is rounded once, at the end, instead of being
+        // cut short twice. (Out here, not in the function: a table local to a
+        // function is copied onto the stack at every call.)
+        inline constexpr std::int16_t kSineQuarter[65] = {
+            0, 402, 804, 1205, 1606, 2006, 2404, 2801, 3196, 3590, 3981,
+            4370, 4756, 5139, 5520, 5897, 6270, 6639, 7005, 7366, 7723, 8076,
+            8423, 8765, 9102, 9434, 9760, 10080, 10394, 10702, 11003, 11297, 11585,
+            11866, 12140, 12406, 12665, 12916, 13160, 13395, 13623, 13842, 14053, 14256,
+            14449, 14635, 14811, 14978, 15137, 15286, 15426, 15557, 15679, 15791, 15893,
+            15986, 16069, 16143, 16207, 16261, 16305, 16340, 16364, 16379, 16384};
+    } // namespace detail
+
     /// Sine and cosine of an angle in turns (65536 to the circle), Q12.
     ///
     /// A quarter wave of 64 steps with straight lines between them, good to
@@ -149,26 +164,18 @@ namespace hldata
     /// the host tests, and both must turn them by exactly the same amount.
     HL_HOT constexpr void fxSinCos(std::uint16_t angle, fx &sine, fx &cosine)
     {
-        // The quarter wave at 14 bits, two more than the answer has, so that
-        // the interpolation is rounded once, at the end, instead of being cut
-        // short twice.
-        constexpr std::int16_t kQuarter[65] = {
-            0, 402, 804, 1205, 1606, 2006, 2404, 2801, 3196, 3590, 3981,
-            4370, 4756, 5139, 5520, 5897, 6270, 6639, 7005, 7366, 7723, 8076,
-            8423, 8765, 9102, 9434, 9760, 10080, 10394, 10702, 11003, 11297, 11585,
-            11866, 12140, 12406, 12665, 12916, 13160, 13395, 13623, 13842, 14053, 14256,
-            14449, 14635, 14811, 14978, 15137, 15286, 15426, 15557, 15679, 15791, 15893,
-            15986, 16069, 16143, 16207, 16261, 16305, 16340, 16364, 16379, 16384};
-        const auto quarterSine = [&](std::uint32_t a) -> fx // a in 0..16384
+        const auto quarterSine = [](std::uint32_t a) -> fx // a in 0..16384
         {
+            const std::int16_t *quarter = detail::kSineQuarter;
             const std::uint32_t index = a >> 8;
             const std::int32_t frac = static_cast<std::int32_t>(a & 255);
-            std::int32_t fine = kQuarter[index >= 64 ? 64 : index];
+            std::int32_t fine = quarter[index >= 64 ? 64 : index];
+            // A step is at most 402 and frac at most 255: both 16-bit.
             if (index < 64)
-                fine += ((kQuarter[index + 1] - kQuarter[index]) * frac + 128) >> 8;
+                fine += smlabb(quarter[index + 1] - quarter[index], frac, 128) >> 8;
             return (fine + 2) >> 2;
         };
-        const auto wave = [&](std::uint16_t a) -> fx
+        const auto wave = [quarterSine](std::uint16_t a) -> fx
         {
             const std::uint32_t quadrant = a >> 14;
             const std::uint32_t within = a & 16383;

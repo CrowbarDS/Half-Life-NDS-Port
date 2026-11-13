@@ -334,10 +334,68 @@ namespace
             wrong += ((t * 45) >> 1) != static_cast<fx>((static_cast<std::int64_t>(t) * 360 * kFxOne) >> 16);
         check(wrong == 0, "turns to degrees in 32 bits");
     }
+    /// fxSinCos as it was, with its own table and a plain multiply: the shared
+    /// table and SMLABB must give every angle's same bits.
+    void sinCosBefore(std::uint16_t angle, fx &sine, fx &cosine)
+    {
+        constexpr std::int16_t kQuarter[65] = {
+            0, 402, 804, 1205, 1606, 2006, 2404, 2801, 3196, 3590, 3981,
+            4370, 4756, 5139, 5520, 5897, 6270, 6639, 7005, 7366, 7723, 8076,
+            8423, 8765, 9102, 9434, 9760, 10080, 10394, 10702, 11003, 11297, 11585,
+            11866, 12140, 12406, 12665, 12916, 13160, 13395, 13623, 13842, 14053, 14256,
+            14449, 14635, 14811, 14978, 15137, 15286, 15426, 15557, 15679, 15791, 15893,
+            15986, 16069, 16143, 16207, 16261, 16305, 16340, 16364, 16379, 16384};
+        const auto quarterSine = [&](std::uint32_t a) -> fx
+        {
+            const std::uint32_t index = a >> 8;
+            const std::int32_t frac = static_cast<std::int32_t>(a & 255);
+            std::int32_t fine = kQuarter[index >= 64 ? 64 : index];
+            if (index < 64)
+                fine += ((kQuarter[index + 1] - kQuarter[index]) * frac + 128) >> 8;
+            return (fine + 2) >> 2;
+        };
+        const auto wave = [&](std::uint16_t a) -> fx
+        {
+            const std::uint32_t within = a & 16383;
+            switch (a >> 14)
+            {
+            case 0:  return quarterSine(within);
+            case 1:  return quarterSine(16384 - within);
+            case 2:  return -quarterSine(within);
+            default: return -quarterSine(16384 - within);
+            }
+        };
+        sine = wave(angle);
+        cosine = wave(static_cast<std::uint16_t>(angle + 16384));
+    }
+
+    void testSine()
+    {
+        int wrong = 0;
+        for (std::uint32_t a = 0; a < 65536; ++a)
+        {
+            fx s, c, ws, wc;
+            fxSinCos(static_cast<std::uint16_t>(a), s, c);
+            sinCosBefore(static_cast<std::uint16_t>(a), ws, wc);
+            wrong += s != ws || c != wc;
+        }
+        // And worked out by the compiler, as a door's constant angle is.
+        constexpr auto atCompile = []
+        {
+            fx s = 0, c = 0;
+            fxSinCos(12345, s, c);
+            return s * 65536 + c;
+        }();
+        fx ws, wc;
+        sinCosBefore(12345, ws, wc);
+        wrong += atCompile != ws * 65536 + wc;
+        check(wrong == 0, "fxSinCos at every angle as with its own table");
+    }
 } // namespace
 
 int main()
 {
+    testSine();
     testDefinition();
     testUses();
     testBones();
