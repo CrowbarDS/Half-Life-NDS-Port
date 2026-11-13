@@ -128,14 +128,70 @@ namespace hldata
             return smlabb(q[3], q[3], smlabb(q[2], q[2], smlabb(q[1], q[1], smulbb(q[0], q[0]))));
         }
 
+        /// The dot of two quaternions whose parts are at most 16384 in size:
+        /// within 32 bits (four products of 2^28 at most).
+        inline std::int32_t dotShort4(const std::int32_t *a, const std::int32_t *b)
+        {
+            return smlabb(a[3], b[3], smlabb(a[2], b[2], smlabb(a[1], b[1], smulbb(a[0], b[0]))));
+        }
+
         /// A stored rotation, whole: the w that was left out put back.
         inline void fullQuat(const ModelKey &key, std::int32_t *q)
         {
             q[0] = key.v[0];
             q[1] = key.v[1];
             q[2] = key.v[2];
-            const std::int32_t rest = (1 << 28) - q[0] * q[0] - q[1] * q[1] - q[2] * q[2];
+            // (The keys are 16-bit and Q14: the three squares fit.)
+            const std::int32_t rest = (1 << 28) - smlabb(q[2], q[2], smlabb(q[1], q[1], smulbb(q[0], q[0])));
             q[3] = rest > 0 ? static_cast<std::int32_t>(isqrt64(static_cast<std::uint64_t>(rest))) : 0;
+        }
+
+        // A blended quaternion back to unit length: its parts times one over
+        // its length, read from a table of the lengths squared a blend can
+        // give -- in the place of a square root and a divide a bone.
+        //
+        // Two unit quaternions, the nearer of q and -q taken (their dot not
+        // negative), blend to a length squared of at least a half: (1-s)^2 +
+        // s^2 + 2s(1-s)dot. A key's rounding takes less than a ten-thousandth
+        // off. The table goes from 0.375 to 1.375 (Q28) in 256 steps, with
+        // straight lines between them, and has whatever is outside as its end.
+        inline constexpr std::int32_t kUnitLow = 3 << 25;  ///< 0.375, Q28
+        inline constexpr int kUnitStepShift = 20;          ///< 256 steps over 1.0
+        struct UnitTable
+        {
+            std::int16_t at[257]; ///< 2^28 / sqrt(length squared), rounded: Q14, at most 26755
+            constexpr UnitTable() : at{}
+            {
+                for (int i = 0; i <= 256; ++i)
+                {
+                    const std::uint64_t x = static_cast<std::uint64_t>(kUnitLow) + (static_cast<std::uint64_t>(i) << kUnitStepShift);
+                    // sqrt(2^56 / x), rounded: (isqrt(4q) + 1) / 2.
+                    const std::uint64_t q = (std::uint64_t(1) << 56) / x;
+                    at[i] = static_cast<std::int16_t>((isqrt64(4 * q) + 1) / 2);
+                }
+            }
+        };
+        inline constexpr UnitTable kUnitTable{};
+
+        /// 2^28 / sqrt(length2), Q14, within one unit of the exact value over
+        /// the table (tests/test_dsp.cpp).
+        inline std::int32_t unitScale(std::int32_t length2)
+        {
+            std::int32_t x = length2 - kUnitLow;
+            x = x < 0 ? 0 : x > (1 << 28) - 1 ? (1 << 28) - 1 : x;
+            const std::int32_t i = x >> kUnitStepShift;
+            const std::int32_t lo = kUnitTable.at[i];
+            // (A step is at most 140 and the fraction 12 bits: both 16-bit.)
+            return lo + (smlabb(kUnitTable.at[i + 1] - lo, (x >> 8) & 4095, 2048) >> 12);
+        }
+
+        /// `quat` (parts at most 16384 in size) back to unit length, Q14.
+        inline void toUnit(std::int32_t *quat)
+        {
+            // (The scale is at most 26755: 16-bit, as the parts are.)
+            const std::int32_t scale = unitScale(squaresShort(quat));
+            for (int i = 0; i < 4; ++i)
+                quat[i] = smulbb(quat[i], scale) >> 14;
         }
 
         /// One bone's rotation and place at `frame` (Q8 frames) of a track.
@@ -156,27 +212,11 @@ namespace hldata
                 fullQuat(rot[index + 1], b);
                 // The same turn is two quaternions, q and -q: blend towards
                 // the nearer.
-                std::int32_t dot = 0;
-                for (int i = 0; i < 4; ++i)
-                    dot += a[i] * b[i];
-                const std::int32_t sign = dot < 0 ? -1 : 1;
+                const std::int32_t sign = dotShort4(a, b) < 0 ? -1 : 1;
+                // (Each part between two unit ones: at most 16384.)
                 for (int i = 0; i < 4; ++i)
                     quat[i] = a[i] + (((sign * b[i] - a[i]) * s) >> 12);
-                // (Each part between two unit ones, at most 16384: the four
-                // squares fit 32 bits.)
-                const std::int32_t length2 = squaresShort(quat);
-                // Back to unit length (Q14).
-                const auto length = static_cast<std::int32_t>(isqrt64(static_cast<std::uint64_t>(length2)));
-                if (length > 0)
-                {
-                    // One divide for the four of them: by its reciprocal
-                    // (Q14; the length is never less than 0.7, two unit
-                    // quaternions being never more than a right angle apart
-                    // once the nearer is taken, so this fits 32 bits).
-                    const auto reciprocal = static_cast<std::int32_t>((std::int64_t(1) << 28) / length);
-                    for (int i = 0; i < 4; ++i)
-                        quat[i] = (quat[i] * reciprocal) >> 14;
-                }
+                toUnit(quat);
             }
 
             const ModelKey *place = keys + track.firstPos;
@@ -204,22 +244,10 @@ namespace hldata
             std::int32_t q[4];
             fx p[3];
             sampleTrack(track, keys, spans, q, p);
-            std::int32_t dot = 0;
-            for (int i = 0; i < 4; ++i)
-                dot += quat[i] * q[i];
-            const std::int32_t sign = dot < 0 ? -1 : 1;
+            const std::int32_t sign = dotShort4(quat, q) < 0 ? -1 : 1;
             for (int i = 0; i < 4; ++i)
                 quat[i] += ((sign * q[i] - quat[i]) * mix) >> 12;
-            const std::int32_t length2 = squaresShort(quat); // (as sampleTrack's)
-            const auto length = static_cast<std::int32_t>(isqrt64(static_cast<std::uint64_t>(length2)));
-            if (length > 0)
-            {
-                // (Two poses of an aim are well within a right angle of each
-                // other, bone by bone: as sampleTrack's, this fits.)
-                const auto reciprocal = static_cast<std::int32_t>((std::int64_t(1) << 28) / length);
-                for (int i = 0; i < 4; ++i)
-                    quat[i] = (quat[i] * reciprocal) >> 14;
-            }
+            toUnit(quat); // (as sampleTrack's: the nearer taken, at least a half)
             for (int i = 0; i < 3; ++i)
                 pos[i] += static_cast<fx>((static_cast<std::int64_t>(p[i] - pos[i]) * mix) >> 12);
         }

@@ -391,11 +391,121 @@ namespace
         wrong += atCompile != ws * 65536 + wc;
         check(wrong == 0, "fxSinCos at every angle as with its own table");
     }
+    /// A blended quaternion back to unit length as it was: a root and a divide.
+    void toUnitBefore(std::int32_t *quat)
+    {
+        const auto length = static_cast<std::int32_t>(isqrt64(static_cast<std::uint64_t>(detail::squaresShort(quat))));
+        if (length > 0)
+        {
+            const auto reciprocal = static_cast<std::int32_t>((std::int64_t(1) << 28) / length);
+            for (int i = 0; i < 4; ++i)
+                quat[i] = (quat[i] * reciprocal) >> 14;
+        }
+    }
+
+    void testUnit()
+    {
+        // The table's scale against 2^28 / sqrt(x), every length squared it
+        // covers: within a unit and a quarter, (4R - 5)^2 x < 2^60 <
+        // (4R + 5)^2 x (measured: -0.99 to +1.18). The root and divide before
+        // were within three (-1.00 to +2.63: cut short twice).
+        const std::uint64_t whole = std::uint64_t(1) << 56;
+        int wrong = 0, wrongBefore = 0;
+        for (std::uint32_t x = detail::kUnitLow; x < detail::kUnitLow + (1u << 28); ++x)
+        {
+            const std::uint64_t r = static_cast<std::uint64_t>(detail::unitScale(static_cast<std::int32_t>(x)));
+            wrong += !((4 * r - 5) * (4 * r - 5) * x < 16 * whole && 16 * whole < (4 * r + 5) * (4 * r + 5) * x);
+            if ((x & 255) == 0)
+            {
+                const std::uint64_t b = (std::uint64_t(1) << 28) / isqrt64(x);
+                wrongBefore += !((b - 3) * (b - 3) * x < whole && whole < (b + 3) * (b + 3) * x);
+            }
+        }
+        check(wrong == 0, "the unit table within 1.25 of 2^28 / sqrt");
+        check(wrongBefore == 0, "the root and divide within 3 of 2^28 / sqrt");
+        int steep = 0;
+        for (int i = 0; i < 256; ++i)
+            steep = std::max(steep, std::abs(detail::kUnitTable.at[i + 1] - detail::kUnitTable.at[i]));
+        check(steep <= 140 && detail::kUnitTable.at[0] <= 26755, "the unit table's steps and top 16-bit");
+
+        // Blends as sampleTrack makes them, from keys as the converter writes
+        // them: the parts as before give or take two, and the length squared
+        // no farther from one than it was (both about 3/10000: each part's
+        // last bit cut off).
+        std::mt19937 random(31);
+        const auto key = [&random]
+        {
+            // A unit quaternion in Q14 with w not negative, w left out.
+            double v[4], length = 0;
+            do
+            {
+                length = 0;
+                for (double &p : v)
+                {
+                    p = static_cast<double>(random()) / random.max() * 2 - 1;
+                    length += p * p;
+                }
+            } while (length < 1e-3 || length > 1);
+            length = std::sqrt(length);
+            const double sign = v[3] < 0 ? -1 : 1; // (-q for a negative w)
+            ModelKey k{};
+            for (int i = 0; i < 3; ++i)
+                k.v[i] = static_cast<std::int16_t>(std::lround(v[i] * sign / length * 16384));
+            return k;
+        };
+        wrong = 0;
+        std::int64_t worst = 0, worstBefore = 0;
+        int far = 0;
+        for (int n = 0; n < 500000; ++n)
+        {
+            std::int32_t a[4], b[4];
+            detail::fullQuat(key(), a);
+            detail::fullQuat(key(), b);
+            const std::int32_t s = static_cast<std::int32_t>(random() % 4097);
+            const std::int32_t sign = detail::dotShort4(a, b) < 0 ? -1 : 1;
+            std::int32_t q[4], before[4];
+            for (int i = 0; i < 4; ++i)
+                q[i] = before[i] = a[i] + (((sign * b[i] - a[i]) * s) >> 12);
+            detail::toUnit(q);
+            toUnitBefore(before);
+            for (int i = 0; i < 4; ++i)
+                far = std::max(far, std::abs(q[i] - before[i]));
+            const std::int64_t off = std::abs(static_cast<std::int64_t>(detail::squaresShort(q)) - (1 << 28));
+            const std::int64_t offBefore = std::abs(static_cast<std::int64_t>(detail::squaresShort(before)) - (1 << 28));
+            worst = std::max(worst, off);
+            worstBefore = std::max(worstBefore, offBefore);
+            // (The dot as through 64 bits.)
+            std::int64_t dot = 0;
+            for (int i = 0; i < 4; ++i)
+                dot += static_cast<std::int64_t>(a[i]) * b[i];
+            wrong += detail::dotShort4(a, b) != dot;
+        }
+        check(wrong == 0, "a quaternion dot in 32 bits as through 64");
+        check(far <= 2, "a blend's parts back to unit as before, give or take two");
+        check(worst <= worstBefore && worst * 3000 <= (std::int64_t(1) << 28),
+              "a blend's length squared as near one as before, within 1/3000");
+        std::printf("test_dsp: unit length off by at most %lld/2^28 (before: %lld), parts by %d\n",
+                    static_cast<long long>(worst), static_cast<long long>(worstBefore), far);
+
+        // The keys' own: fullQuat's squares as through 64 bits.
+        wrong = 0;
+        for (int n = 0; n < 200000; ++n)
+        {
+            const ModelKey k = key();
+            std::int32_t q[4];
+            detail::fullQuat(k, q);
+            const std::int64_t rest = (std::int64_t(1) << 28) - static_cast<std::int64_t>(k.v[0]) * k.v[0] -
+                                      static_cast<std::int64_t>(k.v[1]) * k.v[1] - static_cast<std::int64_t>(k.v[2]) * k.v[2];
+            wrong += q[3] != (rest > 0 ? static_cast<std::int32_t>(isqrt64(static_cast<std::uint64_t>(rest))) : 0);
+        }
+        check(wrong == 0, "a key's w as through 64 bits");
+    }
 } // namespace
 
 int main()
 {
     testSine();
+    testUnit();
     testDefinition();
     testUses();
     testBones();
