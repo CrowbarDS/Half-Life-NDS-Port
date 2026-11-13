@@ -15,6 +15,10 @@
 # engine taken by its name rather than through the engine's table, and the
 # game's code left behind in the ELF.
 #
+# And the Download Play child (child/build/arm9/arm9.elf), which is the engine
+# and the game linked into one program: the same, but the game is meant to be
+# in it there.
+#
 # usage: tools/arm9-report.sh [--check] [--summary] [arm9.elf]
 #   --check    fail if a function of the hot list below calls a helper it
 #              should not, the ITCM is over its budget, or the library
@@ -37,7 +41,8 @@ done
 DSL="$(dirname "$ELF")/../hl/hl.elf"
 [ -f "$ELF" ] || { echo "arm9-report: no $ELF (build first)" >&2; exit 2; }
 
-# One ELF: the program (KIND=main) or the game library (KIND=dsl). (-r: in
+# One ELF: the program (KIND=main), the child (KIND=child) or the game
+# library (KIND=dsl). (-r: in
 # the library a call to the program is a relocation, not an address.)
 report() {
 "$BIN/arm-none-eabi-objdump" -dr -C "$3" | MODE="$1" KIND="$2" python3 -c '
@@ -194,9 +199,9 @@ for name, by in calls.items():
 summary = ("hl.dsl: %d bytes; the game: %d ARM functions, %d Thumb; helper calls: %d on the hardware, %d in the library"
            % (sizes.get(".progbits", (0, 0))[0] + sizes.get(".nobits", (0, 0))[0], len(arm_game), len(thumb_game),
               hard, soft)) if kind_of_elf == "dsl" else \
-          ("arm9: ITCM %d of 32768 bytes, DTCM data %d (the stack has the rest of 16384); "
+          ("%s: ITCM %d of 32768 bytes, DTCM data %d (the stack has the rest of 16384); "
            "the game: %d ARM functions, %d Thumb; helper calls: %d on the hardware, %d in the library"
-           % (itcm_size, dtcm_size, len(arm_game), len(thumb_game), hard, soft))
+           % ("child" if kind_of_elf == "child" else "arm9", itcm_size, dtcm_size, len(arm_game), len(thumb_game), hard, soft))
 
 failed = []
 for name, banned in HOT.items():
@@ -210,7 +215,7 @@ for name, banned in HOT.items():
                 failed.append("%s calls %s (%d)" % (function, helper, count))
     if not found and mode == "check":
         pass  # inlined away, or not in this build: nothing to hold it to
-for name in HOT_ITCM if kind_of_elf == "main" else []:
+for name in HOT_ITCM if kind_of_elf in ("main", "child") else []:
     for function, at in where.items():
         if bare(function) == name and not (itcm_at <= at < itcm_at + 32768):
             failed.append("%s is not in the ITCM (it is at %08x)" % (function, at))
@@ -287,8 +292,9 @@ else:
     # The guarded heap is linked in (build.py: --wrap).
     if not any(name == "__wrap_malloc" for at, size, kind, name in symbols):
         failed.append("the program has no guarded heap (__wrap_malloc): see --wrap in build.py")
-    # The program: none of the game left in it (GameApi.hpp).
-    for at, size, name in functions:
+    # The program: none of the game left in it (GameApi.hpp). (The child
+    # has no library: the game is linked into it.)
+    for at, size, name in functions if kind_of_elf == "main" else []:
         if bare(name) in GAME_ONLY:
             failed.append("%s is in the program, not the library" % name)
 if itcm_size > ITCM_BUDGET:
@@ -338,8 +344,12 @@ if failed:
 ' "$3" "$BIN"
 }
 
+# (The child is told by where it was built.)
+KIND=main
+case "$(realpath "$ELF")" in */child/build/*) KIND=child ;; esac
+
 status=0
-report "$MODE" main "$ELF" || status=$?
+report "$MODE" "$KIND" "$ELF" || status=$?
 if [ -f "$DSL" ]; then
     [ "$MODE" = full ] && echo
     report "$MODE" dsl "$DSL" || status=$?
