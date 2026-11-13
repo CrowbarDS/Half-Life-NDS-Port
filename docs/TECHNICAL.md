@@ -106,6 +106,11 @@ Milestone 11, "levels of detail".
   level change and in a save (`trainUse`, `trainControl`,
   `shared/HlLogic.hpp`). Track trains have the game's engine sound, higher
   the faster they go, and brakes.
+- A track node used by name is switched as in the game: one with no branch
+  on or off (c2a2's lift button opens the track past its gate), one with a
+  branch (`altpath`) onto it or back; a branch marked as the way back only
+  changes where the track runs backwards (`trackNext`, `trackPrevious`,
+  `logicFire` in `shared/HlLogic.hpp`).
 - Fans and doors that turn about any axis; boxes that break (with USE, until
   there is a crowbar) and boxes that are pushed; volumes that hurt, push and
   teleport; health, and dying.

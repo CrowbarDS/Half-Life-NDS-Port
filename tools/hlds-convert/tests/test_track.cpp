@@ -137,6 +137,129 @@ namespace
               "having kept to the track all the way");
     }
 
+    /// A track node used by name (CPathTrack::Use): one that starts off
+    /// (flag 1) is switched on, and the train goes past where the track
+    /// ended -- c2a2's way past the lift's gate; one with a branch
+    /// ("altpath") is switched onto it, and back; and a branch that is the
+    /// way back (flag 4) changes only the way back.
+    void testFiredNodes()
+    {
+        auto ride = [](const char *nodes, Game &g) -> int
+        {
+            BoxRoom room;
+            room.mins[0] = -400, room.maxs[0] = 400;
+            room.mins[1] = -400, room.maxs[1] = 400;
+            BrushBox car;
+            car.className = "func_tracktrain";
+            car.mins[0] = -20, car.mins[1] = -10, car.mins[2] = -4;
+            car.maxs[0] = 20, car.maxs[1] = 10, car.maxs[2] = 4;
+            car.keys = "\"targetname\" \"car\"\n\"origin\" \"0 0 0\"\n\"target\" \"a\"\n"
+                       "\"speed\" \"200\"\n\"height\" \"8\"\n\"wheels\" \"30\"\n\"spawnflags\" \"2\"\n";
+            room.brushes.push_back(car);
+            room.extraEntities = nodes;
+            std::string error;
+            g.ok = g.bsp.parse(buildBoxRoom(room), error);
+            if (g.ok)
+                finish(g, nullptr);
+            g.player.origin[0] = fxFromInt(-380);
+            g.player.origin[1] = fxFromInt(-380);
+            g.player.origin[2] = fxFromInt(40);
+            return g.ok ? g.recordOfKind(LogicKind::TrackTrain) : -1;
+        };
+        auto nameOf = [](const Game &g, const char *name) -> std::uint16_t
+        {
+            for (std::uint32_t c = 0; c < g.view.cornerCount; ++c)
+            {
+                if (g.view.corners[c].name != 0 &&
+                    g.view.nameHashes[g.view.corners[c].name] == nameHash(name))
+                    return g.view.corners[c].name;
+            }
+            return 0;
+        };
+        auto go = [](Game &g, int train, int frames)
+        {
+            logicFire(g.logic, g.player, g.view.logic[train].name, -1, kUseOn, 0);
+            for (int i = 0; i < frames; ++i)
+                g.frame();
+        };
+
+        {
+            // a -> b -> c, c off to begin with.
+            Game g;
+            const int train = ride("{\n\"classname\" \"path_track\"\n\"targetname\" \"a\"\n\"target\" \"b\"\n"
+                                   "\"origin\" \"-300 0 16\"\n}\n"
+                                   "{\n\"classname\" \"path_track\"\n\"targetname\" \"b\"\n\"target\" \"c\"\n"
+                                   "\"origin\" \"-100 0 16\"\n}\n"
+                                   "{\n\"classname\" \"path_track\"\n\"targetname\" \"c\"\n"
+                                   "\"origin\" \"200 0 16\"\n\"spawnflags\" \"1\"\n}\n",
+                                   g);
+            check(train >= 0, "a track with a node that starts off cooks");
+            if (train < 0)
+                return;
+            const BrushState &car = g.brushStates[g.view.logic[train].brush];
+            go(g, train, 90);
+            check(std::fabs(toUnits(car.pos[0]) + 100) < 0.5 && g.states[train].speed == 0,
+                  "the track ends before a node that is off");
+            const std::uint16_t c = nameOf(g, "c");
+            check(c != 0, "a track node keeps its name");
+            logicFire(g.logic, g.player, c, -1, kUseOff, 0);
+            go(g, train, 60);
+            check(std::fabs(toUnits(car.pos[0]) + 100) < 0.5, "switched OFF, it stays off");
+            logicFire(g.logic, g.player, c, -1, kUseToggle, 0);
+            go(g, train, 90);
+            check(std::fabs(toUnits(car.pos[0]) - 200) < 0.5, "used, it is on: the train goes on to it");
+            logicFire(g.logic, g.player, c, -1, kUseOn, 0);
+            check(!(g.logic.cornerState[2] & kNodeOff), "switched ON, it stays on");
+        }
+
+        {
+            // a -> b -> c, and b's branch to e, off to the side.
+            Game g;
+            const int train = ride("{\n\"classname\" \"path_track\"\n\"targetname\" \"a\"\n\"target\" \"b\"\n"
+                                   "\"origin\" \"-300 0 16\"\n}\n"
+                                   "{\n\"classname\" \"path_track\"\n\"targetname\" \"b\"\n\"target\" \"c\"\n"
+                                   "\"altpath\" \"e\"\n\"origin\" \"-100 0 16\"\n}\n"
+                                   "{\n\"classname\" \"path_track\"\n\"targetname\" \"c\"\n"
+                                   "\"origin\" \"200 0 16\"\n}\n"
+                                   "{\n\"classname\" \"path_track\"\n\"targetname\" \"e\"\n"
+                                   "\"origin\" \"-100 250 16\"\n}\n",
+                                   g);
+            check(train >= 0, "a track with a branch cooks");
+            if (train < 0)
+                return;
+            const BrushState &car = g.brushStates[g.view.logic[train].brush];
+            const std::uint16_t b = nameOf(g, "b");
+            logicFire(g.logic, g.player, b, -1, kUseToggle, 0);
+            go(g, train, 120);
+            check(std::fabs(toUnits(car.pos[0]) + 100) < 0.5 && std::fabs(toUnits(car.pos[1]) - 250) < 0.5,
+                  "a node used is switched onto its branch: the train takes it");
+            check(hldata::detail::trackPrevious(g.logic, static_cast<std::uint16_t>(3)) == 1,
+                  "and the branch's node has it as the one before");
+            logicFire(g.logic, g.player, b, -1, kUseOn, 0);
+            check(hldata::detail::trackNext(g.logic, 1) == 2, "switched ON, it goes the usual way again");
+        }
+
+        {
+            // a -> b -> c, and c's branch back to e: going on, nothing changes.
+            Game g;
+            const int train = ride("{\n\"classname\" \"path_track\"\n\"targetname\" \"a\"\n\"target\" \"b\"\n"
+                                   "\"origin\" \"-300 0 16\"\n}\n"
+                                   "{\n\"classname\" \"path_track\"\n\"targetname\" \"b\"\n\"target\" \"c\"\n"
+                                   "\"origin\" \"-100 0 16\"\n}\n"
+                                   "{\n\"classname\" \"path_track\"\n\"targetname\" \"c\"\n"
+                                   "\"altpath\" \"e\"\n\"spawnflags\" \"4\"\n\"origin\" \"200 0 16\"\n}\n"
+                                   "{\n\"classname\" \"path_track\"\n\"targetname\" \"e\"\n"
+                                   "\"origin\" \"200 250 16\"\n}\n",
+                                   g);
+            check(train >= 0, "a track with a branch back cooks");
+            if (train < 0)
+                return;
+            logicFire(g.logic, g.player, nameOf(g, "c"), -1, kUseToggle, 0);
+            check(hldata::detail::trackNext(g.logic, 2) == kNoCorner && hldata::detail::trackPrevious(g.logic, 2) == 3,
+                  "a branch back, switched onto, is only the way back");
+        }
+    }
+
     /// A car faster than a push of 8 units a tick -- 600 a second -- and a
     /// player standing in its way in the open: it shoves them along as far
     /// as it goes each tick (SV_PushMove), and is not held up by them.
@@ -890,6 +1013,38 @@ namespace
         trainUse(g.logic, g.player);
         check(trainDriven(g.logic) < 0 && g.states[train].speed == before, "USE lets go, and the train goes on as it was");
 
+        // The arm lift's button (trainarmswitch, by way of liftgatesmm)
+        // opens the gate across the track and switches tracks12, the node
+        // past it, on: driven again, the train goes past the gate.
+        {
+            const fx *at = g.brushStates[rec.brush].pos;
+            check(toUnits(at[1]) > -2700, "c2a2's train waits short of the lift's gate");
+            const int gate = recordNamed(g, "blocktrack", LogicKind::DoorRotating);
+            std::uint16_t manager = 0;
+            for (std::uint32_t i = 0; i < g.view.logicCount && manager == 0; ++i)
+            {
+                if (g.view.logic[i].kind == static_cast<std::uint8_t>(LogicKind::MultiManager) &&
+                    g.view.logic[i].name != 0 &&
+                    g.view.nameHashes[g.view.logic[i].name] == nameHash("liftgatesmm"))
+                    manager = g.view.logic[i].name;
+            }
+            check(gate >= 0 && manager != 0, "c2a2's lift gate and what opens it");
+            logicFire(g.logic, g.player, manager, -1, kUseToggle, 0);
+            for (int i = 0; i < 30 * 3; ++i)
+                g.frame();
+            check(gate >= 0 && g.brushStates[g.view.logic[gate].brush].angles[kPitch] != 0, "the gate lifts");
+            check(trainUse(g.logic, g.player), "the player takes the controls again");
+            for (int i = 0; i < 3; ++i)
+                trainControl(g.logic, g.player, 1, false, false);
+            for (int i = 0; i < 30 * 3; ++i)
+            {
+                g.frame();
+                trainControl(g.logic, g.player, 0, false, false);
+            }
+            std::printf("test_track: past c2a2's lift gate, the train is at y %.0f\n", toUnits(at[1]));
+            check(toUnits(at[1]) < -2900, "... and drives past the gate, onto the track it opened");
+        }
+
         // c2a3: its crash train is driven from its controls only.
         auto crash = std::make_unique<Game>();
         if (crash->bsp.load(std::string(dir) + "/maps/c2a3.bsp", error))
@@ -1063,6 +1218,7 @@ namespace
 int main()
 {
     testSyntheticTrack();
+    testFiredNodes();
     testFastCarPushes();
     testTrainShoves();
     testDriving();

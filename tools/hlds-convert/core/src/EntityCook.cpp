@@ -1521,6 +1521,7 @@ namespace hlds
             corner.flags = static_cast<std::uint16_t>((flags & kCornerFlagWait ? kCornerWaitForUse : 0) |
                                                       (flags & kCornerFlagTeleport ? kCornerTeleport : 0));
             corner.next = kNoCorner;
+            corner.alt = kNoCorner;
             const std::string name(entity.value("targetname"));
             // Two corners with one name: the first is the one found, as in
             // the game.
@@ -1537,11 +1538,13 @@ namespace hlds
         }
 
         // A track is the same list again, in a namespace of its own: a
-        // path_track's "target" is another path_track.
+        // path_track's "target" is another path_track, and so is its
+        // branch ("altpath"). Each has its own name: used, it is switched
+        // on or off, or onto its branch and back (CPathTrack::Use).
         std::map<std::string, std::uint16_t> trackOfName;
         {
             const std::size_t firstTrack = out.corners.size();
-            std::vector<std::string> trackNext;
+            std::vector<std::string> trackNext, trackAlt;
             for (const Entity &entity : entities)
             {
                 if (entity.className() != "path_track")
@@ -1557,12 +1560,16 @@ namespace hlds
                 const int flags = static_cast<int>(numberKey(entity, "spawnflags"));
                 node.flags = static_cast<std::uint16_t>((flags & 1 ? kCornerDisabled : 0) |
                                                         (flags & 2 ? kCornerFireOnce : 0) |
+                                                        (flags & 4 ? kCornerAltReverse : 0) |
                                                         (flags & 8 ? kCornerDisableTrain : 0));
                 node.next = kNoCorner;
+                node.alt = kNoCorner;
                 const std::string name(entity.value("targetname"));
+                node.name = nameId(name);
                 if (!name.empty() && trackOfName.find(name) == trackOfName.end())
                     trackOfName[name] = static_cast<std::uint16_t>(out.corners.size());
                 trackNext.emplace_back(entity.value("target"));
+                trackAlt.emplace_back(entity.value("altpath"));
                 out.corners.push_back(node);
             }
             for (std::size_t c = firstTrack; c < out.corners.size(); ++c)
@@ -1570,6 +1577,9 @@ namespace hlds
                 const auto found = trackOfName.find(trackNext[c - firstTrack]);
                 if (found != trackOfName.end())
                     out.corners[c].next = found->second;
+                const auto branch = trackOfName.find(trackAlt[c - firstTrack]);
+                if (branch != trackOfName.end())
+                    out.corners[c].alt = branch->second;
             }
         }
         auto trackNode = [&](std::string_view name) -> std::uint16_t

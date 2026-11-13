@@ -52,14 +52,15 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 69;
+    inline constexpr std::uint16_t kLevelVersion = 70;
     /// The oldest level format this build reads. (49: a map's textures are
     /// stored in its archive as they are, never compressed, so that one that
     /// streams is read straight in during play. 50: each texture's record
     /// says how many colours its palette has, which is what a streamed one
     /// is given of palette memory; the record is longer. The maps of a
-    /// converter before are refused, to be converted again.)
-    inline constexpr std::uint16_t kLevelMinVersion = 50;
+    /// converter before are refused, to be converted again. 70: a track
+    /// node's record is longer, its name and its branch: the same.)
+    inline constexpr std::uint16_t kLevelMinVersion = 70;
     /// The oldest build that can read what it writes. (32: what the people
     /// say, after the soldiers' table in Section::Speech, which a build
     /// before would refuse; 33: the round 3 monsters, kinds a build before
@@ -112,8 +113,10 @@ namespace hldata
     /// reads them as what they are.) 68: the switched light over a roach's
     /// floor, in its item's top bits, which a build before reads as a
     /// squad's name and may refuse the map for. (69: that light may be one
-    /// that flickers by itself, which a build of 68 takes as none.)
-    inline constexpr std::uint16_t kLevelMinReader = 68;
+    /// that flickers by itself, which a build of 68 takes as none.) 70: a
+    /// track node's record is longer (its name and its branch), which a
+    /// build before cannot read.
+    inline constexpr std::uint16_t kLevelMinReader = 70;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,
     /// 28 -> 29 a func_train's global name (extra[3], 0 before: read as
@@ -973,6 +976,14 @@ namespace hldata
         /// On a track: a name fired when a train comes to rest here because
         /// the track goes no further; 0 = none.
         std::uint16_t netName;
+        // From level version 70.
+        /// On a track: the node's own name (0 none). Used, it is switched
+        /// on or off -- or, if it has a branch, onto it or back.
+        std::uint16_t name;
+        /// On a track: where its branch goes (path_track "altpath"), or
+        /// kNoCorner. Switched onto it, the track leads there instead of
+        /// to `next` (kCornerAltReverse: only going backwards from it).
+        std::uint16_t alt;
     };
     inline constexpr std::uint16_t kNoCorner = 0xFFFF;
     /// The train stops here until it is used again.
@@ -983,6 +994,8 @@ namespace hldata
     inline constexpr std::uint16_t kCornerDisabled = 4;     ///< the track ends before it
     inline constexpr std::uint16_t kCornerFireOnce = 8;     ///< its fireTarget fires once only
     inline constexpr std::uint16_t kCornerDisableTrain = 16; ///< the train stops being drivable
+    /// Its branch is the way back from it, not on: path_track's "branch reverse".
+    inline constexpr std::uint16_t kCornerAltReverse = 32;
 
     /// A point that is the same place in two maps: info_landmark. The player
     /// leaves one map so far from it and arrives in the next as far from the
@@ -1661,7 +1674,7 @@ namespace hldata
     static_assert(sizeof(ModelRef) == 24);
     static_assert(sizeof(ActorRecord) == 32);
     static_assert(sizeof(LogicAux) == 8);
-    static_assert(sizeof(PathCorner) == 28);
+    static_assert(sizeof(PathCorner) == 32);
 
     /// Light that changes. The world's light is in its vertices' colours,
     /// in the geometry stream; where some of it comes from a light a switch

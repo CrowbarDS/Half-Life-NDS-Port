@@ -386,6 +386,7 @@ namespace hldata
 
     inline constexpr std::uint8_t kNodeOff = 1;   ///< the track ends before this node
     inline constexpr std::uint8_t kNodeSpent = 2; ///< its fire-once target has fired
+    inline constexpr std::uint8_t kNodeAlt = 4;   ///< switched onto its branch (PathCorner::alt)
 
     /// Whether the global state a record depends on lets it work: it names
     /// none, or the one it names is on.
@@ -757,6 +758,21 @@ namespace hldata
                 answered = true;
                 logicUse(w, player, i, caller, useType, depth + 1);
             }
+        }
+        // A track node by that name is switched: on or off, or, if it has a
+        // branch, onto it or back (CPathTrack::Use). "On" is a node that is
+        // open, or one that goes the usual way; ON and OFF only ever switch
+        // it to that, the rest always switch it.
+        for (int c = 0; w.cornerState != nullptr && c < w.cornerCount; ++c)
+        {
+            if (w.corners[c].name != name)
+                continue;
+            answered = true;
+            const std::uint8_t bit = w.corners[c].alt != kNoCorner ? kNodeAlt : kNodeOff;
+            const bool on = !(w.cornerState[c] & bit);
+            if ((useType == kUseOn && on) || (useType == kUseOff && !on))
+                continue;
+            w.cornerState[c] ^= bit;
         }
         // A turret or a monster by that name is switched: it finds out when
         // it next thinks (HlMonsters.hpp, HlAi.hpp).
@@ -2613,6 +2629,18 @@ namespace hldata
             return !move || w.cornerState == nullptr || !(w.cornerState[node] & kNodeOff);
         }
 
+        /// Where the track goes on from `node`: onto its branch if it has
+        /// been switched there (not a branch that is only the way back),
+        /// else to its next.
+        inline std::uint16_t trackNext(const LogicWorld &w, std::uint16_t node)
+        {
+            const PathCorner &here = w.corners[node];
+            if (here.alt != kNoCorner && !(here.flags & kCornerAltReverse) && w.cornerState != nullptr &&
+                (w.cornerState[node] & kNodeAlt))
+                return here.alt;
+            return here.next;
+        }
+
         inline void nodeSwitch(LogicWorld &w, std::uint16_t node, bool on)
         {
             if (node == kNoCorner || w.cornerState == nullptr)
@@ -2636,7 +2664,7 @@ namespace hldata
             std::uint16_t at = node;
             for (int guard = 0; dist > 0 && guard < 256; ++guard)
             {
-                const std::uint16_t next = w.corners[at].next;
+                const std::uint16_t next = trackNext(w, at);
                 if (!nodeOpen(w, next, move))
                 {
                     // The end of the track. For where the train LOOKS, the
@@ -2645,7 +2673,7 @@ namespace hldata
                     // face.
                     for (int prev = 0; prev < w.cornerCount && !move; ++prev)
                     {
-                        if (w.corners[prev].next != at)
+                        if (trackNext(w, static_cast<std::uint16_t>(prev)) != at)
                             continue;
                         const fx dir[3] = {w.corners[at].pos[0] - w.corners[prev].pos[0],
                                            w.corners[at].pos[1] - w.corners[prev].pos[1],
@@ -2661,7 +2689,7 @@ namespace hldata
                 const fx *to = w.corners[next].pos;
                 const fx dir[3] = {to[0] - p[0], to[1] - p[1], to[2] - p[2]};
                 const fx length = fxLength(dir);
-                if (length == 0 && !nodeOpen(w, w.corners[next].next, move))
+                if (length == 0 && !nodeOpen(w, trackNext(w, next), move))
                     return dist == whole ? kNoCorner : at; // up against a dead end
                 if (length > dist)
                 {
@@ -2678,12 +2706,17 @@ namespace hldata
         }
 
         /// The node whose stretch leads INTO `node` (its path_track's
-        /// "previous"), or kNoCorner.
+        /// "previous"), or kNoCorner: one switched onto a branch that is
+        /// the way back, that branch; else whichever leads here now.
         inline std::uint16_t trackPrevious(const LogicWorld &w, std::uint16_t node)
         {
+            const PathCorner &here = w.corners[node];
+            if (here.alt != kNoCorner && (here.flags & kCornerAltReverse) && w.cornerState != nullptr &&
+                (w.cornerState[node] & kNodeAlt))
+                return here.alt;
             for (int c = 0; c < w.cornerCount; ++c)
             {
-                if (w.corners[c].next == node && c != node)
+                if (c != node && trackNext(w, static_cast<std::uint16_t>(c)) == node)
                     return static_cast<std::uint16_t>(c);
             }
             return kNoCorner;
@@ -3035,8 +3068,8 @@ namespace hldata
                 state.speed = 0;
                 trainBrakes(w, index);
                 std::uint16_t last = node;
-                for (int guard = 0; guard < 256 && !backwards && nodeOpen(w, w.corners[last].next, true); ++guard)
-                    last = w.corners[last].next;
+                for (int guard = 0; guard < 256 && !backwards && nodeOpen(w, trackNext(w, last), true); ++guard)
+                    last = trackNext(w, last);
                 if (backwards)
                     last = start;
                 state.bits = last;

@@ -500,7 +500,9 @@ namespace hldata
         for (std::uint32_t i = 0; i < cornerCount; ++i)
         {
             if ((corners[i].next != kNoCorner && corners[i].next >= cornerCount) ||
-                corners[i].fireTarget >= nameCount || corners[i].netName >= nameCount)
+                (corners[i].alt != kNoCorner && corners[i].alt >= cornerCount) ||
+                corners[i].fireTarget >= nameCount || corners[i].netName >= nameCount ||
+                corners[i].name >= nameCount)
                 return LevelError::BadIndex;
         }
         for (std::uint32_t i = 0; i < logicCount; ++i)
