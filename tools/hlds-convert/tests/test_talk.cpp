@@ -1292,6 +1292,51 @@ namespace
             (void)jumps;
         }
     }
+    /// c1a0's office again: from his "stare" mark to "filecab" the straight
+    /// way is cut by the corner of what stands in the room, and there are no
+    /// path nodes in the office. He walks round it (the game's FTriangulate),
+    /// as he does in the game: not put on his mark, even out of sight.
+    void testScriptWalksRound(const char *dir)
+    {
+        auto game = load(dir, "c1a0");
+        if (!game)
+            return;
+        Game &g = *game;
+        g.player.health = 100;
+        g.player.origin[0] = fxFromInt(-700);
+        g.player.origin[1] = fxFromInt(-700);
+        g.player.origin[2] = fxFromInt(-180);
+        g.player.facingXY[0] = kFxOne; // (looking away: he may be put on his mark if he cannot get there)
+        g.player.facingXY[1] = 0;
+        const auto nameId = [&](const char *n) { return nameIdOfHash(g.view.nameHashes, g.view.nameCount, nameHash(n)); };
+        int b = -1, filecab = -1;
+        for (int i = 0; i < g.actors.count; ++i)
+            b = g.actors.states[i].name == nameId("bucky") ? i : b;
+        for (std::uint32_t i = 0; i < g.view.logicCount; ++i)
+            filecab = g.view.logic[i].name == nameId("filecab") ? static_cast<int>(i) : filecab;
+        check(b >= 0 && filecab >= 0, "c1a0's office scientist and his filecab mark");
+        if (b < 0 || filecab < 0)
+            return;
+        const ActorState &him = g.actors.states[b];
+        logicFire(g.logic, g.player, nameId("office1mm"), -1, kUseToggle, 0);
+        bool walked = false, arrived = false;
+        fx most = 0;
+        for (int t = 0; t < 30 * 60 && !arrived; ++t)
+        {
+            const bool going = him.script == filecab && g.logic.states[filecab].phase == hldata::detail::kScriptMoving;
+            const fx was[3] = {him.pos[0], him.pos[1], him.pos[2]};
+            tick(g);
+            if (!going)
+                continue;
+            walked = true;
+            const fx moved[3] = {him.pos[0] - was[0], him.pos[1] - was[1], 0};
+            most = std::max(most, fxLength(moved));
+            arrived = g.logic.states[filecab].phase != hldata::detail::kScriptMoving;
+        }
+        const fx left[3] = {him.pos[0] - g.view.logic[filecab].move[0], him.pos[1] - g.view.logic[filecab].move[1], 0};
+        check(walked && arrived && fxLength(left) < fxFromInt(8), "c1a0's scientist gets to his filecab mark");
+        check(most <= fxFromInt(16), "c1a0's scientist walks round to his filecab mark, not put there");
+    }
     /// HLDS_SCENE: c1a2a's scientist by the door, as the emulator was
     /// shown it -- what he does, a third of a second at a time.
     void scene(const char *dir)
@@ -1459,6 +1504,7 @@ int main()
         testRevisit(valve);
         testLaserGuard(valve);
         testScriptNoJumpInSight(valve);
+        testScriptWalksRound(valve);
     }
     if (g_failures == 0)
         std::printf("test_talk: ok\n");

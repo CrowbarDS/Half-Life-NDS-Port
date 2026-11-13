@@ -3656,18 +3656,32 @@ namespace hldata
             }
             if (state.phase == kScriptMoving)
             {
+                // The mark is the record's; `target` is the mark too, or, on
+                // its way round what stood in the way (below), the corner it
+                // goes by first.
+                const fx *mark = record.move;
+                const bool round = actor.target[0] != mark[0] || actor.target[1] != mark[1] || actor.target[2] != mark[2];
                 const fx d[3] = {actor.target[0] - actor.pos[0], actor.target[1] - actor.pos[1], 0};
                 const fx distance = fxLength(d);
                 const fx step = static_cast<fx>((static_cast<std::int64_t>(actor.speed) * ms) / 1000);
                 actor.moveMs -= ms;
+                // Round it: on to the mark.
+                if (round && (distance <= step || distance < fxFromInt(6)))
+                {
+                    for (int a = 0; a < 3; ++a)
+                        actor.target[a] = mark[a];
+                    actor.thinkMs = 0;
+                    state.travel[1] = 0;
+                    return;
+                }
                 // (The walk itself stops short by a few units: near enough.
                 // Out of time, it is put there -- once neither where it is
                 // nor its mark is in the player's sight.)
                 if (distance <= step || distance < fxFromInt(6) || step <= 0 ||
-                    (actor.moveMs <= 0 && !scriptSeen(w, player, actor.pos) && !scriptSeen(w, player, actor.target)))
+                    (actor.moveMs <= 0 && !scriptSeen(w, player, actor.pos) && !scriptSeen(w, player, mark)))
                 {
                     for (int a = 0; a < 3; ++a)
-                        actor.pos[a] = actor.target[a];
+                        actor.pos[a] = actor.target[a] = mark[a];
                     // A mark is often drawn a little above the floor it
                     // means.
                     actorToFloorAs(*w.world, actor, fxFromInt(18), fxFromInt(36));
@@ -3684,6 +3698,29 @@ namespace hldata
                                           fxFromInt(72), true);
                 if (went == kWalkMoved)
                     return;
+#ifndef HLDS_CHILD
+                // No way known -- the straight way cut, and no path node near
+                // enough (c1a0's office has none) -- it looks for a way round
+                // what is in the way, as the game's monsters do
+                // (FTriangulate): a corner clear of it, from which the mark
+                // can be walked to. Looked for once, and again each second
+                // it is still held.
+                if (went == kWalkNoWay && !round && distance > fxFromInt(48) &&
+                    (state.travel[1] == 0 || state.travel[1] / 1000 != (state.travel[1] + ms) / 1000))
+                {
+                    fx corner[3];
+                    if (walkLookRound(*w.world, w.actors, static_cast<int>(state.bits), kWalkStanding, actor.pos,
+                                      mark, fxFromInt(32), distance, corner))
+                    {
+                        for (int a = 0; a < 3; ++a)
+                            actor.target[a] = corner[a];
+                        actor.thinkMs = 0;
+                        actor.hasGoal = false;
+                        state.travel[1] = 0;
+                        return;
+                    }
+                }
+#endif
                 // Held up, or no way known. state.travel[1] counts how long
                 // -- but not while it is the player in the way, right by it:
                 // it waits for them to move, as the game's do.
