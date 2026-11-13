@@ -1226,6 +1226,72 @@ namespace
             thinkers += g.actors.states[i].active && aiFind(g.actors, i) != nullptr;
         std::printf("bench %s: %d minds, %.2f ms a frame on this host\n", map, thinkers, ms / frames);
     }
+    /// c1a0's office: the light switch sends the scientist there ("bucky",
+    /// buckylightson) and on round his marks. Held up -- the player in his
+    /// way, or no way through -- he is put on his mark in the end, but never
+    /// while the player can see him or the mark: watched, no jump at all;
+    /// unwatched, the scene still gets him to the switch.
+    void testScriptNoJumpInSight(const char *dir)
+    {
+        for (const bool watched : {true, false})
+        {
+            auto game = load(dir, "c1a0");
+            if (!game)
+                return;
+            Game &g = *game;
+            g.player.health = 100;
+            // Watched: by the switch, where he is going. Not: out of his
+            // way, looking off.
+            g.player.origin[0] = fxFromInt(watched ? -856 : -700);
+            g.player.origin[1] = fxFromInt(watched ? -830 : -700);
+            g.player.origin[2] = fxFromInt(-180);
+            const std::uint16_t id = nameIdOfHash(g.view.nameHashes, g.view.nameCount, nameHash("bucky"));
+            int b = -1;
+            for (int i = 0; id != 0 && i < g.actors.count; ++i)
+                b = g.actors.states[i].name == id ? i : b;
+            check(b >= 0, "c1a0's office scientist");
+            if (b < 0)
+                return;
+            const ActorState &him = g.actors.states[b];
+            logicFire(g.logic, g.player, nameIdOfHash(g.view.nameHashes, g.view.nameCount, nameHash("office1mm")), -1,
+                      kUseToggle, 0);
+            int jumpsInSight = 0, jumps = 0;
+            bool atSwitch = false;
+            for (int t = 0; t < 30 * 30; ++t)
+            {
+                const fx toHim[3] = {him.pos[0] - g.player.origin[0], him.pos[1] - g.player.origin[1], 0};
+                const fx length = fxLength(toHim);
+                if (watched && length > 0)
+                {
+                    g.player.facingXY[0] = static_cast<fx>((static_cast<std::int64_t>(toHim[0]) << kFxShift) / length);
+                    g.player.facingXY[1] = static_cast<fx>((static_cast<std::int64_t>(toHim[1]) << kFxShift) / length);
+                }
+                else if (!watched)
+                {
+                    g.player.facingXY[0] = kFxOne;
+                    g.player.facingXY[1] = 0;
+                }
+                const fx was[3] = {him.pos[0], him.pos[1], him.pos[2]};
+                const bool seen = hldata::detail::scriptSeen(g.logic, g.player, him.pos) ||
+                                  hldata::detail::scriptSeen(g.logic, g.player, him.target);
+                tick(g);
+                const fx moved[3] = {him.pos[0] - was[0], him.pos[1] - was[1], 0};
+                if (fxLength(moved) > fxFromInt(40))
+                {
+                    ++jumps;
+                    jumpsInSight += seen ? 1 : 0;
+                }
+                const fx left[2] = {him.pos[0] - fxFromInt(-856), him.pos[1] - fxFromInt(-873)};
+                atSwitch = atSwitch || (left[0] < fxFromInt(8) && left[0] > -fxFromInt(8) && left[1] < fxFromInt(8) &&
+                                        left[1] > -fxFromInt(8));
+            }
+            if (watched)
+                check(jumpsInSight == 0, "c1a0's scientist is never put on his mark in the player's sight");
+            else
+                check(atSwitch, "c1a0's scientist gets to the light switch, the player looking off");
+            (void)jumps;
+        }
+    }
     /// HLDS_SCENE: c1a2a's scientist by the door, as the emulator was
     /// shown it -- what he does, a third of a second at a time.
     void scene(const char *dir)
@@ -1392,6 +1458,7 @@ int main()
         testFollowerCrosses(valve);
         testRevisit(valve);
         testLaserGuard(valve);
+        testScriptNoJumpInSight(valve);
     }
     if (g_failures == 0)
         std::printf("test_talk: ok\n");

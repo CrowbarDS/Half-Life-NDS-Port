@@ -102,7 +102,9 @@ namespace hldata
     // arms (12 Nov 2026): none; t0a0b1 the nearest, about 23 KB under.
     // Raised 1 KB for the apache's gun and the turrets' muzzles, posed as
     // they are drawn (12 Nov 2026): none; t0a0b1 about 22 KB under.
-    inline constexpr std::uint32_t kGuestImageBytes = 0x165B6C + 84 * 1024;
+    // Raised 1 KB for a scripted walker put on its mark only out of sight,
+    // and the bones' unit table (13 Nov 2026): none; t0a0b1 about 21 KB under.
+    inline constexpr std::uint32_t kGuestImageBytes = 0x165B6C + 85 * 1024;
     /// The heap's end: the end of main RAM less what the start-up code keeps.
     inline constexpr std::uint32_t kGuestRamBytes = 0x3F4000;
     /// What the engine holds beside a map's data -- its tables, the world's

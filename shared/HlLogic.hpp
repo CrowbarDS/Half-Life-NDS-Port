@@ -3589,6 +3589,22 @@ namespace hldata
             logicUseTargets(w, player, index, kUseToggle, 0);
         }
 
+        /// Whether the player could see an actor whose feet are at `at`:
+        /// in front of them, and nothing solid between their eyes and its
+        /// middle. (A walker that cannot get to its mark is put on it -- but
+        /// not while that is seen, from where it is or where it goes: the
+        /// game's never jump.)
+        inline bool scriptSeen(const LogicWorld &w, const PlayerState &player, const fx *at)
+        {
+            if (w.world == nullptr)
+                return false;
+            const fx eye[3] = {player.origin[0], player.origin[1], player.origin[2] + player.viewHeight};
+            const fx middle[3] = {at[0], at[1], at[2] + fxFromInt(36)};
+            const std::int64_t ahead = static_cast<std::int64_t>(middle[0] - eye[0]) * player.facingXY[0] +
+                                       static_cast<std::int64_t>(middle[1] - eye[1]) * player.facingXY[1];
+            return ahead > 0 && lineClear(*w.world, eye, middle);
+        }
+
         inline void scriptTick(LogicWorld &w, PlayerState &player, int index, int ms)
         {
             const LogicRecord &record = w.records[index];
@@ -3644,8 +3660,11 @@ namespace hldata
                 const fx distance = fxLength(d);
                 const fx step = static_cast<fx>((static_cast<std::int64_t>(actor.speed) * ms) / 1000);
                 actor.moveMs -= ms;
-                // (The walk itself stops short by a few units: near enough.)
-                if (distance <= step || distance < fxFromInt(6) || actor.moveMs <= 0 || step <= 0)
+                // (The walk itself stops short by a few units: near enough.
+                // Out of time, it is put there -- once neither where it is
+                // nor its mark is in the player's sight.)
+                if (distance <= step || distance < fxFromInt(6) || step <= 0 ||
+                    (actor.moveMs <= 0 && !scriptSeen(w, player, actor.pos) && !scriptSeen(w, player, actor.target)))
                 {
                     for (int a = 0; a < 3; ++a)
                         actor.pos[a] = actor.target[a];
@@ -3665,14 +3684,19 @@ namespace hldata
                                           fxFromInt(72), true);
                 if (went == kWalkMoved)
                     return;
-                // Held up, or no way known. state.travel[1] counts how long.
-                state.travel[1] += ms;
+                // Held up, or no way known. state.travel[1] counts how long
+                // -- but not while it is the player in the way, right by it:
+                // it waits for them to move, as the game's do.
+                const bool byPlayer = went == kWalkBlocked &&
+                                      detail::boxInPlayer(player, actor.pos, fxFromInt(16) + kWalkStep, fxFromInt(72));
+                if (!byPlayer)
+                    state.travel[1] += ms;
                 if (distance > fxFromInt(48))
                 {
-                    // Three seconds of that and it is simply put on its
-                    // mark: better to appear there than to go through a
-                    // wall to it, and what waits on the script must not wait
-                    // for ever.
+                    // Three seconds of that and it is put on its mark (when
+                    // out of sight, above): better to appear there than to go
+                    // through a wall to it, and what waits on the script must
+                    // not wait for ever.
                     if (state.travel[1] >= 3000)
                         actor.moveMs = 0;
                     return;
