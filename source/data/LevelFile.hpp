@@ -16,6 +16,10 @@
 
 #include "HlLevelReader.hpp"
 
+#ifndef HLDS_CHILD
+#include <NEAMain.h>
+#endif
+
 namespace hlrt
 {
     class Level
@@ -57,14 +61,68 @@ namespace hlrt
         std::size_t keepInPak();
         /// Where each section went in the Pak, or null.
         const std::uint8_t *inPak_[hldata::kSectionCount] = {};
+        /// The sections marked away in inPak_ gone, the rest packed together
+        /// and the block shrunk.
+        void packTogether();
+        /// A DS without a Pak, on a map too big for its heap (HlDsCut.hpp):
+        /// what the converter said it may leave out, out. False if nothing
+        /// is (a DSi, a Pak, a map that fits, or a cut not of this level).
+        bool applyDsCut();
+        /// Whether what applyDsCut set out to read from the card has its room.
+        bool dsCutReady() const;
+        NEA_NpacMember visMember_{};
+        std::uint8_t *visRow_ = nullptr;
+        std::uint32_t visRowCap_ = 0;
+        std::uint32_t visRowBytes_ = 0;
+        int visRowLeaf_ = -1;
+        std::uint16_t cutFlags_ = 0;
+        // The geometry read a page at a time (kDsCutGx): where each page
+        // starts, which slot holds it (kNoSlot: none), and each slot's page,
+        // its words and when it was last drawn from.
+        static constexpr std::uint16_t kNoSlot = 0xFFFF;
+        NEA_NpacMember gxMember_{};
+        std::uint32_t *pageStart_ = nullptr;
+        std::uint16_t *pageSlot_ = nullptr;
+        std::uint16_t *slotPage_ = nullptr;
+        std::uint32_t *slotUsed_ = nullptr;
+        std::uint32_t *slotWords_ = nullptr;
+        std::uint32_t pageCount_ = 0, slotCount_ = 0, slotSize_ = 0, gxUse_ = 0;
+        std::uint32_t pagesRead_ = 0;
+        /// The words from `ofs` on, their page read in if it was not.
+        const std::uint32_t *pagedGx(std::uint32_t ofs);
+        void freeDsCut();
     public:
+        /// A surface's geometry words: in the level, or (a DS reading them
+        /// from the card) in the slot its page was read into -- valid until
+        /// the next call.
+        const std::uint32_t *gxAt(const hldata::Surface &surface)
+        {
+            return view.gxStream != nullptr ? view.gxStream + surface.gxOfs : pagedGx(surface.gxOfs);
+        }
+        /// Pages of geometry read from the card since the map began.
+        std::uint32_t gxPagesRead() const { return pagesRead_; }
         /// Bytes of the level kept in the Expansion Pak, not in main memory.
         std::size_t pakBytes() const { return pakBytes_; }
+        /// What of the level a DS left out (HlDsCut.hpp's flags).
+        std::uint16_t dsCut() const { return cutFlags_; }
+        /// The visibility row of `leaf` (its leaves seen, run-length as the
+        /// BSP has them), and in `end` where it may be read to: in the level,
+        /// or read from the card on a DS that left them there (the last
+        /// leaf's kept). Null if there is none to be had.
+        const std::uint8_t *visRow(int leaf, const std::uint8_t *&end);
     private:
         std::size_t pakBytes_ = 0;
 #else
     public:
         std::size_t pakBytes() const { return 0; }
+        std::uint16_t dsCut() const { return 0; }
+        const std::uint32_t *gxAt(const hldata::Surface &surface) { return view.gxStream + surface.gxOfs; }
+        std::uint32_t gxPagesRead() const { return 0; }
+        const std::uint8_t *visRow(int leaf, const std::uint8_t *&end)
+        {
+            end = view.vis + view.visSize;
+            return view.vis + view.leaves[leaf].visOfs;
+        }
     private:
 #endif
 

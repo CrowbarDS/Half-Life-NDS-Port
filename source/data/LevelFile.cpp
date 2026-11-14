@@ -14,6 +14,7 @@
 #include <utility>
 
 #include "platform/Slot2.hpp"
+#include "HlDsCut.hpp"
 
 namespace hlrt
 {
@@ -30,8 +31,70 @@ namespace hlrt
         for (const std::uint8_t *&at : inPak_)
             at = nullptr;
         pakBytes_ = 0;
+        freeDsCut();
 #endif
     }
+
+#ifndef HLDS_CHILD
+    void Level::freeDsCut()
+    {
+        std::free(visRow_);
+        visRow_ = nullptr;
+        visRowLeaf_ = -1;
+        visRowBytes_ = visRowCap_ = 0;
+        for (void *block : {static_cast<void *>(pageStart_), static_cast<void *>(pageSlot_),
+                            static_cast<void *>(slotPage_), static_cast<void *>(slotUsed_),
+                            static_cast<void *>(slotWords_)})
+            std::free(block);
+        pageStart_ = slotUsed_ = slotWords_ = nullptr;
+        pageSlot_ = slotPage_ = nullptr;
+        pageCount_ = slotCount_ = slotSize_ = gxUse_ = pagesRead_ = 0;
+        cutFlags_ = 0;
+    }
+
+    const std::uint32_t *Level::pagedGx(std::uint32_t ofs)
+    {
+        // The page: the last that starts at or before `ofs` (no surface
+        // runs over the end of its page).
+        std::uint32_t lo = 0, hi = pageCount_;
+        while (hi - lo > 1)
+        {
+            const std::uint32_t mid = (lo + hi) / 2;
+            (pageStart_[mid] <= ofs ? lo : hi) = mid;
+        }
+        const std::uint32_t page = lo;
+        ++gxUse_;
+        std::uint16_t slot = pageSlot_[page];
+        if (slot == kNoSlot)
+        {
+            // Read now, into the slot drawn from longest ago. (The frame
+            // waits for the card: what a DS gives for the room.)
+            slot = 0;
+            for (std::uint16_t k = 1; k < slotCount_; ++k)
+            {
+                if (slotUsed_[k] < slotUsed_[slot])
+                    slot = k;
+            }
+            if (slotPage_[slot] != kNoSlot)
+                pageSlot_[slotPage_[slot]] = kNoSlot;
+            const std::uint32_t words = pageStart_[page + 1] - pageStart_[page];
+            std::uint32_t *to = slotWords_ + static_cast<std::size_t>(slot) * slotSize_;
+            if (!cardReadMember(gxMember_, pageStart_[page] * 4u, to, words * 4u))
+            {
+                // (Not given: drawn as nothing, a no-op, and asked for again.)
+                std::memset(to, 0, words * 4u);
+                slotPage_[slot] = kNoSlot;
+                slotUsed_[slot] = 0;
+                return to + (ofs - pageStart_[page]);
+            }
+            pageSlot_[page] = slot;
+            slotPage_[slot] = static_cast<std::uint16_t>(page);
+            ++pagesRead_;
+        }
+        slotUsed_[slot] = gxUse_;
+        return slotWords_ + static_cast<std::size_t>(slot) * slotSize_ + (ofs - pageStart_[page]);
+    }
+#endif
 
 #ifndef HLDS_CHILD
     std::size_t Level::keepInPak()
@@ -63,6 +126,13 @@ namespace hlrt
         }
         if (moved == 0)
             return 0;
+        packTogether();
+        return moved;
+    }
+
+    void Level::packTogether()
+    {
+        auto *dir = reinterpret_cast<hldata::SectionDir *>(block_ + sizeof(hldata::LevelHeader));
         // The rest packed together, in the order it was (each section after
         // the last one kept, on a word): only ever moved down.
         int order[hldata::kSectionCount];
@@ -90,7 +160,131 @@ namespace hlrt
             block_ = smaller;
         malloc_trim(0);
         size_ = end;
-        return moved;
+    }
+
+    /// (Where a section a DS reads from the card is said to be: anywhere but
+    /// in the block. Nothing reads through it: the view's pointer is put
+    /// back to null.)
+    static const std::uint8_t kOnCard[4] = {};
+
+    bool Level::applyDsCut()
+    {
+        // A DS, with no Pak to keep what is read least: a map the converter
+        // found too big for its heap says what it may leave out (HlDsCut.hpp).
+        if (global.isDSi || slot2::pakBytes() != 0 || block_ == nullptr)
+            return false;
+        NEA_NpacMember member;
+        alignas(4) hldata::DsCutHeader cut;
+        if (NEA_NpacMemberFind(global.mapPath(hldata::kDsCutMember).c_str(), &member) != 0 ||
+            member.method != NEA_NPAC_STORED || member.size < sizeof(cut) ||
+            member.size > sizeof(cut) + (hldata::kDsGxMostPages + 1) * 4u ||
+            !cardReadMember(member, 0, &cut, sizeof(cut)) || member.size != hldata::dsCutBytes(cut) ||
+            cut.levelCrc != view.header->crc32)
+            return false;
+        auto *dir = reinterpret_cast<hldata::SectionDir *>(block_ + sizeof(hldata::LevelHeader));
+        const hldata::SectionDir &vis = dir[static_cast<int>(hldata::Section::Vis)];
+        const hldata::SectionDir &gx = dir[static_cast<int>(hldata::Section::GxStream)];
+        const bool wantVis = (cut.flags & hldata::kDsCutVis) != 0 && vis.size == cut.visBytes &&
+                             NEA_NpacMemberFind(global.mapPath(hldata::kDsVisMember).c_str(), &visMember_) == 0 &&
+                             visMember_.method == NEA_NPAC_STORED && visMember_.size == vis.size;
+        const bool wantGx = (cut.flags & hldata::kDsCutGx) != 0 && gx.count == cut.gxWords &&
+                            NEA_NpacMemberFind(global.mapPath(hldata::kDsGxMember).c_str(), &gxMember_) == 0 &&
+                            gxMember_.method == NEA_NPAC_STORED && gxMember_.size == gx.size;
+        // (The page table, checked whole, read before the block shrinks: it
+        // is let go after, and the hole it leaves joins the room given back.)
+        static constexpr std::uint32_t kMostCut = sizeof(hldata::DsCutHeader) + (hldata::kDsGxMostPages + 1) * 4u;
+        std::uint8_t *table = nullptr;
+        if (wantGx)
+        {
+            table = static_cast<std::uint8_t *>(std::malloc(member.size));
+            if (table != nullptr && (!cardReadMember(member, 0, table, member.size) ||
+                                     !hldata::dsCutValid(table, member.size) || member.size > kMostCut))
+            {
+                std::free(table);
+                table = nullptr;
+            }
+        }
+        const bool gxOut = table != nullptr;
+
+        // Out of the block: what is read from the card, and the lights that
+        // change (as they were lit, for good: a page read again would not
+        // have its patches made).
+        if (wantVis)
+            inPak_[static_cast<int>(hldata::Section::Vis)] = kOnCard;
+        if (gxOut)
+            inPak_[static_cast<int>(hldata::Section::GxStream)] = kOnCard;
+        if ((cut.flags & hldata::kDsCutLightPatch) != 0 || gxOut)
+        {
+            hldata::SectionDir &patches = dir[static_cast<int>(hldata::Section::LightPatch)];
+            patches.count = patches.size = 0;
+            cutFlags_ |= hldata::kDsCutLightPatch;
+        }
+        if (!wantVis && !gxOut && cutFlags_ == 0)
+            return false;
+        packTogether();
+
+        // Then what reads them, in the room given back.
+        if (wantVis)
+        {
+            visRowCap_ = (view.header->visLeafCount + 7) / 8 + 16;
+            visRow_ = static_cast<std::uint8_t *>(std::malloc(visRowCap_));
+            cutFlags_ |= hldata::kDsCutVis;
+        }
+        if (gxOut)
+        {
+            std::memcpy(&cut, table, sizeof(cut));
+            pageCount_ = cut.pageCount;
+            slotCount_ = cut.slotCount;
+            slotSize_ = cut.slotWords;
+            pageStart_ = static_cast<std::uint32_t *>(std::malloc((pageCount_ + 1) * 4u));
+            pageSlot_ = static_cast<std::uint16_t *>(std::malloc(pageCount_ * 2u));
+            slotPage_ = static_cast<std::uint16_t *>(std::malloc(slotCount_ * 2u));
+            slotUsed_ = static_cast<std::uint32_t *>(std::calloc(slotCount_, 4u));
+            slotWords_ = static_cast<std::uint32_t *>(std::malloc(static_cast<std::size_t>(slotCount_) * slotSize_ * 4u));
+            if (pageStart_ != nullptr)
+                std::memcpy(pageStart_, table + sizeof(cut), (pageCount_ + 1) * 4u);
+            if (pageSlot_ != nullptr)
+                std::memset(pageSlot_, 0xFF, pageCount_ * 2u);
+            if (slotPage_ != nullptr)
+                std::memset(slotPage_, 0xFF, slotCount_ * 2u);
+            cutFlags_ |= hldata::kDsCutGx;
+            std::free(table);
+        }
+        // (No room even for those: the map cannot be played on this DS.)
+        return true;
+    }
+
+    bool Level::dsCutReady() const
+    {
+        return ((cutFlags_ & hldata::kDsCutVis) == 0 || visRow_ != nullptr) &&
+               ((cutFlags_ & hldata::kDsCutGx) == 0 ||
+                (pageStart_ != nullptr && pageSlot_ != nullptr && slotPage_ != nullptr && slotUsed_ != nullptr &&
+                 slotWords_ != nullptr));
+    }
+
+    const std::uint8_t *Level::visRow(int leaf, const std::uint8_t *&end)
+    {
+        const std::int32_t ofs = view.leaves[leaf].visOfs;
+        if (view.vis != nullptr)
+        {
+            end = view.vis + view.visSize;
+            return view.vis + ofs;
+        }
+        // A DS reading them from the card: this leaf's, unless it is the one
+        // already read. (Rows are packed: what follows the row is read too,
+        // and never looked at.)
+        if (visRow_ == nullptr || ofs < 0 || static_cast<std::uint32_t>(ofs) >= visMember_.size)
+            return nullptr;
+        if (leaf != visRowLeaf_)
+        {
+            const std::uint32_t left = visMember_.size - static_cast<std::uint32_t>(ofs);
+            visRowBytes_ = left < visRowCap_ ? left : visRowCap_;
+            visRowLeaf_ = cardReadMember(visMember_, static_cast<std::uint32_t>(ofs), visRow_, visRowBytes_) ? leaf : -1;
+            if (visRowLeaf_ < 0)
+                return nullptr;
+        }
+        end = visRow_ + visRowBytes_;
+        return visRow_;
     }
 #endif
 
@@ -304,6 +498,30 @@ namespace hlrt
             unload();
             error = "Map file is damaged. Convert again.";
             return false;
+        }
+        // A DS short of room: what it reads from the card instead, or goes
+        // without, out of the block. (The size the header says is the file's:
+        // the view is told it, not the block's.)
+        if (pakBytes_ == 0 && applyDsCut())
+        {
+            if (!dsCutReady())
+            {
+                unload();
+                error = "Not enough memory for this map.";
+                return false;
+            }
+            const std::uint32_t whole = size;
+            // (Looked at as the file was, the sections now where they are.)
+            if (view.open(block_, whole, false, inPak_) != hldata::LevelError::Ok)
+            {
+                unload();
+                error = "Map file is damaged. Convert again.";
+                return false;
+            }
+            if ((cutFlags_ & hldata::kDsCutVis) != 0)
+                view.vis = nullptr;
+            if ((cutFlags_ & hldata::kDsCutGx) != 0)
+                view.gxStream = nullptr;
         }
 #endif
         return true;

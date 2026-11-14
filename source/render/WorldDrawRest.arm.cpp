@@ -62,7 +62,7 @@ namespace hlrt
         {
             const Surface &surface = view.surfaces[s];
             std::int16_t *box = boxes_[s];
-            if (!gxStreamBounds(view.gxStream + surface.gxOfs, surface.gxWords, box, box + 3) ||
+            if (!gxStreamBounds(level.gxAt(surface), surface.gxWords, box, box + 3) ||
                 !gxBoxFits(box, box + 3))
             {
                 box[0] = 1; // (none: judged by the ball)
@@ -151,10 +151,13 @@ namespace hlrt
 
         const int count = view.header->visLeafCount;
         const std::int32_t ofs = view.leaves[leaf].visOfs;
-        if (ofs < 0)
+        // (On a DS that reads them from the card, the row is read now.)
+        const std::uint8_t *end = nullptr;
+        const std::uint8_t *in = ofs < 0 ? nullptr : level.visRow(leaf, end);
+        if (in == nullptr)
         {
-            // No row: outside the world (or an unvised map). Everything shows,
-            // and the budget does the rest.
+            // No row: outside the world (or an unvised map, or a card that
+            // would not give it). Everything shows, and the budget does the rest.
             for (int i = 1; i <= count; ++i)
                 stamp(i);
             return;
@@ -162,8 +165,6 @@ namespace hlrt
 
         // The BSP's own run-length rows: a non-zero byte is eight leaves, a
         // zero byte is followed by how many zero bytes it stands for.
-        const std::uint8_t *in = view.vis + ofs;
-        const std::uint8_t *end = view.vis + view.visSize;
         int index = 1; // bit 0 of the first byte is leaf 1
         while (index <= count && in < end)
         {
@@ -340,7 +341,7 @@ namespace hlrt
                     sliding = false;
                 }
             }
-            const std::uint32_t *word = view.gxStream + surface->gxOfs;
+            const std::uint32_t *word = level.gxAt(*surface);
             for (int k = surface->gxWords; k > 0; --k)
                 GFX_FIFO = *word++;
             stats_.polygons += surface->polygons;
@@ -620,7 +621,7 @@ namespace hlrt
                            static_cast<NEA_OtherFormatEnum>(static_cast<int>(polygonMode()) | kDepthEqual));
             // In the wall's own colour at full light, not in a colour of
             // the lamp's: what is seen is the wall, brighter.
-            lampStream(view.gxStream + surface.gxOfs, surface.gxWords, texCoord,
+            lampStream(level.gxAt(surface), surface.gxWords, texCoord,
                        [](std::uint32_t word) { GFX_FIFO = word; }, textureCache.tint(surface.texture));
             polygons += surface.polygons;
             vertices += surface.vertices;

@@ -985,9 +985,29 @@ Milestone 11, "levels of detail".
   beside the DS's own, and says how many); twice as many effects, things in
   flight and pieces at once; twelve models drawn at once where a DS draws
   eight; the stereo music and room echo of its DSP,
-  when that is switched on. Nothing is left out for a DS that it had
-  before: the heaviest soldier maps (c1a3a, c2a2b1) leave it 1.6 MB and more
-  free.
+  when that is switched on.
+- What a DS gives up on a map too big for it (`shared/HlDsRoom.hpp`,
+  `shared/HlDsCut.hpp`). A DS has about 2 MB of heap when a map's load
+  begins (2,127,504 bytes, measured), and keeps 160 KB of it for play. The
+  converter reckons what each map needs of it (the level file, the model
+  files, the weapons' skins kept in main memory, the game's arrays, the
+  sounds kept), prints a `DS:` line per map, and while the sounds would have
+  less than 128 KB it gives up, a step at a time:
+  1. the models with one level of detail;
+  2. a little looser animation;
+  3. the visibility rows read from the card (`ds.vis`), the camera's
+     row on a leaf change; the AI then treats the map as unvised;
+  4. the lights that change stay as they were lit (LightPatch left out);
+  5. the geometry read from the card in pages of about 4 KB (`ds.gx`);
+     the stream is laid out leaf by leaf for it;
+  6. looser animation still.
+
+  The sounds get what is left, and the console loads them until that runs
+  out. Steps 3 to 5 are said in `ds.cut` beside the level. A DSi, and a DS
+  with an Expansion Pak, load the level whole and never read them. Lighter
+  models go in the plain files, with a DSi's full ones beside them (`.dsi.hmd`).
+  The room line in perf.txt gives the heap after each part of the load, to
+  check the reckoning against: tools/emu/room.sh tabulates it.
 - The controls (`shared/HlControls.hpp`). What is held this frame goes in
   and what the player is doing comes out, by one function for both layouts,
   either hand and the two swaps of pad and stylus; the console's part

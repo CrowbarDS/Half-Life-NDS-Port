@@ -395,7 +395,7 @@ namespace hlrt
                     *at++ = 0x7FFF;
                     *at++ = bind[0];
                 }
-                std::memcpy(at, view.gxStream + surface.gxOfs, surface.gxWords * 4u);
+                std::memcpy(at, level.gxAt(surface), surface.gxWords * 4u);
                 at += surface.gxWords;
                 if (at - sent >= kPiece && !ndmaBusy(0))
                 {
@@ -464,7 +464,7 @@ namespace hlrt
                     noteTextureDrawn(picture);
                     textureCache.use(picture);
                 }
-                const std::uint32_t *word = view.gxStream + surface.gxOfs;
+                const std::uint32_t *word = level.gxAt(surface);
                 // The FIFO takes packed command words as they are; a write
                 // simply waits while it is full.
                 for (int n = surface.gxWords; n > 0; --n)

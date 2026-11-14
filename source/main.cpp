@@ -460,11 +460,13 @@ namespace
         std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a");
         if (log == nullptr)
             return;
-        std::fprintf(log, "play: %s rise %lu, live %lu, top %lu, largest hole %lu; reserve %s (%lu, last %lu bytes)\n",
+        std::fprintf(log, "play: %s rise %lu, live %lu, top %lu, largest hole %lu; reserve %s (%lu, last %lu bytes); "
+                          "ds cut %u, geometry pages read %lu\n",
                      map, static_cast<unsigned long>(rise), static_cast<unsigned long>(live),
                      static_cast<unsigned long>(room.top), static_cast<unsigned long>(room.largestHole),
                      reserve.letGoPlay > 0 ? "LET GO in play" : (reserve.held ? "held" : "none"),
-                     static_cast<unsigned long>(reserve.letGoPlay), static_cast<unsigned long>(reserve.lastAsked));
+                     static_cast<unsigned long>(reserve.letGoPlay), static_cast<unsigned long>(reserve.lastAsked),
+                     static_cast<unsigned>(hlrt::level.dsCut()), static_cast<unsigned long>(hlrt::level.gxPagesRead()));
         std::fclose(log);
 #endif
     }
