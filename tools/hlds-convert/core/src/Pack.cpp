@@ -401,8 +401,17 @@ namespace hlds
                 Packing skinsOnly;
                 skinsOnly.report = packing.report;
                 skinsOnly.named = packing.named;
+                // (A skin this map has with fewer colours, for its textures'
+                // sake, is under its name: that one.)
                 for (const std::string &skin : skins)
-                    skinsOnly.add(stage / (colouredSkins.count(skin) != 0 ? "gst" : "mdl") / skin, "mdl/" + skin, true);
+                {
+                    std::error_code ec;
+                    const fs::path own = stage / "mdl" / map / skin;
+                    skinsOnly.add(colouredSkins.count(skin) != 0 ? stage / "gst" / skin
+                                  : fs::is_regular_file(own, ec)   ? own
+                                                                   : stage / "mdl" / skin,
+                                  "mdl/" + skin, true);
+                }
                 packing.members.insert(packing.members.begin() + skinsAt,
                                        std::make_move_iterator(skinsOnly.members.begin()),
                                        std::make_move_iterator(skinsOnly.members.end()));

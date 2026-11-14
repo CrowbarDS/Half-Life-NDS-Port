@@ -771,9 +771,18 @@ namespace hlds
         streamOptions.enabled = options_.streamTextures;
         const TextureNeeds textureWants = textureNeeds(bsp, brushes, findHiddenTextures(bsp, wads));
         // (... and a palette for a weapon loaded when it is taken up.)
-        const int colourBudget = kPaletteColourBudget - (skyName.empty() ? 0 : 6 * 256) -
-                                 static_cast<int>(models.size() + (lazyNeeds.empty() ? 0 : hldata::kLazyResident)) * kModelSkinColours -
-                                 kSpriteColourBudget;
+        // The colours each model's skin is made with: fewer on a map whose
+        // textures have no room otherwise (one crowded with models).
+        int skinColours = kModelSkinColours;
+        int colourBudget = 0;
+        auto setSkinColours = [&](int colours)
+        {
+            skinColours = colours;
+            colourBudget = kPaletteColourBudget - (skyName.empty() ? 0 : 6 * 256) -
+                           static_cast<int>(models.size() + (lazyNeeds.empty() ? 0 : hldata::kLazyResident)) * colours -
+                           kSpriteColourBudget;
+        };
+        setSkinColours(kModelSkinColours);
         // Plan maps to use 3 texture banks, with few exceptions
         auto planFor = [&](int worldBudget)
         {
@@ -782,6 +791,21 @@ namespace hlds
                                 kAlphaTexelBudget - kSpriteTexelBudget, options);
         };
         TexturePlan plan = planFor(streamOptions.enabled ? kSinglePassTexelBudget : kWorldTexelBudget);
+        // Out of palette room even at the smallest sizes: the skins give up
+        // colours, half at a time, until the textures fit.
+        for (int colours = kModelSkinColours / 2; !plan.fits && colours >= kModelSkinColours / 4; colours /= 2)
+        {
+            setSkinColours(colours);
+            const TexturePlan fewer = planFor(streamOptions.enabled ? kSinglePassTexelBudget : kWorldTexelBudget);
+            if (fewer.fits)
+            {
+                plan = fewer;
+                result.warnings.push_back("its models' skins have " + std::to_string(colours) +
+                                          " colours, for its textures to fit");
+            }
+        }
+        if (!plan.fits)
+            setSkinColours(kModelSkinColours);
         // With streaming, what the worst view leaves of the room for the
         // streamed textures goes to the skins: larger ones, as long as the
         // textures are no smaller for it.
@@ -1373,17 +1397,30 @@ namespace hlds
             // in (a map crowded with models has them smaller), shared by
             // every map that uses the model at that size, and encoded again
             // only if the picture has changed.
+            // (None left over from a cook that had fewer, where this has not.)
+            const fs::path mapSkinDir = stageDir() / "mdl" / result.name;
+            {
+                std::error_code ec;
+                for (const auto &entry : fs::directory_iterator(mapSkinDir, ec))
+                {
+                    if (entry.path().extension() == ".htx")
+                        fs::remove(entry.path(), ec);
+                }
+            }
             for (const auto *list : {&models, &guestModels})
             for (const auto &model : *list)
             {
                 if (!ok || model.atlas.width == 0)
                     continue;
-                const std::uint32_t settings[] = {kModelSkinColours, encoder.version()};
+                // (One with fewer colours is this map's own: under its name.)
+                const bool fewer = list == &models && skinColours != kModelSkinColours;
+                const int colours = fewer ? skinColours : kModelSkinColours;
+                const std::uint32_t settings[] = {static_cast<std::uint32_t>(colours), encoder.version()};
                 const std::uint32_t hash =
                     hldata::crc32(model.atlas.rgba.data(),
                                   static_cast<std::uint32_t>(model.atlas.rgba.size())) ^
                     hldata::crc32(reinterpret_cast<const std::uint8_t *>(settings), sizeof(settings)) * 131u;
-                const fs::path skin = stageDir() / "mdl" /
+                const fs::path skin = (fewer ? mapSkinDir : stageDir() / "mdl") /
                                       hldata::modelSkinFile(model.name.c_str(), model.atlas.width,
                                                             model.atlas.height);
                 std::vector<std::uint8_t> existing;
@@ -1395,7 +1432,7 @@ namespace hlds
                     continue;
                 CookedTexture encoded;
                 std::string why;
-                if (!encoder.encode(model.atlas, kModelSkinColours, TextureFormat::Tex4x4, encoded, why) ||
+                if (!encoder.encode(model.atlas, colours, TextureFormat::Tex4x4, encoded, why) ||
                     !writeFileAtomic(skin, packTexture(encoded, 0, hash), why))
                     result.warnings.push_back("the skin of model '" + model.name + "' was not made: " + why);
             }

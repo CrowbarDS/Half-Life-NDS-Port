@@ -109,6 +109,10 @@ namespace
             fs::path source = stage / m.path;
             if (folder == 2 && m.path.size() > 4 && m.path.substr(m.path.size() - 4) == ".hmd")
                 source = stage / "mdl" / map / m.path.substr(4);
+            // (... and so is a skin the map has with fewer colours.)
+            if (folder == 2 && m.path.size() > 4 && m.path.substr(m.path.size() - 4) == ".htx" &&
+                fs::exists(stage / "mdl" / map / m.path.substr(4)))
+                source = stage / "mdl" / map / m.path.substr(4);
             Bytes staged;
             same = same && hlds::readFile(source, staged, error) && staged == m.data;
         }
@@ -559,6 +563,39 @@ namespace
                      "c1a0", true);
         fs::remove_all(root);
     }
+
+    /// c3a2d has some fifty models: at 512 colours each, its textures had no
+    /// palette room even at their smallest. Its skins give up colours instead.
+    void testCrowdedMap()
+    {
+        const char *valve = std::getenv("HLDS_VALVE_DIR");
+        if (valve == nullptr || *valve == '\0' || !fs::exists(fs::path(valve) / "maps" / "c3a2d.bsp"))
+        {
+            std::printf("test_pack: HLDS_VALVE_DIR not set, the crowded map was not planned\n");
+            return;
+        }
+        const fs::path root = fs::temp_directory_path() / "hlds_test_pack_crowded";
+        fs::remove_all(root);
+        fs::create_directories(root / "card");
+        hlds::ConvertOptions options;
+        options.gameDir = valve;
+        options.cardRoot = root / "card";
+        options.textures = false;
+        hlds::Converter converter(options);
+        std::string error;
+        hlds::MapResult result;
+        check(converter.cookMaps({"c3a2d"}, nullptr, [&](const hlds::MapResult &r) { result = r; }, nullptr,
+                                 error) == 0,
+              "c3a2d cooks and packs");
+        bool fits = true, fewer = false;
+        for (const std::string &warning : result.warnings)
+        {
+            fits = fits && warning.find("do not fit") == std::string::npos;
+            fewer = fewer || warning.find("skins have") != std::string::npos;
+        }
+        check(fits && fewer, "its textures fit, its models' skins having fewer colours");
+        fs::remove_all(root);
+    }
 } // namespace
 
 int main()
@@ -568,6 +605,7 @@ int main()
     testBundles();
     testBoxRoom();
     testRealMap();
+    testCrowdedMap();
     testPaletteColours();
     if (g_failures == 0)
         std::printf("test_pack: ok\n");
