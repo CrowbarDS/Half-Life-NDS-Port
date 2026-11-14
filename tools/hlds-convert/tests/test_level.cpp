@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "HlDsRoom.hpp"
 #include "HlLevelReader.hpp"
 #include "TestBspBuilder.hpp"
 #include "hlds/LevelReport.hpp"
@@ -368,6 +369,34 @@ namespace
         check(p.meanPageBytes == (1 + 3 + 3) * 16 / 3, "the mean over the three leaves");
         check(p.worldPatchBytes == sizeof(LightPatch), "a light patch in the world's geometry");
     }
+    /// What a DS's heap is reckoned to hold of a map (HlDsRoom.hpp), against
+    /// what melonDS's DS mode measured: c1a0 took 1,575,448 bytes with all
+    /// 102 of its kept sounds in, and had more than play's room to spare.
+    void testDsRoom()
+    {
+        using namespace hldata;
+        DsMapCost c1a0;
+        c1a0.level = 693452;
+        c1a0.models = 348 * 1024;
+        c1a0.sounds = 346 * 1024;
+        c1a0.actors = 19;
+        c1a0.logicRecords = 145;
+        check(dsMapSpare(c1a0) > 0 && dsSoundRoom(c1a0) >= c1a0.sounds, "c1a0 fits a DS, sounds and all");
+        check(dsMapNeedBeforeSounds(c1a0) + c1a0.sounds - kDsPlayRoom >= 1575448 - 83 * 1024,
+              "and no less is reckoned than it took (its texture copies apart)");
+
+        // c3a1 as it was: level and models alone more than the heap.
+        DsMapCost c3a1;
+        c3a1.level = 1065908;
+        c3a1.models = 1258 * 1024;
+        c3a1.sounds = 505 * 1024;
+        c3a1.actors = 85;
+        c3a1.logicRecords = 313;
+        check(dsMapSpare(c3a1) < 0 && dsSoundRoom(c3a1) == 0, "c3a1 as it was is short, with no room for sounds");
+        DsMapCost lighter = c3a1;
+        lighter.models = c3a1.models / 2;
+        check(dsSoundRoom(lighter) > dsSoundRoom(c3a1), "lighter models leave its sounds room");
+    }
 } // namespace
 
 int main()
@@ -378,6 +407,7 @@ int main()
     testCrc();
     testReportSections();
     testReportViews();
+    testDsRoom();
     if (g_failures == 0)
         std::printf("test_level: ok\n");
     return g_failures == 0 ? 0 : 1;

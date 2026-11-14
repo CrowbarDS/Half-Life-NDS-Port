@@ -594,6 +594,17 @@ namespace
             fewer = fewer || warning.find("skins have") != std::string::npos;
         }
         check(fits && fewer, "its textures fit, its models' skins having fewer colours");
+        // Its models whole and its level fill a DS's heap: a DS has lighter
+        // ones, a DSi the full ones beside them.
+        int twins = 0;
+        std::error_code ec;
+        for (const auto &entry : fs::directory_iterator(hlds::Converter::dataDir(root / "card-stage") / "mdl" / "c3a2d", ec))
+        {
+            const std::string name = entry.path().filename().string();
+            twins += name.size() > 8 && name.compare(name.size() - 8, 8, ".dsi.hmd") == 0 ? 1 : 0;
+        }
+        check(result.dsNeedBeforeSounds != 0 && result.dsLeanStep > 0 && twins > 20,
+              "a DS's room is reckoned, its models made lighter, a DSi's kept beside them");
         fs::remove_all(root);
     }
 } // namespace

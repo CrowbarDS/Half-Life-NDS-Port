@@ -114,6 +114,12 @@ namespace hlds
         int sounds = 0;       ///< sounds the map plays
         int soundKb = 0;      ///< what they take in memory on the console
         int soundsHalved = 0; ///< of them, cooked at half the rate to fit
+        /// A DS's heap (HlDsRoom.hpp): what the map needs of it before its
+        /// sounds (0: not reckoned); what that leaves for them (negative:
+        /// short without any); how far its models were made lighter (0: not).
+        std::size_t dsNeedBeforeSounds = 0;
+        long dsSpareKb = 0;
+        int dsLeanStep = 0;
         int soundKbDsi = 0;   ///< what they take on a DSi, which has the better copies
         int soundsTwinned = 0; ///< how many have a better copy for a DSi
         int soundsMissing = 0; ///< named by the map, not in the game folder

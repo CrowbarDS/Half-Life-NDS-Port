@@ -23,6 +23,7 @@
 
 #include "HlArchive.hpp"
 #include "HlGuest.hpp"
+#include "HlDsRoom.hpp"
 #include "HlLevelReader.hpp"
 #include "hlds/AtomicWrite.hpp"
 #include "hlds/BrushInfo.hpp"
@@ -86,6 +87,11 @@ namespace hlds
         result.archiveMembers = report.members;
         result.archiveIndexBytes = report.indexBytes;
         result.keptSoundKb = static_cast<int>(report.keptSoundBytes / 1024);
+        // (What a DS's heap has left for the map's sounds: negative, how
+        // far it is short without any.)
+        if (result.dsNeedBeforeSounds != 0)
+            result.dsSpareKb = (static_cast<long>(hldata::kDsMapHeap) -
+                                static_cast<long>(result.dsNeedBeforeSounds)) / 1024;
         if (report.indexBytes > hldata::kMapIndexMost)
             result.warnings.push_back("its archive's index is " + std::to_string(report.indexBytes) +
                                       " bytes, over the " + std::to_string(hldata::kMapIndexMost) +
@@ -259,6 +265,9 @@ namespace hlds
         /// the rate the game has them, up to this.
         constexpr std::size_t kMapSoundBytesDsi = 2 * 1024 * 1024;
         constexpr int kSoundRateDsi = 22050;
+        /// What a DS's models give up room for, at least, before its sounds
+        /// do without (HlDsRoom.hpp).
+        constexpr std::size_t kDsSoundFloor = 128 * 1024;
 
         /// `relative` under `root`, whatever case each part of it is in on
         /// disk (the game's files are named in whatever case their authors
@@ -1060,6 +1069,78 @@ namespace hlds
             }
         }
 
+        // What a DS has room for (HlDsRoom.hpp): its heap holds the level
+        // and the models whole. Short of room for the sounds, a DS is given
+        // lighter models, a step at a time (its animation looser, one level
+        // of detail), a DSi the full ones beside them; the sounds then have
+        // what is left.
+        hldata::DsMapCost dsCost;
+        {
+            std::vector<std::uint8_t> trial;
+            std::string ignored;
+            if (writeLevel(level, trial, ignored))
+                dsCost.level = trial.size();
+            dsCost.actors = static_cast<std::uint32_t>(level.actors.size());
+            dsCost.logicRecords = static_cast<std::uint32_t>(level.logic.size());
+        }
+        // (A model a DS loads: not a weapon the map has not, nor one only a DSi's actors wear.)
+        auto dsLoads = [&](const ModelOut &model)
+        {
+            if (model.lazy)
+                return false;
+            for (const hldata::ModelRef &ref : level.modelRefs)
+            {
+                if (model.name == ref.name)
+                    return !hldata::modelRefLazy(ref) && !hldata::modelRefDsiOnly(ref);
+            }
+            return false;
+        };
+        auto dsModelBytes = [&]()
+        {
+            std::size_t bytes = 0, skins = 0;
+            for (std::size_t m = 0; m < models.size(); ++m)
+            {
+                if (!dsLoads(models[m]))
+                    continue;
+                bytes += models[m].bytes.size();
+                // (A weapon's skin is in main memory until it is taken up:
+                // 4x4 blocks, 6 bytes a 16 texels, and its palette.)
+                if (heldModel(m))
+                    skins += static_cast<std::size_t>(models[m].atlas.width) * models[m].atlas.height * 3 / 8 +
+                             static_cast<std::size_t>(skinColours) * 2;
+            }
+            dsCost.models = bytes;
+            dsCost.heldSkins = skins;
+        };
+        dsModelBytes();
+        static constexpr ModelLean kDsLean[] = {{true, 0.75, 0.25}, {true, 1.5, 0.5}, {true, 3.0, 1.0}, {true, 6.0, 2.0}};
+        for (std::size_t step = 0; step < std::size(kDsLean) && hldata::dsSoundRoom(dsCost) < kDsSoundFloor; ++step)
+        {
+            for (std::size_t m = 0; m < models.size(); ++m)
+            {
+                if (!dsLoads(models[m]) || skinOf[m] == 0)
+                    continue;
+                ModelOut lean;
+                if (!cookOne(needs[needOf[m]], skinOf[m], lean, true, kDsLean[step]) ||
+                    lean.bytes.size() >= models[m].bytes.size())
+                    continue;
+                // (A DSi's file is the model as it was, if it had none of its own.)
+                if (models[m].bytesDsi.empty())
+                    models[m].bytesDsi = std::move(models[m].bytes);
+                models[m].bytes = std::move(lean.bytes);
+            }
+            dsModelBytes();
+            result.dsLeanStep = static_cast<int>(step) + 1;
+        }
+        if (result.dsLeanStep != 0)
+        {
+            result.modelKb = 0;
+            for (const ModelOut &out : models)
+                result.modelKb += static_cast<int>(out.bytes.size() / 1024);
+        }
+        result.dsNeedBeforeSounds = hldata::dsMapNeedBeforeSounds(dsCost);
+        const std::size_t soundAllowance = std::min(kMapSoundBytes, hldata::dsSoundRoom(dsCost));
+
         // The map's sounds: each read, brought to the console's rate and
         // packed. All of a map's sounds are in memory while it is played, so
         // they have an allowance; over it, the longest are done again at
@@ -1108,7 +1189,7 @@ namespace hlds
                 made.push_back(std::move(one));
             }
             std::uint32_t shortest = 8000;
-            while (total > kMapSoundBytes)
+            while (total > soundAllowance)
             {
                 // The longest that is still at the full rate and long enough
                 // for the loss to be worth it (and, if that is not enough,
@@ -1134,9 +1215,9 @@ namespace hlds
                 total += longest->cooked.data.size();
                 ++result.soundsHalved;
             }
-            if (total > kMapSoundBytes)
-                result.warnings.push_back("its sounds are " + std::to_string(total / 1024) +
-                                          " KB, over what a DS has room for");
+            if (total > soundAllowance)
+                result.warnings.push_back("its sounds are " + std::to_string(total / 1024) + " KB; a DS has room for " +
+                                          std::to_string(soundAllowance / 1024) + " KB: it plays without the rest");
             // A DSi's copies: whatever the game has at a better rate than a
             // DS is given, at that rate (22 kHz at most) -- while they fit
             // what a DSi is allowed, the longest going without first.

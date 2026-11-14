@@ -210,6 +210,21 @@ namespace
                         "%u; sounds loaded with the map %d KB\n",
                         r.archiveKb, r.archiveMembers, r.archiveRawKb, static_cast<unsigned>(r.archiveIndexBytes),
                         static_cast<unsigned>(hldata::kMapIndexMost), r.keptSoundKb);
+        if (r.archiveMembers != 0 && r.dsNeedBeforeSounds != 0)
+        {
+            const char *lean[] = {"", "; its models one level of detail",
+                                  "; its models one level of detail, animation a little looser",
+                                  "; its models one level of detail, animation looser",
+                                  "; its models one level of detail, animation much looser"};
+            const int step = r.dsLeanStep >= 0 && r.dsLeanStep <= 4 ? r.dsLeanStep : 0;
+            if (r.dsSpareKb >= r.keptSoundKb)
+                std::printf("  DS: fits, its sounds and all, %ld KB spare%s\n", r.dsSpareKb - r.keptSoundKb, lean[step]);
+            else if (r.dsSpareKb >= 0)
+                std::printf("  DS: fits, with room for %ld KB of its %d KB of sounds%s\n", r.dsSpareKb, r.keptSoundKb,
+                            lean[step]);
+            else
+                std::printf("  DS: SHORT by %ld KB without any sound%s\n", -r.dsSpareKb, lean[step]);
+        }
     }
 
     /// KB, to the nearest.
