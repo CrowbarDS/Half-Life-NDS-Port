@@ -23,6 +23,7 @@
 
 #include "HlArchive.hpp"
 #include "HlGuest.hpp"
+#include "HlDsCut.hpp"
 #include "HlDsRoom.hpp"
 #include "HlLevelReader.hpp"
 #include "hlds/AtomicWrite.hpp"
@@ -31,6 +32,7 @@
 #include "hlds/Cooker.hpp"
 #include "hlds/EntityParser.hpp"
 #include "hlds/Materials.hpp"
+#include "hlds/LevelReport.hpp"
 #include "hlds/Pack.hpp"
 #include "hlds/TextureCook.hpp"
 
@@ -1070,19 +1072,41 @@ namespace hlds
         }
 
         // What a DS has room for (HlDsRoom.hpp): its heap holds the level
-        // and the models whole. Short of room for the sounds, a DS is given
-        // lighter models, a step at a time (its animation looser, one level
-        // of detail), a DSi the full ones beside them; the sounds then have
-        // what is left.
+        // and the models whole. Short of room for the sounds, a DS gives up
+        // what it can, a step at a time, the least seen first: one level of
+        // detail, then a little looser animation; then the visibility read
+        // from the card a row at a time, the lights that change left as they
+        // are, the geometry read from the card a page at a time (HlDsCut.hpp);
+        // then looser animation still. A DSi has the full models beside them,
+        // and the level whole. The sounds then have what is left.
         hldata::DsMapCost dsCost;
+        std::vector<std::uint8_t> dsTrial;
+        hldata::LevelView dsView;
+        std::size_t dsLevelWhole = 0;
         {
-            std::vector<std::uint8_t> trial;
             std::string ignored;
-            if (writeLevel(level, trial, ignored))
-                dsCost.level = trial.size();
+            if (writeLevel(level, dsTrial, ignored) &&
+                dsView.open(dsTrial.data(), static_cast<std::uint32_t>(dsTrial.size())) == hldata::LevelError::Ok)
+                dsLevelWhole = dsTrial.size();
             dsCost.actors = static_cast<std::uint32_t>(level.actors.size());
             dsCost.logicRecords = static_cast<std::uint32_t>(level.logic.size());
         }
+        hldata::DsCutHeader dsCut{};
+        DsGxPages dsPages;
+        // The level as a DS keeps it, with what it reads from the card instead.
+        auto dsLevelBytes = [&]()
+        {
+            std::size_t bytes = dsLevelWhole;
+            if ((dsCut.flags & hldata::kDsCutVis) != 0)
+                bytes = bytes - level.vis.size() + (level.leaves.size() + 7) / 8 + 16;
+            if ((dsCut.flags & hldata::kDsCutLightPatch) != 0)
+                bytes -= level.lightPatches.size() * sizeof(hldata::LightPatch);
+            if ((dsCut.flags & hldata::kDsCutGx) != 0)
+                bytes = bytes - level.gxStream.size() * 4 + static_cast<std::size_t>(dsPages.slotCount) * dsPages.slotWords * 4 +
+                        dsPages.starts.size() * 4 + static_cast<std::size_t>(dsPages.slotCount) * 8;
+            dsCost.level = bytes;
+        };
+        dsLevelBytes();
         // (A model a DS loads: not a weapon the map has not, nor one only a DSi's actors wear.)
         auto dsLoads = [&](const ModelOut &model)
         {
@@ -1114,7 +1138,7 @@ namespace hlds
         };
         dsModelBytes();
         static constexpr ModelLean kDsLean[] = {{true, 0.75, 0.25}, {true, 1.5, 0.5}, {true, 3.0, 1.0}, {true, 6.0, 2.0}};
-        for (std::size_t step = 0; step < std::size(kDsLean) && hldata::dsSoundRoom(dsCost) < kDsSoundFloor; ++step)
+        auto leanModels = [&](int step)
         {
             for (std::size_t m = 0; m < models.size(); ++m)
             {
@@ -1125,7 +1149,7 @@ namespace hlds
                 // must name the same skin.)
                 const int texels = models[m].atlas.width * models[m].atlas.height;
                 ModelOut lean;
-                if (!cookOne(needs[needOf[m]], texels != 0 ? texels : skinOf[m], lean, true, kDsLean[step]) ||
+                if (!cookOne(needs[needOf[m]], texels != 0 ? texels : skinOf[m], lean, true, kDsLean[step - 1]) ||
                     lean.atlas.width != models[m].atlas.width || lean.atlas.height != models[m].atlas.height ||
                     lean.bytes.size() >= models[m].bytes.size())
                     continue;
@@ -1135,8 +1159,89 @@ namespace hlds
                 models[m].bytes = std::move(lean.bytes);
             }
             dsModelBytes();
-            result.dsLeanStep = static_cast<int>(step) + 1;
+            result.dsLeanStep = step;
+        };
+        enum class DsStep { Lean1, Lean2, Vis, Lights, Pages, Lean3, Lean4 };
+        constexpr DsStep kDsSteps[] = {DsStep::Lean1, DsStep::Lean2,  DsStep::Vis,  DsStep::Lights,
+                                       DsStep::Pages, DsStep::Lean3, DsStep::Lean4};
+        for (const DsStep step : kDsSteps)
+        {
+            if (dsLevelWhole == 0 || hldata::dsSoundRoom(dsCost) >= kDsSoundFloor)
+                break;
+            switch (step)
+            {
+            case DsStep::Lean1: leanModels(1); break;
+            case DsStep::Lean2: leanModels(2); break;
+            case DsStep::Lean3: leanModels(3); break;
+            case DsStep::Lean4: leanModels(4); break;
+            case DsStep::Vis:
+                if (!level.vis.empty())
+                    dsCut.flags |= hldata::kDsCutVis;
+                break;
+            case DsStep::Lights:
+                if (!level.lightPatches.empty())
+                    dsCut.flags |= hldata::kDsCutLightPatch;
+                break;
+            case DsStep::Pages:
+            {
+                // The stream laid out leaf by leaf first, the brush entities'
+                // together after: what a view needs on few pages. (The same
+                // words, in another order: a DSi draws the same.)
+                const std::vector<std::uint32_t> order = dsGxOrder(dsView);
+                if (!order.empty())
+                {
+                    std::vector<std::uint32_t> stream;
+                    stream.reserve(level.gxStream.size());
+                    std::vector<std::uint32_t> moved(level.surfaces.size());
+                    for (const std::uint32_t s : order)
+                    {
+                        moved[s] = static_cast<std::uint32_t>(stream.size());
+                        const hldata::Surface &surface = level.surfaces[s];
+                        stream.insert(stream.end(), level.gxStream.begin() + surface.gxOfs,
+                                      level.gxStream.begin() + surface.gxOfs + surface.gxWords);
+                    }
+                    // (A patch says a word of the stream: the same word, where it now is.)
+                    std::vector<std::uint32_t> byOfs(level.surfaces.size());
+                    for (std::uint32_t s = 0; s < byOfs.size(); ++s)
+                        byOfs[s] = s;
+                    std::sort(byOfs.begin(), byOfs.end(), [&](std::uint32_t a, std::uint32_t b)
+                              { return level.surfaces[a].gxOfs < level.surfaces[b].gxOfs; });
+                    for (hldata::LightPatch &patch : level.lightPatches)
+                    {
+                        const auto it = std::upper_bound(byOfs.begin(), byOfs.end(), patch.word,
+                                                         [&](std::uint32_t word, std::uint32_t s)
+                                                         { return word < level.surfaces[s].gxOfs; });
+                        const std::uint32_t s = *(it - 1);
+                        patch.word = moved[s] + (patch.word - level.surfaces[s].gxOfs);
+                    }
+                    for (std::uint32_t s = 0; s < level.surfaces.size(); ++s)
+                        level.surfaces[s].gxOfs = moved[s];
+                    level.gxStream = std::move(stream);
+                    std::string ignored;
+                    dsTrial.clear();
+                    if (!writeLevel(level, dsTrial, ignored) ||
+                        dsView.open(dsTrial.data(), static_cast<std::uint32_t>(dsTrial.size())) != hldata::LevelError::Ok)
+                    {
+                        result.error = "the level laid out for a DS's pages does not open: " + ignored;
+                        return result;
+                    }
+                }
+                dsPages = dsGxPages(dsView, hldata::kDsGxPageWords);
+                // (Only where it gives room back, and fits what a DS keeps track of.)
+                const std::size_t kept = static_cast<std::size_t>(dsPages.slotCount) * dsPages.slotWords * 4;
+                if (dsPages.pages() != 0 && dsPages.pages() <= hldata::kDsGxMostPages &&
+                    dsPages.slotCount <= hldata::kDsGxMostSlots && dsPages.slotWords <= hldata::kDsGxMostPageWords &&
+                    kept + 16 * 1024 < level.gxStream.size() * 4)
+                    dsCut.flags |= hldata::kDsCutGx | hldata::kDsCutLightPatch;
+                break;
+            }
+            }
+            dsLevelBytes();
         }
+        result.dsCut = dsCut.flags;
+        result.dsLevelKb = static_cast<int>(dsCost.level / 1024);
+        result.dsModelKb = static_cast<int>(dsCost.models / 1024);
+        result.dsSkinKb = static_cast<int>(dsCost.heldSkins / 1024);
         if (result.dsLeanStep != 0)
         {
             result.modelKb = 0;
@@ -1609,6 +1714,44 @@ namespace hlds
                 return result;
         }
         result.actors = static_cast<int>(level.actors.size());
+
+        // What a DS leaves out of it (HlDsCut.hpp), before it -- and none left
+        // over from a cook that had one where this has not. (Its checksum is
+        // the packed level's, set when it is packed.)
+        {
+            const fs::path cutPath = stageDir() / "maps" / (result.name + ".dscut");
+            std::error_code gone;
+            if (dsCut.flags == 0)
+                fs::remove(cutPath, gone);
+            else
+            {
+                std::memcpy(dsCut.magic, hldata::kDsCutMagic, sizeof(dsCut.magic));
+                dsCut.version = hldata::kDsCutVersion;
+                dsCut.visBytes = static_cast<std::uint32_t>(level.vis.size());
+                dsCut.gxWords = static_cast<std::uint32_t>(level.gxStream.size());
+                if ((dsCut.flags & hldata::kDsCutGx) != 0)
+                {
+                    dsCut.pageCount = dsPages.pages();
+                    dsCut.slotCount = dsPages.slotCount;
+                    dsCut.slotWords = dsPages.slotWords;
+                }
+                std::vector<std::uint8_t> cut(sizeof(dsCut));
+                std::memcpy(cut.data(), &dsCut, sizeof(dsCut));
+                if ((dsCut.flags & hldata::kDsCutGx) != 0)
+                {
+                    const std::size_t at = cut.size();
+                    cut.resize(at + dsPages.starts.size() * 4);
+                    std::memcpy(cut.data() + at, dsPages.starts.data(), dsPages.starts.size() * 4);
+                }
+                if (!hldata::dsCutValid(cut.data(), cut.size()))
+                {
+                    result.error = "the DS cut made is not one a DS could read";
+                    return result;
+                }
+                if (!writeFileAtomic(cutPath, cut, result.error))
+                    return result;
+            }
+        }
 
         // The level last: it is what makes the map loadable, so it lands only
         // once everything it names is on the card.

@@ -8,7 +8,10 @@
 
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
+#include <vector>
 
+#include "HlDsCut.hpp"
 #include "HlDsRoom.hpp"
 #include "HlLevelReader.hpp"
 #include "TestBspBuilder.hpp"
@@ -397,6 +400,44 @@ namespace
         lighter.models = c3a1.models / 2;
         check(dsSoundRoom(lighter) > dsSoundRoom(c3a1), "lighter models leave its sounds room");
     }
+    /// The cut a DS reads (HlDsCut.hpp) is trusted only whole and in order.
+    void testDsCut()
+    {
+        using namespace hldata;
+        DsCutHeader h{};
+        std::memcpy(h.magic, kDsCutMagic, 4);
+        h.version = kDsCutVersion;
+        h.flags = kDsCutVis | kDsCutLightPatch;
+        auto bytesOf = [&](const DsCutHeader &header, std::initializer_list<std::uint32_t> starts)
+        {
+            std::vector<std::uint8_t> out(sizeof(header));
+            std::memcpy(out.data(), &header, sizeof(header));
+            for (const std::uint32_t v : starts)
+            {
+                out.resize(out.size() + 4);
+                std::memcpy(out.data() + out.size() - 4, &v, 4);
+            }
+            return out;
+        };
+        std::vector<std::uint8_t> b = bytesOf(h, {});
+        check(dsCutValid(b.data(), b.size()), "a cut with no pages is its header alone");
+        check(!dsCutValid(b.data(), b.size() - 1), "... and not a byte short");
+        h.flags = kDsCutGx | kDsCutLightPatch;
+        h.pageCount = 3;
+        h.slotCount = 2;
+        h.slotWords = 1024;
+        h.gxWords = 2500;
+        b = bytesOf(h, {0, 1000, 1900, 2500});
+        check(dsCutValid(b.data(), b.size()), "pages in order, ending where the stream does");
+        check(!dsCutValid(bytesOf(h, {0, 1900, 1000, 2500}).data(), b.size()), "pages out of order are refused");
+        check(!dsCutValid(bytesOf(h, {0, 1000, 1900, 2400}).data(), b.size()), "pages short of the stream");
+        h.slotWords = 800;
+        check(!dsCutValid(bytesOf(h, {0, 1000, 1900, 2500}).data(), b.size()), "a page longer than a slot");
+        h.slotWords = 1024;
+        h.flags = kDsCutGx;
+        check(!dsCutValid(bytesOf(h, {0, 1000, 1900, 2500}).data(), b.size()),
+              "pages and light patches still made: refused");
+    }
 } // namespace
 
 int main()
@@ -408,6 +449,7 @@ int main()
     testReportSections();
     testReportViews();
     testDsRoom();
+    testDsCut();
     if (g_failures == 0)
         std::printf("test_level: ok\n");
     return g_failures == 0 ? 0 : 1;

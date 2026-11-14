@@ -9,6 +9,7 @@
 #include "HlAirBank.hpp"
 #include "HlArchive.hpp"
 #include "HlGuest.hpp"
+#include "HlDsCut.hpp"
 #include "HlLevelReader.hpp"
 #include "HlModel.hpp"
 #include "HlSound.hpp"
@@ -323,6 +324,7 @@ namespace hlds
                 packing.named.insert(member.path);
                 pieces.push_back(std::move(member));
             }
+            const std::size_t rootEnd = levelAt + pieces.size();
             packing.members.insert(packing.members.begin() + static_cast<std::ptrdiff_t>(levelAt),
                                    std::make_move_iterator(pieces.begin()), std::make_move_iterator(pieces.end()));
 
@@ -446,6 +448,47 @@ namespace hlds
                     if (pass == 0 && packing.members.size() != before)
                         packing.report->keptSoundBytes += packing.members.back().data.size();
                 }
+            }
+
+            // For a map too big for a DS's heap (HlDsCut.hpp): what a DS
+            // leaves out of the level and reads from here instead, copies of
+            // the very sections packed, never compressed (read a piece at a
+            // time). For the level as packed: its checksum is set here.
+            std::vector<std::uint8_t> cut;
+            std::string none;
+            if (!air && readFile(stage / "maps" / (map + ".dscut"), cut, none))
+            {
+                hldata::DsCutHeader header;
+                const auto *dir = reinterpret_cast<const hldata::SectionDir *>(level.data() + sizeof(hldata::LevelHeader));
+                const hldata::SectionDir &vis = dir[static_cast<int>(hldata::Section::Vis)];
+                const hldata::SectionDir &gx = dir[static_cast<int>(hldata::Section::GxStream)];
+                std::memcpy(&header, cut.data(), std::min(cut.size(), sizeof(header)));
+                if (!hldata::dsCutValid(cut.data(), cut.size()) ||
+                    ((header.flags & hldata::kDsCutGx) != 0 && header.gxWords != gx.count) ||
+                    ((header.flags & hldata::kDsCutVis) != 0 && header.visBytes != vis.size))
+                {
+                    error = "the staged DS cut does not match its level: " + map;
+                    return false;
+                }
+                header.levelCrc = reinterpret_cast<const hldata::LevelHeader *>(level.data())->crc32;
+                std::memcpy(cut.data(), &header, sizeof(header));
+                // (At the root, beside the level's pieces: an archive has its
+                // root's members before any folder's.)
+                std::size_t at = rootEnd;
+                auto put = [&](const char *path, std::vector<std::uint8_t> bytes)
+                {
+                    NpacMember member;
+                    member.path = path;
+                    member.data = std::move(bytes);
+                    member.mayCompress = false;
+                    packing.named.insert(member.path);
+                    packing.members.insert(packing.members.begin() + static_cast<std::ptrdiff_t>(at++), std::move(member));
+                };
+                put(hldata::kDsCutMember, cut);
+                if ((header.flags & hldata::kDsCutVis) != 0)
+                    put(hldata::kDsVisMember, {level.begin() + vis.offset, level.begin() + vis.offset + vis.size});
+                if ((header.flags & hldata::kDsCutGx) != 0)
+                    put(hldata::kDsGxMember, {level.begin() + gx.offset, level.begin() + gx.offset + gx.size});
             }
             return true;
         }

@@ -1,5 +1,6 @@
 #include "hlds/LevelReport.hpp"
 
+#include <algorithm>
 #include <vector>
 
 #include "HlLevelReader.hpp"
@@ -294,5 +295,179 @@ namespace hlds
         if (leaves != 0)
             p.meanPageBytes = static_cast<std::uint32_t>(pageSum * pageBytes / leaves);
         return r;
+    }
+    DsGxPages dsGxPages(const LevelView &view, std::uint32_t pageWords)
+    {
+        DsGxPages out;
+        if (view.gxWordCount == 0 || view.modelCount == 0 || pageWords == 0)
+            return out;
+        // The surfaces as they lie in the stream.
+        std::vector<std::uint32_t> order(view.surfaceCount);
+        for (std::uint32_t s = 0; s < view.surfaceCount; ++s)
+            order[s] = s;
+        std::sort(order.begin(), order.end(),
+                  [&](std::uint32_t a, std::uint32_t b) { return view.surfaces[a].gxOfs < view.surfaces[b].gxOfs; });
+        out.starts.push_back(0);
+        for (const std::uint32_t s : order)
+        {
+            const Surface &surface = view.surfaces[s];
+            if (surface.gxWords == 0)
+                continue;
+            const std::uint32_t begin = out.starts.back();
+            if (surface.gxOfs > begin && surface.gxOfs + surface.gxWords - begin > pageWords)
+                out.starts.push_back(surface.gxOfs);
+        }
+        out.starts.push_back(view.gxWordCount);
+        for (std::size_t i = 1; i < out.starts.size(); ++i)
+            out.slotWords = std::max(out.slotWords, out.starts[i] - out.starts[i - 1]);
+        auto pageOf = [&](std::uint32_t word)
+        {
+            return static_cast<std::uint32_t>(std::upper_bound(out.starts.begin(), out.starts.end(), word) -
+                                              out.starts.begin() - 1);
+        };
+        const std::uint32_t pages = out.pages();
+        const std::uint32_t first = view.models[0].firstSurface;
+        const std::uint32_t last = first + view.models[0].surfaceCount;
+        auto isWorld = [&](std::uint32_t s) { return s >= first && s < last; };
+
+        // The brush entities' pages: kept in, whatever is in view.
+        std::vector<char> pinned(pages, 0);
+        for (std::uint32_t s = 0; s < view.surfaceCount; ++s)
+        {
+            const Surface &surface = view.surfaces[s];
+            if (isWorld(s) || surface.gxWords == 0)
+                continue;
+            for (std::uint32_t p = pageOf(surface.gxOfs); p <= pageOf(surface.gxOfs + surface.gxWords - 1); ++p)
+                pinned[p] = 1;
+        }
+        for (const char p : pinned)
+            out.brushPages += p != 0 ? 1u : 0u;
+
+        // Each leaf's view, as reportLevel walks it: the world's pages it needs.
+        std::vector<std::uint32_t> pageStamp(pages, 0), nodeStamp(view.nodeCount, 0), nodes, row;
+        auto above = [&](std::uint32_t leaf)
+        {
+            nodes.clear();
+            std::uint32_t node = view.leaves[leaf].parent;
+            while (node != kNoParent && node < view.nodeCount && nodes.size() <= view.nodeCount)
+            {
+                nodes.push_back(node);
+                node = view.nodes[node].parent;
+            }
+        };
+        const std::uint32_t rows = view.header->visLeafCount;
+        for (std::uint32_t leaf = 1; leaf <= rows && leaf < view.leafCount; ++leaf)
+        {
+            if (view.leaves[leaf].contents == kContentsSolid)
+                continue;
+            const std::uint32_t stamp = leaf;
+            std::uint32_t need = 0;
+            auto take = [&](std::uint32_t s)
+            {
+                if (!isWorld(s) || s >= view.surfaceCount || view.surfaces[s].gxWords == 0)
+                    return;
+                const Surface &surface = view.surfaces[s];
+                for (std::uint32_t p = pageOf(surface.gxOfs); p <= pageOf(surface.gxOfs + surface.gxWords - 1); ++p)
+                {
+                    if (pageStamp[p] != stamp && pinned[p] == 0)
+                    {
+                        pageStamp[p] = stamp;
+                        ++need;
+                    }
+                }
+            };
+            rowOf(view, leaf, row);
+            for (const std::uint32_t seen : row)
+            {
+                const Leaf &l = view.leaves[seen];
+                for (std::uint32_t k = 0; k < l.markCount; ++k)
+                    take(view.marks[l.firstMark + k]);
+                above(seen);
+                for (const std::uint32_t n : nodes)
+                {
+                    if (nodeStamp[n] == stamp)
+                        break; // (and every node above it)
+                    nodeStamp[n] = stamp;
+                    if (n < view.nodeSpanCount)
+                    {
+                        const NodeSpan &span = view.nodeSpans[n];
+                        for (std::uint32_t k = 0; k < span.count; ++k)
+                            take(view.nodeMarks[span.first + k]);
+                    }
+                }
+            }
+            out.worstWorldPages = std::max(out.worstWorldPages, need);
+        }
+        out.slotCount = std::min(pages, out.worstWorldPages + (out.worstWorldPages + 3) / 4 + out.brushPages);
+        return out;
+    }
+    std::vector<std::uint32_t> dsGxOrder(const LevelView &view)
+    {
+        std::vector<std::uint32_t> order;
+        if (view.modelCount == 0)
+            return order;
+        // (Only a stream that is its surfaces end to end, none sharing words.)
+        std::vector<std::uint32_t> byOfs(view.surfaceCount);
+        std::uint64_t words = 0;
+        for (std::uint32_t s = 0; s < view.surfaceCount; ++s)
+        {
+            byOfs[s] = s;
+            words += view.surfaces[s].gxWords;
+        }
+        if (words != view.gxWordCount)
+            return order;
+        std::sort(byOfs.begin(), byOfs.end(),
+                  [&](std::uint32_t a, std::uint32_t b) { return view.surfaces[a].gxOfs < view.surfaces[b].gxOfs; });
+        std::uint32_t at = 0;
+        for (const std::uint32_t s : byOfs)
+        {
+            if (view.surfaces[s].gxOfs != at)
+                return order;
+            at += view.surfaces[s].gxWords;
+        }
+        const std::uint32_t first = view.models[0].firstSurface;
+        const std::uint32_t last = first + view.models[0].surfaceCount;
+        std::vector<char> placed(view.surfaceCount, 0);
+        auto place = [&](std::uint32_t s)
+        {
+            if (s < first || s >= last || s >= view.surfaceCount || placed[s] != 0)
+                return;
+            placed[s] = 1;
+            order.push_back(s);
+        };
+        std::vector<std::uint32_t> nodes;
+        for (std::uint32_t leaf = 1; leaf < view.leafCount; ++leaf)
+        {
+            nodes.clear();
+            std::uint32_t node = view.leaves[leaf].parent;
+            while (node != kNoParent && node < view.nodeCount && nodes.size() <= view.nodeCount)
+            {
+                nodes.push_back(node);
+                node = view.nodes[node].parent;
+            }
+            for (auto n = nodes.rbegin(); n != nodes.rend(); ++n)
+            {
+                if (*n < view.nodeSpanCount)
+                {
+                    const NodeSpan &span = view.nodeSpans[*n];
+                    for (std::uint32_t k = 0; k < span.count; ++k)
+                        place(view.nodeMarks[span.first + k]);
+                }
+            }
+            const Leaf &l = view.leaves[leaf];
+            for (std::uint32_t k = 0; k < l.markCount; ++k)
+                place(view.marks[l.firstMark + k]);
+        }
+        for (std::uint32_t s = first; s < last && s < view.surfaceCount; ++s)
+            place(s); // (any no leaf names)
+        for (std::uint32_t s = 0; s < view.surfaceCount; ++s)
+        {
+            if (placed[s] == 0)
+            {
+                placed[s] = 1;
+                order.push_back(s);
+            }
+        }
+        return order;
     }
 } // namespace hlds

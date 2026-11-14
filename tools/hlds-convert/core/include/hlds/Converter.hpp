@@ -120,6 +120,11 @@ namespace hlds
         std::size_t dsNeedBeforeSounds = 0;
         long dsSpareKb = 0;
         int dsLeanStep = 0;
+        /// What a DS leaves out of the level (HlDsCut.hpp's flags; 0: nothing).
+        int dsCut = 0;
+        /// ... and what a DS holds of it, in KB: its level, its models, the
+        /// weapons' skins kept in main memory.
+        int dsLevelKb = 0, dsModelKb = 0, dsSkinKb = 0;
         int soundKbDsi = 0;   ///< what they take on a DSi, which has the better copies
         int soundsTwinned = 0; ///< how many have a better copy for a DSi
         int soundsMissing = 0; ///< named by the map, not in the game folder

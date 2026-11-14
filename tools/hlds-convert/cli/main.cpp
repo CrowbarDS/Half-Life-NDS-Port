@@ -16,6 +16,7 @@
 #include "Install.hpp"
 #include "RomHeader.hpp"
 #include "HlArchive.hpp"
+#include "HlDsCut.hpp"
 #include "HlLevelReader.hpp"
 #include "hlds/TextureFamily.hpp"
 #include "hlds/AtomicWrite.hpp"
@@ -217,13 +218,23 @@ namespace
                                   "; its models one level of detail, animation looser",
                                   "; its models one level of detail, animation much looser"};
             const int step = r.dsLeanStep >= 0 && r.dsLeanStep <= 4 ? r.dsLeanStep : 0;
+            // (And what of the level it reads from the card, or goes without.)
+            std::string cuts = lean[step];
+            if ((r.dsCut & hldata::kDsCutVis) != 0)
+                cuts += "; visibility read from the card";
+            if ((r.dsCut & hldata::kDsCutGx) != 0)
+                cuts += "; geometry read from the card";
+            if ((r.dsCut & hldata::kDsCutLightPatch) != 0)
+                cuts += "; no light changes";
+            cuts += " (level " + std::to_string(r.dsLevelKb) + " KB, models " + std::to_string(r.dsModelKb) +
+                    " KB, weapons' skins " + std::to_string(r.dsSkinKb) + " KB)";
             if (r.dsSpareKb >= r.keptSoundKb)
-                std::printf("  DS: fits, its sounds and all, %ld KB spare%s\n", r.dsSpareKb - r.keptSoundKb, lean[step]);
+                std::printf("  DS: fits, its sounds and all, %ld KB spare%s\n", r.dsSpareKb - r.keptSoundKb, cuts.c_str());
             else if (r.dsSpareKb >= 0)
                 std::printf("  DS: fits, with room for %ld KB of its %d KB of sounds%s\n", r.dsSpareKb, r.keptSoundKb,
-                            lean[step]);
+                            cuts.c_str());
             else
-                std::printf("  DS: SHORT by %ld KB without any sound%s\n", -r.dsSpareKb, lean[step]);
+                std::printf("  DS: SHORT by %ld KB without any sound%s\n", -r.dsSpareKb, cuts.c_str());
         }
     }
 

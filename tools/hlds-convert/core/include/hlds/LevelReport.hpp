@@ -15,6 +15,7 @@
 // only do better; the exact figure says by how much at most.
 
 #include <cstdint>
+#include <vector>
 
 #include "HlLevel.hpp"
 
@@ -66,4 +67,25 @@ namespace hlds
 
     /// The report of a level `view` opened. `pageBytes`: a power of two.
     LevelReport reportLevel(const hldata::LevelView &view, std::uint32_t pageBytes = 4096);
+
+    /// The GxStream cut for a DS that reads it a page at a time (HlDsCut.hpp):
+    /// as it lies, never split inside a surface, a new page begun at a
+    /// surface that would take the page past `pageWords`.
+    struct DsGxPages
+    {
+        std::vector<std::uint32_t> starts; ///< each page's first word, then the stream's end
+        std::uint32_t slotWords = 0;       ///< the longest page
+        std::uint32_t worstWorldPages = 0; ///< the world's pages the worst view needs
+        std::uint32_t brushPages = 0;      ///< pages holding the brush entities' (kept in)
+        std::uint32_t slotCount = 0;       ///< what a DS keeps: the worst view's, a quarter more, the brushes'
+        std::uint32_t pages() const { return starts.empty() ? 0 : static_cast<std::uint32_t>(starts.size() - 1); }
+    };
+    DsGxPages dsGxPages(const hldata::LevelView &view, std::uint32_t pageWords);
+
+    /// The surfaces in the order a DS that pages the geometry wants them in
+    /// the stream: the world's where the first leaf that sees them is (the
+    /// nodes above a leaf before it), so that what one view needs lies
+    /// together; then the brush entities', together at the end. Empty if
+    /// the stream is not made of its surfaces' words alone, end to end.
+    std::vector<std::uint32_t> dsGxOrder(const hldata::LevelView &view);
 } // namespace hlds

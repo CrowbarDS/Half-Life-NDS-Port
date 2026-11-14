@@ -12,6 +12,8 @@
 #include <filesystem>
 #include <map>
 
+#include "HlDsCut.hpp"
+#include <tuple>
 #include "HlLevelReader.hpp"
 #include "HlSound.hpp"
 #include "HlWeaponBundle.hpp"
@@ -87,6 +89,33 @@ namespace
             const std::uint32_t index = hldata::npacIndexBytes(archive.data(), archive.size());
             check(index >= members.size() * 8 + names && index <= hldata::kMapIndexMost,
                   "its index fits the console's fixed buffer");
+        }
+
+        // Then, at the root, what a DS reads instead of parts of the level
+        // (HlDsCut.hpp), on a map too big for its heap: the very sections.
+        if (next < members.size() && members[next].path == hldata::kDsCutMember)
+        {
+            const hlds::NpacMember &cut = members[next++];
+            hldata::DsCutHeader header{};
+            std::memcpy(&header, cut.data.data(), std::min(cut.data.size(), sizeof(header)));
+            const auto *dir = reinterpret_cast<const hldata::SectionDir *>(joined.data() + sizeof(hldata::LevelHeader));
+            check(hldata::dsCutValid(cut.data.data(), cut.data.size()) &&
+                      header.levelCrc == reinterpret_cast<const hldata::LevelHeader *>(joined.data())->crc32 &&
+                      cut.method == hlds::kNpacStored,
+                  "a DS's cut is one a DS reads, of this level, stored");
+            for (const auto &[name, section, flag] :
+                 {std::tuple{hldata::kDsVisMember, hldata::Section::Vis, hldata::kDsCutVis},
+                  std::tuple{hldata::kDsGxMember, hldata::Section::GxStream, hldata::kDsCutGx}})
+            {
+                if ((header.flags & flag) == 0)
+                    continue;
+                const hldata::SectionDir &d = dir[static_cast<int>(section)];
+                const bool same = next < members.size() && members[next].path == name &&
+                                  members[next].method == hlds::kNpacStored &&
+                                  Bytes(joined.begin() + d.offset, joined.begin() + d.offset + d.size) == members[next].data;
+                check(same, "each section it reads from the card is beside it, as the level has it");
+                ++next;
+            }
         }
 
         // Folders in the order of a load, each one's files together.
@@ -605,6 +634,9 @@ namespace
         }
         check(result.dsNeedBeforeSounds != 0 && result.dsLeanStep > 0 && twins > 20,
               "a DS's room is reckoned, its models made lighter, a DSi's kept beside them");
+        check(result.dsCut != 0 && result.dsSpareKb >= 0, "and parts of its level read from the card: it fits");
+        checkArchive(hlds::Converter::dataDir(root / "card-stage"), hlds::Converter::dataDir(root / "card"), "c3a2d",
+                     true);
         fs::remove_all(root);
     }
 } // namespace
