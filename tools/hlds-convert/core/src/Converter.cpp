@@ -1120,8 +1120,13 @@ namespace hlds
             {
                 if (!dsLoads(models[m]) || skinOf[m] == 0)
                     continue;
+                // (At the skin size it has now: fitSkins may have made it
+                // smaller than it was first asked for, and the lighter file
+                // must name the same skin.)
+                const int texels = models[m].atlas.width * models[m].atlas.height;
                 ModelOut lean;
-                if (!cookOne(needs[needOf[m]], skinOf[m], lean, true, kDsLean[step]) ||
+                if (!cookOne(needs[needOf[m]], texels != 0 ? texels : skinOf[m], lean, true, kDsLean[step]) ||
+                    lean.atlas.width != models[m].atlas.width || lean.atlas.height != models[m].atlas.height ||
                     lean.bytes.size() >= models[m].bytes.size())
                     continue;
                 // (A DSi's file is the model as it was, if it had none of its own.)
