@@ -364,6 +364,12 @@ namespace hlds
                     }
                 }
             }
+            // A sky the game folder has not got: the game draws its default
+            // one instead (c2a2a's 'day', c2a3c's 'dawn').
+            if (!skyName.empty() && skyName != "desert" &&
+                (skyName.size() > 12 || !skyExists(options_.gameDir, skyName)) &&
+                skyExists(options_.gameDir, "desert"))
+                skyName = "desert";
             if (!skyName.empty() && (skyName.size() > 12 || !skyExists(options_.gameDir, skyName)))
             {
                 result.warnings.push_back("its sky '" + skyName + "' was not found: drawn without one");

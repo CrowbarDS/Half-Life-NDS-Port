@@ -450,6 +450,117 @@ namespace
         fs::remove_all(dir);
     }
 
+    /// Records what it is given; makes a plain 4x4 texture of the size.
+    class RecordingEncoder : public ITextureEncoder
+    {
+    public:
+        std::vector<RgbaImage> seen;
+        bool encode(const RgbaImage &image, int, TextureFormat format, CookedTexture &out,
+                    std::string &) override
+        {
+            seen.push_back(image);
+            out = CookedTexture{};
+            out.width = image.width;
+            out.height = image.height;
+            out.format = format;
+            out.texels.assign(static_cast<std::size_t>(image.width / 4) * (image.height / 4) * 4, 0);
+            out.index.assign(static_cast<std::size_t>(image.width / 4) * (image.height / 4) * 2, 0);
+            out.palette.assign(8, 0);
+            return true;
+        }
+        std::uint32_t version() const override { return 1; }
+    };
+
+    void writeBytes(const fs::path &file, const std::vector<std::uint8_t> &bytes)
+    {
+        fs::create_directories(file.parent_path());
+        std::ofstream out(file, std::ios::binary);
+        out.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    }
+
+    /// A 24-bit uncompressed TGA of one colour, bottom row first.
+    std::vector<std::uint8_t> tgaOf(int side, std::uint8_t r, std::uint8_t g, std::uint8_t b)
+    {
+        std::vector<std::uint8_t> bytes(18, 0);
+        bytes[2] = 2;
+        bytes[12] = static_cast<std::uint8_t>(side);
+        bytes[13] = static_cast<std::uint8_t>(side >> 8);
+        bytes[14] = bytes[12];
+        bytes[15] = bytes[13];
+        bytes[16] = 24;
+        for (int n = 0; n < side * side; ++n)
+        {
+            bytes.push_back(b);
+            bytes.push_back(g);
+            bytes.push_back(r);
+        }
+        return bytes;
+    }
+
+    /// An 8-bit bitmap of one colour (palette index 0).
+    std::vector<std::uint8_t> bmpOf(int side, std::uint8_t r, std::uint8_t g, std::uint8_t b)
+    {
+        const std::uint32_t pixels = 14 + 40 + 1024;
+        std::vector<std::uint8_t> bytes(pixels + static_cast<std::size_t>(side) * side, 0);
+        auto put32 = [&](std::size_t at, std::uint32_t v)
+        {
+            for (int k = 0; k < 4; ++k)
+                bytes[at + k] = static_cast<std::uint8_t>(v >> (8 * k));
+        };
+        bytes[0] = 'B';
+        bytes[1] = 'M';
+        put32(2, static_cast<std::uint32_t>(bytes.size()));
+        put32(10, pixels);
+        put32(14, 40);
+        put32(18, static_cast<std::uint32_t>(side));
+        put32(22, static_cast<std::uint32_t>(side));
+        bytes[26] = 1;
+        bytes[28] = 8;
+        bytes[54] = b;
+        bytes[55] = g;
+        bytes[56] = r;
+        return bytes;
+    }
+
+    void testSkyPictures()
+    {
+        const fs::path dir = fs::temp_directory_path() / "hlds_test_sky";
+        fs::remove_all(dir);
+        const fs::path env = dir / "game" / "gfx" / "env";
+        // xen8 as the game has it: TGA only. mixed: bitmaps but one TGA side.
+        // half: one side missing.
+        for (const char *side : kSkySides)
+        {
+            writeBytes(env / (std::string("xen8") + side + ".tga"), tgaOf(64, 10, 200, 30));
+            if (std::string(side) == "up")
+                writeBytes(env / (std::string("mixed") + side + ".tga"), tgaOf(64, 1, 2, 3));
+            else
+                writeBytes(env / (std::string("mixed") + side + ".bmp"), bmpOf(64, 90, 80, 70));
+            if (std::string(side) != "dn")
+                writeBytes(env / (std::string("half") + side + ".bmp"), bmpOf(64, 9, 9, 9));
+        }
+        check(skyExists(dir / "game", "xen8"), "a sky of TGA pictures only is found");
+        check(skyExists(dir / "game", "mixed"), "and one of bitmaps and a TGA");
+        check(!skyExists(dir / "game", "half") && !skyExists(dir / "game", "nothing"),
+              "a sky missing a side, or missing, is not");
+
+        RecordingEncoder encoder;
+        std::string error;
+        check(cookSky(dir / "game", "xen8", encoder, dir / "tex", error), "the TGA sky cooks");
+        check(encoder.seen.size() == 6 && encoder.seen[0].width == kSkySize &&
+                  encoder.seen[0].at(5, 5)[0] == 10 && encoder.seen[0].at(5, 5)[1] == 200 &&
+                  encoder.seen[0].at(5, 5)[2] == 30,
+              "six sides, at the sky's size, in the TGA's colours");
+        char name[40];
+        hldata::textureFileName("xen8up", kSkySize, kSkySize, false, name);
+        check(fs::exists(dir / "tex" / name), "under the sky's texture names");
+        encoder.seen.clear();
+        check(cookSky(dir / "game", "mixed", encoder, dir / "tex", error) && encoder.seen.size() == 6 &&
+                  encoder.seen[0].at(0, 0)[0] == 90 && encoder.seen[4].at(0, 0)[2] == 3,
+              "a bitmap side and a TGA side each read as their own kind");
+        fs::remove_all(dir);
+    }
+
     void testWriteOverOpenFile()
     {
         // On Windows the replacing has to wait for the reader to go.
@@ -482,6 +593,7 @@ int main()
     testPackAndNames();
     testBudget();
     testHiddenTextures();
+    testSkyPictures();
     testEncoder();
     testWriteOverOpenFile();
     if (g_failures == 0)

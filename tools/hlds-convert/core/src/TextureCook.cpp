@@ -7,6 +7,7 @@
 
 #include "HlLevel.hpp"
 #include "hlds/AtomicWrite.hpp"
+#include "hlds/UiCook.hpp"
 
 namespace hlds
 {
@@ -264,10 +265,32 @@ namespace hlds
 
     namespace
     {
+        /// A side's picture: the 8-bit bitmap most skies have, else the TGA
+        /// some have only (xen8, xen10...), as the game looks for both.
         std::filesystem::path skyPath(const std::filesystem::path &gameDir, const std::string &name,
                                       const char *side)
         {
-            return gameDir / "gfx" / "env" / (name + side + ".bmp");
+            const std::filesystem::path folder = gameDir / "gfx" / "env";
+            const std::filesystem::path bmp = folder / (name + side + ".bmp");
+            std::error_code ec;
+            if (std::filesystem::is_regular_file(bmp, ec))
+                return bmp;
+            return folder / (name + side + ".tga");
+        }
+
+        bool readSkySide(const std::filesystem::path &path, RgbaImage &image, std::string &error)
+        {
+            if (path.extension() != ".tga")
+                return readBmp8(path, image, error);
+            std::vector<std::uint8_t> bytes;
+            if (!readFile(path, bytes, error))
+                return false;
+            if (!readTga(bytes, image, error))
+            {
+                error = path.filename().string() + ": " + error;
+                return false;
+            }
+            return true;
         }
     } // namespace
 
@@ -290,7 +313,7 @@ namespace hlds
         for (const char *side : kSkySides)
         {
             RgbaImage image;
-            if (!readBmp8(skyPath(gameDir, name, side), image, error))
+            if (!readSkySide(skyPath(gameDir, name, side), image, error))
                 return false;
             const std::uint32_t settings[] = {static_cast<std::uint32_t>(kSkySize),
                                               encoder.version()};

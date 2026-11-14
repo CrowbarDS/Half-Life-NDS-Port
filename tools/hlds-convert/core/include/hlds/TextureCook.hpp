@@ -44,7 +44,8 @@ namespace hlds
     inline constexpr const char *kSkySides[6] = {"rt", "bk", "lf", "ft", "up", "dn"};
     inline constexpr int kSkySize = hldata::kSkySide; ///< each side, as cooked
 
-    /// Whether all six pictures of the sky `name` are in `gameDir`.
+    /// Whether all six pictures of the sky `name` are in `gameDir`, each
+    /// a .bmp or a .tga.
     bool skyExists(const std::filesystem::path &gameDir, const std::string &name);
 
     /// Cook the six sides of `name` into `texDir`, as <name><side>_128x128.htx.
