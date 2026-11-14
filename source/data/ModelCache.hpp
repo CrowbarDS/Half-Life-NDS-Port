@@ -199,6 +199,14 @@ namespace hlrt
         std::uint32_t slotBytes_ = 0; ///< how big each slot is (a skin larger is drawn bare)
         int count_ = 0;
         int missing_ = 0;
+        std::uint32_t fileBytes_ = 0;
+        std::uint32_t skinBytes_ = 0;
+    public:
+        /// What loading the skins took of the heap (perf.txt).
+        std::uint32_t skinBytes() const { return skinBytes_; }
+        /// The bytes of the map's model files read (perf.txt).
+        std::uint32_t fileBytes() const { return fileBytes_; }
+    private:
         int bare_ = 0;
         bool anyLazy_ = false; ///< the level names a weapon it has not
     };

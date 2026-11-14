@@ -343,6 +343,14 @@ namespace
         std::uint32_t free = 0;
     };
     BeforeMap beforeMap;
+    /// The heap held after each part of the load (perf.txt's room line):
+    /// the level, the textures, the models, the game, with what the map
+    /// took judged part by part.
+    struct LoadLive
+    {
+        std::uint32_t level = 0, textures = 0, models = 0, game = 0;
+    };
+    LoadLive loadLive;
 
     /// At the end of a map's load (perf.txt): how much room the heap has
     /// left, and what of the map's sounds could be had.
@@ -366,7 +374,8 @@ namespace
 #endif
         std::fprintf(log, "room: %s top %lu, largest hole %lu, %lu in holes; copies %d (%d KB); sounds %s%d of %d, "
                           "%d not tried for room, %d failed, %d in the Pak (%lu KB of it used, level %lu KB)%s; reserve %s; "
-                          "before the map live %lu, free %lu, now live %lu\n",
+                          "before the map live %lu, free %lu, now live %lu; live after level %lu, textures %lu, "
+                          "models %lu (files %lu, skins %lu), game %lu\n",
                      map, static_cast<unsigned long>(room.top), static_cast<unsigned long>(room.largestHole),
                      static_cast<unsigned long>(room.inHoles), st.copies, st.copiesKb,
                      snd.tableFailed ? "NONE (no room for their list), " : "", snd.loaded, snd.kept,
@@ -375,7 +384,10 @@ namespace
                      static_cast<unsigned long>(hlrt::level.pakBytes() / 1024), seek,
                      reserve.letGoLoad > 0 ? "LET GO in the load" : (reserve.held ? "held" : "none"),
                      static_cast<unsigned long>(beforeMap.live), static_cast<unsigned long>(beforeMap.free),
-                     static_cast<unsigned long>(hlrt::guard::liveBytes()));
+                     static_cast<unsigned long>(hlrt::guard::liveBytes()), static_cast<unsigned long>(loadLive.level),
+                     static_cast<unsigned long>(loadLive.textures), static_cast<unsigned long>(loadLive.models),
+                     static_cast<unsigned long>(hlrt::modelCache.fileBytes()),
+                     static_cast<unsigned long>(hlrt::modelCache.skinBytes()), static_cast<unsigned long>(loadLive.game));
         std::fclose(log);
     }
 
@@ -790,6 +802,7 @@ namespace
         // sound at all: c1a3 on a DS, when it came last).
         hlrt::sound.prepare();
         clock.mark("level");
+        loadLive.level = hlrt::guard::liveBytes();
 #ifndef HLDS_CHILD
         hlrt::netrelay::keepAlive();
 #endif
@@ -813,6 +826,7 @@ namespace
 #endif
         bool made = hlrt::worldDraw.create() && hlrt::textureCache.create();
         clock.mark("tex");
+        loadLive.textures = hlrt::guard::liveBytes();
         hearStream();
         made = made && hlrt::spriteCache.create();
         clock.mark("spr");
@@ -820,6 +834,7 @@ namespace
         if (made)
             hlrt::modelCache.loadCharacters();
         clock.mark("mdl");
+        loadLive.models = hlrt::guard::liveBytes();
         hearStream();
         // What video memory has left is for the textures that stream.
         hlrt::textureStream.begin();
@@ -890,6 +905,7 @@ namespace
                 hlrt::SaveGame::landed(left, hlrt::game.placed());
         }
         clock.mark("game");
+        loadLive.game = hlrt::guard::liveBytes();
         hearStream();
 #ifndef HLDS_CHILD
         // Every new map is somewhere to come back to. Written here, with the

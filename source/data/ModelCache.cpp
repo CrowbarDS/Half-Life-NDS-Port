@@ -1,5 +1,6 @@
 #include <cstring>
 #include "data/ModelCache.hpp"
+#include "Guard.hpp"
 #include "data/TextureStream.hpp"
 
 #include <cstdio>
@@ -280,6 +281,8 @@ namespace hlrt
         palettes_ = nullptr;
         count_ = 0;
         missing_ = 0;
+        fileBytes_ = 0;
+        skinBytes_ = 0;
         anyLazy_ = false;
     }
 
@@ -859,13 +862,16 @@ namespace hlrt
                 continue;
             }
             blocks_[i] = block;
+            fileBytes_ += size;
 #ifdef HLDS_CHILD
             guest::count(hldata::GuestKind::Model, size);
 #endif
         }
         // Their skins. Without one (not on the card, or no room in video
         // memory) a model is drawn in its lighting alone.
+        const std::uint32_t beforeSkins = guard::liveBytes();
         loadSkins();
+        skinBytes_ = guard::liveBytes() - beforeSkins;
         return true;
     }
 } // namespace hlrt
