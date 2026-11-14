@@ -166,9 +166,9 @@ namespace
         bad[4] = static_cast<std::uint8_t>(kLevelMinVersion - 1);
         bad[5] = 0;
         check(view.open(bad.data(), size) == LevelError::BadVersion, "a version older than this build reads");
-        bad[4] = 69; // before a track node said its name and its branch
-        check(kLevelMinVersion == 70 && view.open(bad.data(), size) == LevelError::BadVersion && view.header == nullptr,
-              "a map of format 69 is refused, and nothing of it is read");
+        bad[4] = 70; // before a track change said what kind it is and how fast it goes
+        check(kLevelMinVersion == 71 && view.open(bad.data(), size) == LevelError::BadVersion && view.header == nullptr,
+              "a map of format 70 is refused, and nothing of it is read");
         bad = good;
         bad[38] = static_cast<std::uint8_t>(kLevelVersion + 1); // minReader
         bad[39] = 0;

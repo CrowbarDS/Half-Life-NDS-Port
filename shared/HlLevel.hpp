@@ -52,15 +52,17 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 70;
+    inline constexpr std::uint16_t kLevelVersion = 71;
     /// The oldest level format this build reads. (49: a map's textures are
     /// stored in its archive as they are, never compressed, so that one that
     /// streams is read straight in during play. 50: each texture's record
     /// says how many colours its palette has, which is what a streamed one
     /// is given of palette memory; the record is longer. The maps of a
     /// converter before are refused, to be converted again. 70: a track
-    /// node's record is longer, its name and its branch: the same.)
-    inline constexpr std::uint16_t kLevelMinVersion = 70;
+    /// node's record is longer, its name and its branch: the same. 71: a
+    /// track change's flags and waitMs say what kind it is, where it starts
+    /// and how fast it goes: without them the tram's lift would not move.)
+    inline constexpr std::uint16_t kLevelMinVersion = 71;
     /// The oldest build that can read what it writes. (32: what the people
     /// say, after the soldiers' table in Section::Speech, which a build
     /// before would refuse; 33: the round 3 monsters, kinds a build before
@@ -536,11 +538,17 @@ namespace hldata
         /// was built; all zero, its own box and 72 units above (the game's).
         /// kLogicForwardOnly: it is never driven backwards.
         TrackTrain,
-        /// A platform that carries a train from the end of one track down to
-        /// the start of another. `move` is its travel, extra[0] how far it
-        /// turns on the way (turns * 65536, signed), extra[1] the node the
-        /// upper track ends at, extra[2] the node the lower one starts at,
-        /// extra[3] the name id of its train.
+        /// A platform that carries a train between the end of one track and
+        /// the start of another, up or down. `move` is its travel from the
+        /// top, extra[0] how far it turns on the way (turns * 65536, signed:
+        /// at the top it is turned that far, at the bottom not at all),
+        /// extra[1] the node of the upper track, extra[2] that of the lower,
+        /// extra[3] the name id of its train. waitMs is the share of the way
+        /// it covers in a millisecond (of kFractionOne). kLogicStartOpen: it
+        /// starts at the bottom. kLogicSelfDriven: a func_trackautochange,
+        /// set off by its train and sending it on; without, a
+        /// func_trackchange, which anything uses and which leaves the train
+        /// where it lands.
         TrackChange,
         /// A box the player shoves about. It is a Breakable as well if
         /// kLogicBreaks. extra[2] is the fastest it can be pushed (Q12 units

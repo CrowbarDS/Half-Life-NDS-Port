@@ -2235,9 +2235,29 @@ namespace hlds
                 if (speed <= 0)
                     speed = 150;
                 record.speed = fxFromDouble(speed);
-                record.move[2] = -fxFromDouble(numberKey(entity, "height"));
+                // Its way down: "height", or with none its own height less 8.
+                // One that only turns (16) stays where it is.
+                const bool turnsOnly = (spawnflags & 16) != 0;
+                double height = numberKey(entity, "height");
+                if (height == 0 && model != nullptr)
+                    height = double(model->maxs[2]) - model->mins[2] - 8;
+                if (turnsOnly)
+                    height = 0;
+                record.move[2] = -fxFromDouble(height);
+                const double rotation = numberKey(entity, "rotation");
                 record.extra[0] = static_cast<std::uint32_t>(static_cast<std::int32_t>(
-                    std::lround(numberKey(entity, "rotation") * 65536.0 / 360.0)));
+                    std::lround(rotation * 65536.0 / 360.0)));
+                // How long the way takes: its length at its speed, or for one
+                // that only turns, the turn at as many degrees a second. The
+                // turn is spread over the same time. Kept as the share of the
+                // way done in a millisecond, so play needs no division.
+                const double seconds = (turnsOnly ? std::fabs(rotation) : std::fabs(height)) / speed;
+                const double perMs = seconds > 0 ? double(kFractionOne) / (seconds * 1000.0) : double(kFractionOne);
+                record.waitMs = static_cast<std::int32_t>(std::clamp(std::lround(perMs), 1L, long(kFractionOne)));
+                if (spawnflags & 8)
+                    record.flags |= kLogicStartOpen; // starts at the bottom
+                if (cls == "func_trackautochange")
+                    record.flags |= kLogicSelfDriven;
                 record.extra[1] = trackNode(entity.value("toptrack"));
                 record.extra[2] = trackNode(entity.value("bottomtrack"));
                 record.extra[3] = nameId(entity.value("train"));

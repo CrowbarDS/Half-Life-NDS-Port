@@ -1043,6 +1043,51 @@ namespace
             }
             std::printf("test_track: past c2a2's lift gate, the train is at y %.0f\n", toUnits(at[1]));
             check(toUnits(at[1]) < -2900, "... and drives past the gate, onto the track it opened");
+
+            // The lift at the end of that track (func_trackchange c2a1lift,
+            // used by c2a1liftmm, which the track's end fires): the train
+            // stops on it, and it takes the train down 600 units, turning it
+            // round, onto the lower track -- and is driven off along that.
+            const int lift = recordNamed(g, "c2a1lift", LogicKind::TrackChange);
+            check(lift >= 0, "c2a2's train lift");
+            if (lift >= 0)
+            {
+                const fx *platform = g.brushStates[g.view.logic[lift].brush].pos;
+                const fx liftTop = platform[2];
+                const std::uint16_t yawBefore = g.brushStates[rec.brush].angles[kYaw];
+                for (int i = 0; i < 30 * 15; ++i)
+                {
+                    g.frame();
+                    trainControl(g.logic, g.player, 0, false, false);
+                }
+                std::printf("test_track: c2a2's lift went down %.0f units, the train to z %.0f\n",
+                            toUnits(liftTop - platform[2]), toUnits(at[2]));
+                check(toUnits(liftTop - platform[2]) > 599 && toUnits(liftTop - platform[2]) < 601,
+                      "the train stops on the lift, and the lift goes down its 600 units");
+                check(std::fabs(toUnits(at[2]) - (-1952 + 30)) < 2 && std::fabs(toUnits(at[1]) + 3412) < 4,
+                      "... with the train on it, its height above the lower track");
+                const auto turned = static_cast<std::uint16_t>(g.brushStates[rec.brush].angles[kYaw] - yawBefore);
+                check(turned > 0x7000 && turned < 0x9000, "... turned round");
+                int bottom = -1;
+                for (std::uint32_t c = 0; c < g.view.cornerCount; ++c)
+                {
+                    if (g.view.corners[c].name != 0 &&
+                        g.view.nameHashes[g.view.corners[c].name] == nameHash("c2a1liftbottom"))
+                        bottom = static_cast<int>(c);
+                }
+                check(bottom >= 0 && static_cast<int>(g.states[train].bits) == bottom && g.states[train].speed == 0,
+                      "... at rest on the lower track's first node");
+                check(trainDriven(g.logic) == train, "the player still has the controls");
+                const fx fromY = at[1];
+                trainControl(g.logic, g.player, 1, false, false);
+                for (int i = 0; i < 30 * 2; ++i)
+                {
+                    g.frame();
+                    trainControl(g.logic, g.player, 0, false, false);
+                }
+                std::printf("test_track: off c2a2's lift, the train is at y %.0f\n", toUnits(at[1]));
+                check(at[1] - fromY > fxFromInt(60), "... and drives off along the lower track");
+            }
         }
 
         // c2a3: its crash train is driven from its controls only.
@@ -1105,6 +1150,50 @@ namespace
         else
         {
             check(false, "c2a3a loads");
+        }
+    }
+
+    /// The other func_trackchanges: c2a2b1's train lift starts at the
+    /// bottom and goes up 912 units; c2a1's turntable only turns, a quarter
+    /// turn, where it is. Used with their train away, they go without it.
+    void testTrackChanges(const char *dir)
+    {
+        struct Case
+        {
+            const char *map;
+            const char *name;
+            double rise;   ///< how far it goes up (down if negative)
+            int yawFrom;   ///< its turn at rest at first, degrees
+            int yawTo;     ///< ... and once it has gone
+            int seconds;
+        };
+        const Case cases[] = {{"c2a2b1", "trainlift", 912, 0, 0, 25}, {"c2a1", "trackch", 0, 90, 0, 6}};
+        for (const Case &c : cases)
+        {
+            auto game = std::make_unique<Game>();
+            std::string error;
+            if (!game->bsp.load(std::string(dir) + "/maps/" + c.map + ".bsp", error))
+            {
+                check(false, (std::string(dir) + "/maps/" + c.map + ".bsp loads").c_str());
+                continue;
+            }
+            finish(*game, nullptr);
+            Game &g = *game;
+            const int lift = g.ok ? recordNamed(g, c.name, LogicKind::TrackChange) : -1;
+            check(lift >= 0, (std::string(c.map) + "'s track change").c_str());
+            if (lift < 0)
+                continue;
+            const BrushState &brush = g.brushStates[g.view.logic[lift].brush];
+            const fx z = brush.pos[2];
+            auto degrees = [](std::uint16_t yaw) { return static_cast<int>(std::lround(yaw * 360.0 / 65536.0)) % 360; };
+            check(degrees(brush.angles[kYaw]) == c.yawFrom, (std::string(c.map) + ": it starts turned as the game has it").c_str());
+            logicFire(g.logic, g.player, g.view.logic[lift].name, -1, kUseToggle, 0);
+            for (int i = 0; i < 30 * c.seconds; ++i)
+                g.frame();
+            std::printf("test_track: %s's %s went up %.0f units, turned %d\n", c.map, c.name,
+                        toUnits(brush.pos[2] - z), degrees(brush.angles[kYaw]));
+            check(std::fabs(toUnits(brush.pos[2] - z) - c.rise) < 1 && degrees(brush.angles[kYaw]) == c.yawTo,
+                  (std::string(c.map) + ": used, it goes its way and turns its turn").c_str());
         }
     }
 
@@ -1206,6 +1295,7 @@ namespace
         check(ride(dir, 2, Passenger::Idle, true), "... and with a save and a load on the way");
         testTheGuard(dir);
         testOnARail(dir);
+        testTrackChanges(dir);
         testTheShaftLift(dir);
         for (const Lift &lift : kLifts)
         {

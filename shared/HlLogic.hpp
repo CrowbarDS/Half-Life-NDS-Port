@@ -3161,66 +3161,147 @@ namespace hldata
             return -1;
         }
 
+        // A track change's state, in a door's terms (as saves have it):
+        // where it starts is the top, phase 0; phase is the share of the way
+        // down. It is never anywhere else at rest.
+        inline constexpr MoveState kLiftAtTop = MoveState::AtBottom;
+        inline constexpr MoveState kLiftSinking = MoveState::GoingUp;
+        inline constexpr MoveState kLiftAtFoot = MoveState::AtTop;
+        inline constexpr MoveState kLiftRising = MoveState::GoingDown;
+
+        /// Which of its track nodes are open, as it is now. A trackchange's
+        /// own nodes: the top one only while it is up there, the bottom one
+        /// only while it is down; both shut while it moves. An autochange's:
+        /// the way on from the top is shut, that from the bottom open.
+        inline void trackChangeNodes(LogicWorld &w, const LogicRecord &record, const LogicState &state)
+        {
+            const auto top = static_cast<std::uint16_t>(record.extra[1]);
+            const auto bottom = static_cast<std::uint16_t>(record.extra[2]);
+            if (record.flags & kLogicSelfDriven)
+            {
+                if (top != kNoCorner)
+                    nodeSwitch(w, w.corners[top].next, false);
+                if (bottom != kNoCorner)
+                    nodeSwitch(w, w.corners[bottom].next, true);
+                return;
+            }
+            nodeSwitch(w, top, state.move == kLiftAtTop);
+            nodeSwitch(w, bottom, state.move == kLiftAtFoot);
+        }
+
+        enum class LiftTrain : std::uint8_t
+        {
+            Safe,     ///< nowhere near: it goes without it
+            Blocking, ///< in the way, or moving: it does not go
+            Following ///< at rest on it: it goes with it
+        };
+
+        /// EvaluateTrain: where its train is, against track node `node` (the
+        /// one at the end the lift is at).
+        inline LiftTrain trackChangeEvaluate(const LogicWorld &w, int index, std::uint16_t node)
+        {
+            const LogicRecord &record = w.records[index];
+            const int train = static_cast<int>(w.states[index].bits);
+            if (node == kNoCorner || train >= w.recordCount || record.brush == kNoBrush ||
+                w.records[train].brush == kNoBrush)
+                return LiftTrain::Safe;
+            const LogicState &riding = w.states[train];
+            const auto on = static_cast<std::uint16_t>(riding.bits);
+            if (on == kNoCorner ||
+                (on != node && w.corners[node].next != on && w.corners[on].next != node))
+                return LiftTrain::Safe;
+            if (riding.speed != 0)
+                return LiftTrain::Blocking;
+            const fx *platform = w.brushStates[record.brush].pos;
+            const fx *car = w.brushStates[w.records[train].brush].pos;
+            const fx apart[3] = {car[0] - platform[0], car[1] - platform[1], 0};
+            fx wheels = static_cast<fx>(w.records[train].extra[0]);
+            if (wheels <= 0)
+                wheels = fxFromInt(100);
+            const fx length = fxLength(apart);
+            if (length < wheels)
+                return LiftTrain::Following;
+            if (length > wheels + fxFromInt(150))
+                return LiftTrain::Safe;
+            return LiftTrain::Blocking;
+        }
+
+        /// Set off, down from the top or up from the bottom, with its train
+        /// on board if `following` (as far from its middle as it is now).
+        inline void trackChangeStart(LogicWorld &w, int index, bool following)
+        {
+            const LogicRecord &record = w.records[index];
+            LogicState &state = w.states[index];
+            const int train = static_cast<int>(state.bits);
+            state.running = following && train < w.recordCount;
+            if (state.running)
+            {
+                LogicState &riding = w.states[train];
+                const BrushState &car = w.brushStates[w.records[train].brush];
+                const fx *platform = w.brushStates[record.brush].pos;
+                riding.move = kCarried;
+                for (int a = 0; a < 3; ++a)
+                    riding.base[a] = car.pos[a] - platform[a];
+                riding.travel[0] = car.angles[kYaw];
+            }
+            state.move = state.move == kLiftAtTop ? kLiftSinking : kLiftRising;
+            trackChangeNodes(w, record, state);
+        }
+
         inline void trackChangeTick(LogicWorld &w, PlayerState &player, int index, int ms)
         {
             const LogicRecord &record = w.records[index];
             LogicState &state = w.states[index];
-            if (state.move != MoveState::GoingUp || record.brush == kNoBrush)
+            const bool down = state.move == kLiftSinking;
+            if ((!down && state.move != kLiftRising) || record.brush == kNoBrush)
                 return;
-            const fx distance = fxLength(state.travel);
-            std::int32_t step = kFractionOne;
-            if (distance > 0 && record.speed > 0)
-            {
-                const std::int64_t travelMs =
-                    (static_cast<std::int64_t>(distance) * 1000) / record.speed;
-                if (travelMs > ms)
-                    step = static_cast<std::int32_t>(
-                        (static_cast<std::int64_t>(ms) << kFractionShift) / travelMs);
-            }
-            std::int32_t phase = state.phase + step;
-            if (phase > kFractionOne || phase < state.phase)
-                phase = kFractionOne;
-            state.phase = phase;
+            // (waitMs: the share of the way it goes in a millisecond.)
+            std::int64_t step = static_cast<std::int64_t>(record.waitMs > 0 ? record.waitMs : kFractionOne) * ms;
+            std::int64_t phase = state.phase + (down ? step : -step);
+            phase = phase > kFractionOne ? kFractionOne : (phase < 0 ? 0 : phase);
+            state.phase = static_cast<std::int32_t>(phase);
+            const bool there = down ? phase == kFractionOne : phase == 0;
 
             fx pos[3];
             for (int a = 0; a < 3; ++a)
                 pos[a] = state.base[a] +
                          static_cast<fx>((static_cast<std::int64_t>(state.travel[a]) * phase) >>
                                          kFractionShift);
+            // Turned its whole turn at the top, not at all at the bottom.
+            const auto rotation = static_cast<std::int32_t>(record.extra[0]);
             const auto turned = static_cast<std::int32_t>(
-                (static_cast<std::int64_t>(static_cast<std::int32_t>(record.extra[0])) * phase) >>
-                kFractionShift);
+                (static_cast<std::int64_t>(rotation) * (kFractionOne - phase)) >> kFractionShift);
             carryBrush(w, player, record.brush, pos, static_cast<std::uint16_t>(turned));
 
             // Its train goes with it: as far from the platform's middle as it
-            // was, turned round it as the platform turns.
+            // was, turned round it as far as the platform has turned since.
             const int train = static_cast<int>(state.bits);
-            if (train < w.recordCount && w.records[train].brush != kNoBrush)
+            if (state.running && train < w.recordCount && w.records[train].brush != kNoBrush)
             {
                 LogicState &riding = w.states[train];
+                const auto since = static_cast<std::uint16_t>(turned - (down ? rotation : 0));
                 fx sine, cosine;
-                fxSinCos(static_cast<std::uint16_t>(turned), sine, cosine);
+                fxSinCos(since, sine, cosine);
                 const fx to[3] = {
                     pos[0] + fxMul(riding.base[0], cosine) - fxMul(riding.base[1], sine),
                     pos[1] + fxMul(riding.base[0], sine) + fxMul(riding.base[1], cosine),
                     pos[2] + riding.base[2]};
                 carryBrush(w, player, w.records[train].brush, to,
-                           static_cast<std::uint16_t>(riding.travel[0] + turned));
-                if (phase == kFractionOne)
+                           static_cast<std::uint16_t>(riding.travel[0] + since));
+                if (there)
                 {
-                    // Down: onto the lower track, and away.
+                    // Onto the track at that end. An autochange sends it on;
+                    // a trackchange leaves it for its driver.
                     riding.move = MoveState::AtBottom;
-                    riding.bits = record.extra[2];
-                    riding.speed = w.records[train].speed;
+                    riding.bits = down ? record.extra[2] : record.extra[1];
+                    riding.speed = (record.flags & kLogicSelfDriven) ? w.records[train].speed : 0;
                 }
             }
-            if (phase == kFractionOne)
+            if (there)
             {
-                state.move = MoveState::AtTop;
-                if (record.extra[1] != kNoCorner)
-                    nodeSwitch(w, w.corners[record.extra[1]].next, false);
-                if (record.extra[2] != kNoCorner)
-                    nodeSwitch(w, w.corners[record.extra[2]].next, true);
+                state.move = down ? kLiftAtFoot : kLiftAtTop;
+                state.running = false;
+                trackChangeNodes(w, record, state);
             }
         }
     } // namespace detail
@@ -4521,29 +4602,22 @@ namespace hldata
 
         case LogicKind::TrackChange:
         {
-            // It goes down for its own train, and only when that has come to
-            // rest on it: what sets it off is the end of the upper track
-            // saying a train has stopped there.
+            // Only at rest at either end. Its train, on the track it is at
+            // the end of: at rest on it, it is carried; on its way, or near
+            // but not on it, nothing happens; elsewhere, it goes without it.
+            // An autochange is set off only by its train, and only down.
+            const bool top = state.move == detail::kLiftAtTop;
+            if ((!top && state.move != detail::kLiftAtFoot) || record.brush == kNoBrush)
+                break;
+            const bool autoChange = (record.flags & kLogicSelfDriven) != 0;
             const int train = static_cast<int>(state.bits);
-            if (state.move != MoveState::AtBottom || caller != train || train >= w.recordCount ||
-                record.brush == kNoBrush || w.records[train].brush == kNoBrush ||
-                w.states[train].speed != 0)
+            if (autoChange && (!top || caller != train))
                 break;
-            const fx *platform = w.brushStates[record.brush].pos;
-            const BrushState &car = w.brushStates[w.records[train].brush];
-            const fx apart[3] = {car.pos[0] - platform[0], car.pos[1] - platform[1], 0};
-            fx wheels = static_cast<fx>(w.records[train].extra[0]);
-            if (wheels <= 0)
-                wheels = fxFromInt(100);
-            if (fxLength(apart) >= wheels)
+            const auto node = static_cast<std::uint16_t>(top ? record.extra[1] : record.extra[2]);
+            const detail::LiftTrain code = detail::trackChangeEvaluate(w, index, node);
+            if (code == detail::LiftTrain::Blocking || (autoChange && code != detail::LiftTrain::Following))
                 break;
-            LogicState &riding = w.states[train];
-            riding.move = detail::kCarried;
-            for (int a = 0; a < 3; ++a)
-                riding.base[a] = car.pos[a] - platform[a];
-            riding.travel[0] = car.angles[kYaw];
-            state.phase = 0;
-            state.move = MoveState::GoingUp;
+            detail::trackChangeStart(w, index, code == detail::LiftTrain::Following);
             break;
         }
 
@@ -5157,16 +5231,22 @@ namespace hldata
                 // At the top, with the way on from the upper track closed:
                 // a train that comes along stops on it.
                 state.bits = static_cast<std::uint32_t>(detail::trackChangeTrain(w, record));
+                const bool bottom = (record.flags & kLogicStartOpen) != 0;
+                state.move = bottom ? detail::kLiftAtFoot : detail::kLiftAtTop;
+                state.phase = bottom ? kFractionOne : 0;
                 if (record.brush != kNoBrush)
                 {
+                    fx pos[3];
                     for (int a = 0; a < 3; ++a)
                     {
                         state.base[a] = w.brushes[record.brush].origin[a];
                         state.travel[a] = record.move[a];
+                        pos[a] = state.base[a] + (bottom ? state.travel[a] : 0);
                     }
+                    logicPlaceBrush(w, record.brush, pos,
+                                    bottom ? std::uint16_t(0) : static_cast<std::uint16_t>(record.extra[0]));
                 }
-                if (record.extra[1] != kNoCorner)
-                    detail::nodeSwitch(w, w.corners[record.extra[1]].next, false);
+                detail::trackChangeNodes(w, record, state);
                 continue;
             }
             if (record.kind == static_cast<std::uint8_t>(LogicKind::Rotating))
@@ -5826,12 +5906,14 @@ namespace hldata
         const LogicRecord &record = w.records[index];
         LogicState &state = w.states[index];
         if (player.health <= 0 || jump || side || !player.onGround ||
-            player.groundMover != static_cast<int>(record.brush) || state.running || state.move == detail::kCarried)
+            player.groundMover != static_cast<int>(record.brush) || state.running)
         {
             trainRelease(w);
             return;
         }
-        if (step == 0 || record.speed <= 0)
+        // (On a lift, it is the lift's: the driver keeps the controls, and
+        // drives off when it has landed.)
+        if (step == 0 || record.speed <= 0 || state.move == detail::kCarried)
             return;
         // (The game's sum: what quarter it is at, as a whole number, and a
         // quarter on or back from there.)
