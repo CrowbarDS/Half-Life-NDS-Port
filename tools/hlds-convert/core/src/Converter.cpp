@@ -399,6 +399,9 @@ namespace hlds
             std::vector<std::uint8_t> bytesDsi;
             std::vector<std::string> eventSounds; ///< CookedModel::eventSounds
             RgbaImage atlas;
+            /// The skin a DSi's file names, where a DS's is smaller (a weapon
+            /// held: a DS keeps its skin in main memory); else empty.
+            RgbaImage atlasDsi;
             CookedModel::IndexedSkin indexed; ///< the 256-colour skin, where a player's colours go over it
             int triangles = 0, fullTriangles = 0; ///< body 0 at its finest, in each
             int far = 0;                          ///< ... and at its coarsest
@@ -1161,9 +1164,33 @@ namespace hlds
             dsModelBytes();
             result.dsLeanStep = step;
         };
-        enum class DsStep { Lean1, Lean2, Vis, Lights, Pages, Lean3, Lean4 };
-        constexpr DsStep kDsSteps[] = {DsStep::Lean1, DsStep::Lean2,  DsStep::Vis,  DsStep::Lights,
-                                       DsStep::Pages, DsStep::Lean3, DsStep::Lean4};
+        // The weapons' skins a DS keeps in main memory (until one is taken
+        // up): smaller, 128 x 128 at most; a DSi's file names the full one.
+        auto smallerWeaponSkins = [&]()
+        {
+            constexpr int kDsWeaponSkinTexels = 128 * 128;
+            const ModelLean lean = result.dsLeanStep != 0 ? kDsLean[result.dsLeanStep - 1] : ModelLean();
+            for (std::size_t m = 0; m < models.size(); ++m)
+            {
+                if (!dsLoads(models[m]) || !heldModel(m) || models[m].name == "v_tripmine" ||
+                    models[m].atlas.width * models[m].atlas.height <= kDsWeaponSkinTexels)
+                    continue;
+                ModelOut small;
+                if (!cookOne(needs[needOf[m]], kDsWeaponSkinTexels, small, true, lean) ||
+                    small.atlas.width * small.atlas.height >= models[m].atlas.width * models[m].atlas.height)
+                    continue;
+                if (models[m].bytesDsi.empty())
+                    models[m].bytesDsi = std::move(models[m].bytes);
+                models[m].atlasDsi = std::move(models[m].atlas);
+                models[m].atlas = std::move(small.atlas);
+                models[m].bytes = std::move(small.bytes);
+            }
+            dsModelBytes();
+            result.dsWeaponSkins = true;
+        };
+        enum class DsStep { Lean1, Lean2, Vis, Lights, WeaponSkins, Pages, Lean3, Lean4 };
+        constexpr DsStep kDsSteps[] = {DsStep::Lean1,       DsStep::Lean2, DsStep::Vis,   DsStep::Lights,
+                                       DsStep::WeaponSkins, DsStep::Pages, DsStep::Lean3, DsStep::Lean4};
         for (const DsStep step : kDsSteps)
         {
             if (dsLevelWhole == 0 || hldata::dsSoundRoom(dsCost) >= kDsSoundFloor)
@@ -1178,6 +1205,7 @@ namespace hlds
                 if (!level.vis.empty())
                     dsCut.flags |= hldata::kDsCutVis;
                 break;
+            case DsStep::WeaponSkins: smallerWeaponSkins(); break;
             case DsStep::Lights:
                 if (!level.lightPatches.empty())
                     dsCut.flags |= hldata::kDsCutLightPatch;
@@ -1598,34 +1626,39 @@ namespace hlds
                         fs::remove(entry.path(), ec);
                 }
             }
-            for (const auto *list : {&models, &guestModels})
-            for (const auto &model : *list)
+            auto encodeSkin = [&](const std::string &name, const RgbaImage &atlas, bool mapsOwn)
             {
-                if (!ok || model.atlas.width == 0)
-                    continue;
                 // (One with fewer colours is this map's own: under its name.)
-                const bool fewer = list == &models && skinColours != kModelSkinColours;
+                const bool fewer = mapsOwn && skinColours != kModelSkinColours;
                 const int colours = fewer ? skinColours : kModelSkinColours;
                 const std::uint32_t settings[] = {static_cast<std::uint32_t>(colours), encoder.version()};
                 const std::uint32_t hash =
-                    hldata::crc32(model.atlas.rgba.data(),
-                                  static_cast<std::uint32_t>(model.atlas.rgba.size())) ^
+                    hldata::crc32(atlas.rgba.data(), static_cast<std::uint32_t>(atlas.rgba.size())) ^
                     hldata::crc32(reinterpret_cast<const std::uint8_t *>(settings), sizeof(settings)) * 131u;
                 const fs::path skin = (fewer ? mapSkinDir : stageDir() / "mdl") /
-                                      hldata::modelSkinFile(model.name.c_str(), model.atlas.width,
-                                                            model.atlas.height);
+                                      hldata::modelSkinFile(name.c_str(), atlas.width, atlas.height);
                 std::vector<std::uint8_t> existing;
                 std::string ignored;
                 CookedTexture old;
                 hldata::TextureHeader oldHeader;
                 if (readFile(skin, existing, ignored) && unpackTexture(existing, old, oldHeader) &&
                     oldHeader.sourceHash == hash)
-                    continue;
+                    return;
                 CookedTexture encoded;
                 std::string why;
-                if (!encoder.encode(model.atlas, colours, TextureFormat::Tex4x4, encoded, why) ||
+                if (!encoder.encode(atlas, colours, TextureFormat::Tex4x4, encoded, why) ||
                     !writeFileAtomic(skin, packTexture(encoded, 0, hash), why))
-                    result.warnings.push_back("the skin of model '" + model.name + "' was not made: " + why);
+                    result.warnings.push_back("the skin of model '" + name + "' was not made: " + why);
+            };
+            for (const auto *list : {&models, &guestModels})
+            for (const auto &model : *list)
+            {
+                if (!ok || model.atlas.width == 0)
+                    continue;
+                encodeSkin(model.name, model.atlas, list == &models);
+                // (... and a DSi's, where a DS's is smaller.)
+                if (model.atlasDsi.width != 0)
+                    encodeSkin(model.name, model.atlasDsi, list == &models);
             }
             // The sprites' atlases, likewise.
             for (const SpriteOut &one : sprites)

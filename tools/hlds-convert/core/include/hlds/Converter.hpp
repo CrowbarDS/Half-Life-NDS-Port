@@ -122,6 +122,7 @@ namespace hlds
         int dsLeanStep = 0;
         /// What a DS leaves out of the level (HlDsCut.hpp's flags; 0: nothing).
         int dsCut = 0;
+        bool dsWeaponSkins = false; ///< ... the weapons' skins smaller on a DS
         /// ... and what a DS holds of it, in KB: its level, its models, the
         /// weapons' skins kept in main memory.
         int dsLevelKb = 0, dsModelKb = 0, dsSkinKb = 0;
