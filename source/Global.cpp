@@ -455,7 +455,8 @@ Global::DataStatus Global::ReadManifest(std::string &startMap, std::vector<hldat
         *madeBy = manifest.converterVersion;
     for (const hldata::ManifestMap &map : manifest.maps)
     {
-        if (multiplayer != nullptr && map.spawns != 0)
+        // (A DS: not a map it has not the memory for.)
+        if (multiplayer != nullptr && map.spawns != 0 && (isDSi || map.dsFits))
         {
             // (How far up the memory of a console sent it, and to play.)
             const std::uint32_t need =

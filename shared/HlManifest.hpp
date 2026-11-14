@@ -30,7 +30,7 @@
 namespace hldata
 {
     inline constexpr char kManifestMagic[4] = {'H', 'L', 'M', 'F'};
-    inline constexpr std::uint16_t kManifestVersion = 5;
+    inline constexpr std::uint16_t kManifestVersion = 6;
 
     /// The groups of maps a console with no card can be sent (air/ on the
     /// card): 0 is none. Each has its base, air/<name>.base.npac, which is
@@ -80,12 +80,16 @@ namespace hldata
         /// to play in (guestFits). 0 / false for a map not sent.
         std::uint32_t guestPeakBytes = 0;
         bool guestFits = false;
+        /// Whether a DS (not a DSi) has the memory for it, with all it gives
+        /// up (HlDsRoom.hpp): a DS offers no game between consoles on a map
+        /// it would then not load.
+        bool dsFits = true;
 
         template <class Ar>
         void serialize(Ar &ar)
         {
             ar &name &levelBytes &archiveBytes &worstPolygons &worstVertices &textureCount &spawns &airGroup &airBytes
-                &guestPeakBytes &guestFits;
+                &guestPeakBytes &guestFits &dsFits;
         }
     };
 

@@ -40,6 +40,7 @@ int main()
     ManifestMap b = a;
     b.name = "c1a0";
     b.levelBytes = 1;
+    b.dsFits = false;
     manifest.maps = {a, b};
 
     const std::vector<std::uint8_t> bytes = writeManifest(manifest);
@@ -50,6 +51,7 @@ int main()
     check(back.maps[0].name == "c0a0" && back.maps[0].levelBytes == 674980 &&
               back.maps[0].worstVertices == 7846 && back.maps[0].textureCount == 64,
           "map fields");
+    check(back.maps[0].dsFits && !back.maps[1].dsFits, "whether a DS has the room for each");
     check(back.find("c1a0") == &back.maps[1] && back.find("nope") == nullptr, "find");
 
     check(readManifest(bytes.data(), 5, back) == ManifestError::NotAManifest, "a stub");
@@ -136,6 +138,7 @@ int main()
     check(hlds::readFile(data / "manifest.bin", onCard, error) &&
               readManifest(onCard.data(), onCard.size(), back) == ManifestError::Ok,
           "and so is a manifest the DS reader accepts");
+    check(back.maps.size() == 1 && back.maps[0].dsFits, "a small map: a DS has the room for it");
     check(back.maps.size() == 1 && back.maps[0].name == "boxroom" &&
               back.maps[0].worstPolygons == 6 &&
               back.maps[0].archiveBytes == fs::file_size(data / "maps" / "boxroom.npac"),

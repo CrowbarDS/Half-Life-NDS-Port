@@ -1748,6 +1748,15 @@ namespace hlds
         }
         result.actors = static_cast<int>(level.actors.size());
 
+        // What a DS needs of its heap for it (HlDsRoom.hpp), for the
+        // manifest to say whether a DS has the room (dsFits).
+        {
+            const std::uint32_t need = static_cast<std::uint32_t>(result.dsNeedBeforeSounds);
+            std::vector<std::uint8_t> word(4);
+            std::memcpy(word.data(), &need, 4);
+            if (!writeFileAtomic(stageDir() / "maps" / (result.name + ".dsneed"), word, result.error))
+                return result;
+        }
         // What a DS leaves out of it (HlDsCut.hpp), before it -- and none left
         // over from a cook that had one where this has not. (Its checksum is
         // the packed level's, set when it is packed.)
@@ -2465,6 +2474,15 @@ namespace hlds
                 if (view.entities[e].classId == static_cast<std::uint16_t>(hldata::EntityClass::InfoPlayerDeathmatch) &&
                     map.spawns < 255)
                     ++map.spawns;
+            }
+            // (Whether a DS has the room for it: what the cook reckoned.)
+            {
+                std::vector<std::uint8_t> word;
+                std::string none;
+                std::uint32_t need = 0;
+                if (readFile(stageDir() / "maps" / (map.name + ".dsneed"), word, none) && word.size() == 4)
+                    std::memcpy(&need, word.data(), 4);
+                map.dsFits = need <= hldata::kDsMapHeap;
             }
             // (What it is sent as to a console with no card, if anything.)
             const fs::path air = dir / "air" / (map.name + ".hgs");
