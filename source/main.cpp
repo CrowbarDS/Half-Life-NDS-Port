@@ -335,6 +335,15 @@ namespace
     /// which are read when first played; 5 KB where there was not.)
     constexpr std::size_t kPlayReserve = 160 * 1024;
 
+    /// The heap as the last map was let go, before this one was read
+    /// (perf.txt's room line): what a map has to fit in.
+    struct BeforeMap
+    {
+        std::uint32_t live = 0;
+        std::uint32_t free = 0;
+    };
+    BeforeMap beforeMap;
+
     /// At the end of a map's load (perf.txt): how much room the heap has
     /// left, and what of the map's sounds could be had.
     void writeLoadRoom(const char *map)
@@ -356,14 +365,17 @@ namespace
                           static_cast<long>(info.fragments));
 #endif
         std::fprintf(log, "room: %s top %lu, largest hole %lu, %lu in holes; copies %d (%d KB); sounds %s%d of %d, "
-                          "%d not tried for room, %d failed, %d in the Pak (%lu KB of it used, level %lu KB)%s; reserve %s\n",
+                          "%d not tried for room, %d failed, %d in the Pak (%lu KB of it used, level %lu KB)%s; reserve %s; "
+                          "before the map live %lu, free %lu, now live %lu\n",
                      map, static_cast<unsigned long>(room.top), static_cast<unsigned long>(room.largestHole),
                      static_cast<unsigned long>(room.inHoles), st.copies, st.copiesKb,
                      snd.tableFailed ? "NONE (no room for their list), " : "", snd.loaded, snd.kept,
                      snd.skippedRoom, snd.failed, snd.inPak,
                      static_cast<unsigned long>(hlrt::slot2::used() / 1024),
                      static_cast<unsigned long>(hlrt::level.pakBytes() / 1024), seek,
-                     reserve.letGoLoad > 0 ? "LET GO in the load" : (reserve.held ? "held" : "none"));
+                     reserve.letGoLoad > 0 ? "LET GO in the load" : (reserve.held ? "held" : "none"),
+                     static_cast<unsigned long>(beforeMap.live), static_cast<unsigned long>(beforeMap.free),
+                     static_cast<unsigned long>(hlrt::guard::liveBytes()));
         std::fclose(log);
     }
 
@@ -746,6 +758,11 @@ namespace
         hlrt::gpuStats.beginMap();
         dropMap();
         hlrt::guard::renewReserve();
+        if (perfLogging())
+        {
+            const hlrt::guard::HeapRoom room = hlrt::guard::heapRoom();
+            beforeMap = {hlrt::guard::liveBytes(), room.top + room.inHoles};
+        }
         // With no picture kept: the game's loading picture, on the screen
         // and left there while the map is read (video memory is empty just
         // now: there is room). That is the first load, and little else.

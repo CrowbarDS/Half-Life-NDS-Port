@@ -89,7 +89,7 @@ for block in re.findall(r"\{([^}]*)\}", text):
 EOF
 }
 
-printf "%-8s %9s %9s %9s %-22s %9s %9s %s\n" map "load top" "hole" "sounds" "reserve (load)" "play rise" "play top" "reserve (play)" > "$OUT/table.txt"
+printf "%-8s %9s %9s %9s %-22s %9s %9s %-28s %9s %9s\n" map "load top" "hole" "sounds" "reserve (load)" "play rise" "play top" "reserve (play)" "free pre" "map took" > "$OUT/table.txt"
 for map in "$@"; do
     spot=$(spotOf "$map")
     if [ -z "$spot" ]; then
@@ -117,10 +117,14 @@ def num(pattern, text):
     m = re.search(pattern, text)
     return m.group(1) if m else "-"
 kb = lambda v: v if v == "-" else f"{int(v) / 1024:.1f}K"
+def map_kb(text):
+    before, now = num(r'before the map live (\d+)', text), num(r'now live (\d+)', text)
+    return "-" if "-" in (before, now) else f"{(int(now) - int(before)) / 1024:.1f}K"
 sounds = re.search(r"sounds (?:NONE \(no room for their list\), )?(\d+) of (\d+)", room)
 print(f"{sys.argv[2]:<8} {kb(num(r'top (\d+)', room)):>9} {kb(num(r'largest hole (\d+)', room)):>9} "
-      f"{(sounds.group(1) + '/' + sounds.group(2)) if sounds else '-':>9} {num(r'reserve (.*)$', room):<22} "
-      f"{kb(num(r'rise (\d+)', play)):>9} {kb(num(r'top (\d+)', play)):>9} {num(r'reserve (.*)$', play)}")
+      f"{(sounds.group(1) + '/' + sounds.group(2)) if sounds else '-':>9} {num(r'reserve ([^;]*)', room):<22} "
+      f"{kb(num(r'rise (\d+)', play)):>9} {kb(num(r'top (\d+)', play)):>9} {num(r'reserve ([^;]*)', play):<28} "
+      f"{kb(num(r'before the map live \d+, free (\d+)', room)):>9} {map_kb(room):>9}")
 EOF
     tail -1 "$OUT/table.txt"
 done
