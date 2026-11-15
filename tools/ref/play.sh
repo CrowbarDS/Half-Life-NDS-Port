@@ -24,6 +24,11 @@ SCRIPT="${3:-sleep 2}"
 pgrep -x steam >/dev/null || { echo "Steam is not running: the real game cannot start without it" >&2; exit 3; }
 [ -f "$REF/liblist.gam" ] || "$ROOT/tools/ref/setup.sh" >/dev/null
 RUNTIME="$HOME/.steam/debian-installation/ubuntu12_32/steam-runtime/run.sh"
+# (Steam has since made that a stub that runs the game on the host, where it
+# finds none of its old 32-bit libraries: the scout runtime it still ships
+# with SteamLinuxRuntime has them.)
+SCOUT="$HOME/.steam/debian-installation/steamapps/common/SteamLinuxRuntime/steam-runtime/run.sh"
+case "$(readlink "$RUNTIME" 2>/dev/null)" in *legacy-run-stub*) [ -x "$SCOUT" ] && RUNTIME="$SCOUT" ;; esac
 LOG="$HL/qconsole.log"
 
 # The map, with the player's start moved (place.py), in the side folder:
