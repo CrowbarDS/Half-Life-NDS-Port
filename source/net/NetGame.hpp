@@ -120,6 +120,9 @@ namespace hlrt
         bool joinStarter();
         /// Out of it altogether: the others are told, the radio is silent.
         void leave();
+        /// Out of it, `why` said in the menu (as when the host is lost): a
+        /// wait that came to nothing.
+        void giveUp(const char *why) { lost(why); }
         /// The host: the settings' match (its mode, its rules, its map) has
         /// changed -- to the others in the lobby, and to the beacon.
         void hostChanged();
@@ -352,7 +355,9 @@ namespace hlrt
         bool fullTried_ = false;
         bool characterFullDone_ = false; ///< (Serving) this character has gone to those in DSi mode
         unsigned fullSent_ = 0; ///< (Serving) those sent the map at full quality
-        int silentFrames_ = 0;
+        /// Since when (vblanks) nothing has come from the host; and when it
+        /// was last looked at (a long load in between is not its silence).
+        std::uint32_t silentSince_ = 0, silentLooked_ = 0;
         std::uint32_t heardWas_ = 0;
         int serveCharacter_ = 1, serveCharacters_ = 0;
         unsigned answered_ = 0; ///< (a client's) heard_ when it last answered

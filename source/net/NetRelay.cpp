@@ -63,10 +63,15 @@ namespace hlrt::netrelay
         constexpr std::uint32_t kRelayQuietFrames = 3 * 60;
         /// Coming in, not answered for this long: given up.
         constexpr std::uint32_t kEnterFrames = 10 * 60;
-        /// Taking a session up again, not answered for this long: given up --
-        /// sooner than a client takes its host for gone in a match (ten
-        /// seconds, NetGame).
-        constexpr std::uint32_t kResumeFrames = 8 * 60;
+        /// Taking a session up again, not answered for this long: given up.
+        /// A minute: a home network drops for longer than a few seconds (8,
+        /// before -- "The relay stopped answering" on a DSi in a lobby), and
+        /// the relay keeps the console and its room 3.5 minutes. NetGame does
+        /// not count the host's silence meanwhile (reconnecting()).
+        constexpr std::uint32_t kResumeFrames = 60 * 60;
+        /// The console's own Wi-Fi not associated, looked at each second, this
+        /// many times in a row: the connection is taken for gone.
+        constexpr int kWifiDownLooks = 5;
         // Why it was let go, apart from the relay's own reasons (RelayBye).
         constexpr std::uint8_t kByeForgotten = 250; ///< the relay does not know it (Unknown)
         constexpr std::uint8_t kByeNoAnswer = 251;  ///< nothing heard from the relay
@@ -280,8 +285,25 @@ namespace hlrt::netrelay
 
         /// No longer known to the relay, or no longer reaching it: `why`
         /// kept for the menu (letGo).
+        TWL_CODE void sayGoodbye()
+        {
+            // Said whether or not it is heard (twice, as a Bye always is):
+            // the relay lets the console and its room go now, not after its
+            // 3.5 minutes -- a room left behind was still listed beside the
+            // host's next one. With the session the relay knows: the one
+            // before, while taking it up again.
+            if (s.sock < 0 || (!s.in && !s.resuming))
+                return;
+            std::uint8_t bytes[kRelayHeadBytes + 1];
+            const int size = relaySmallWrite(bytes, RelayKind::Bye, s.resuming ? s.oldSession : s.session, -1);
+            for (int i = 0; i < 2; ++i)
+                sendto(s.sock, bytes, static_cast<std::size_t>(size), 0, reinterpret_cast<const sockaddr *>(&s.server),
+                       sizeof(s.server));
+        }
+
         TWL_CODE void letGoNow(std::uint8_t why)
         {
+            sayGoodbye();
             s.byeWhy = why;
             s.in = false;
             s.entering = 0;
@@ -566,9 +588,16 @@ namespace hlrt::netrelay
             if (now == s.lastPump)
                 return;
             // (Not listening for a while -- a map loading, nothing asked of
-            // the relay: the relay's silence meanwhile is not counted.)
+            // the relay: the relay's silence meanwhile is not counted; nor
+            // the time a coming in or a taking up again has had to be
+            // answered, which ended at once after a long load.)
             if (since(now, s.lastPump) > 60)
+            {
                 s.lastHeard = now;
+                s.enterSince = now;
+                s.lastEnter = now - 30;
+                s.lastWifiLook = now;
+            }
             s.lastPump = now;
             drain();
             // (What drain() heard was stamped as it came: the time read again.)
@@ -583,7 +612,7 @@ namespace hlrt::netrelay
                 {
                     s.lastWifiLook = now;
                     s.wifiDown = Wifi_AssocStatus() == ASSOCSTATUS_ASSOCIATED ? 0 : s.wifiDown + 1;
-                    if (s.wifiDown >= 2)
+                    if (s.wifiDown >= kWifiDownLooks)
                         letGoNow(kByeWifi);
                 }
             }
@@ -1158,6 +1187,11 @@ namespace hlrt::netrelay
         return started && s.role == Role::Client && s.slot > 0 && !s.byeNow;
     }
 
+    TWL_CODE bool reconnecting()
+    {
+        return started && s.resuming && s.entering != 0;
+    }
+
     TWL_CODE bool refused()
     {
         return started && s.role == Role::Client && s.refusedNow;
@@ -1242,6 +1276,7 @@ namespace hlrt::netrelay
     bool hostAt(int, char *, int, int *, int *) { return false; }
     bool join(int) { return false; }
     bool joined() { return false; }
+    bool reconnecting() { return false; }
     bool refused() { return false; }
     void send(const void *, int) {}
     int take(std::uint8_t *, int &) { return 0; }

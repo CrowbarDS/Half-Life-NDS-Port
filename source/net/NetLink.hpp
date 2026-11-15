@@ -74,6 +74,8 @@ namespace hlrt::netlink
     /// a radio already set to do so, ask once more.
     bool joinDirect(const std::uint8_t address[6], bool again);
     bool joined();     ///< it is this host's client now
+    /// Online: taking the relay session up again (nothing comes meanwhile).
+    bool reconnecting();
     bool refused();    ///< ... or the host would not have it
 
     // --------------------------------------------------------------- frames

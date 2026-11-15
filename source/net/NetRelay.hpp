@@ -86,6 +86,9 @@ namespace hlrt::netrelay
     bool hostAt(int index, char *name, int room, int *players, int *most);
     bool join(int index);
     bool joined();
+    /// Taking its session up again after the relay went quiet (the network
+    /// dropped a moment): what the host says meanwhile is not heard.
+    bool reconnecting();
     bool refused();
     void send(const void *bytes, int size);
     int take(std::uint8_t *into, int &from);

@@ -432,6 +432,11 @@ namespace hlrt::netlink
         return true;
     }
 
+    bool reconnecting()
+    {
+        return relay && netrelay::reconnecting();
+    }
+
     bool joined()
     {
         if (relay)

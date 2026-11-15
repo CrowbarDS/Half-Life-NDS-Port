@@ -1815,7 +1815,7 @@ namespace hlrt
 
     void NetGame::leave()
     {
-        silentFrames_ = 0;
+        silentSince_ = silentLooked_ = Global::vblanks();
         if (phase_ == Phase::Off)
             return;
         // A goodbye, said a few times over: there is no waiting to hear
@@ -1978,7 +1978,7 @@ namespace hlrt
         startPending_ = false;
         starting_ = goAsked_ = cancelled_ = false;
         forgetGuest();
-        silentFrames_ = 0;
+        silentSince_ = silentLooked_ = Global::vblanks();
         ended_ = why;
     }
 
@@ -2588,14 +2588,19 @@ namespace hlrt
         {
             lostFrames_ = 0;
             // (The radio can go on saying it is joined to a console switched
-            // off. Nothing heard: ten seconds in a match; while the host may
-            // be loading, a minute.)
-            if (heard_ != heardWas_)
+            // off. Nothing heard: twenty seconds in a match; while the host
+            // may be loading, a minute. In seconds, not frames -- a slow frame
+            // rate stretched them; and not while the relay session is taken
+            // up again, which gives up on its own, nor across a long load of
+            // this console's.)
+            const std::uint32_t now = Global::vblanks();
+            if (heard_ != heardWas_ || netlink::reconnecting() || now - silentLooked_ > 60)
             {
                 heardWas_ = heard_;
-                silentFrames_ = 0;
+                silentSince_ = now;
             }
-            else if (++silentFrames_ >= (phase_ == Phase::Playing ? 600 : 3600))
+            silentLooked_ = now;
+            if (now - silentSince_ >= (phase_ == Phase::Playing ? 20u : 60u) * 60u)
             {
                 lost("The host has gone quiet.");
                 return;

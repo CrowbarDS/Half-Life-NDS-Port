@@ -2,6 +2,7 @@
 
 #include "HlManifest.hpp"
 #include "net/NetGame.hpp"
+#include "net/NetLink.hpp"
 #include "net/NetRelay.hpp"
 #include "audio/Voice.hpp"
 #include "global_header.hpp"
@@ -1050,6 +1051,9 @@ namespace
     /// the radio heard all the while -- then the match begins on all of
     /// them at once. False if it is not to (the host gave it up, or is gone,
     /// or nothing has come for three minutes): the map is to be let go.
+    /// How long a client waits for the host to say go, once its map is loaded.
+    constexpr int kGoWaitFrames = 75 * 60;
+
     bool waitForGo(const std::string &map)
     {
         // (The host: the map's picture, the first time, while the others
@@ -1114,6 +1118,14 @@ namespace
                 hlrt::bottomScreen.showPad();
                 hlrt::screenFade.curtainUp(curtainFrames());
                 return true;
+            }
+            // (A client: the host says go at most 30 s after its own map is
+            // loaded. Much longer, it is not coming -- said so, rather than
+            // left on this screen.)
+            if (!hlrt::netGame.isHost() && n >= kGoWaitFrames)
+            {
+                hlrt::netGame.giveUp("The host did not start the match.");
+                return false;
             }
         }
         hlrt::netGame.leave();
@@ -2291,10 +2303,21 @@ int main(int argc, char *argv[])
                 }
                 // Who killed whom, who came and went: a line at the top of
                 // the picture for a few seconds (the touch screen is the
-                // player's controls, and stays so).
+                // player's controls, and stays so). And, online, the relay
+                // session being taken up again (the network dropped a moment):
+                // said every few seconds while it is.
                 {
                     char line[40];
-                    if (hlrt::netGame.notice(line, sizeof(line)) && line[0] != 0)
+                    static std::uint32_t reconnectSaid = 0;
+                    bool have = hlrt::netGame.notice(line, sizeof(line)) && line[0] != 0;
+                    if (!have && inMatch && hlrt::netlink::reconnecting() &&
+                        Global::vblanks() - reconnectSaid >= 3 * 60)
+                    {
+                        reconnectSaid = Global::vblanks();
+                        std::snprintf(line, sizeof(line), "Reconnecting to the relay...");
+                        have = true;
+                    }
+                    if (have)
                     {
                         hldata::MessageRecord said{};
                         said.x = -1;
