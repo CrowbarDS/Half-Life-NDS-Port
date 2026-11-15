@@ -304,9 +304,21 @@ namespace hlrt::netrelay
         /// Coming in: said again until answered (each half a second). An Enter
         /// not answered a few times (its cookie gone stale, or lost): Hello
         /// again.
+        /// How long since `at`, at `now` (vblanks); 0 if `at` is later. The
+        /// stamps are taken as things happen -- a datagram heard while drain()
+        /// lets the IP stack run, after the frame's `now` was read -- and one
+        /// a vblank after `now` was, unsigned, four billion vblanks ago: "the
+        /// relay silent", a resume begun, and it given up at once ("The relay
+        /// stopped answering", seconds after joining: a burst of datagrams
+        /// makes a drain long).
+        TWL_CODE std::uint32_t since(std::uint32_t now, std::uint32_t at)
+        {
+            return static_cast<std::int32_t>(now - at) > 0 ? now - at : 0;
+        }
+
         TWL_CODE void stepEnter(std::uint32_t now)
         {
-            if (s.in || s.entering == 0 || now - s.lastEnter < 30)
+            if (s.in || s.entering == 0 || since(now, s.lastEnter) < 30)
                 return;
             if (s.entering == 2 && ++s.enterTries >= 4)
             {
@@ -550,22 +562,24 @@ namespace hlrt::netrelay
         {
             if (!started)
                 return;
-            const std::uint32_t now = Global::vblanks();
+            std::uint32_t now = Global::vblanks();
             if (now == s.lastPump)
                 return;
             // (Not listening for a while -- a map loading, nothing asked of
             // the relay: the relay's silence meanwhile is not counted.)
-            if (now - s.lastPump > 60)
+            if (since(now, s.lastPump) > 60)
                 s.lastHeard = now;
             s.lastPump = now;
             drain();
+            // (What drain() heard was stamped as it came: the time read again.)
+            now = Global::vblanks();
             if (s.in)
             {
                 // The relay answers a Ping each second: nothing for long
                 // while listening, it is gone. And the console's own Wi-Fi.
-                if (now - s.lastHeard >= kRelayQuietFrames)
+                if (since(now, s.lastHeard) >= kRelayQuietFrames)
                     resume();
-                else if (now - s.lastWifiLook >= 60)
+                else if (since(now, s.lastWifiLook) >= 60)
                 {
                     s.lastWifiLook = now;
                     s.wifiDown = Wifi_AssocStatus() == ASSOCSTATUS_ASSOCIATED ? 0 : s.wifiDown + 1;
@@ -586,7 +600,7 @@ namespace hlrt::netrelay
                 // Coming in not answered for long: given up (a host, a client;
                 // anyone taking its session up again).
                 if (s.entering != 0 && (s.role != Role::Scan || s.resuming) &&
-                    now - s.enterSince >= (s.resuming ? kResumeFrames : kEnterFrames))
+                    since(now, s.enterSince) >= (s.resuming ? kResumeFrames : kEnterFrames))
                     letGoNow(kByeNoAnswer);
                 stepEnter(now);
                 return;
@@ -596,18 +610,18 @@ namespace hlrt::netrelay
             case Role::Host:
                 // (Its room, said again now and then: to be sure the relay
                 // has it, and that it is still there.)
-                if (now - s.lastOpen >= (s.roomId == 0 ? 30u : 60u))
+                if (since(now, s.lastOpen) >= (s.roomId == 0 ? 30u : 60u))
                     sendOpen();
                 break;
             case Role::Scan:
-                if (now - s.lastList >= 60)
+                if (since(now, s.lastList) >= 60)
                 {
                     sendSmall(RelayKind::List);
                     s.lastList = now;
                 }
                 break;
             case Role::Client:
-                if (s.slot < 0 && !s.refusedNow && now - s.lastJoin >= 30)
+                if (s.slot < 0 && !s.refusedNow && since(now, s.lastJoin) >= 30)
                     sendJoin();
                 break;
             default:
@@ -617,7 +631,7 @@ namespace hlrt::netrelay
             // of a console it does not hear, and its Pong is what says the
             // relay is there -- a client hears nothing else while its host
             // loads a map.)
-            if (now - s.lastPing >= 60)
+            if (since(now, s.lastPing) >= 60)
             {
                 sendSmall(RelayKind::Ping);
                 s.lastPing = now;
