@@ -1184,10 +1184,23 @@ namespace
             else
             {
                 // (Said, for a moment: a map this console cannot hold has no
-                // picture -- it is asked again the next time.)
+                // picture -- it is asked again the next time. The card failing
+                // to read: said for longer, and no more maps tried -- each
+                // failed the same way after it, and the first one's words,
+                // which piece and why, are the ones that tell what is wrong.)
+                const bool card = error.find("could not be read from the card") != std::string::npos;
                 hlrt::bottomScreen.showProgress("MAP PICTURES", todo[n].c_str(), error.c_str(), n + 1, total);
-                for (int wait = 0; wait < 60 && !hlrt::BottomScreen::stopTouched(); ++wait)
+                for (int wait = 0; wait < (card ? 5 * 60 : 60) && !hlrt::BottomScreen::stopTouched(); ++wait)
                     swiWaitForVBlank();
+                if (card)
+                {
+                    if (hlrt::level.loaded())
+                    {
+                        dropMap();
+                        hlrt::level.unload();
+                    }
+                    break;
+                }
             }
             if (hlrt::level.loaded())
             {
