@@ -47,6 +47,12 @@ namespace hlrt
         /// address -- not a mirror's), until micOff.
         void micOn(void *ring);
         void micOff();
+        /// A voice heard: `count` 16-bit samples (a multiple of two) at
+        /// `rate`, `volume` 0..255, centred, playing on in the menus -- begun
+        /// now (`after` 0), or behind `after` on its channel, as chain does.
+        /// 0: no channel, or nothing queued.
+        std::uint16_t voice(std::uint16_t after, const std::int16_t *samples, std::uint32_t count, std::uint16_t rate,
+                            int volume);
 #endif
         /// Everything silent and stopped, for good: the program is leaving.
         void shutdown();

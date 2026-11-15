@@ -4,11 +4,11 @@
 // hears, a packet at a time, in the form the DS's sound hardware plays --
 // IMA-ADPCM as GBATEK has the hardware do it, a four-byte head (the first
 // sample, and where in the steps it starts) and then four bits a sample, the
-// low half of each byte first. A packet is a clip of its own, played by a
-// channel pointed at it (Arm7Audio's Play and Chain): one lost costs its 40 ms
-// and nothing after it.
+// low half of each byte first. A packet is whole by itself: one lost costs
+// its 40 ms and nothing after it. What is heard is decoded here, made safe
+// (voiceHeard), and played as 16-bit samples.
 //
-// The encoder works each sample out as the hardware will, from what it
+// The encoder works each sample out as the decoder will, from what it
 // will have, not from what was heard, so the two never drift apart.
 //
 // std-only: the host tests run it.
@@ -230,6 +230,69 @@ namespace hldata
     }
 
     // ------------------------------------------------- what is heard
+
+    /// What another console says, made safe to hear before it is played: its
+    /// packet decoded here (not by the sound hardware), never louder than
+    /// kVoiceHeardCap whatever came -- a broken or hostile packet, a shout --
+    /// and faded in where a talk begins or a packet is missing, so neither
+    /// starts with a jump.
+    inline constexpr int kVoiceHeardCap = 20000;  ///< the loudest played (-4.3 dB; a voice is levelled to 16384)
+    inline constexpr int kVoiceHeardFade = 32;    ///< samples faded in (4 ms)
+    inline constexpr int kVoiceHeardUnity = 32768; ///< a gain of one (Q15)
+    static_assert(kVoiceHeardFade == 32, "the fade's shift is 5");
+
+    /// One talker's: begun as `VoiceHeard{}`.
+    struct VoiceHeard
+    {
+        int gainQ15 = kVoiceHeardUnity; ///< brought down at once, back up a quarter a packet
+    };
+
+    /// What voiceHeard did to a packet.
+    enum class VoiceHeardWas : std::uint8_t
+    {
+        Played,  ///< as it came
+        Capped,  ///< brought down (too loud)
+        Dropped, ///< no packet (its head broken): silence in its place
+    };
+
+    /// `packet` decoded into `out` (kVoiceSamples), made safe; `fresh`: the
+    /// first of a talk, or what came before it missing.
+    inline VoiceHeardWas voiceHeard(VoiceHeard &h, const std::uint8_t *packet, bool fresh, std::int16_t *out)
+    {
+        if (!voiceDecode(packet, kVoiceSamples, out))
+        {
+            for (int i = 0; i < kVoiceSamples; ++i)
+                out[i] = 0;
+            return VoiceHeardWas::Dropped;
+        }
+        int peak = 0;
+        for (int i = 0; i < kVoiceSamples; ++i)
+        {
+            const int a = out[i] < 0 ? -out[i] : out[i];
+            peak = a > peak ? a : peak;
+        }
+        // The gain wanted: under the cap (one divide a packet, only when
+        // over it). Down at once, from the first sample; up slowly after.
+        const int want = peak > kVoiceHeardCap
+                             ? static_cast<int>(static_cast<std::int64_t>(kVoiceHeardCap) * kVoiceHeardUnity / peak)
+                             : kVoiceHeardUnity;
+        if (want < h.gainQ15 || want - h.gainQ15 < 4)
+            h.gainQ15 = want;
+        else
+            h.gainQ15 += (want - h.gainQ15) >> 2;
+        const int g = h.gainQ15;
+        if (g < kVoiceHeardUnity)
+        {
+            for (int i = 0; i < kVoiceSamples; ++i)
+                out[i] = static_cast<std::int16_t>((out[i] * g) >> 15);
+        }
+        if (fresh)
+        {
+            for (int i = 0; i < kVoiceHeardFade; ++i)
+                out[i] = static_cast<std::int16_t>((out[i] * i) >> 5);
+        }
+        return g < kVoiceHeardUnity ? VoiceHeardWas::Capped : VoiceHeardWas::Played;
+    }
 
     /// One talker's packets as they come, put back in order and held a
     /// moment before they are played, so that one that comes a little late is

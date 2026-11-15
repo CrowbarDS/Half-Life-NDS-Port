@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <vector>
 
 #include "HlVoice.hpp"
@@ -223,12 +224,87 @@ namespace
         }
         check(heldOpen, "(push to talk's lower floor: that hiss would open it)");
     }
+
+    /// What is heard made safe (voiceHeard): a voice as it came; a burst at
+    /// full scale brought under the cap, at once, and back up slowly after;
+    /// a broken packet silence; a talk's start faded in.
+    void testHeardSafe()
+    {
+        const double kPi = 3.14159265358979;
+        auto packetOf = [&](double amplitude, int p, std::uint8_t *bytes)
+        {
+            std::int16_t pcm[kVoiceSamples];
+            for (int i = 0; i < kVoiceSamples; ++i)
+                pcm[i] = static_cast<std::int16_t>(amplitude * std::sin(2 * kPi * 300 * (p * kVoiceSamples + i) / 8182.0));
+            VoiceEncoder e{};
+            voiceEncode(e, pcm, kVoiceSamples, bytes);
+        };
+        auto peakOf = [](const std::int16_t *out, int from = 0)
+        {
+            int peak = 0;
+            for (int i = from; i < kVoiceSamples; ++i)
+                peak = std::abs(out[i]) > peak ? std::abs(out[i]) : peak;
+            return peak;
+        };
+        std::uint8_t bytes[kVoiceAdpcmBytes];
+        std::int16_t out[kVoiceSamples], plain[kVoiceSamples];
+        VoiceHeard h{};
+
+        packetOf(12000, 1, bytes);
+        voiceDecode(bytes, kVoiceSamples, plain);
+        check(voiceHeard(h, bytes, false, out) == VoiceHeardWas::Played && std::memcmp(out, plain, sizeof(out)) == 0,
+              "heard: a voice under the cap played as it came");
+
+        packetOf(32000, 2, bytes);
+        check(voiceHeard(h, bytes, false, out) == VoiceHeardWas::Capped && peakOf(out) <= kVoiceHeardCap,
+              "... a burst at full scale brought under the cap, from its first sample");
+
+        packetOf(12000, 3, bytes);
+        voiceDecode(bytes, kVoiceSamples, plain);
+        check(voiceHeard(h, bytes, false, out) == VoiceHeardWas::Capped && peakOf(out) < peakOf(plain),
+              "... and the voice after it back up slowly, not with a jump");
+        int packets = 1;
+        while (voiceHeard(h, bytes, false, out) != VoiceHeardWas::Played && packets < 100)
+            ++packets;
+        check(packets < 40 && std::memcmp(out, plain, sizeof(out)) == 0, "... until it is as it came again");
+
+        std::uint8_t broken[kVoiceAdpcmBytes];
+        std::memcpy(broken, bytes, sizeof(broken));
+        broken[2] = 120; // (a step out of range)
+        check(voiceHeard(h, broken, false, out) == VoiceHeardWas::Dropped && peakOf(out) == 0,
+              "a broken packet: silence in its place");
+
+        // Hostile: any bytes at all, never over the cap.
+        std::srand(23);
+        int worst = 0;
+        VoiceHeard any{};
+        for (int p = 0; p < 2000; ++p)
+        {
+            for (std::uint8_t &b : bytes)
+                b = static_cast<std::uint8_t>(std::rand());
+            bytes[2] = static_cast<std::uint8_t>(bytes[2] % 89);
+            bytes[3] = 0;
+            voiceHeard(any, bytes, (p & 7) == 0, out);
+            worst = peakOf(out) > worst ? peakOf(out) : worst;
+        }
+        check(worst <= kVoiceHeardCap, "random bytes, packet after packet: never over the cap");
+
+        VoiceHeard start{};
+        packetOf(12000, 4, bytes);
+        voiceDecode(bytes, kVoiceSamples, plain);
+        voiceHeard(start, bytes, true, out);
+        check(out[0] == 0 && std::abs(out[kVoiceHeardFade / 2]) <= std::abs(plain[kVoiceHeardFade / 2]) / 2 + 1 &&
+                  std::memcmp(out + kVoiceHeardFade, plain + kVoiceHeardFade,
+                              sizeof(out) - kVoiceHeardFade * sizeof(out[0])) == 0,
+              "a talk's first packet faded in, the rest as it came");
+    }
 } // namespace
 
 int main()
 {
     testLevel();
     testOpenGate();
+    testHeardSafe();
     const double kPi = 3.14159265358979;
     // A tone, 440 Hz at 8182 Hz, a quarter of the range.
     std::vector<std::int16_t> tone(kVoiceSamples * 25);

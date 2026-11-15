@@ -93,6 +93,43 @@ namespace hlrt
         c.op = AudioOp::MicOff;
         push(c);
     }
+
+    TWL_CODE std::uint16_t Arm7Audio::voice(std::uint16_t after, const std::int16_t *samples, std::uint32_t count,
+                                            std::uint16_t rate, int volume)
+    {
+        if (link_ == nullptr || samples == nullptr)
+            return 0;
+        AudioPlay p = playOf(samples, count / 2, kAudioNoLoop, rate, volume, 128, 1024, true);
+        p.flags = static_cast<std::uint16_t>(p.flags | kAudioPlayPcm16);
+        if (after == 0)
+        {
+            int slot = -1;
+            for (int k = 0; k < kChannels && slot < 0; ++k)
+                slot = live_[k] == 0 ? k : -1;
+            if (slot < 0)
+                return 0;
+            const std::uint16_t token = nextToken();
+            live_[slot] = token;
+            push(audioPlay(0, token, p));
+            return token;
+        }
+        if (!playing(after) || queued(after))
+            return 0;
+        int slot = -1;
+        for (int k = 0; k < kQueued && slot < 0; ++k)
+            slot = queued_[k].token == 0 ? k : -1;
+        for (int k = 0; k < kQueued; ++k)
+        {
+            if (queued_[k].after == after && queued_[k].token != 0)
+                return 0; // (one queued behind it already)
+        }
+        if (slot < 0)
+            return 0;
+        const std::uint16_t token = nextToken();
+        queued_[slot] = Queued{token, after};
+        push(audioChain(token, after, p));
+        return token;
+    }
 #endif
 
     std::uint16_t Arm7Audio::play(const void *data, std::uint32_t words, std::uint32_t loopWord, std::uint16_t rate,

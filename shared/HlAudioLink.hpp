@@ -84,6 +84,7 @@ namespace hldata
     inline constexpr std::uint32_t kAudioSetVolume = 1, kAudioSetPan = 2, kAudioSetPitch = 4;
     inline constexpr std::uint16_t kAudioPlayUi = 1;  ///< plays on in the pause menu
     inline constexpr std::uint16_t kAudioPlayHere = 2; ///< not placed in the room (the player's own)
+    inline constexpr std::uint16_t kAudioPlayPcm16 = 4; ///< 16-bit samples, not IMA-ADPCM (a voice heard)
 
     inline constexpr std::uint8_t kAudioEffectsOff = 0, kAudioEffectsClassic = 1, kAudioEffectsEnhanced = 2;
     inline constexpr std::uint8_t kAudioOutputSpeakers = 0, kAudioOutputHeadphones = 1, kAudioOutputMono = 2;

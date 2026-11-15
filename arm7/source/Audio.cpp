@@ -150,13 +150,14 @@ namespace hlaudio
             ch.pitch = p.pitch;
             const int n = kChannels[c];
             const bool loops = p.loopWord != kAudioNoLoop && p.loopWord < p.words;
+            const std::uint32_t format = (p.flags & kAudioPlayPcm16) != 0 ? 1u : 2u;
             SCHANNEL_CR(n) = 0;
             SCHANNEL_SOURCE(n) = p.address;
             SCHANNEL_TIMER(n) = timerOf(ch);
             SCHANNEL_REPEAT_POINT(n) = loops ? p.loopWord : 0;
             SCHANNEL_LENGTH(n) = loops ? p.words - p.loopWord : p.words;
             SCHANNEL_CR(n) = static_cast<std::uint32_t>(volumeOf(ch)) | static_cast<std::uint32_t>(ch.pan) << 16 |
-                             (loops ? 1u : 2u) << 27 | 2u << 29 | 1u << 31;
+                             (loops ? 1u : 2u) << 27 | format << 29 | 1u << 31;
             link->voiceToken[n] = token;
         }
 

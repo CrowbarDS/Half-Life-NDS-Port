@@ -64,10 +64,11 @@ namespace hlrt::voice
         TWL_BSS State s;
 
         // What others say, heard: three at once at most, each its packets put
-        // in order (VoiceJitter) and played one after the other on a
-        // channel of the game's sound -- one playing, the next queued behind
-        // it to begin with no gap, from buffers of their own (the ARM7 reads
-        // them while they play).
+        // in order (VoiceJitter), decoded and made safe here (voiceHeard: never
+        // too loud, faded in where it jumps), and played one after the other
+        // as 16-bit samples on a channel of the game's sound -- one playing,
+        // the next queued behind it to begin with no gap, from buffers of
+        // their own (the ARM7 reads them while they play).
         constexpr int kTalkers = 3;
         constexpr int kBuffers = 4;
         /// Silent this long, a talker's place is free for another.
@@ -81,10 +82,16 @@ namespace hlrt::voice
             std::uint16_t playing, queued; ///< (tokens)
             int nextBuffer;
             hldata::VoiceJitter jitter;
-            alignas(32) std::uint8_t buffers[kBuffers][kVoiceAdpcmBytes];
+            hldata::VoiceHeard heard;
+            bool going;          ///< a packet of this talk played (the next's number known)
+            std::uint8_t expect; ///< ... the number that follows it
+            alignas(32) std::int16_t buffers[kBuffers][kVoiceSamples];
         };
         TWL_BSS Talker talkers[kTalkers];
         TWL_BSS bool heardBegun;
+        /// Packets heard brought down (too loud), and dropped (broken): for a
+        /// test build to say.
+        TWL_BSS std::uint32_t heardCapped, heardDropped;
         TWL_BSS std::uint8_t heardPacket[kVoiceAdpcmBytes];
 
         std::uint32_t nowMs() { return Global::vblanks() * 50u / 3u; }
@@ -95,40 +102,82 @@ namespace hlrt::voice
         // A test build's record of a talk, to measure on a console: each
         // packet as heard (left) and as sent, levelled (right), 16-bit at the
         // packet's rate, the first 8 s of each talk; written to voice.wav as
-        // TALK is let go.
+        // TALK is let go. And what others say, as it came (before
+        // voiceHeard), its first 8 s: heard.wav, with heard.txt saying how
+        // many packets were brought down or dropped.
         constexpr int kDumpSamples = 8 * 8192;
         TWL_BSS std::int16_t dumpPairs[kDumpSamples * 2];
         TWL_BSS int dumpCount;
         TWL_BSS std::uint16_t dumpRate;
+        TWL_BSS std::int16_t heardSamples[kDumpSamples];
+        TWL_BSS int heardCount;
+        TWL_BSS std::uint16_t heardRate;
+        TWL_BSS bool heardWritten;
+
+        HL_TWL_CODE void wavWrite(const char *name, const std::int16_t *samples, int frames, int channels,
+                                  std::uint32_t rate)
+        {
+            std::FILE *f = std::fopen(global.dataPath(name).c_str(), "wb");
+            if (f == nullptr)
+                return;
+            const std::uint32_t bytes = static_cast<std::uint32_t>(frames * channels) * 2;
+            rate = rate != 0 ? rate : 8182;
+            std::uint8_t head[44];
+            auto put32 = [&](int at, std::uint32_t v) { for (int i = 0; i < 4; ++i) head[at + i] = static_cast<std::uint8_t>(v >> (8 * i)); };
+            auto put16 = [&](int at, std::uint16_t v) { head[at] = static_cast<std::uint8_t>(v); head[at + 1] = static_cast<std::uint8_t>(v >> 8); };
+            std::memcpy(head, "RIFF", 4);
+            put32(4, 36 + bytes);
+            std::memcpy(head + 8, "WAVEfmt ", 8);
+            put32(16, 16);
+            put16(20, 1);
+            put16(22, static_cast<std::uint16_t>(channels));
+            put32(24, rate);
+            put32(28, rate * 2 * static_cast<std::uint32_t>(channels));
+            put16(32, static_cast<std::uint16_t>(2 * channels));
+            put16(34, 16);
+            std::memcpy(head + 36, "data", 4);
+            put32(40, bytes);
+            std::fwrite(head, 1, sizeof(head), f);
+            std::fwrite(samples, 2, static_cast<std::size_t>(frames * channels), f);
+            std::fclose(f);
+        }
 
         HL_TWL_CODE void dumpWrite()
         {
             if (dumpCount == 0)
                 return;
-            std::FILE *f = std::fopen(global.dataPath("voice.wav").c_str(), "wb");
-            if (f == nullptr)
-                return;
-            const std::uint32_t data = static_cast<std::uint32_t>(dumpCount) * 4;
-            const std::uint32_t rate = dumpRate != 0 ? dumpRate : 8182;
-            std::uint8_t head[44];
-            auto put32 = [&](int at, std::uint32_t v) { for (int i = 0; i < 4; ++i) head[at + i] = static_cast<std::uint8_t>(v >> (8 * i)); };
-            auto put16 = [&](int at, std::uint16_t v) { head[at] = static_cast<std::uint8_t>(v); head[at + 1] = static_cast<std::uint8_t>(v >> 8); };
-            std::memcpy(head, "RIFF", 4);
-            put32(4, 36 + data);
-            std::memcpy(head + 8, "WAVEfmt ", 8);
-            put32(16, 16);
-            put16(20, 1);
-            put16(22, 2);
-            put32(24, rate);
-            put32(28, rate * 4);
-            put16(32, 4);
-            put16(34, 16);
-            std::memcpy(head + 36, "data", 4);
-            put32(40, data);
-            std::fwrite(head, 1, sizeof(head), f);
-            std::fwrite(dumpPairs, 4, static_cast<std::size_t>(dumpCount), f);
-            std::fclose(f);
+            wavWrite("voice.wav", dumpPairs, dumpCount, 2, dumpRate);
             dumpCount = 0;
+        }
+
+        /// A packet heard, as it came, into heard.wav's record: written once
+        /// it is full (or the voice stops).
+        HL_TWL_CODE void heardWrite()
+        {
+            if (heardWritten || heardCount == 0)
+                return;
+            heardWritten = true;
+            wavWrite("heard.wav", heardSamples, heardCount, 1, heardRate);
+            if (std::FILE *f = std::fopen(global.dataPath("heard.txt").c_str(), "w"))
+            {
+                std::fprintf(f, "brought down %lu, dropped %lu\n", static_cast<unsigned long>(heardCapped),
+                             static_cast<unsigned long>(heardDropped));
+                std::fclose(f);
+            }
+        }
+
+        HL_TWL_CODE void heardDump(const std::uint8_t *packet, std::uint16_t rate)
+        {
+            if (heardWritten)
+                return;
+            heardRate = rate;
+            std::int16_t raw[kVoiceSamples];
+            if (!hldata::voiceDecode(packet, kVoiceSamples, raw))
+                std::memset(raw, 0, sizeof(raw));
+            for (int i = 0; i < kVoiceSamples && heardCount < kDumpSamples; ++i)
+                heardSamples[heardCount++] = raw[i];
+            if (heardCount == kDumpSamples)
+                heardWrite();
         }
 #endif
 
@@ -252,6 +301,8 @@ namespace hlrt::voice
                 arm7Audio.stop(t.playing);
             t.playing = t.queued = 0;
             t.player = -1;
+            t.heard = hldata::VoiceHeard{};
+            t.going = false;
             hldata::voiceJitterClear(t.jitter);
         }
 
@@ -301,17 +352,26 @@ namespace hlrt::voice
             const hldata::VoiceJitter::Slot *next = hldata::voiceJitterTake(t.jitter, now, dry);
             if (next == nullptr)
                 return false;
-            std::uint8_t *buffer = t.buffers[t.nextBuffer];
+            std::int16_t *buffer = t.buffers[t.nextBuffer];
             t.nextBuffer = (t.nextBuffer + 1) % kBuffers;
-            std::memcpy(buffer, next->bytes, kVoiceAdpcmBytes);
-            DC_FlushRange(buffer, kVoiceAdpcmBytes);
+            // (Fresh: the talk's first, after a gap, or one missing before it.)
+            const bool fresh = dry || !t.going || next->number != t.expect;
+            t.going = true;
+            t.expect = static_cast<std::uint8_t>(next->number + 1);
+#ifdef HLDS_VOICE_DUMP
+            heardDump(next->bytes, next->rate);
+#endif
+            const hldata::VoiceHeardWas was = hldata::voiceHeard(t.heard, next->bytes, fresh, buffer);
+            if (was == hldata::VoiceHeardWas::Capped)
+                ++heardCapped;
+            else if (was == hldata::VoiceHeardWas::Dropped)
+                ++heardDropped;
+            DC_FlushRange(buffer, sizeof(t.buffers[0]));
             const int volume = settings.volume[hldata::kVolumeVoices] * 255 / hldata::kVolumeMost;
-            constexpr std::uint32_t kWords = kVoiceAdpcmBytes / 4;
             if (dry)
-                t.playing = arm7Audio.play(buffer, kWords, hldata::kAudioNoLoop, next->rate, volume, 128, 1024, true);
+                t.playing = arm7Audio.voice(0, buffer, kVoiceSamples, next->rate, volume);
             else
-                t.queued = arm7Audio.chain(t.playing, buffer, kWords, hldata::kAudioNoLoop, next->rate, volume, 128,
-                                           1024);
+                t.queued = arm7Audio.voice(t.playing, buffer, kVoiceSamples, next->rate, volume);
             return true;
         }
 
@@ -396,6 +456,9 @@ namespace hlrt::voice
         s.count = 0;
         s.head = 0;
         s.havePreroll = false;
+#ifdef HLDS_VOICE_DUMP
+        heardWrite();
+#endif
         if (heardBegun)
             silenceAll();
     }
