@@ -120,6 +120,8 @@ namespace hlrelay
 
         std::size_t peers() const { return peers_.size(); }
         std::size_t rooms() const { return rooms_.size(); }
+        /// Consoles in a room: its host and those let in.
+        std::size_t inRooms() const;
         const Drops &drops() const { return drops_; }
         /// Whether a console is known at `at`.
         bool knows(const Address &at) const { return at_.count(at.key()) != 0; }

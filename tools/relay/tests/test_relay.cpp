@@ -898,6 +898,26 @@ namespace
         check(lines.back().find("in=0 in_bytes=0 out=0") != std::string::npos, "... each minute's own");
     }
 
+    /// What the website shows: counts alone.
+    void testStatusJson()
+    {
+        g_sessions.clear();
+        using hlrelay::Serve;
+        Relay relay;
+        PretendSocket socket;
+        std::uint32_t now = 1000;
+        std::vector<Out> out;
+        Serve serve(relay, socket, now);
+        check(serve.statusJson(1763251200) == "{\"updated\":1763251200,\"consoles\":0,\"rooms\":0,\"inRooms\":0}\n",
+              "status: nobody online");
+        const std::uint32_t id = open(relay, 0, "Gordon", 8, now, out);
+        join(relay, 1, id, now, out);
+        comeIn(relay, 2, now); // (looking, in no room)
+        check(serve.statusJson(5) == "{\"updated\":5,\"consoles\":3,\"rooms\":1,\"inRooms\":2}\n",
+              "... a host, one let in and one looking: three online, two in one room");
+        check(serve.statusJson(5).find("Gordon") == std::string::npos, "... and no name in it");
+    }
+
     void testComingIn()
     {
         g_sessions.clear(); // (a relay of an earlier test's may have been where this one is)
@@ -1703,6 +1723,7 @@ int main()
     testSipHash();
     testLog();
     testStatsLine();
+    testStatusJson();
     testComingIn();
     testOtherVersion();
     testLimits();

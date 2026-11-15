@@ -7,5 +7,7 @@
 #   --log-ips trunc                trunc (default), hash, or full
 #   --limit out-bytes-per-s=N      what the server's link may carry, in bytes a second
 #   --limit silent-seconds=210     how long a quiet console is waited for
+#   --status-file /run/hlds-relay/status.json
+#                                  the counts the website shows (README: "The website's counts")
 
 HLDS_RELAY_ARGS=--port 27500 --log-ips trunc

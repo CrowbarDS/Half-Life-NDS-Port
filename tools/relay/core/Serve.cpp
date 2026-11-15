@@ -85,4 +85,13 @@ namespace hlrelay
                       n(now.sendFailed, before.sendFailed), n(now.fullRounds, before.fullRounds), seconds);
         return line;
     }
+
+    std::string Serve::statusJson(std::uint64_t unixSeconds) const
+    {
+        char json[160];
+        std::snprintf(json, sizeof(json), "{\"updated\":%llu,\"consoles\":%zu,\"rooms\":%zu,\"inRooms\":%zu}\n",
+                      static_cast<unsigned long long>(unixSeconds), relay_.peers(), relay_.rooms(),
+                      relay_.inRooms());
+        return json;
+    }
 } // namespace hlrelay

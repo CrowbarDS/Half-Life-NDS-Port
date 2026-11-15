@@ -295,6 +295,14 @@ namespace hlrelay
         return "#" + std::to_string(peer.id) + " (" + shown(peer.at) + ")";
     }
 
+    std::size_t Relay::inRooms() const
+    {
+        std::size_t n = 0;
+        for (const auto &room : rooms_)
+            n += static_cast<std::size_t>(room.second.count());
+        return n;
+    }
+
     int Relay::Room::count() const
     {
         int n = 1;

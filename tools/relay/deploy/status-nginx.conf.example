@@ -1,0 +1,19 @@
+# nginx: the relay's counts for the project's website (README: "The website's
+# counts"), inside the server block that has the machine's HTTPS certificate:
+#
+#   server {
+#       listen 443 ssl;
+#       server_name relay.example.org;
+#       ...
+#       include /etc/nginx/snippets/hlds-relay-status.conf;
+#   }
+#
+# Installed as /etc/nginx/snippets/hlds-relay-status.conf; then
+# sudo nginx -t && sudo systemctl reload nginx
+
+location = /status.json {
+    alias /run/hlds-relay/status.json;
+    default_type application/json;
+    add_header Access-Control-Allow-Origin "*" always;
+    add_header Cache-Control "no-store" always;
+}

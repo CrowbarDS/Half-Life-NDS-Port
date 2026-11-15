@@ -1,0 +1,12 @@
+# Caddy: the relay's counts for the project's website (README: "The website's
+# counts"). Caddy gets the HTTPS certificate by itself. Put the machine's own
+# name in place of relay.example.org; then sudo systemctl reload caddy
+
+relay.example.org {
+	handle /status.json {
+		root * /run/hlds-relay
+		header Access-Control-Allow-Origin "*"
+		header Cache-Control "no-store"
+		file_server
+	}
+}

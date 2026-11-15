@@ -41,6 +41,10 @@ ProtectClock=yes
 ProtectHostname=yes
 UMask=0077
 KeyringMode=private
+# The one place it may write: /run/hlds-relay, for --status-file (the
+# website's counts), readable by the web server; emptied when it stops.
+RuntimeDirectory=hlds-relay
+RuntimeDirectoryMode=0755
 
 # What it may do.
 NoNewPrivileges=yes

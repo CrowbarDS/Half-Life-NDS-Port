@@ -39,6 +39,7 @@ build/relay/hlds-relay --port 27500
 | `--bind ADDRESS` | the local IPv4 address to listen on (all of them if not given) |
 | `--log-ips trunc\|hash\|full` | how consoles' addresses are logged (`trunc` if not given; see below) |
 | `--limit NAME=VALUE` | one of the limits below; as often as needed |
+| `--status-file PATH` | write the counts the website shows to `PATH` each 5 s (see "The website's counts") |
 | `--quiet` | print nothing while running |
 
 A console that sends nothing for three and a half minutes (`--limit
@@ -382,8 +383,8 @@ this one does, and why.
 | `DynamicUser=yes` | it runs as a user made up for it as it starts, and gone when it stops: it owns no file anywhere, and is not root |
 | `PrivateUsers=yes` | ... and that user sees no other user of the machine |
 
-*What it may see and touch.* The relay reads no file and writes none, so
-all of it is shut away:
+*What it may see and touch.* The relay reads no file, and writes only the
+website's counts (`--status-file`), so all the rest is shut away:
 
 | line | what it does |
 |---|---|
@@ -399,8 +400,9 @@ all of it is shut away:
 | `ProtectControlGroups=yes` | ... nor change the control groups (how the machine's resources are shared) |
 | `ProtectClock=yes` | ... nor set the clock |
 | `ProtectHostname=yes` | ... nor the machine's name |
-| `UMask=0077` | anything it did create would be its own alone |
+| `UMask=0077` | anything it did create would be its own alone (but the counts file, made readable on purpose) |
 | `KeyringMode=private` | the kernel's key store: none of the machine's keys |
+| `RuntimeDirectory=hlds-relay`, `RuntimeDirectoryMode=0755` | `/run/hlds-relay`, the one folder it may write in, readable by others (the web server), emptied when it stops |
 
 *What it may do:*
 
@@ -455,6 +457,31 @@ addresses cut to their first three numbers (`--log-ips`), and a line of
 counts a minute; never a player's or room's name. To keep it shorter, lower
 `MaxRetentionSec`, then `sudo systemctl restart systemd-journald@hlds-relay`.
 To delete it all now: `sudo journalctl --namespace=hlds-relay --rotate --vacuum-time=1s`.
+
+## The website's counts
+
+The project's website shows, when anyone is online, how many consoles are
+on the relay, how many rooms are open, and how many consoles are in them --
+counts alone, never a name or anything a player typed. The relay writes them
+with `--status-file`:
+
+```json
+{"updated":1763251200,"consoles":3,"rooms":1,"inRooms":2}
+```
+
+each five seconds (`updated`: the time, in seconds since 1970), written whole
+(a reader never sees half of it), and removed when the relay stops. The site
+says the relay is offline when the file is missing or more than a minute old.
+
+1. Add `--status-file /run/hlds-relay/status.json` to `HLDS_RELAY_ARGS` in
+   `/etc/hlds-relay.conf`, and `sudo systemctl restart hlds-relay`.
+2. Have the machine's web server give that file over HTTPS (the site is on
+   HTTPS, so a browser reads nothing else), to any site
+   (`Access-Control-Allow-Origin: *`: the counts are public), never cached.
+   `deploy/status-nginx.conf.example` and `deploy/status-Caddyfile.example`
+   do it.
+3. Put that address in `site/online.js` (`kStatusUrl`). Empty, the top
+   bar's ONLINE and the home page's section are never shown.
 
 ## The console's side
 

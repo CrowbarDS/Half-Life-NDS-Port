@@ -2,13 +2,14 @@
 // (core/Relay.hpp). One UDP port, one thread.
 //
 //   hlds-relay [--port N] [--bind ADDRESS] [--log-ips trunc|hash|full]
-//              [--limit NAME=VALUE]... [--quiet]
+//              [--limit NAME=VALUE]... [--status-file PATH] [--quiet]
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <sys/random.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <chrono>
@@ -78,10 +79,27 @@ namespace
         return true;
     }
 
+    /// How often --status-file is written.
+    constexpr std::uint32_t kStatusFileMs = 5000;
+
+    /// The website's counts written to `path`, whole (a name beside it, then
+    /// moved over it: a reader never sees half), readable by the web server.
+    void writeStatus(const std::string &path, const std::string &json)
+    {
+        const std::string part = path + ".part";
+        std::FILE *f = std::fopen(part.c_str(), "w");
+        if (f == nullptr)
+            return;
+        const bool whole = std::fwrite(json.data(), 1, json.size(), f) == json.size();
+        ::fchmod(::fileno(f), 0644);
+        if (std::fclose(f) != 0 || !whole || std::rename(part.c_str(), path.c_str()) != 0)
+            std::remove(part.c_str());
+    }
+
     void usage()
     {
         std::fprintf(stderr, "usage: hlds-relay [--port N] [--bind ADDRESS] [--log-ips trunc|hash|full]\n"
-                             "                  [--limit NAME=VALUE]... [--quiet]\n"
+                             "                  [--limit NAME=VALUE]... [--status-file PATH] [--quiet]\n"
                              "  --port     UDP port to listen on (default %d)\n"
                              "  --bind     local IPv4 address to listen on (default 0.0.0.0, all)\n"
                              "  --log-ips  how consoles' addresses are logged: trunc, the first three\n"
@@ -89,6 +107,9 @@ namespace
                              "             day (UTC); full, address and port (for debugging only)\n"
                              "  --limit    one of these limits (default in brackets), as often as needed:\n"
                              "%s"
+                             "  --status-file  write how many consoles are online, rooms open and\n"
+                             "             consoles in them to PATH (JSON, each 5 s; removed on stop),\n"
+                             "             for a web server to give the project's website\n"
                              "  --quiet    print nothing while running\n",
                      hldata::kRelayPort, hlrelay::Limits::help());
     }
@@ -99,6 +120,7 @@ int main(int argc, char **argv)
     int port = hldata::kRelayPort;
     std::string bindTo = "0.0.0.0";
     bool quiet = false;
+    std::string statusFile;
     hlrelay::IpLog ipLog = hlrelay::IpLog::Trunc;
     hlrelay::Limits limits;
     for (int i = 1; i < argc; ++i)
@@ -138,6 +160,8 @@ int main(int argc, char **argv)
                 return 2;
             }
         }
+        else if (arg == "--status-file" && i + 1 < argc)
+            statusFile = argv[++i];
         else if (arg == "--quiet")
             quiet = true;
         else
@@ -231,6 +255,7 @@ int main(int argc, char **argv)
     PosixSocket socket(sock);
     hlrelay::Serve serve(relay, socket, nowMs());
     bool more = false;
+    std::uint32_t statusAt = nowMs() - kStatusFileMs;
     while (!g_stop)
     {
         // (More may be waiting after a full round: no wait then.)
@@ -238,10 +263,17 @@ int main(int argc, char **argv)
         ::poll(&fd, 1, more ? 0 : static_cast<int>(hlrelay::Serve::kTickMs));
         more = serve.round(nowMs());
         renewSalt();
+        if (!statusFile.empty() && nowMs() - statusAt >= kStatusFileMs)
+        {
+            statusAt = nowMs();
+            writeStatus(statusFile, serve.statusJson(static_cast<std::uint64_t>(std::time(nullptr))));
+        }
     }
     // (Stopped, by systemd or by hand: every console told, so that each says
-    // why it is back in the menu.)
+    // why it is back in the menu. The website's counts go with it.)
     serve.stop();
+    if (!statusFile.empty())
+        std::remove(statusFile.c_str());
     ::close(sock);
     return 0;
 }

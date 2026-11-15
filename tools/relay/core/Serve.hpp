@@ -60,6 +60,10 @@ namespace hlrelay
         /// The line of counts: how many consoles and rooms now, and what came,
         /// went and fell since `before`, over `seconds`.
         std::string statsLine(const Counts &before, unsigned seconds) const;
+        /// What the website shows (--status-file): how many consoles are
+        /// online, rooms open, and consoles in them, as of `unixSeconds` --
+        /// counts alone, nothing a player typed.
+        std::string statusJson(std::uint64_t unixSeconds) const;
 
     private:
         Relay &relay_;
