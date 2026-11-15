@@ -364,6 +364,12 @@ namespace
         check(out.size() == 2 && sentTo(out, at(1), RelayKind::Voice).size() == 1 &&
                   sentTo(out, at(2), RelayKind::Voice).size() == 1,
               "the host's goes to its clients");
+        out.clear();
+        relay.receive(at(2), bytes, relayVoiceWrite(bytes, comeIn(relay, 2, now), 0, 9, 8182, packet), now, out);
+        const auto posed = sentTo(out, at(1), RelayKind::Voice);
+        check(posed.size() == 1 && relayVoiceRead(posed[0].data(), static_cast<int>(posed[0].size()), heard) &&
+                  heard.player == 2,
+              "one saying it is another (the host): passed on as its own");
         say(5, 1);
         check(out.empty(), "a console in no room: nothing");
         out.clear();

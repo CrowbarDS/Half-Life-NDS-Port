@@ -729,7 +729,8 @@ namespace hlrelay
         case RelayKind::Voice:
         {
             // To everyone else in its room, if its host lets them talk; not
-            // more than a voice's worth a second.
+            // more than a voice's worth a second. Said to be from its own
+            // place, whatever it wrote: none speaks as another.
             auto it = rooms_.find(me->room);
             RelayVoice voice;
             if (it == rooms_.end() || !it->second.voice || me->slot < 0 || !relayVoiceRead(bytes, size, voice))
@@ -743,6 +744,7 @@ namespace hlrelay
                     continue;
                 std::memcpy(reply, bytes, static_cast<std::size_t>(size));
                 relayPut32(reply + 4, other->session);
+                reply[kRelayHeadBytes] = static_cast<std::uint8_t>(me->slot);
                 say(out, *other, reply, size);
             }
             break;
