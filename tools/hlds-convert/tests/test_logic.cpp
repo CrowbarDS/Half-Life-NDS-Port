@@ -2752,8 +2752,49 @@ namespace
     }
 } // namespace
 
+    /// Lambda Core's teleporters (c3a2c): the player lands in a holding cell
+    /// whose floor fires a multi_manager that switches the cell's multisource
+    /// on at 0.2 s and off again at 0.3 s; the cell's teleport, mastered by
+    /// it, sends them on in between. A frame of 100 ms or more holds both
+    /// switches: the teleport must still see that its master was on.
+    void testHoldingCell()
+    {
+        for (const int ms : {33, 100, 150, 170, 190, 320})
+        {
+            BoxRoom room;
+            room.brushes = {
+                brush("trigger_multiple", "\"target\" \"cell_mm\"\n\"wait\" \"4\"\n", -28, -28, 0, 28, 28, 8),
+                brush("trigger_teleport", "\"target\" \"out\"\n\"master\" \"cell_ms\"\n\"delay\" \"2\"\n", -20, -20,
+                      12, 20, 20, 96),
+            };
+            room.extraEntities = "{\n\"classname\" \"multi_manager\"\n\"targetname\" \"cell_mm\"\n"
+                                 "\"origin\" \"60 60 60\"\n\"cell_ms\" \".2\"\n\"cell_ms#1\" \".3\"\n}\n"
+                                 "{\n\"classname\" \"multisource\"\n\"targetname\" \"cell_ms\"\n"
+                                 "\"origin\" \"60 70 60\"\n}\n"
+                                 "{\n\"classname\" \"info_teleport_destination\"\n"
+                                 "\"targetname\" \"out\"\n\"origin\" \"80 -80 4\"\n}\n";
+            Game g;
+            build(g, room);
+            check(g.ok, "holding cell");
+            if (!g.ok)
+                return;
+            g.player.origin[0] = 0, g.player.origin[1] = 0, g.player.origin[2] = fxFromInt(36);
+            bool sent = false;
+            for (int t = 0; t < 1000 && !sent; t += ms)
+            {
+                g.tick(ms);
+                sent = g.player.origin[0] == fxFromInt(80);
+            }
+            char what[96];
+            std::snprintf(what, sizeof(what),
+                          "a holding cell sends the player on at %d ms a frame, its master on for 0.1 s", ms);
+            check(sent, what);
+        }
+    }
+
 int main()
 {
+    testHoldingCell();
     testCookRules();
     testCookedRecords();
     testSparks();

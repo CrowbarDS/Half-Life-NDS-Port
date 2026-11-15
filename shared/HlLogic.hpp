@@ -90,7 +90,9 @@ namespace hldata
         std::uint16_t target = 0;
         /// The damage a func_guntarget has taken this ride. For a
         /// scripted_sequence that takes its actor at the start: non-zero once
-        /// it has (the game's CineThink takes it once, never again).
+        /// it has (the game's CineThink takes it once, never again). For a
+        /// multisource: non-zero if all its inputs were on at some time this
+        /// tick (logicMasterAllows).
         std::int32_t hurt = 0;
     };
 
@@ -941,7 +943,10 @@ namespace hldata
         const std::uint32_t all = w.records[master].auxCount >= 32
                                       ? 0xFFFFFFFFu
                                       : ((1u << w.records[master].auxCount) - 1u);
-        return w.states[master].bits == all && logicGlobalAllows(w, w.records[master]);
+        // (Or all on at some time this tick, if no longer: see the
+        // multisource's latch in logicUse.)
+        return (w.states[master].bits == all || w.states[master].hurt != 0) &&
+               logicGlobalAllows(w, w.records[master]);
     }
 
     // ------------------------------------------------------------------ movers
@@ -4517,12 +4522,19 @@ namespace hldata
                 if (w.aux[record.firstAux + a].target == caller)
                     state.bits ^= 1u << a;
             }
-            if (logicMasterAllows(w, index) && record.auxCount != 0)
+            if (record.auxCount != 0)
             {
                 const std::uint32_t all = record.auxCount >= 32
                                               ? 0xFFFFFFFFu
                                               : ((1u << record.auxCount) - 1u);
-                if (state.bits == all && logicGlobalAllows(w, record))
+                // It was on, if only for part of this tick: what it masters
+                // is let through until the next. A slow frame can hold both
+                // its switching on and off (Lambda Core's holding cells are
+                // on for a tenth of a second), and the teleport it masters
+                // would never see it on.
+                if (state.bits == all)
+                    state.hurt = 1;
+                if (logicMasterAllows(w, index) && state.bits == all && logicGlobalAllows(w, record))
                     logicUseTargets(w, player, index, kUseToggle, depth);
             }
             break;
@@ -5364,7 +5376,13 @@ namespace hldata
         if (w.reloadMs > 0)
             w.reloadMs = w.reloadMs > ms ? w.reloadMs - ms : 0;
         // 1. Fires that have come due. A fire can queue more with no delay, so
-        //    go round until nothing is due.
+        //    go round until nothing is due. (A multisource's latch is for
+        //    the tick it was on in: logicUse.)
+        for (int i = 0; i < w.recordCount; ++i)
+        {
+            if (w.records[i].kind == static_cast<std::uint8_t>(LogicKind::MultiSource))
+                w.states[i].hurt = 0;
+        }
         for (LogicEvent &event : w.events)
         {
             if (event.active)
