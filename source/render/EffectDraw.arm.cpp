@@ -354,6 +354,8 @@ namespace hlrt
     {
         count_ = 0;
         refused_ = 0;
+        ++sightFrame_;
+        sightLines_ = isDSiMode() ? 6 : 4;
         if (player.noclip)
             return;
         const ActorWorld &a = game.actors;
@@ -1085,6 +1087,29 @@ namespace hlrt
         GFX_COLOR = 0x7FFF;
     }
 
+    /// Whether the map's glow `record`, at `at`, `dist` units off, is behind
+    /// something, as the game has it: drawn with nothing in front of it
+    /// hidden, it is shown only if the line from the eye to it goes no more
+    /// than 8 units into anything (glass, a grate and models aside) -- a
+    /// glow sunk in its lamp still shows (R_SpriteGlowBlend). Looked at
+    /// again every fourth frame, while this frame's lines last; a glow not
+    /// yet looked at is shown.
+    bool EffectDraw::glowHidden(int record, const fx *at, int dist)
+    {
+        GlowSight &sight = glowSights_[record % kGlowSights];
+        const bool known = sight.record == record;
+        if ((!known || static_cast<std::uint16_t>(sightFrame_ - sight.lookedAt) >= 4) && sightLines_ > 0)
+        {
+            --sightLines_;
+            sight.record = static_cast<std::uint16_t>(record);
+            sight.lookedAt = sightFrame_;
+            sight.hidden = sightBlockedBeyond(game.world, camera.pos, at, dist, 8,
+                                              [](int brush) { return worldDraw.brushSeeThrough(brush); });
+            return sight.hidden;
+        }
+        return known && sight.hidden;
+    }
+
     /// One of the map's own: a sprite or a glow, a beam or a laser
     /// (HlEffects.hpp says which are on).
     void EffectDraw::drawRecord(int i)
@@ -1107,9 +1132,9 @@ namespace hlrt
             int halfWide = known->worldWidth * scale / 32;
             int halfHigh = known->worldHeight * scale / 32;
             int alpha = effectAlpha(record);
-            // A glow that dissipates (HlSprite.hpp): its size kept on the
-            // screen, fainter with distance.
-            if ((record.extra[3] & 2) && !(record.extra[3] & 8))
+            // A glow (render mode 3): its distance, for whether it is
+            // behind something and for how it fades.
+            if (record.extra[3] & 2)
             {
                 const std::int32_t d[3] = {fxToInt(record.move[0] - camera.pos[0]), fxToInt(record.move[1] - camera.pos[1]),
                                            fxToInt(record.move[2] - camera.pos[2])};
@@ -1118,20 +1143,27 @@ namespace hlrt
                                             static_cast<std::uint32_t>(d[1]) * static_cast<std::uint32_t>(d[1]) +
                                             static_cast<std::uint32_t>(d[2]) * static_cast<std::uint32_t>(d[2]);
                 const int dist = static_cast<int>(isqrt64(dist2));
-                int grow, bright;
-                glowFalloff(dist, grow, bright);
-                // (Only as wide as the part of it the game shows: a faint
-                // one is a flat disc here, not a cone fading out.)
-                grow = (grow * glowSeenQ8(dist2, record.extra[3] >> 8)) >> 8;
-                if (grow <= 0)
+                if (glowHidden(i, record.move, dist))
                     return;
-                halfWide = (halfWide * grow) >> 8;
-                halfHigh = (halfHigh * grow) >> 8;
-                halfWide = halfWide < 1 ? 1 : halfWide;
-                halfHigh = halfHigh < 1 ? 1 : halfHigh;
-                alpha = (alpha * bright + 128) >> 8;
-                if (alpha < 1)
-                    return;
+                // One that dissipates (HlSprite.hpp): its size kept on the
+                // screen, fainter with distance.
+                if (!(record.extra[3] & 8))
+                {
+                    int grow, bright;
+                    glowFalloff(dist, grow, bright);
+                    // (Only as wide as the part of it the game shows: a faint
+                    // one is a flat disc here, not a cone fading out.)
+                    grow = (grow * glowSeenQ8(dist2, record.extra[3] >> 8)) >> 8;
+                    if (grow <= 0)
+                        return;
+                    halfWide = (halfWide * grow) >> 8;
+                    halfHigh = (halfHigh * grow) >> 8;
+                    halfWide = halfWide < 1 ? 1 : halfWide;
+                    halfHigh = halfHigh < 1 ? 1 : halfHigh;
+                    alpha = (alpha * bright + 128) >> 8;
+                    if (alpha < 1)
+                        return;
+                }
             }
             if (!worldDraw.ballVisible(at, halfWide > halfHigh ? halfWide : halfHigh))
                 return;

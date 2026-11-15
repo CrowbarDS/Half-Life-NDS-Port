@@ -90,6 +90,21 @@ namespace hlrt
         void *sprayMaterials_[kMaxSprays] = {};
         void *sprayPalettes_[kMaxSprays] = {};
         int refused_ = 0; ///< this pass: what was in view and found the list full
+        /// Whether a map's glow is behind something (the game's line from
+        /// the eye: sightBlockedBeyond), kept for a few frames: a glow is
+        /// looked at again every fourth frame, a few lines a frame at most.
+        /// One slot per record number modulo kGlowSights.
+        struct GlowSight
+        {
+            std::uint16_t record = 0xFFFF;
+            std::uint16_t lookedAt = 0;
+            bool hidden = false;
+        };
+        static constexpr int kGlowSights = 32;
+        GlowSight glowSights_[kGlowSights];
+        std::uint16_t sightFrame_ = 0;
+        int sightLines_ = 0;
+        bool glowHidden(int record, const hldata::fx *at, int dist);
 
     public:
         /// What this pass had in view and could not take (the list was full).
