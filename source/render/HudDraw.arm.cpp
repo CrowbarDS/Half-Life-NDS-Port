@@ -20,6 +20,7 @@
 #include "game/Game.hpp"
 #include "game/Player.hpp"
 #include "render/Camera.hpp"
+#include "render/GlowObj.hpp"
 #include "render/MapCard.hpp"
 #include "render/ProfileView.hpp"
 
@@ -162,6 +163,24 @@ namespace hlrt
         constexpr int tileOf(int x, int y)
         {
             return kSheetTile + (y >> 3) * 32 + (x >> 3);
+        }
+
+        /// The map's glow cone (GlowObj) in the sheet's one free cell, the
+        /// same in both layouts: 32x32 at (224, 96).
+        void putGlowCell()
+        {
+            const std::uint32_t *cell = glowObj.cell();
+            for (int ty = 0; ty < 4; ++ty)
+            {
+                for (int tx = 0; tx < 4; ++tx)
+                {
+                    std::uint32_t *tile =
+                        sheetRam + ((GlowObj::kCellY >> 3) + ty) * 256 + ((GlowObj::kCellX >> 3) + tx) * 8;
+                    for (int row = 0; row < 8; ++row)
+                        tile[row] = cell != nullptr ? cell[(ty * 4 + tx) * 8 + row] : 0;
+                }
+            }
+            touchRows(GlowObj::kCellY, 32);
         }
 
         /// Which of the sprites' palettes says what colours are: a ramp of
@@ -572,6 +591,9 @@ namespace hlrt
         std::memcpy(shownPain, painColour, sizeof(shownPain));
         std::memcpy(shownHurt, hurtColour, sizeof(shownHurt));
         leaveCriticalSection(state);
+        // The glows drawn as sprites this pass: added to the picture, which
+        // a fade's layer (its own blend), a curtain or a held frame are not.
+        glowObj.publish(!screenFade.layered() && !screenFade.curtained() && !frameFreeze.frozen());
     }
 
     void HudDraw::clear()
@@ -587,6 +609,12 @@ namespace hlrt
         std::memcpy(shownPain, painColour, sizeof(shownPain));
         std::memcpy(shownHurt, hurtColour, sizeof(shownHurt));
         leaveCriticalSection(state);
+        glowObj.publish(false);
+    }
+
+    void HudDraw::glowCellChanged()
+    {
+        putGlowCell();
     }
 
     void HudDraw::compose()
@@ -625,6 +653,7 @@ namespace hlrt
             shownHealth = shownArmor = shownWeapon = shownClip = shownSpare = shownLamp = -1;
             shownExtra = -2;
             shownTrain = -1;
+            putGlowCell();
             sheetMade = true;
         }
 
@@ -820,6 +849,7 @@ namespace hlrt
             shownHealth = shownArmor = shownWeapon = shownClip = shownSpare = shownLamp = -1;
             shownExtra = -2;
             shownTrain = -1;
+            putGlowCell();
             sheetMade = true;
         }
 
@@ -986,6 +1016,7 @@ namespace hlrt
         }
         for (int level = 0; level < 7; ++level)
             SPRITE_PALETTE[kBankHurts * 16 + 1 + level] = shownHurt[level];
+        glowObj.onVblank();
     }
 
     bool HudDraw::showLoading()

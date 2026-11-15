@@ -107,8 +107,10 @@ namespace hldata
     // Raised 1 KB for track changes that go up and down for anyone who uses
     // them (14 Nov 2026): none; t0a0b1 about 20 KB under.
     // Raised 2 KB for glows hidden behind walls as the game hides them
-    // (15 Nov 2026): none; t0a0b1 about 18 KB under.
-    inline constexpr std::uint32_t kGuestImageBytes = 0x165B6C + 88 * 1024;
+    // (15 Nov 2026): none; t0a0b1 about 18 KB under. Raised 9 KB for glows
+    // drawn as light added, on the 2D engine's sprites (15 Nov 2026): none;
+    // t0a0b1 about 9 KB under.
+    inline constexpr std::uint32_t kGuestImageBytes = 0x165B6C + 97 * 1024;
     /// The heap's end: the end of main RAM less what the start-up code keeps.
     inline constexpr std::uint32_t kGuestRamBytes = 0x3F4000;
     /// What the engine holds beside a map's data -- its tables, the world's

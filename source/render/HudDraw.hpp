@@ -65,6 +65,8 @@ namespace hlrt
         void draw();
         /// Nothing of the display shown (no game: the title).
         void clear();
+        /// The map's glow cone (GlowObj::load) is new: put it in the sheet.
+        void glowCellChanged();
         /// What the last game said is forgotten (no suit, nothing in hand,
         /// no lamp): a new game's first frames show nothing of it.
         void forgetStatus()

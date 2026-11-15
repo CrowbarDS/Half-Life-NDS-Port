@@ -13,6 +13,7 @@
 #include "data/TextureCache.hpp"
 #include "data/TextureStream.hpp"
 #include "render/HudDraw.hpp"
+#include "render/GlowObj.hpp"
 #include "data/SpriteCache.hpp"
 #include "game/Game.hpp"
 #include "game/Player.hpp"
@@ -354,6 +355,7 @@ namespace hlrt
     {
         count_ = 0;
         refused_ = 0;
+        glowObj.beginFrame();
         ++sightFrame_;
         sightLines_ = isDSiMode() ? 6 : 4;
         if (player.noclip)
@@ -1147,23 +1149,31 @@ namespace hlrt
                     return;
                 // One that dissipates (HlSprite.hpp): its size kept on the
                 // screen, fainter with distance.
+                int grow = 256, seen = 256;
                 if (!(record.extra[3] & 8))
                 {
-                    int grow, bright;
+                    int bright;
                     glowFalloff(dist, grow, bright);
-                    // (Only as wide as the part of it the game shows: a faint
-                    // one is a flat disc here, not a cone fading out.)
-                    grow = (grow * glowSeenQ8(dist2, record.extra[3] >> 8)) >> 8;
-                    if (grow <= 0)
-                        return;
-                    halfWide = (halfWide * grow) >> 8;
-                    halfHigh = (halfHigh * grow) >> 8;
-                    halfWide = halfWide < 1 ? 1 : halfWide;
-                    halfHigh = halfHigh < 1 ? 1 : halfHigh;
                     alpha = (alpha * bright + 128) >> 8;
                     if (alpha < 1)
                         return;
+                    seen = glowSeenQ8(dist2, record.extra[3] >> 8);
                 }
+                // As light added to the picture, if it can be (GlowObj):
+                // whole, its cone fading out by itself as the game's does.
+                if (glowObj.place(record.extra[0], record.move, (halfWide * grow) >> 8, alpha,
+                                  effectColour(record)))
+                    return;
+                // Else blended: only as wide as the part of it the game
+                // shows -- a faint one is a flat disc here, not a cone
+                // fading out.
+                grow = (grow * seen) >> 8;
+                if (grow <= 0)
+                    return;
+                halfWide = (halfWide * grow) >> 8;
+                halfHigh = (halfHigh * grow) >> 8;
+                halfWide = halfWide < 1 ? 1 : halfWide;
+                halfHigh = halfHigh < 1 ? 1 : halfHigh;
             }
             if (!worldDraw.ballVisible(at, halfWide > halfHigh ? halfWide : halfHigh))
                 return;
