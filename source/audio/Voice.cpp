@@ -13,6 +13,10 @@
 #include "HlSettings.hpp"
 #include "Settings.hpp"
 
+#ifdef HLDS_VOICE_DUMP
+#include <cstdio>
+#endif
+
 namespace hlrt::voice
 {
     namespace
@@ -45,6 +49,7 @@ namespace hlrt::voice
             int head, count; ///< (the waiting packets: oldest at head)
             Packet packets[kPackets];
             hldata::VoiceEncoder encoder;
+            hldata::VoiceLeveller leveller; ///< its level, brought up (HlVoice.hpp: voiceLevel)
             std::int16_t cut[kVoiceSamples];
             std::uint8_t number; ///< the next packet sent's
         };
@@ -78,6 +83,47 @@ namespace hlrt::voice
 
         hldata::VoiceMicRing &seen() { return static_cast<Ring *>(memUncached(&ring))->r; }
 
+#ifdef HLDS_VOICE_DUMP
+        // A test build's record of a talk, to measure on a console: each
+        // packet as heard (left) and as sent, levelled (right), 16-bit at the
+        // packet's rate, the first 8 s of each talk; written to voice.wav as
+        // TALK is let go.
+        constexpr int kDumpSamples = 8 * 8192;
+        TWL_BSS std::int16_t dumpPairs[kDumpSamples * 2];
+        TWL_BSS int dumpCount;
+        TWL_BSS std::uint16_t dumpRate;
+
+        HL_TWL_CODE void dumpWrite()
+        {
+            if (dumpCount == 0)
+                return;
+            std::FILE *f = std::fopen(global.dataPath("voice.wav").c_str(), "wb");
+            if (f == nullptr)
+                return;
+            const std::uint32_t data = static_cast<std::uint32_t>(dumpCount) * 4;
+            const std::uint32_t rate = dumpRate != 0 ? dumpRate : 8182;
+            std::uint8_t head[44];
+            auto put32 = [&](int at, std::uint32_t v) { for (int i = 0; i < 4; ++i) head[at + i] = static_cast<std::uint8_t>(v >> (8 * i)); };
+            auto put16 = [&](int at, std::uint16_t v) { head[at] = static_cast<std::uint8_t>(v); head[at + 1] = static_cast<std::uint8_t>(v >> 8); };
+            std::memcpy(head, "RIFF", 4);
+            put32(4, 36 + data);
+            std::memcpy(head + 8, "WAVEfmt ", 8);
+            put32(16, 16);
+            put16(20, 1);
+            put16(22, 2);
+            put32(24, rate);
+            put32(28, rate * 4);
+            put16(32, 4);
+            put16(34, 16);
+            std::memcpy(head + 36, "data", 4);
+            put32(40, data);
+            std::fwrite(head, 1, sizeof(head), f);
+            std::fwrite(dumpPairs, 4, static_cast<std::size_t>(dumpCount), f);
+            std::fclose(f);
+            dumpCount = 0;
+        }
+#endif
+
         HL_TWL_CODE void begin()
         {
             hldata::VoiceMicRing &r = seen();
@@ -85,6 +131,7 @@ namespace hlrt::voice
             r.rate = 0;
             s.read = 0;
             s.encoder = hldata::VoiceEncoder{};
+            hldata::voiceLevelBegin(s.leveller);
             s.on = true;
             // (The ARM7 powers the microphone itself: libnds's
             // soundMicPowerOn holds its interrupts off for 20 ms, and the
@@ -98,6 +145,9 @@ namespace hlrt::voice
                 return;
             arm7Audio.micOff();
             s.on = false;
+#ifdef HLDS_VOICE_DUMP
+            dumpWrite();
+#endif
         }
 
         /// What was heard, a packet at a time. At the DSi's faster output
@@ -140,6 +190,21 @@ namespace hlrt::voice
                     --s.count;
                 }
                 Packet &p = s.packets[(s.head + s.count) % kPackets];
+                // (Brought up to be heard: a DSi's microphone gives a voice
+                // well under full scale, and nothing after made it louder.)
+#ifdef HLDS_VOICE_DUMP
+                std::int16_t heard[kVoiceSamples];
+                std::memcpy(heard, s.cut, sizeof(heard));
+#endif
+                hldata::voiceLevel(s.leveller, s.cut, kVoiceSamples);
+#ifdef HLDS_VOICE_DUMP
+                dumpRate = rate;
+                for (int i = 0; i < kVoiceSamples && dumpCount < kDumpSamples; ++i, ++dumpCount)
+                {
+                    dumpPairs[2 * dumpCount] = heard[i];
+                    dumpPairs[2 * dumpCount + 1] = s.cut[i];
+                }
+#endif
                 hldata::voiceEncode(s.encoder, s.cut, kVoiceSamples, p.bytes);
                 p.rate = rate;
                 ++s.count;

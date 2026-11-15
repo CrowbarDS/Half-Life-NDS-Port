@@ -101,6 +101,107 @@ namespace hldata
         }
     }
 
+    // ---- The level of what is sent
+    //
+    // A DSi's microphone gives a voice well under full scale (its gain is set
+    // low not to clip one near it), and nothing on the way to the speaker
+    // made it louder: next to the game's sounds, mastered near full scale and
+    // played at the same channel volume, voices were too quiet to follow.
+    // So each packet, before it is encoded: its DC taken off; its gain moved
+    // towards what brings its peak to kVoiceTarget -- down at once, up slowly
+    // -- between 1x and kVoiceMostGain; held at 1x while what is heard stays
+    // under kVoiceFloor (breath, a fan: not raised); and its peaks above
+    // kVoiceKnee bent down rather than clipped.
+
+    inline constexpr int kVoiceTarget = 16384;  ///< the peak aimed at: half of full scale (-6 dB)
+    inline constexpr int kVoiceMostGain = 4096; ///< Q8: 16x (+24 dB)
+    inline constexpr int kVoiceFloor = 400;     ///< a peak under this is not a voice
+    inline constexpr int kVoiceGateHold = 4;    ///< packets above it kept open after (160 ms)
+    inline constexpr int kVoiceKnee = 24576;    ///< (-2.5 dB) above it, a quarter of what is over
+
+    /// Where the leveller is, from one packet to the next. Begun as
+    /// `VoiceLeveller{}` (a gain of 0 is taken as 1x).
+    struct VoiceLeveller
+    {
+        int lastIn;   ///< the DC blocker's input before
+        int lastOutQ8; ///< ... and its output, Q8
+        int envelope; ///< the peak followed (after the DC is off)
+        int gainQ8;   ///< the gain now, Q8 (256: 1x)
+        int open;     ///< packets the gate stays open for yet
+    };
+
+    /// A new talk: the DC blocker begun again; the gain and the peak kept --
+    /// the same voice, the same microphone.
+    inline void voiceLevelBegin(VoiceLeveller &l)
+    {
+        l.lastIn = 0;
+        l.lastOutQ8 = 0;
+    }
+
+    /// `count` samples (a packet) levelled in place.
+    inline void voiceLevel(VoiceLeveller &l, std::int16_t *samples, int count)
+    {
+        if (count <= 0)
+            return;
+        // The DC off: y = x - x' + 0.995 y' (a corner of a few Hz).
+        int peak = 0;
+        for (int i = 0; i < count; ++i)
+        {
+            const int x = samples[i];
+            l.lastOutQ8 = ((x - l.lastIn) << 8) + static_cast<int>((static_cast<std::int64_t>(l.lastOutQ8) * 32604) >> 15);
+            l.lastIn = x;
+            int y = l.lastOutQ8 >> 8;
+            y = y > 32767 ? 32767 : (y < -32767 ? -32767 : y);
+            samples[i] = static_cast<std::int16_t>(y);
+            const int a = y < 0 ? -y : y;
+            peak = a > peak ? a : peak;
+        }
+
+        // The peak followed: up at once, down a sixteenth a packet (0.6 s).
+        l.envelope = peak > l.envelope ? peak : l.envelope - (l.envelope >> 4);
+
+        // The gate: open while a voice is heard, and a little after.
+        if (peak >= kVoiceFloor)
+            l.open = kVoiceGateHold;
+        else if (l.open > 0)
+            --l.open;
+
+        // The gain wanted: the peak to the target (one divide a packet), no
+        // less than 1x, no more than kVoiceMostGain; 1x while the gate is
+        // shut.
+        int want = 256;
+        if (l.open > 0 && l.envelope > 0)
+        {
+            want = static_cast<int>((static_cast<std::int64_t>(kVoiceTarget) << 8) / l.envelope);
+            want = want < 256 ? 256 : (want > kVoiceMostGain ? kVoiceMostGain : want);
+        }
+        int from = l.gainQ8 > 0 ? l.gainQ8 : 256;
+        // (Down at once -- from this packet's first sample, its peak being
+        // known: not to clip; up an eighth of the way a packet, not to pump.)
+        const int to = want < from ? want : from + ((want - from) >> 3);
+        if (to < from)
+            from = to;
+        l.gainQ8 = to;
+
+        // Applied, going from the gain before to the new one across the
+        // packet (no step to hear); and the peaks bent under the knee.
+        const std::int64_t step = (static_cast<std::int64_t>(to - from) << 16) / count;
+        std::int64_t gainQ24 = static_cast<std::int64_t>(from) << 16;
+        for (int i = 0; i < count; ++i)
+        {
+            gainQ24 += step;
+            int y = static_cast<int>((static_cast<std::int64_t>(samples[i]) * gainQ24) >> 24);
+            const int a = y < 0 ? -y : y;
+            if (a > kVoiceKnee)
+            {
+                int bent = kVoiceKnee + ((a - kVoiceKnee) >> 2);
+                bent = bent > 32767 ? 32767 : bent;
+                y = y < 0 ? -bent : bent;
+            }
+            samples[i] = static_cast<std::int16_t>(y);
+        }
+    }
+
     /// What the hardware plays of a packet: `count` samples into `out`. False
     /// if its head is no head (a step out of range).
     inline bool voiceDecode(const std::uint8_t *in, int count, std::int16_t *out)

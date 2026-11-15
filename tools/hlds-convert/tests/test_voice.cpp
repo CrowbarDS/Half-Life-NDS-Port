@@ -110,8 +110,77 @@ namespace
     }
 } // namespace
 
+namespace
+{
+    /// `packets` packets of `make(i)` through a leveller; the peak of the
+    /// last `tail` of them, and the mean of the last.
+    template <class Make>
+    int levelled(VoiceLeveller &l, int packets, int tail, Make make, double *mean = nullptr)
+    {
+        int peak = 0;
+        double sum = 0;
+        for (int p = 0; p < packets; ++p)
+        {
+            std::int16_t packet[kVoiceSamples];
+            for (int i = 0; i < kVoiceSamples; ++i)
+                packet[i] = static_cast<std::int16_t>(make(p * kVoiceSamples + i));
+            voiceLevel(l, packet, kVoiceSamples);
+            sum = 0;
+            for (int i = 0; i < kVoiceSamples; ++i)
+            {
+                if (p >= packets - tail)
+                    peak = std::abs(packet[i]) > peak ? std::abs(packet[i]) : peak;
+                sum += packet[i];
+            }
+        }
+        if (mean != nullptr)
+            *mean = sum / kVoiceSamples;
+        return peak;
+    }
+
+    /// The level of what is sent (voiceLevel): a quiet voice brought up near
+    /// the target, a loud one left alone and not clipped, noise under the
+    /// floor not raised, and a DC offset taken off.
+    void testLevel()
+    {
+        const double kPi = 3.14159265358979;
+        auto sine = [&](double amplitude)
+        { return [=](int i) { return amplitude * std::sin(2 * kPi * 300 * i / 8182.0); }; };
+
+        VoiceLeveller quiet{};
+        const int quietPeak = levelled(quiet, 60, 10, sine(1500));
+        check(quietPeak > kVoiceTarget * 3 / 4 && quietPeak < kVoiceKnee,
+              "a quiet voice (1500 of 32767) is brought up near the target");
+
+        VoiceLeveller loud{};
+        const int loudPeak = levelled(loud, 30, 10, sine(30000));
+        check(loudPeak <= 32767 && loudPeak > 25000 && loud.gainQ8 == 256,
+              "a loud one is left at its own level, its peaks bent, not clipped");
+
+        VoiceLeveller hiss{};
+        std::srand(11);
+        const int hissPeak = levelled(hiss, 60, 10, [](int) { return std::rand() % 301 - 150; });
+        check(hissPeak < 400, "noise under the floor is not raised");
+
+        VoiceLeveller offset{};
+        double mean = 0;
+        levelled(offset, 40, 1, [&](int i) { return 6000 + 2000 * std::sin(2 * kPi * 300 * i / 8182.0); }, &mean);
+        check(std::fabs(mean) < 600, "a DC offset is taken off");
+
+        // A talk after a loud one: the gain comes down at once, not after.
+        VoiceLeveller swing{};
+        levelled(swing, 60, 1, sine(1500));
+        const int afterPeak = levelled(swing, 1, 1, sine(20000));
+        check(afterPeak < 32767 && afterPeak > 15000, "a loud word after quiet ones is brought down at once, not clipped");
+
+        std::printf("test_voice: levelled quiet %d, loud %d, hiss %d, swing %d\n", quietPeak, loudPeak, hissPeak,
+                    afterPeak);
+    }
+} // namespace
+
 int main()
 {
+    testLevel();
     const double kPi = 3.14159265358979;
     // A tone, 440 Hz at 8182 Hz, a quarter of the range.
     std::vector<std::int16_t> tone(kVoiceSamples * 25);

@@ -37,6 +37,9 @@ profile = ['HLDS_PROFILE=1'] if os.environ.get('HLDS_PROFILE') else []
 # HLDS_BOX_TEST=1 ./make.sh builds the world's box test in (an experiment:
 # WorldDraw.hpp, THE BOX TEST).
 profile += ['HLDS_BOX_TEST=1'] if os.environ.get('HLDS_BOX_TEST') else []
+# HLDS_VOICE_DUMP=1 ./make.sh: each talk (TALK held, online) written to the
+# card's data/voice.wav as it is let go -- heard (left) and as sent (right).
+profile += ['HLDS_VOICE_DUMP=1'] if os.environ.get('HLDS_VOICE_DUMP') else []
 # HLDS_DEBUG=1 ./make.sh builds the full heap guard in (source/Guard.hpp): a
 # header and four bytes after every block, and small blocks held a while once
 # given back. Without it (the release) the blocks are the allocator's own,
