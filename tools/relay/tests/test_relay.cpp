@@ -1660,10 +1660,33 @@ namespace
                   "the relay stopping: every console told so, twice, and nothing kept");
         }
     }
+
+    // A room whose host has gone quiet is not listed (Relay::kListQuietMs): a
+    // console that left without its goodbye arriving had its room listed
+    // beside its next one until it timed out, three and a half minutes on.
+    void testQuietHostNotListed()
+    {
+        Relay relay;
+        std::vector<Out> out;
+        std::uint32_t now = 1000;
+        const std::uint32_t id = open(relay, 1, "Quiet", 4, now, out);
+        RelayRoom rooms[kRelayListMost];
+        check(id != 0 && list(relay, 2, rooms, now, out) == 1, "a room whose host is heard is listed");
+        now += Relay::kListQuietMs + 1000;
+        check(list(relay, 2, rooms, now, out) == 0, "... and not once its host has said nothing for longer");
+        std::uint8_t bytes[kRelayMostBytes];
+        out.clear();
+        relay.receive(at(1), bytes, relaySmallWrite(bytes, RelayKind::Ping, comeIn(relay, 1, now)), now, out);
+        check(list(relay, 2, rooms, now, out) == 1 && rooms[0].id == id, "... and is again once the host is heard");
+        out.clear();
+        relay.receive(at(1), bytes, relaySmallWrite(bytes, RelayKind::Bye, comeIn(relay, 1, now)), now, out);
+        check(list(relay, 2, rooms, now, out) == 0, "a host's goodbye takes its room out of the list at once");
+    }
 } // namespace
 
 int main()
 {
+    testQuietHostNotListed();
     testDatagrams();
     testRooms();
     testKnocks();

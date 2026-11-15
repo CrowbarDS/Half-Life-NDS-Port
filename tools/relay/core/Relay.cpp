@@ -614,6 +614,9 @@ namespace hlrelay
                     break;
                 if (!room.admit || room.count() >= room.open.most)
                     continue;
+                const Peer *host = byId(room.host);
+                if (host == nullptr || nowMs - host->heardMs > kListQuietMs)
+                    continue;
                 RelayRoom &entry = list[count++];
                 entry.id = id;
                 std::memcpy(entry.name, room.open.name, sizeof(entry.name));

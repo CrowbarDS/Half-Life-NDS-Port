@@ -69,6 +69,10 @@ namespace hlrelay
         /// How often a host is told who is in its room, whether it changed
         /// or not (a Status lost on the way is not waited on).
         static constexpr std::uint32_t kStatusMs = 1000;
+        /// A room whose host has said nothing for this long is not listed
+        /// (hosts ping each second): one a console left without a goodbye
+        /// was listed beside its host's next room until it timed out.
+        static constexpr std::uint32_t kListQuietMs = 5000;
         /// A cookie is good in the window of time it was made in and the
         /// next: windows of 2^14 ms (16 s).
         static constexpr int kCookieShift = 14;
