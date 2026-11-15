@@ -1283,21 +1283,6 @@ namespace hlrt
         return true;
     }
 
-    bool ModelDraw::heldBox(std::int16_t *mins, std::int16_t *maxs, fx &push) const
-    {
-        const ActorState &held = game.held;
-        const ModelView *model = held.active ? actorModel(game.actors, held) : nullptr;
-        if (model == nullptr || !heldDrawn_ || player.state.health <= 0 || game.logic.camera >= 0)
-            return false;
-        for (int a = 0; a < 3; ++a)
-        {
-            mins[a] = model->header->mins[a];
-            maxs[a] = model->header->maxs[a];
-        }
-        push = static_cast<fx>(player.view.bob * 2 / 5);
-        return true;
-    }
-
     void ModelDraw::drawHeld()
     {
         const ActorState &held = game.held;

@@ -857,46 +857,4 @@ namespace hldata
         }
         return true;
     }
-
-    /// Whether more than `margin` units of the line from `start` to `end`,
-    /// `length` units long, lie behind what first stops it -- the game's test
-    /// of whether a glow is seen (R_SpriteGlowBlend, 8 units: a glow sunk a
-    /// little in its lamp still shows). Brushes `seeThrough(brush)` says can
-    /// be seen through (glass, a grate) are not in the way.
-    template <class SeeThrough>
-    inline bool sightBlockedBeyond(const MoveWorld &world, const fx *start, const fx *end, int length, int margin,
-                                   SeeThrough &&seeThrough)
-    {
-        const std::int64_t most = static_cast<std::int64_t>(margin) << kFractionShift;
-        const auto past = [&](std::int32_t fraction)
-        { return static_cast<std::int64_t>(kFractionOne - fraction) * length > most; };
-        if (world.nodes != nullptr)
-        {
-            std::int32_t hit = kFractionOne;
-            if (!detail::lineThrough(world, world.headNode, 0, kFractionOne, start, end, hit, 0) && past(hit))
-                return true;
-        }
-        else
-        {
-            const Trace t = traceHull(world.crouched, start, end);
-            if (t.startSolid || past(t.fraction))
-                return true;
-        }
-        const detail::SegmentReach reach = detail::segmentReach(true, start, end);
-        for (int m = 0; m < world.moverCount; ++m)
-        {
-            if (!detail::moverMayTouch(world, m, reach))
-                continue;
-            const MoverHull &mover = world.movers[m];
-            if (!mover.solid || seeThrough(m) || !detail::nearMover(mover, true, start, end))
-                continue;
-            fx a[3], b[3];
-            detail::toMoverSpace(mover, start, a);
-            detail::toMoverSpace(mover, end, b);
-            const Trace t = traceHull(mover.crouched, a, b);
-            if (!t.startSolid && !t.allSolid && past(t.fraction))
-                return true;
-        }
-        return false;
-    }
 } // namespace hldata

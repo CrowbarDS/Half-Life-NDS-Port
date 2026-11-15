@@ -74,10 +74,6 @@ namespace hlrt
         /// `which`), in the world, as drawHeld draws it: a beam starts
         /// there. False when it is not drawn, or has no such.
         bool heldMuzzle(int which, hldata::fx *out) const;
-        /// The gun in hand's box at rest (whole units, its own forward,
-        /// left, up -- which are the camera's), and how far the walk's bob
-        /// pushes it forward (Q12): false if none is drawn.
-        bool heldBox(std::int16_t *mins, std::int16_t *maxs, hldata::fx &push) const;
         /// The kept poses are of this map's models: forget them with it.
         void forgetPoses();
         /// Whether plan() chose the small piece `n` (into ActorWorld::pieces,

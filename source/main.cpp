@@ -47,7 +47,6 @@
 #include "render/ProfileView.hpp"
 #include "render/ModelDraw.hpp"
 #include "render/HudDraw.hpp"
-#include "render/GlowObj.hpp"
 #include "render/FrameFreeze.hpp"
 #include "render/ScreenFade.hpp"
 #include "render/TopText.hpp"
@@ -832,13 +831,6 @@ namespace
         loadLive.textures = hlrt::guard::liveBytes();
         hearStream();
         made = made && hlrt::spriteCache.create();
-        if (made)
-        {
-            // (The map's glow cone, for its glows drawn as light added:
-            // into the HUD's sheet.)
-            hlrt::glowObj.load();
-            hlrt::hudDraw.glowCellChanged();
-        }
         clock.mark("spr");
         made = made && hlrt::modelCache.create();
         if (made)

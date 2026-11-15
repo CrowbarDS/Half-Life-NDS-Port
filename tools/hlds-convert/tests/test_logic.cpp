@@ -2792,44 +2792,9 @@ namespace
         }
     }
 
-    /// The game's test of whether a glow is seen (R_SpriteGlowBlend): hidden
-    /// only if more than 8 units of the line from the eye to it lie behind
-    /// what first stops it -- a glow sunk a little in its lamp still shows.
-    void testGlowSight()
-    {
-        BoxRoom room;
-        room.brushes = {brush("func_wall", "", -8, 40, 0, 8, 56, 128)};
-        Game g;
-        build(g, room);
-        check(g.ok, "a room with a wall in it");
-        if (!g.ok)
-            return;
-        // (The world's own tree, as the console's world has it: the line a
-        // point, not a body.)
-        g.move.nodes = g.view.nodes;
-        g.move.brushes = g.view.brushes;
-        g.move.models = g.view.models;
-        g.move.leaves = g.view.leaves;
-        g.move.headNode = g.view.models[0].headNode;
-        const fx eye[3] = {0, 0, fxFromInt(64)};
-        const auto blocked = [&](int x, int y, int z, bool glass)
-        {
-            const fx to[3] = {fxFromInt(x), fxFromInt(y), fxFromInt(z)};
-            const double dx = x, dy = y, dz = z - 64.0;
-            const int length = static_cast<int>(std::sqrt(dx * dx + dy * dy + dz * dz));
-            return sightBlockedBeyond(g.move, eye, to, length, 8, [&](int) { return glass; });
-        };
-        check(!blocked(100, 0, 64, false), "a glow in the open is seen");
-        check(!blocked(131, 0, 64, false), "one sunk a little in the room's wall still shows");
-        check(blocked(160, 0, 64, false), "one well behind it is hidden");
-        check(blocked(0, 100, 64, false), "the wall in between hides one behind it");
-        check(!blocked(0, 100, 64, true), "unless the wall is glass");
-    }
-
 int main()
 {
     testHoldingCell();
-    testGlowSight();
     testCookRules();
     testCookedRecords();
     testSparks();

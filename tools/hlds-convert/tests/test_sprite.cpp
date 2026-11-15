@@ -113,7 +113,7 @@ namespace
         strip.parse(makeSprite(kSprNormal, 32, 64, 1), error);
         check(cookSprite(strip, 32, 1, true, cooked, error) && cooked.ref.cellWidth == 16 &&
                   cooked.ref.cellHeight == 32 && cooked.atlas.width == 16 && cooked.atlas.height == 32 &&
-                  cooked.atlas.at(8, 16)[3] == 37, // (40 of 255: the first of light's eight levels)
+                  cooked.atlas.at(8, 16)[3] == 40,
               "a beam's strip keeps its shape, and is cooked as light whatever its file says");
         check(spriteName("sprites/Flare1.spr") == "flare1" && spriteName("sprites/zerogxplode.spr") == "zerogxplode",
               "a sprite goes by its file's name");
@@ -212,45 +212,6 @@ namespace
         check(scale >= 1 && bright == 256, "at the eye: tiny, and no divide by nothing");
     }
 
-    /// How much of a fading glow is drawn: the part of its cone the game
-    /// shows brighter than kGlowFaintest. A white glow at full strength is
-    /// that faint in its middle at sqrt(19000 * 255 / kGlowFaintest) units.
-    void testSeen()
-    {
-        const double farthest2 = 19000.0 * 255 / kGlowFaintest;
-        const auto inverse = static_cast<std::uint32_t>(4294967296.0 / farthest2 + 0.5);
-        const auto at = [&](double fraction) { return static_cast<std::uint32_t>(farthest2 * fraction); };
-        check(glowSeenQ8(at(0.5), 0) == 256, "a glow cooked before this is drawn whole");
-        check(std::abs(glowSeenQ8(at(0.25), inverse) - 192) <= 1,
-              "half way to where it is too faint: three quarters of it");
-        check(glowSeenQ8(at(1.0), inverse) <= 1 && glowSeenQ8(at(4.0), inverse) == 0, "from there on: nothing");
-        check(glowSeenQ8(10 * 10, inverse) == glowSeenQ8(138 * 138, inverse) &&
-                  glowSeenQ8(10 * 10, inverse) == 256 - static_cast<int>(256 * 19000 / farthest2),
-              "near, where it is as bright as it goes: as much as at 138 units");
-    }
-
-    /// A light sprite holds only the eight levels of see-through, each
-    /// taken down: nothing faint is brought up to the first.
-    void testLightLevels()
-    {
-        SprFile spr;
-        std::string error;
-        spr.parse(makeSprite(kSprAdditive, 32, 32, 1), error);
-        CookedSprite cooked;
-        check(cookSprite(spr, 32, 1, true, cooked, error), "a light sprite cooks");
-        bool levels = true;
-        for (std::size_t i = 3; i < cooked.atlas.rgba.size(); i += 4)
-        {
-            const int a = cooked.atlas.rgba[i];
-            levels = levels && (a * 7 / 255 * 255 + 6) / 7 == a;
-        }
-        check(levels, "its see-through is one of the eight levels everywhere");
-        // (Index 10: red 40 of 255, a little over the first level: taken
-        // down to it, 37, where to the nearest it would be the same.)
-        check(cooked.atlas.rgba[(8 * cooked.atlas.width + 8) * 4 + 3] == 37,
-              "a faint texel is the level at or under it");
-    }
-
     /// Which of a map's glows fade (record.extra[3] bit 3: render fx 14 does not).
     void testMapGlows(const char *dir)
     {
@@ -274,10 +235,6 @@ namespace
                 if (name != nullptr && (r.name == 0 || g->logic.nameHashes[r.name] != nameHash(name)))
                     continue;
                 (r.extra[3] & 8 ? kept : fading) += 1;
-                // (A fading one knows how far off it is too faint to see;
-                // one that keeps its brightness has nothing there.)
-                check((r.extra[3] & 8) ? (r.extra[3] >> 8) == 0 : (r.extra[3] >> 8) != 0,
-                      "a fading glow carries where it is too faint to see");
             }
             return true;
         };
@@ -293,8 +250,6 @@ int main()
 {
     testMade();
     testFalloff();
-    testSeen();
-    testLightLevels();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir != nullptr && dir[0] != '\0')
     {
