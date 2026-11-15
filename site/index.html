@@ -10,6 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600&family=Barlow+Condensed:wght@600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <script src="online.js" defer></script>
 </head>
 <body>
   <header class="topbar">
@@ -18,6 +19,7 @@
       <nav class="nav" aria-label="Main">
         <a href="./" aria-current="page">Home</a>
         <a href="download.html">Download</a>
+        <a href="./#online" id="nav-online" aria-label="Online" hidden><span class="dot" id="nav-online-dot"></span><span class="nav-word">Online</span><span class="nav-count" id="nav-online-count"></span></a>
         <a href="https://github.com/CrowbarDS/Half-Life-NDS-Port">Source</a>
       </nav>
     </div>
@@ -154,6 +156,22 @@
             <li>In the game, OPTIONS &gt; GRAPHICS &gt; Screen is auto by default, or set 4:3 or 16:10 yourself.</li>
           </ol>
         </div>
+      </div>
+    </section>
+
+    <!-- Online play, as the relay counts it (online.js; tools/relay/README.md,
+         "The website's counts"). Hidden until online.js has the address. -->
+    <section id="online" hidden>
+      <div class="wrap">
+        <div class="label">Online</div>
+        <h2>Who is playing now</h2>
+        <p class="status-line" aria-live="polite"><span><span class="dot" id="online-dot"></span><span id="online-said">Asking the relay...</span></span><span id="online-when"></span></p>
+        <div class="grid grid-3 online-counts">
+          <div class="panel"><div class="online-n" id="online-consoles">-</div><div class="dim small">consoles online</div></div>
+          <div class="panel"><div class="online-n" id="online-rooms">-</div><div class="dim small">games open</div></div>
+          <div class="panel"><div class="online-n" id="online-in">-</div><div class="dim small">players in a game</div></div>
+        </div>
+        <p class="dim small online-note">Online play is on a DSi in DSi mode, through one of the console's saved Wi-Fi connections: MULTIPLAYER, then ONLINE, then HOST ONLINE or JOIN ONLINE. Only counts are shown, never names.</p>
       </div>
     </section>
 
