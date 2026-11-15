@@ -118,6 +118,11 @@ namespace hldata
     inline constexpr int kVoiceFloor = 400;     ///< a peak under this is not a voice
     inline constexpr int kVoiceGateHold = 4;    ///< packets above it kept open after (160 ms)
     inline constexpr int kVoiceKnee = 24576;    ///< (-2.5 dB) above it, a quarter of what is over
+    /// With the microphone open (kRuleOpenMic) the gate also says what is
+    /// sent at all: higher, not to send the game's own sound from the
+    /// speaker, a fan, a room; and held longer, not to cut words apart.
+    inline constexpr int kVoiceOpenFloor = 1200;
+    inline constexpr int kVoiceOpenHold = 8; ///< (320 ms)
 
     /// Where the leveller is, from one packet to the next. Begun as
     /// `VoiceLeveller{}` (a gain of 0 is taken as 1x).
@@ -138,11 +143,15 @@ namespace hldata
         l.lastOutQ8 = 0;
     }
 
-    /// `count` samples (a packet) levelled in place.
-    inline void voiceLevel(VoiceLeveller &l, std::int16_t *samples, int count)
+    /// `count` samples (a packet) levelled in place. Whether the gate is open
+    /// (a voice heard, or one within `hold` packets): with the microphone
+    /// open, only then is a packet sent. Its floor and hold: TALK's, or the
+    /// open microphone's (kVoiceOpenFloor, kVoiceOpenHold).
+    inline bool voiceLevel(VoiceLeveller &l, std::int16_t *samples, int count, int floor = kVoiceFloor,
+                           int hold = kVoiceGateHold)
     {
         if (count <= 0)
-            return;
+            return l.open > 0;
         // The DC off: y = x - x' + 0.995 y' (a corner of a few Hz).
         int peak = 0;
         for (int i = 0; i < count; ++i)
@@ -161,8 +170,8 @@ namespace hldata
         l.envelope = peak > l.envelope ? peak : l.envelope - (l.envelope >> 4);
 
         // The gate: open while a voice is heard, and a little after.
-        if (peak >= kVoiceFloor)
-            l.open = kVoiceGateHold;
+        if (peak >= floor)
+            l.open = hold;
         else if (l.open > 0)
             --l.open;
 
@@ -200,6 +209,7 @@ namespace hldata
             }
             samples[i] = static_cast<std::int16_t>(y);
         }
+        return l.open > 0;
     }
 
     /// What the hardware plays of a packet: `count` samples into `out`. False

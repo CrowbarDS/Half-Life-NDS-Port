@@ -1577,6 +1577,22 @@ namespace
         check(out.talkHeld, "TALK's button talks while held");
         out = press(set, talking, 0, blank);
         check(!out.talkHeld, "... and not once let go");
+
+        // The microphones open: TALK's button mutes and unmutes, once a
+        // press; the touch screen's place is SPRAY's again.
+        set.talk = false;
+        set.openMic = true;
+        ControlsState open;
+        out = press(set, open, keys[kActionTalk], blank);
+        check(out.micToggle && !out.talkHeld, "microphones open: TALK's button pressed mutes or unmutes");
+        out = press(set, open, keys[kActionTalk], blank);
+        check(!out.micToggle, "... once a press, not while held");
+        out = press(set, open, 0, blank);
+        out = press(set, open, keys[kActionTalk], blank);
+        check(out.micToggle, "... and again at the next press");
+        press(set, open, 0, blank);
+        out = touch(set, open, at.spray.x + 2, at.spray.y + 2, blank);
+        check(out.sprayPressed && !out.talkHeld && !out.micToggle, "... and the touch screen's SPRAY sprays");
     }
 } // namespace
 

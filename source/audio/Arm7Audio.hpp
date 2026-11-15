@@ -65,6 +65,9 @@ namespace hlrt
         /// and how the sound is laid out (kAudioOutput*) in it. Taken by the
         /// ARM7 within 2 ms.
         void setMode(bool pipeline, std::uint8_t effects, std::uint8_t output, std::uint8_t quality);
+        /// How many times the mode was set: a change of output rate under a
+        /// microphone that is on (the ring's rate is said when it is turned on).
+        unsigned modeCount() const { return modes_; }
         /// The room the player is in (HlRoomPresets.hpp, 0..28).
         void setRoom(int room);
         /// Every command so far taken by the ARM7 (a few ms at most).
@@ -127,6 +130,7 @@ namespace hlrt
         std::uint32_t endRead_ = 0;
         std::uint16_t next_ = 1;
         std::uint16_t live_[kChannels] = {};
+        unsigned modes_ = 0;
         int dsiKhz_ = 32, dsiRatio_ = 8;
     };
 

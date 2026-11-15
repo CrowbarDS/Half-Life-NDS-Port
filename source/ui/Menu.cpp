@@ -18,6 +18,7 @@
 #include "audio/DspAudio.hpp"
 #include "game/Input.hpp"
 #include "audio/Sound.hpp"
+#include "audio/Voice.hpp"
 #include "data/LevelFile.hpp"
 #include "game/SaveGame.hpp"
 #include "net/DlSend.hpp"
@@ -151,6 +152,7 @@ namespace hlrt
             kNetAim,       ///< ... autoaim
             kNetVoice,     ///< ... talking (online)
             kSpray,        ///< the match's pause page: SPRAY (TALK in its place on the touch screen)
+            kMic,          ///< ... the open microphone, on or off (the player's own)
             kNetGuests,    ///< ... consoles without the game let in
             kNetChat,      ///< NEXT MAP's: how long a match's scores are shown
             kNetTotals,    ///< ... a lobby's matches added up
@@ -223,6 +225,7 @@ namespace hlrt
         const Row kNetPauseRows[] = {{Kind::Button, kResume, "RESUME"},
 #ifndef HLDS_CHILD
                                      {Kind::Button, kChat, "CHAT"},     {Kind::Button, kSpray, "SPRAY"},
+                                     {Kind::Button, kMic, "MIC"},
 #endif
                                      {Kind::Button, kOptions, "OPTIONS"},
                                      {Kind::Button, kEndMatch, "END MATCH"}, {Kind::Button, kLeave, "LEAVE GAME"}};
@@ -313,7 +316,9 @@ namespace hlrt
                    // (CHAT: not in a demo, and not on a console sent the game.)
                    (id == kChat && (childConsole || !isDSiMode() || netGame.demo() != 0)) ||
                    // (SPRAY: here only when TALK has its place on the touch screen.)
-                   (id == kSpray && (childConsole || !netGame.talkAllowed()));
+                   (id == kSpray && (childConsole || !netGame.talkAllowed())) ||
+                   // (MIC: here when the room's microphones are open.)
+                   (id == kMic && (childConsole || !netGame.openMic()));
         }
 
         const Row *tableOf(int page, int &count);
@@ -794,6 +799,8 @@ namespace hlrt
                 return n == 0 ? SheetBox{4, kSheetBarTop, 148, kSheetBarHeight} : SheetBox{156, kSheetBarTop, 96, kSheetBarHeight};
             if (count == 4)
                 return SheetBox{4 + n * 62, kSheetBarTop, 58, kSheetBarHeight};
+            if (count == 5)
+                return SheetBox{4 + n * 50, kSheetBarTop, 46, kSheetBarHeight};
             return SheetBox{4 + n * 84, kSheetBarTop, 80, kSheetBarHeight};
         }
         // What YES does, once asked.
@@ -2593,7 +2600,10 @@ namespace hlrt
 #ifndef HLDS_CHILD
             // CHAT (a DSi's): what is said shows here, in the box above, and in a match.
             if (isDSiMode())
-                drawSheetButton(sheetBarBox(buttons - 2, buttons), "CHAT", sheetPressed_ == kSheetBar - (buttons - 2));
+                drawSheetButton(sheetBarBox(chatButton(), buttons), "CHAT", sheetPressed_ == kSheetBar - chatButton());
+            if (micShown())
+                drawSheetButton(sheetBarBox(buttons - 2, buttons), voice::muted() ? "MIC OFF" : "MIC ON",
+                                sheetPressed_ == kSheetBar - (buttons - 2));
 #endif
             drawSheetButton(sheetBarBox(buttons - 1, buttons), "BACK", sheetPressed_ == kSheetBar - (buttons - 1));
             return;
@@ -2620,8 +2630,13 @@ namespace hlrt
             const int buttons = sheetButtons();
             drawSheetButton(sheetBarBox(0, buttons), "PROFILE", sheetPressed_ == kSheetBar);
             drawSheetButton(sheetBarBox(1, buttons), "OPTIONS", sheetPressed_ == kSheetBar - 1);
-            if (buttons == 4)
-                drawSheetButton(sheetBarBox(2, buttons), "CHAT", sheetPressed_ == kSheetBar - 2);
+#ifndef HLDS_CHILD
+            if (isDSiMode())
+                drawSheetButton(sheetBarBox(chatButton(), buttons), "CHAT", sheetPressed_ == kSheetBar - chatButton());
+            if (micShown())
+                drawSheetButton(sheetBarBox(buttons - 2, buttons), voice::muted() ? "MIC OFF" : "MIC ON",
+                                sheetPressed_ == kSheetBar - (buttons - 2));
+#endif
             drawSheetButton(sheetBarBox(buttons - 1, buttons), "LEAVE", sheetPressed_ == kSheetBar - (buttons - 1));
             return;
         }
@@ -2791,6 +2806,11 @@ namespace hlrt
         sheetAsk(kAskAdmit, question);
     }
 #endif
+
+    bool Menu::micShown() const
+    {
+        return isDSiMode() && netGame.openMic();
+    }
 
 #ifndef HLDS_CHILD
     TWL_CODE void Menu::arm7Watch()
@@ -3023,7 +3043,15 @@ namespace hlrt
             return Action::None;
         }
 #ifndef HLDS_CHILD
-        if ((page_ == Page::NetHost || page_ == Page::NetLobby) && isDSiMode() && button == sheetButtons() - 2 &&
+        // MIC: the player's own microphone, on or off (this game's alone).
+        if ((page_ == Page::NetHost || page_ == Page::NetLobby) && micShown() && button == sheetButtons() - 2)
+        {
+            sound.ui(kUiSoundPress);
+            voice::setMuted(!voice::muted());
+            drawSheetBar();
+            return Action::None;
+        }
+        if ((page_ == Page::NetHost || page_ == Page::NetLobby) && isDSiMode() && button == chatButton() &&
             !(page_ == Page::NetHost && canSend() && button == 1))
         {
             sound.ui(kUiSoundPress);
@@ -3848,6 +3876,11 @@ namespace hlrt
             std::snprintf(text, sizeof(text), "%s: %s", item.label, kNames[(skill_ - 1) % 3]);
             break;
         }
+#ifndef HLDS_CHILD
+        case kMic:
+            std::snprintf(text, sizeof(text), "%s: %s", item.label, voice::muted() ? "OFF" : "ON");
+            break;
+#endif
         default:
             std::snprintf(text, sizeof(text), "%s", item.label);
             break;
@@ -3989,6 +4022,11 @@ namespace hlrt
             // back to the match.)
             netGame.spray();
             return Action::Resume;
+        case kMic:
+            // (The player's own microphone, on or off; the page stays.)
+            voice::setMuted(!voice::muted());
+            drawRow(row, false);
+            return Action::None;
 #endif
         case kDemoContinue: return Action::DemoContinue;
         case kDemoRestart:  return Action::DemoRestart;
@@ -4271,6 +4309,14 @@ namespace hlrt
         // (Diagnostic) online: the ARM7 watched.
         if (netGame.online())
             arm7Watch();
+        // The room's microphones opened or closed (the host's choice): the
+        // lobby's bar has MIC, or has it no longer.
+        if (micShown() != micWas_)
+        {
+            micWas_ = micShown();
+            if (page_ == Page::NetHost || page_ == Page::NetLobby)
+                drawSheetBar();
+        }
         // Something said in the lobby: heard, and shown for a while.
         if (netGame.chatStamp() != chatSeenStamp_)
             chatHeard();

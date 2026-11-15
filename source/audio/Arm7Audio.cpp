@@ -263,6 +263,7 @@ namespace hlrt
     {
         AudioCommand c;
         c.op = AudioOp::Mode;
+        ++modes_;
         c.a = effects | static_cast<std::uint32_t>(output) << 8 | static_cast<std::uint32_t>(quality) << 16 |
               (pipeline ? kAudioPipeline : 0);
         push(c);

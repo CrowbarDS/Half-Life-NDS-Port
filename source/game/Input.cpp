@@ -92,6 +92,7 @@ namespace hlrt
         controls.match = netGame.playing();
 #ifndef HLDS_CHILD
         controls.talk = netGame.talkAllowed();
+        controls.openMic = netGame.openMic();
 #endif
         controls.longJump = longJump;
         static_cast<hldata::ControlsOut &>(*this) = hldata::controlsStep(controls, theirs, state_);

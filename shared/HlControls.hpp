@@ -190,6 +190,9 @@ namespace hldata
         /// the touch screen is TALK, held to talk. (Never a console sent the
         /// game's.)
         bool talk = false;
+        /// ... or its microphones are open (online): TALK's button, pressed,
+        /// mutes the player's or opens it again. (The touch screen keeps SPRAY.)
+        bool openMic = false;
 #endif
     };
 
@@ -391,6 +394,9 @@ namespace hldata
         /// TALK is held (its button, or the touch screen's in SPRAY's place,
         /// the host letting it): what the microphone hears is sent.
         bool talkHeld = false;
+        /// TALK's button pressed, the microphones open: the player's muted,
+        /// or live again.
+        bool micToggle = false;
 #endif
         bool startPressed = false;
         bool tapped = false; ///< the stylus came down this frame, at (tapX, tapY)
@@ -814,6 +820,7 @@ namespace hldata
                       (firmNow && set.firmPress == kFirmUse);
 #ifndef HLDS_CHILD
         out.talkHeld = set.talk && (on(kActionTalk) || (state.touching && state.touch == kTouchSpray));
+        out.micToggle = set.openMic && !set.talk && now(kActionTalk);
 #endif
         state.lastHeld = held;
         state.lastBlank = in.blank;

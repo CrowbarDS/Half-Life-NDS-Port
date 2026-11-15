@@ -176,11 +176,59 @@ namespace
         std::printf("test_voice: levelled quiet %d, loud %d, hiss %d, swing %d\n", quietPeak, loudPeak, hissPeak,
                     afterPeak);
     }
+
+    /// The open microphone's gate (voiceLevel's answer, at kVoiceOpenFloor):
+    /// silence and hiss never sent, a voice sent at once, kept a while
+    /// after it stops, then shut.
+    void testOpenGate()
+    {
+        const double kPi = 3.14159265358979;
+        auto packetOf = [&](VoiceLeveller &l, auto make, int p)
+        {
+            std::int16_t packet[kVoiceSamples];
+            for (int i = 0; i < kVoiceSamples; ++i)
+                packet[i] = static_cast<std::int16_t>(make(p * kVoiceSamples + i));
+            return voiceLevel(l, packet, kVoiceSamples, kVoiceOpenFloor, kVoiceOpenHold);
+        };
+        auto silence = [](int) { return 0; };
+        auto voice = [&](int i) { return 3000 * std::sin(2 * kPi * 300 * i / 8182.0); };
+        std::srand(17);
+        auto hiss = [](int) { return std::rand() % 1601 - 800; };
+
+        VoiceLeveller l{};
+        bool sent = false;
+        for (int p = 0; p < 30; ++p)
+            sent = packetOf(l, silence, p) || sent;
+        check(!sent, "open microphone: silence is not sent");
+        for (int p = 0; p < 60; ++p)
+            sent = packetOf(l, hiss, p) || sent;
+        check(!sent, "... nor a hiss under its floor (one a held TALK would send)");
+        check(packetOf(l, voice, 0), "... a voice is, from its first packet");
+        bool kept = true;
+        for (int p = 1; p < kVoiceOpenHold; ++p)
+            kept = packetOf(l, silence, p) && kept;
+        check(kept, "... and the gate kept open a while after it stops (a word's end not cut)");
+        check(!packetOf(l, silence, kVoiceOpenHold), "... then shut");
+
+        // Push to talk's own floor is lower: the same hiss opens it.
+        VoiceLeveller held{};
+        bool heldOpen = false;
+        std::srand(17);
+        for (int p = 0; p < 60; ++p)
+        {
+            std::int16_t packet[kVoiceSamples];
+            for (int i = 0; i < kVoiceSamples; ++i)
+                packet[i] = static_cast<std::int16_t>(hiss(0));
+            heldOpen = voiceLevel(held, packet, kVoiceSamples) || heldOpen;
+        }
+        check(heldOpen, "(push to talk's lower floor: that hiss would open it)");
+    }
 } // namespace
 
 int main()
 {
     testLevel();
+    testOpenGate();
     const double kPi = 3.14159265358979;
     // A tone, 440 Hz at 8182 Hz, a quarter of the range.
     std::vector<std::int16_t> tone(kVoiceSamples * 25);

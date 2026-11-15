@@ -169,10 +169,11 @@ namespace hlrt
             // (The lobbies' CHAT as well: START, SEND GAME, CHAT, BACK; PROFILE,
             // OPTIONS, CHAT, LEAVE.)
             // (CHAT a DSi's: a DS has not the memory for it.)
+            // (And MIC before the last, the room's microphones open.)
             if (page_ == Page::NetHost)
-                return (canSend() ? 3 : 2) + (isDSiMode() ? 1 : 0);
+                return (canSend() ? 3 : 2) + (isDSiMode() ? 1 : 0) + (micShown() ? 1 : 0);
             if (page_ == Page::NetLobby)
-                return isDSiMode() ? 4 : 3;
+                return (isDSiMode() ? 4 : 3) + (micShown() ? 1 : 0);
 #endif
             return page_ == Page::Saves || page_ == Page::NetLobby || (page_ == Page::NetHost && canSend()) ? 3
                    : page_ == Page::NetStarting                                                             ? 1
@@ -211,6 +212,11 @@ namespace hlrt
         /// (Diagnostic) online: the ARM7 watched; stopped a second, what it
         /// was doing said on the screen.
         void arm7Watch();
+        /// The lobbies' MIC (the room's microphones open, a DSi): the
+        /// player's own, on or off. Before the last button; CHAT before it.
+        bool micShown() const;
+        int chatButton() const { return sheetButtons() - (micShown() ? 3 : 2); }
+        bool micWas_ = false;
         std::uint32_t arm7Blocks_ = 0;
         int arm7Still_ = 0;
         bool arm7Shown_ = false; ///< a stop is on the screen

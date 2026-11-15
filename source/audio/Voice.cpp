@@ -52,18 +52,26 @@ namespace hlrt::voice
             hldata::VoiceLeveller leveller; ///< its level, brought up (HlVoice.hpp: voiceLevel)
             std::int16_t cut[kVoiceSamples];
             std::uint8_t number; ///< the next packet sent's
+            /// The microphone open (kRuleOpenMic): only what the gate lets
+            /// through is sent -- and the packet before it opened, kept here,
+            /// not to cut the first syllable.
+            bool openMic;
+            bool muted; ///< the player's own: this game's, not kept (reset)
+            bool havePreroll;
+            Packet preroll;
+            unsigned modeSeen; ///< Arm7Audio's mode count when the microphone was turned on
         };
         TWL_BSS State s;
 
-        // What others say, heard: two at once at most, each its packets put
+        // What others say, heard: three at once at most, each its packets put
         // in order (VoiceJitter) and played one after the other on a
         // channel of the game's sound -- one playing, the next queued behind
         // it to begin with no gap, from buffers of their own (the ARM7 reads
         // them while they play).
-        constexpr int kTalkers = 2;
+        constexpr int kTalkers = 3;
         constexpr int kBuffers = 4;
         /// Silent this long, a talker's place is free for another.
-        constexpr std::uint32_t kTalkerGoneMs = 1000;
+        constexpr std::uint32_t kTalkerGoneMs = 500;
         /// Heard within this long: shown as speaking.
         constexpr std::uint32_t kSpeakingMs = 300;
         struct Talker
@@ -132,6 +140,8 @@ namespace hlrt::voice
             s.read = 0;
             s.encoder = hldata::VoiceEncoder{};
             hldata::voiceLevelBegin(s.leveller);
+            s.havePreroll = false;
+            s.modeSeen = arm7Audio.modeCount();
             s.on = true;
             // (The ARM7 powers the microphone itself: libnds's
             // soundMicPowerOn holds its interrupts off for 20 ms, and the
@@ -148,6 +158,19 @@ namespace hlrt::voice
 #ifdef HLDS_VOICE_DUMP
             dumpWrite();
 #endif
+        }
+
+        /// A packet to send (no room: the oldest waiting goes -- what is late
+        /// is not worth sending).
+        HL_TWL_CODE void queue(const Packet &made)
+        {
+            if (s.count == kPackets)
+            {
+                s.head = (s.head + 1) % kPackets;
+                --s.count;
+            }
+            s.packets[(s.head + s.count) % kPackets] = made;
+            ++s.count;
         }
 
         /// What was heard, a packet at a time. At the DSi's faster output
@@ -183,20 +206,17 @@ namespace hlrt::voice
                         s.cut[i] = static_cast<std::int16_t>(at(i));
                 }
                 s.read += need;
-                // (No room: the oldest waiting goes -- what is late is not worth sending.)
-                if (s.count == kPackets)
-                {
-                    s.head = (s.head + 1) % kPackets;
-                    --s.count;
-                }
-                Packet &p = s.packets[(s.head + s.count) % kPackets];
+                Packet made;
+                Packet &p = made;
                 // (Brought up to be heard: a DSi's microphone gives a voice
                 // well under full scale, and nothing after made it louder.)
 #ifdef HLDS_VOICE_DUMP
                 std::int16_t heard[kVoiceSamples];
                 std::memcpy(heard, s.cut, sizeof(heard));
 #endif
-                hldata::voiceLevel(s.leveller, s.cut, kVoiceSamples);
+                const bool open = s.openMic ? hldata::voiceLevel(s.leveller, s.cut, kVoiceSamples, hldata::kVoiceOpenFloor,
+                                                                 hldata::kVoiceOpenHold)
+                                            : hldata::voiceLevel(s.leveller, s.cut, kVoiceSamples);
 #ifdef HLDS_VOICE_DUMP
                 dumpRate = rate;
                 for (int i = 0; i < kVoiceSamples && dumpCount < kDumpSamples; ++i, ++dumpCount)
@@ -207,7 +227,20 @@ namespace hlrt::voice
 #endif
                 hldata::voiceEncode(s.encoder, s.cut, kVoiceSamples, p.bytes);
                 p.rate = rate;
-                ++s.count;
+                // The microphone open: what the gate shuts out is not sent,
+                // but kept a packet, to go first when it opens.
+                if (s.openMic && !open)
+                {
+                    s.preroll = made;
+                    s.havePreroll = true;
+                    continue;
+                }
+                if (s.openMic && s.havePreroll)
+                {
+                    queue(s.preroll);
+                    s.havePreroll = false;
+                }
+                queue(made);
             }
         }
 
@@ -253,7 +286,7 @@ namespace hlrt::voice
                     }
                 }
                 if (place == nullptr)
-                    continue; // (two talk already)
+                    continue; // (three talk already)
                 place->player = player;
                 place->lastMs = now;
                 hldata::voiceJitterPut(place->jitter, number, rate, heardPacket, now);
@@ -306,7 +339,7 @@ namespace hlrt::voice
         }
     } // namespace
 
-    HL_TWL_CODE void frame(bool talking, bool hearing, int me)
+    HL_TWL_CODE void frame(bool talkHeld, bool openMic, bool hearing, int me)
     {
         if (!isDSiMode() || !arm7Audio.up())
             return;
@@ -317,7 +350,13 @@ namespace hlrt::voice
             for (Talker &t : talkers)
                 t.player = -1;
         }
-        talking = talking && hearing;
+        // The microphone on: TALK held, or (open) always, unless muted.
+        const bool talking = hearing && (openMic ? !s.muted : talkHeld);
+        if (talking && s.on && openMic != s.openMic)
+            end(); // (from one way to the other: begun again)
+        s.openMic = openMic;
+        if (talking && s.on && arm7Audio.modeCount() != s.modeSeen)
+            end(); // (the output rate changed under it: its ring's rate is said again)
         if (talking && !s.on)
             begin();
         else if (!talking && s.on)
@@ -347,6 +386,33 @@ namespace hlrt::voice
         const std::uint32_t now = nowMs();
         hear(me, now);
         play(now);
+    }
+
+    HL_TWL_CODE void stop()
+    {
+        if (!isDSiMode())
+            return;
+        end();
+        s.count = 0;
+        s.head = 0;
+        s.havePreroll = false;
+        if (heardBegun)
+            silenceAll();
+    }
+
+    HL_TWL_CODE void reset()
+    {
+        s.muted = false;
+    }
+
+    HL_TWL_CODE void setMuted(bool muted)
+    {
+        s.muted = muted;
+    }
+
+    HL_TWL_CODE bool muted()
+    {
+        return s.muted;
     }
 
     HL_TWL_CODE int speaking()

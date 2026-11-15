@@ -1044,6 +1044,16 @@ namespace
         std::snprintf(line, sizeof(line), kSpeaking, hlrt::netGame.match().names[who]);
         hlrt::topText.notice(line);
     }
+
+    /// The player's microphone muted, or live again (the room's
+    /// microphones open), and said so at the top.
+    HL_TWL_CODE void toggleMic()
+    {
+        hlrt::voice::setMuted(!hlrt::voice::muted());
+        static TWL_DATA const char kOn[] = "Microphone on", kOff[] = "Microphone off";
+        hlrt::topText.notice(hlrt::voice::muted() ? kOff : kOn);
+        hlrt::topText.endNotice(1000);
+    }
 #endif
 
     /// A match's map loaded, on any console: the others told (a client says
@@ -1860,6 +1870,28 @@ int main(int argc, char *argv[])
             hlrt::input.poll(false);
             hlrt::sound.frame();
             hlrt::netGame.frame();
+#ifndef HLDS_CHILD
+            // Voice in the lobby and its votes too, online in a room whose
+            // host lets them talk: what the others say heard, and with the
+            // microphone open, what this one says sent (TALK is a match's
+            // alone). Out of the room, all of it off once; out of any game,
+            // the player's mute taken off -- the next game begins live.
+            if (isDSiMode())
+            {
+                static bool voiceWas = false;
+                static int lobbySpeaking = -1;
+                const bool voiceNow = hlrt::netGame.voiceAllowed();
+                if (voiceNow)
+                    hlrt::voice::frame(false, hlrt::netGame.openMic(), true, hlrt::netGame.match().me);
+                else if (voiceWas)
+                    hlrt::voice::stop(); // (the microphone off, the others silenced, nothing left to send)
+                if (voiceNow || voiceWas)
+                    showSpeaking(lobbySpeaking);
+                voiceWas = voiceNow;
+                if (!hlrt::netGame.on())
+                    hlrt::voice::reset();
+            }
+#endif
 #ifdef HLDS_CHILD
             // Sent the game: out of the host's game (left, or the host
             // gone), a host again -- there is nothing else here.
@@ -2023,6 +2055,13 @@ int main(int argc, char *argv[])
                     hlrt::mapCard.setHidden(true);
                     hlrt::profileView.setHidden(true);
                     endScreens();
+#ifndef HLDS_CHILD
+                    // (The touch screen the vote's: START, or TALK's button,
+                    // mutes the microphone, the room's open.)
+                    if (isDSiMode() && hlrt::netGame.openMic() &&
+                        (hlrt::input.startPressed || hlrt::input.micToggle))
+                        toggleMic();
+#endif
                     continue;
                 }
                 if (voteWas)
@@ -2353,8 +2392,12 @@ int main(int argc, char *argv[])
                 // DSi's: its code is in the DSi's memory.)
                 if (isDSiMode())
                 {
-                    hlrt::voice::frame(hlrt::input.talkHeld, inMatch && hlrt::netGame.talkAllowed(),
-                                       hlrt::netGame.match().me);
+                    // (The microphones open: TALK's button mutes, or not;
+                    // paused, the menu's MIC row does.)
+                    if (!paused && hlrt::input.micToggle && hlrt::netGame.openMic())
+                        toggleMic();
+                    hlrt::voice::frame(hlrt::input.talkHeld, hlrt::netGame.openMic(),
+                                       inMatch && hlrt::netGame.voiceAllowed(), hlrt::netGame.match().me);
                     showSpeaking(speakingShown);
                 }
 #endif
