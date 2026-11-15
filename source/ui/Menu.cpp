@@ -1377,7 +1377,12 @@ namespace hlrt
             case kNetLamp: std::snprintf(out, size, "%s", settings.flashlight ? "allowed" : "not allowed"); break;
             case kNetAim: std::snprintf(out, size, "%s", settings.hostAutoaim ? "on" : "off"); break;
 #ifndef HLDS_CHILD
-            case kNetVoice: std::snprintf(out, size, "%s", settings.hostVoice ? "on" : "off"); break;
+            case kNetVoice:
+                std::snprintf(out, size, "%s",
+                              settings.hostVoice == hldata::kHostVoiceOpenMic ? "open mic"
+                              : settings.hostVoice != hldata::kHostVoiceOff  ? "hold TALK"
+                                                                              : "off");
+                break;
             case kNetIdle:
                 if (settings.hostIdleMinutes == 0)
                     std::snprintf(out, size, "kept");
@@ -1578,7 +1583,7 @@ namespace hlrt
             case kNetLamp: return "Whether the suit's flashlight may be lit in the match.";
             case kNetAim: return "Whether the guns' aim bends towards a player near it.";
 #ifndef HLDS_CHILD
-            case kNetVoice: return "Online: whether the players may talk, holding TALK (in SPRAY's place) or its button.";
+            case kNetVoice: return "Online: whether the players may talk: holding TALK (in SPRAY's place), or with the microphone always open -- in the lobby and the votes too; each may mute theirs (START). Headphones keep the game out of it.";
             case kNetIdle: return "Whether a player who neither moves, turns nor changes weapon is sent away, and after how long.";
 #endif
             case kNetSkill: return "How hard the map's chargers and anything of its own are, on every console.";
@@ -1822,7 +1827,10 @@ namespace hlrt
             case kNetLamp: settings.flashlight = !settings.flashlight; netGame.hostChanged(); return true;
             case kNetAim: settings.hostAutoaim = !settings.hostAutoaim; netGame.hostChanged(); return true;
 #ifndef HLDS_CHILD
-            case kNetVoice: settings.hostVoice = !settings.hostVoice; netGame.hostChanged(); return true;
+            case kNetVoice:
+                settings.hostVoice = static_cast<std::uint8_t>((settings.hostVoice + 1) % (hldata::kHostVoiceOpenMic + 1));
+                netGame.hostChanged();
+                return true;
             case kNetIdle:
             {
                 constexpr int kSteps = static_cast<int>(sizeof(kIdleSteps));

@@ -148,6 +148,10 @@ namespace hldata
     inline constexpr std::uint16_t kRuleGuests = 32;
     /// Players may talk to each other (online, through the relay: TALK).
     inline constexpr std::uint16_t kRuleVoice = 64;
+    /// ... with the microphone open all the time, what is said sent as it is
+    /// heard, not while TALK is held (each player may mute their own). An
+    /// older console ignores it: TALK, held, as before.
+    inline constexpr std::uint16_t kRuleOpenMic = 128;
 
     /// The kinds of match (Rules' v[0]): every one for themselves, or two
     /// teams (HlSettings.hpp's kModeDeathmatch, kModeTeamplay).

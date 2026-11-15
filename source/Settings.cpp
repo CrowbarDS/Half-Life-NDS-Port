@@ -71,7 +71,7 @@ void Settings::load()
         friendlyFire = data.friendlyFire != 0;
         flashlight = data.flashlight != 0;
         hostAutoaim = data.hostAutoaim != 0;
-        hostVoice = data.hostVoice != 0;
+        hostVoice = data.hostVoice;
 #ifndef HLDS_CHILD
         hostIdleMinutes = data.hostIdleMinutes;
         vibration = data.vibration;
@@ -220,7 +220,7 @@ bool Settings::save() const
     data.friendlyFire = friendlyFire ? 1 : 0;
     data.flashlight = flashlight ? 1 : 0;
     data.hostAutoaim = hostAutoaim ? 1 : 0;
-    data.hostVoice = hostVoice ? 1 : 0;
+    data.hostVoice = hostVoice;
 #ifndef HLDS_CHILD
     data.hostIdleMinutes = hostIdleMinutes;
     data.vibration = vibration;

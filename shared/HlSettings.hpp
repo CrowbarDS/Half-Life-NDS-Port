@@ -64,6 +64,11 @@ namespace hldata
     /// TWPatch's wide TwlBg stretches it to 16:10), 4:3, or 16:10.
     inline constexpr std::uint8_t kScreenAuto = 0, kScreenStandard = 1, kScreenWide = 2, kScreenChoices = 3;
 
+    /// SettingsData::hostVoice: whether an online host's players may talk, and how.
+    inline constexpr std::uint8_t kHostVoiceOff = 0;
+    inline constexpr std::uint8_t kHostVoiceTalk = 1;    ///< TALK held
+    inline constexpr std::uint8_t kHostVoiceOpenMic = 2; ///< the microphone open (kRuleOpenMic)
+
     struct SettingsData
     {
         /// Deprecated, can be reused for something else later
@@ -621,7 +626,7 @@ namespace hldata
         if (read.playerModel >= kCharacterCount)
             read.playerModel = 0;
         if (read.sprayColour >= kSprayColours || read.hostMode >= kModeChoices || read.weaponsStay > 1 ||
-            read.fallDamage > 1 || read.friendlyFire > 1 || read.flashlight > 1 || read.hostAutoaim > 1 || read.hostVoice > 1 ||
+            read.fallDamage > 1 || read.friendlyFire > 1 || read.flashlight > 1 || read.hostAutoaim > 1 || read.hostVoice > kHostVoiceOpenMic ||
             read.maxPlayers < kPlayersLeast || read.maxPlayers > kPlayersMost || read.allowGuests > 1 ||
             read.chatSeconds < kChatLeast || read.chatSeconds > kChatMost || read.sessionTotals > 1 ||
             read.nextMode >= kNextChoices || read.rotationCount > kRotationMost ||

@@ -160,7 +160,8 @@ namespace hlrt
             (settings.weaponsStay ? kRuleWeaponsStay : 0) | (settings.fallDamage != 0 ? kRuleRealisticFall : 0) |
             (settings.friendlyFire ? kRuleFriendlyFire : 0) | (settings.flashlight ? kRuleFlashlight : 0) |
             (settings.hostAutoaim ? kRuleAutoaim : 0) | (guestsOffered() ? kRuleGuests : 0) |
-            (settings.hostVoice && online() ? kRuleVoice : 0));
+            (settings.hostVoice != kHostVoiceOff && online() ? kRuleVoice : 0) |
+            (settings.hostVoice == kHostVoiceOpenMic && online() ? kRuleOpenMic : 0));
         rules.most = settings.maxPlayers;
         rules.frags = static_cast<std::uint8_t>(settings.fragLimit);
         rules.minutes = static_cast<std::uint8_t>(settings.minuteLimit);

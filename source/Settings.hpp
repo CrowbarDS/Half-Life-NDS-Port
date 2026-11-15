@@ -116,7 +116,7 @@ public:
     bool friendlyFire = false;
     bool flashlight = false;
     bool hostAutoaim = true;
-    bool hostVoice = false; ///< online: the players may talk (kRuleVoice)
+    std::uint8_t hostVoice = 0; ///< online: the players may talk, and how (hldata::kHostVoice*)
     std::uint8_t hostIdleMinutes = 0; ///< a player doing nothing this long sent away (hldata::kIdleSteps; 0: never)
     std::uint8_t maxPlayers = 4;
     bool allowGuests = true;

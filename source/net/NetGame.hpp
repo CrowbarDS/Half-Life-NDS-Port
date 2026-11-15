@@ -42,11 +42,19 @@ namespace hlrt
         Phase phase() const { return phase_; }
         bool on() const { return phase_ != Phase::Off; }
         bool playing() const { return phase_ == Phase::Playing; }
-        /// A match online whose host lets its players talk (TALK, held).
 #ifdef HLDS_CHILD
-        bool talkAllowed() const { return false; } ///< (a console sent the game is never online)
+        bool voiceAllowed() const { return false; } ///< (a console sent the game is never online)
+        bool openMic() const { return false; }
+        bool talkAllowed() const { return false; }
 #else
-        bool talkAllowed() const { return playing() && online() && match_.rules.has(hldata::kRuleVoice); }
+        /// Online, in a room whose host lets its players talk: in its lobby,
+        /// its votes and its matches.
+        bool voiceAllowed() const { return on() && online() && match_.rules.has(hldata::kRuleVoice); }
+        /// ... with the microphone open (kRuleOpenMic), not TALK held.
+        bool openMic() const { return voiceAllowed() && match_.rules.has(hldata::kRuleOpenMic); }
+        /// A match whose players talk holding TALK (not with the microphone
+        /// open: then SPRAY is back in TALK's place).
+        bool talkAllowed() const { return playing() && voiceAllowed() && !openMic(); }
 #endif
         bool isHost() const { return match_.role == hldata::NetMatch::Role::Host; }
         const hldata::NetMatch &match() const { return match_; }

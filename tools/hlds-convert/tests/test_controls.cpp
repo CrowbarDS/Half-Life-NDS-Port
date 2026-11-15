@@ -791,9 +791,13 @@ namespace
         check(readSettings(file25.data(), file25.size(), back) && back.screenShape == kScreenWide &&
                   back.keys[kActionTalk] == 0 && back.hostVoice == 0,
               "a file of version 25 keeps its screen, and has no TALK nor talking");
-        data.hostVoice = 2;
+        data.hostVoice = kHostVoiceOpenMic;
         written = writeSettings(data);
-        check(!readSettings(written.data(), written.size(), back), "talking neither on nor off: not read");
+        check(readSettings(written.data(), written.size(), back) && back.hostVoice == kHostVoiceOpenMic,
+              "talking with the microphone open is kept");
+        data.hostVoice = 3;
+        written = writeSettings(data);
+        check(!readSettings(written.data(), written.size(), back), "talking neither off, held nor open: not read");
         data.hostVoice = 0;
         data.keys[kActionTalk] = 0;
         check(written.size() <= sizeof(SettingsHeader) + kSettingsMostBytes, "the settings still fit their most");
