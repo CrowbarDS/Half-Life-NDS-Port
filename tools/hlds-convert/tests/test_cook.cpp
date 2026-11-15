@@ -214,6 +214,41 @@ namespace
         check(c.view.header->worstPolygons == 0, "nothing to draw");
     }
 
+    /// A liquid on a brush entity is drawn as the game draws it: its top
+    /// alone. (Its sides and floor would show through the surface, and a
+    /// tank's water that rises would slide them through the walls.) What is
+    /// not a liquid keeps all its faces.
+    void testLiquidTopOnly()
+    {
+        BoxRoom room;
+        BrushBox water;
+        water.className = "func_water";
+        water.keys = "\"skin\" \"-3\"\n";
+        water.textureName = "!water";
+        water.mins[0] = -64, water.mins[1] = -64, water.mins[2] = 8;
+        water.maxs[0] = -16, water.maxs[1] = -16, water.maxs[2] = 40;
+        BrushBox wall;
+        wall.mins[0] = 16, wall.mins[1] = 16, wall.mins[2] = 8;
+        wall.maxs[0] = 48, wall.maxs[1] = 48, wall.maxs[2] = 40;
+        room.brushes = {water, wall};
+        const Cooked c = cook(room);
+        check(c.ok && c.view.modelCount >= 3, "a room with water and a wall cooks");
+        if (!c.ok || c.view.modelCount < 3)
+            return;
+        const Model &top = c.view.models[1];
+        bool up = top.surfaceCount == 1;
+        for (int n = 0; up && n < top.surfaceCount; ++n)
+        {
+            const Surface &surface = c.view.surfaces[top.firstSurface + n];
+            const std::uint32_t plane = surface.planeRef & kSurfacePlaneMask;
+            up = c.view.planes[plane].normal[0] == 0 && c.view.planes[plane].normal[1] == 0 &&
+                 c.view.planes[plane].dist != 0 &&
+                 std::abs(c.view.planes[plane].dist) == fxFromInt(40);
+        }
+        check(up, "a brush entity's water keeps its top alone");
+        check(c.view.models[2].surfaceCount == 6, "a wall keeps all six sides");
+    }
+
     void testTooLarge()
     {
         BoxRoom room;
@@ -363,6 +398,7 @@ int main()
     testBoxRoom();
     testTallRoomSeen();
     testDroppedFaces();
+    testLiquidTopOnly();
     testTooLarge();
     testSizesOverride();
     if (g_failures == 0)

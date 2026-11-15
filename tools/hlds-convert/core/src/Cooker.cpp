@@ -37,6 +37,26 @@ namespace hlds
         /// what a switched light gives it is given to all of it.
         constexpr int kLampSamples = 16;
 
+        /// Whether the game's renderer warps a face of this texture as a
+        /// liquid: what it draws only the top of on a brush entity
+        /// (shownAsLiquidTop).
+        bool isWarpedTexture(std::string_view name)
+        {
+            return !name.empty() && (name[0] == '!' || name[0] == '*' || name.rfind("water", 0) == 0 ||
+                                     name.rfind("laser", 0) == 0);
+        }
+
+        /// A face of a brush entity's liquid that the game draws: only one
+        /// that faces up or down and is above the model's bottom -- its
+        /// renderer passes over the sides and the floor of a body of water,
+        /// which would otherwise show through its surface and through the
+        /// glass of a tank, and slide through the walls as it rises.
+        bool shownAsLiquidTop(const BspFile &bsp, const BspModel &model, const BspFace &face)
+        {
+            const BspPlane &plane = bsp.planes[face.plane];
+            return plane.type == 2 && plane.dist > model.mins[2] + 1.0f;
+        }
+
         /// Hands out new, dense indices to the planes something actually uses.
         class PlaneTable
         {
@@ -728,7 +748,8 @@ namespace hlds
                     flatColour ||
                     (holes ? plan.alphaSizes : plan.sizes).empty() ||
                     (holes ? plan.alphaSizes : plan.sizes)[bspTexture].width != 0;
-                if (!modelDrawn || tex.missing || isUndrawnTexture(tex.name) || !planned)
+                if (!modelDrawn || tex.missing || isUndrawnTexture(tex.name) || !planned ||
+                    (m != 0 && isWarpedTexture(tex.name) && !shownAsLiquidTop(bsp, src, face)))
                 {
                     ++report.droppedFaces;
                     continue;
