@@ -2788,20 +2788,32 @@ namespace hlrt
     TWL_CODE void Menu::arm7Watch()
     {
         const std::uint32_t blocks = arm7Audio.blocksDone();
+        char first[48], second[64];
         if (blocks != arm7Blocks_)
         {
             arm7Blocks_ = blocks;
+            const int was = arm7Still_;
             arm7Still_ = 0;
-            return;
+            arm7Longest_ = was > arm7Longest_ ? was : arm7Longest_;
+            // A stop that was shown is over: said so, with the longest yet --
+            // one pause tells apart from a program that keeps stopping.
+            if (!arm7Shown_)
+                return;
+            arm7Shown_ = false;
+            static TWL_DATA const char kBack[] = "ARM7 back after %ds, longest %ds";
+            std::snprintf(first, sizeof(first), kBack, (was + 30) / 60, (arm7Longest_ + 30) / 60);
         }
-        // (Shown once, a second after it stopped; and again every 5 s.)
-        if (++arm7Still_ % 300 != 60)
-            return;
-        static TWL_DATA const char *const kWhere[] = {"waiting", "wifi update", "input", "sound", "wifi card irq", "fifo irq"};
-        static TWL_DATA const char kFormat[] = "ARM7 STOPPED %ds, in: %s";
-        const std::uint32_t where = arm7Audio.where();
-        char first[48], second[64];
-        std::snprintf(first, sizeof(first), kFormat, arm7Still_ / 60, where < 6 ? kWhere[where] : "?");
+        else
+        {
+            // (Shown once, a second after it stopped; and again every 5 s.)
+            if (++arm7Still_ % 300 != 60)
+                return;
+            arm7Shown_ = true;
+            static TWL_DATA const char *const kWhere[] = {"waiting", "wifi update", "input", "sound", "wifi card irq", "fifo irq"};
+            static TWL_DATA const char kFormat[] = "ARM7 STOPPED %ds, in: %s";
+            const std::uint32_t where = arm7Audio.where();
+            std::snprintf(first, sizeof(first), kFormat, arm7Still_ / 60, where < 6 ? kWhere[where] : "?");
+        }
         hlrt::netrelay::radioCounts(second, static_cast<int>(sizeof(second)));
         Canvas &canvas = touchCanvas.canvas();
         const FontView &small = touchCanvas.font(kFontSmall);

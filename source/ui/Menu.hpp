@@ -213,6 +213,8 @@ namespace hlrt
         void arm7Watch();
         std::uint32_t arm7Blocks_ = 0;
         int arm7Still_ = 0;
+        bool arm7Shown_ = false; ///< a stop is on the screen
+        int arm7Longest_ = 0;    ///< the longest stop seen, in frames
         char sheetQuestion_[40] = {};
         void openSheet(Page page);
         int &sheetChapter();
