@@ -309,6 +309,17 @@ namespace hlds
             for (std::size_t i = 3; i < atlas.rgba.size(); i += 4)
                 atlas.rgba[i] = static_cast<std::uint8_t>(atlas.rgba[i] * 255 / most);
         }
+        // Light's eight levels of see-through taken down, not to the
+        // nearest: rounded up, the middle of a glow is flat over a quarter
+        // of its width, and its faint edge is a ring brighter than the
+        // game's (c2a1's lamps, against the game). Given as the levels
+        // themselves (each just above its own: the same level whether the
+        // encoder rounds or cuts), it has nothing left to round.
+        if (light)
+        {
+            for (std::size_t i = 3; i < atlas.rgba.size(); i += 4)
+                atlas.rgba[i] = static_cast<std::uint8_t>((atlas.rgba[i] * 7 / 255 * 255 + 6) / 7);
+        }
         out.atlas = std::move(atlas);
         out.ref.width = static_cast<std::uint16_t>(out.atlas.width);
         out.ref.height = static_cast<std::uint16_t>(out.atlas.height);

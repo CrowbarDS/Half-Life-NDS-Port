@@ -2983,6 +2983,24 @@ namespace hlds
                     const bool keeps = static_cast<int>(numberKey(entity, "renderfx")) == 14;
                     record.extra[3] = (!glow && !cycler && (spawnflags & 2) ? 1 : 0) | (glow || mode == 3 ? 2 : 0) |
                                       (cycler ? 4 : 0) | (keeps ? 8 : 0);
+                    // (Bits 8 up, of one that fades: how far off its middle
+                    // is as faint as the game's light is ever seen --
+                    // glowSeenQ8. Its middle is its render amount of its
+                    // brightest colour, of 255.)
+                    if ((glow || mode == 3) && !keeps)
+                    {
+                        double colour[3] = {255, 255, 255};
+                        if (!entity.vec3("rendercolor", colour) ||
+                            (colour[0] == 0 && colour[1] == 0 && colour[2] == 0))
+                            colour[0] = colour[1] = colour[2] = 255;
+                        const double brightest = std::clamp(std::max({colour[0], colour[1], colour[2]}), 0.0, 255.0);
+                        const double middle =
+                            std::clamp(numberKey(entity, "renderamt", 255), 0.0, 255.0) / 255.0 * brightest;
+                        const double farthest2 = kGlowFalloff * middle / kGlowFaintest;
+                        const double inverse = farthest2 > 0 ? 4294967296.0 / farthest2 : 16777215.0;
+                        record.extra[3] |=
+                            static_cast<std::uint32_t>(std::clamp(std::llround(inverse), 1LL, 16777215LL)) << 8;
+                    }
                     if (glow || cycler || (spawnflags & 1) || !named)
                         record.flags |= kLogicStartOpen;
                 }

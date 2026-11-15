@@ -1113,11 +1113,18 @@ namespace hlrt
             {
                 const std::int32_t d[3] = {fxToInt(record.move[0] - camera.pos[0]), fxToInt(record.move[1] - camera.pos[1]),
                                            fxToInt(record.move[2] - camera.pos[2])};
-                const int dist = static_cast<int>(isqrt64(static_cast<std::uint64_t>(
-                    static_cast<std::int64_t>(d[0]) * d[0] + static_cast<std::int64_t>(d[1]) * d[1] +
-                    static_cast<std::int64_t>(d[2]) * d[2])));
+                // (A map is never more than 8192 units across: this fits.)
+                const std::uint32_t dist2 = static_cast<std::uint32_t>(d[0]) * static_cast<std::uint32_t>(d[0]) +
+                                            static_cast<std::uint32_t>(d[1]) * static_cast<std::uint32_t>(d[1]) +
+                                            static_cast<std::uint32_t>(d[2]) * static_cast<std::uint32_t>(d[2]);
+                const int dist = static_cast<int>(isqrt64(dist2));
                 int grow, bright;
                 glowFalloff(dist, grow, bright);
+                // (Only as wide as the part of it the game shows: a faint
+                // one is a flat disc here, not a cone fading out.)
+                grow = (grow * glowSeenQ8(dist2, record.extra[3] >> 8)) >> 8;
+                if (grow <= 0)
+                    return;
                 halfWide = (halfWide * grow) >> 8;
                 halfHigh = (halfHigh * grow) >> 8;
                 halfWide = halfWide < 1 ? 1 : halfWide;

@@ -84,6 +84,28 @@ namespace hldata
         brightnessQ8 = bright > 256 ? 256 : (bright < 13 ? 13 : static_cast<int>(bright));
     }
 
+    // ... and of that, how much is seen. The game adds a faint glow's light:
+    // its picture, a cone, fades out unseen well inside its edge. The DS
+    // blends it, at a few steps of see-through at most, and a faint glow
+    // there is a flat disc as wide as all of it (c2a1's lamps, measured
+    // against the game). So it is drawn only as wide as the part of the cone
+    // the game makes brighter than this (of 255), and not at all when none is.
+    // (8 still left a disc where the game shows nothing: a lamp's glow 18
+    // bright at its middle, over a lit wall.)
+    inline constexpr int kGlowFaintest = 16;
+    /// That part, of 256, for a glow `dist2` units squared from the eye.
+    /// `inverse` is the cook's: 2^32 / the distance squared at which the
+    /// glow's middle is that faint (0, from a cook before this: all of
+    /// it). With the cone's
+    /// light falling as 19000 / dist^2, the part seen is 1 - dist^2 / that.
+    inline int glowSeenQ8(std::uint32_t dist2, std::uint32_t inverse)
+    {
+        if (dist2 < kGlowFalloff)
+            dist2 = kGlowFalloff; // (as bright as it goes)
+        const std::uint32_t gone = static_cast<std::uint32_t>((static_cast<std::uint64_t>(dist2) * inverse) >> 24);
+        return gone >= 256 ? 0 : 256 - static_cast<int>(gone);
+    }
+
     inline std::string spriteFile(const char *name, int width, int height)
     {
         return std::string(name) + "." + std::to_string(width) + "x" + std::to_string(height) + ".htx";
