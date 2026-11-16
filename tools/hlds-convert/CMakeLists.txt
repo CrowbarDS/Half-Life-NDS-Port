@@ -221,6 +221,7 @@ if(HLDS_BUILD_TESTS)
             test_movers
             test_physics
             test_dsp
+            test_kernels
             test_save
             test_savefiles
             test_savestate
@@ -261,6 +262,8 @@ if(HLDS_BUILD_TESTS)
     find_package(Python3 QUIET COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
         add_test(NAME dsl_strip_self COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../dsl_strip.py --self-test)
+        # (What may be moved into ITCM at load, and what is refused: tools/dsl_kernels.py.)
+        add_test(NAME dsl_kernels_self COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../dsl_kernels.py --self-test)
         add_test(NAME dsl_strip_built COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../dsl_strip.py --check
                  ${CMAKE_CURRENT_SOURCE_DIR}/../../build/hl/hl.full.dsl ${CMAKE_CURRENT_SOURCE_DIR}/../../build/hl/hl.dsl)
         set_tests_properties(dsl_strip_built PROPERTIES SKIP_RETURN_CODE 77)

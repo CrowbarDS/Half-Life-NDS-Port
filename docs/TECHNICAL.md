@@ -518,6 +518,28 @@ Milestone 11, "levels of detail".
   `DTCM_DATA_SIZE` in `build.py`) -- libnds's thread scheduler takes almost
   all of it --; the stack has the 14.4 KB under it and was measured 11 KB
   deep. The guard's pattern is DTCM's first words, where the stack ends.
+- The fast memories' heaps are kept by rules (`source/Tcm.hpp`): placed
+  once, at start-up, and never let go -- nothing is taken from them while a
+  map is played, so nothing there moves or goes while the thinking thread or
+  an interrupt may be running it; always with a way without (refused, the
+  code stays in main RAM, slower and the same); nothing a DMA, the ARM7 or the
+  DSP reads; never from an interrupt; each placement kept by its owner.
+  DTCM's heap is not used: DTCM is the stack's.
+  Link-time ITCM stays for what must be there or is hottest and measured --
+  the vectors and the interrupt path, the hardware divide, the traces, the
+  drawing -- where calls are direct and the budget is checked by the build.
+- The rest of ITCM takes the game library's busiest functions as it loads,
+  as they were built (`source/game/Kernels.cpp`, `shared/HlKernelMove.hpp`):
+  each is copied there, the calls in it are aimed again from where the copy
+  runs (ITCM's mirror just under main RAM, which even a Thumb call reaches
+  main RAM from), and its old entry becomes a jump to the copy -- so no
+  caller changes. Which ones, and whether they may be moved, is decided at
+  build time (`tools/dsl_kernels.py`, from the console's own sampler): only a
+  function whose every reference outside itself is an address the loader
+  fills in or a call with a relocation; anything else stops the build. Its
+  table gives the offsets of those words, the only ones changed, and a sum of
+  the rest, checked before anything is moved. traceShot, lineThrough and
+  pointContents: 2.8 KB, from 3.3-4.1% of a DS's time at c1a3a to 2.35%.
 - A trace no longer asks every brush of the map whether the move comes near
   it. A map has some hundreds, each a hundred bytes of record: now there is
   a table of twelve bytes a brush, read first (`MoverReach`). At the fight

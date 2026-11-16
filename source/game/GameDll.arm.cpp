@@ -8,6 +8,8 @@
 #include "DebugLog.hpp"
 #include "Global.hpp"
 #include "Guard.hpp"
+#include "Tcm.hpp"
+#include "game/Kernels.hpp"
 #include "audio/Sound.hpp"
 #include "data/LevelFile.hpp"
 #include "data/ModelCache.hpp"
@@ -192,6 +194,10 @@ namespace hlrt
         const auto *data = static_cast<const std::uint8_t *>(dlsym(library, "hlDslData"));
         if (base != nullptr && data != nullptr && data > base)
         {
+            // Its busiest functions into ITCM, before any of it has run and
+            // before there is a thread but this one (Kernels.hpp) -- and
+            // before its code is summed, with their entries as they now are.
+            kernels::place(const_cast<std::uint8_t *>(base), static_cast<std::uint32_t>(data - base));
             guard::noteLibrary(base, static_cast<std::uint32_t>(data - base), static_cast<std::uint32_t>(data - base));
             DebugLog::Perf::noteLibrary(base, static_cast<std::uint32_t>(data - base));
         }
@@ -202,6 +208,8 @@ namespace hlrt
             dlclose(library);
             return false;
         }
+        // (Nothing more goes into the fast memories: Tcm.hpp.)
+        tcm::seal();
         return true;
     }
 } // namespace hlrt

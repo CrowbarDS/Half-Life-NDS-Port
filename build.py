@@ -154,12 +154,17 @@ hl = Arm9DynamicLibrary(
     # keeps the names and 8 bytes per relocation on the heap for good. Only
     # what it acts on is kept, and the build stops unless the library then
     # loads to the same bytes with the same code sum (tools/dsl_strip.py).
-    post_tool=('python3 tools/dsl_strip.py', ['tools/dsl_strip.py']),
+    # Then the table of its functions moved into ITCM at load
+    # (tools/dsl_kernels.py; source/game/Kernels.cpp).
+    post_tool=('python3 tools/dsl_post.py',
+               ['tools/dsl_post.py', 'tools/dsl_strip.py', 'tools/dsl_kernels.py']),
+    post_outputs=['build/hl/hl.kernels'],
 )
 hl.generate_dsl()
 
 nitrofs = NitroFS()
 nitrofs.add_arm9_dsl(hl)
+nitrofs.add_file('build/hl/hl.kernels', 'dsl/hl.kernels')
 # The program the host sends consoles without the game by Download Play
 # (child/build.py: built after this one, whose ARM7 program it uses -- so it
 # is here from make.sh's second pass of this file on).
