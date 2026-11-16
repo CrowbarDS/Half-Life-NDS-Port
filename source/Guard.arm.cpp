@@ -25,7 +25,7 @@ extern "C"
     std::uint32_t getExceptionAddress(std::uint32_t opcodeAddress, std::uint32_t thumbState);
 
     // The linker's marks.
-    extern char __text_start[], __text_end[], __sbss_end[], __sp_usr[];
+    extern char __text_start[], __text_end[], __dtcm_start[], __sp_usr[];
 }
 
 namespace hlrt::guard
@@ -379,9 +379,12 @@ namespace hlrt::guard
         constexpr std::uint32_t kStackWords = 16;
         constexpr std::uint32_t kStackMark = 0x5354414B; // "STAK"
 
+        /// The stack's last words: the bottom of DTCM. (The stack starts under
+        /// DTCM's own data, which sits at its top, and grows down from there;
+        /// past the bottom it would go on into main RAM.)
         std::uint32_t *stackFloor()
         {
-            return reinterpret_cast<std::uint32_t *>((reinterpret_cast<std::uint32_t>(__sbss_end) + 3) & ~3u);
+            return reinterpret_cast<std::uint32_t *>(__dtcm_start);
         }
 
         bool stackIntact()

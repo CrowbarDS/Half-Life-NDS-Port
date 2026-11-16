@@ -67,7 +67,9 @@ arm9 = Arm9Binary(
         'malloc', 'free', 'calloc', 'realloc', 'memalign', 'aligned_alloc', 'posix_memalign')] +
         # (The divide: source/HwMath.s, and ../build.py.)
         ['-Wl,--wrap=__aeabi_ldivmod', '-Wl,--wrap=__aeabi_uldivmod'] +
-        ['-Wl,--undefined=calloc']),
+        ['-Wl,--undefined=calloc'] +
+        # (DTCM's own data and heap: as the parent's, ../build.py.)
+        ['-Wl,--defsym=__dtcm_data_size=1024']),
 )
 # airpack_bin[] / airpack_bin_size: empty unless a test asked for a map.
 arm9.add_data([os.path.dirname(TESTPACK)])

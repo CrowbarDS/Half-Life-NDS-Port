@@ -9,9 +9,9 @@
 #include "Global.hpp"
 #include "Guard.hpp"
 
-// (The linker's: where the 16 KB of fast data memory starts. The stack is
-// the top of it and grows down.)
-extern "C" char __dtcm_start[];
+// (The linker's: where the stack starts, under DTCM's own data, which sits
+// at the top of DTCM. It grows down to the bottom of DTCM.)
+extern "C" char __sp_usr[];
 // (HwMath.s: the divides and the roots the hardware has been asked for.)
 extern "C" std::uint32_t hlHwCount[2];
 
@@ -54,7 +54,7 @@ namespace hlrt::DebugLog::Perf
             return;
         // The lowest word the stack has written over.
         const std::uint32_t *low = guard::stackLimit();
-        const std::uint32_t *top = reinterpret_cast<const std::uint32_t *>(__dtcm_start) + 16384 / 4;
+        const std::uint32_t *top = reinterpret_cast<const std::uint32_t *>(__sp_usr);
         while (low < top && *low == kStackPaint)
             ++low;
         if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))

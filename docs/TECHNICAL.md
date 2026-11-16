@@ -505,9 +505,12 @@ Milestone 11, "levels of detail".
   and lengths they all use. `HL_HOT` (shared code) and `HL_ITCM` put a
   function there; `HL_ARM` builds one function of a Thumb file as ARM (the
   effects, the head-up display and the other things drawn every frame had
-  been Thumb, each product a call). 22 KB of the 32 are used; the fast
-  *data* memory (DTCM) is left to the stack, which was measured 11 KB deep
-  of its 16.
+  been Thumb, each product a call). About 28 KB of the 32 are used; what is
+  left is libnds's ITCM heap (`itcm_malloc`). The fast *data* memory (DTCM)
+  keeps 1 KB at its top for its own data and heap (`dtcm_malloc`,
+  `DTCM_DATA_SIZE` in `build.py`) -- libnds's thread scheduler takes almost
+  all of it --; the stack has the 14.4 KB under it and was measured 11 KB
+  deep. The guard's pattern is DTCM's first words, where the stack ends.
 - A trace no longer asks every brush of the map whether the move comes near
   it. A map has some hundreds, each a hundred bytes of record: now there is
   a table of twelve bytes a brush, read first (`MoverReach`). At the fight

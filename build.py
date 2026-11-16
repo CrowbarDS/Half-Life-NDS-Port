@@ -53,6 +53,9 @@ guard = ['HLDS_GUARD_FULL', 'HLDS_DEBUG_BUILD'] if os.environ.get('HLDS_DEBUG') 
 # The 64-bit divide goes to the console's divider (source/HwMath.s), and to
 # the library's for what the divider would answer otherwise.
 HW_MATH_WRAPS = ['__aeabi_ldivmod', '__aeabi_uldivmod']
+# Bytes at the top of DTCM for its own data and for dtcm_malloc; the stack
+# has the rest of DTCM under them. (The child sets the same: child/build.py.)
+DTCM_DATA_SIZE = 1024
 
 # The wireless library with its IP stack, for online play (a DSi's only):
 # its Internet half moved to the DSi-only part of the program, which a DS
@@ -93,7 +96,7 @@ arm9 = Arm9Binary(
     # the yas archives on the host and the DS reads them back, so a byte-order
     # disagreement between the two would corrupt them silently.
     # stack-usage: no function may take more than 4 KB of the stack, which
-    # is 15 KB of DTCM in all (Game::destroy's 9 KB overflowed it when a map
+    # is 14.4 KB of DTCM in all (Game::destroy's 9 KB overflowed it when a map
     # was left, 2026-10-30). The game library and the child are held to it too.
     cxxflags='-Wall -Werror=stack-usage=4096 -O2 -std=gnu++26 -D_LITTLE_ENDIAN -include yas/detail/config/endian.hpp',
     # Every malloc, free and the rest goes through the guarded heap
@@ -105,7 +108,10 @@ arm9 = Arm9Binary(
     ldflags=' '.join(['-Wl,--wrap=' + f for f in (
         'malloc', 'free', 'calloc', 'realloc', 'memalign', 'aligned_alloc', 'posix_memalign')] +
         ['-Wl,--wrap=' + f for f in HW_MATH_WRAPS] +
-        ['-Wl,--undefined=calloc']),
+        ['-Wl,--undefined=calloc'] +
+        # DTCM's own data and its heap (dtcm_malloc), at the top of DTCM;
+        # the stack has the rest under it.
+        ['-Wl,--defsym=__dtcm_data_size=' + str(DTCM_DATA_SIZE)]),
 )
 
 arm9.generate_elf()

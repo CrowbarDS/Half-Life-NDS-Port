@@ -128,6 +128,13 @@ for line in run(tools + "/arm-none-eabi-readelf", "-sW", elf).splitlines():
             symbols.append((int(part[1], 16), int(part[2], 0), part[3], part[7]))
         except ValueError:
             pass
+# The marks the linker sets (no type, no size).
+marks = {}
+for line in run(tools + "/arm-none-eabi-readelf", "-sW", elf).splitlines():
+    part = line.split()
+    if len(part) >= 8 and part[3] == "NOTYPE" and part[7] in (
+            "__dtcm_start", "__sp_usr", "__sbss_end", "__dtcm_data_top", "__itcm_start", "__itcm_end"):
+        marks[part[7]] = int(part[1], 16)
 demangle = dict(zip([s[3] for s in symbols],
                     subprocess.run([tools + "/arm-none-eabi-c++filt"], input="\n".join(s[3] for s in symbols),
                                    capture_output=True, text=True).stdout.splitlines()))
@@ -199,9 +206,13 @@ for name, by in calls.items():
 summary = ("hl.dsl: %d bytes; the game: %d ARM functions, %d Thumb; helper calls: %d on the hardware, %d in the library"
            % (sizes.get(".progbits", (0, 0))[0] + sizes.get(".nobits", (0, 0))[0], len(arm_game), len(thumb_game),
               hard, soft)) if kind_of_elf == "dsl" else \
-          ("%s: ITCM %d of 32768 bytes, DTCM data %d (the stack has the rest of 16384); "
+          ("%s: ITCM %d of 32768 bytes (heap %d), stack %d, DTCM data %d (heap %d); "
            "the game: %d ARM functions, %d Thumb; helper calls: %d on the hardware, %d in the library"
-           % ("child" if kind_of_elf == "child" else "arm9", itcm_size, dtcm_size, len(arm_game), len(thumb_game), hard, soft))
+           % ("child" if kind_of_elf == "child" else "arm9", itcm_size,
+              marks.get("__itcm_start", 0) + 32768 - marks.get("__itcm_end", 0),
+              marks.get("__sp_usr", 0) - marks.get("__dtcm_start", 0), dtcm_size,
+              marks.get("__dtcm_data_top", 0) - marks.get("__sbss_end", 0),
+              len(arm_game), len(thumb_game), hard, soft))
 
 failed = []
 for name, banned in HOT.items():
