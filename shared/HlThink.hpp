@@ -71,6 +71,26 @@ namespace hldata
                                          fxFromInt(asked.least), answer.out);
             break;
         }
+        case kThinkCover:
+        case kThinkNearRoute:
+        {
+            // (From where it is now. The squad's say -- not where another of
+            // it is -- is the asker's, when it takes the answer up.)
+            const ActorState &me = a.states[index];
+            const bool opens = opensDoors(me.kind);
+            int next = asked.basis;
+            const int node = asked.kind == kThinkCover
+                                 ? aiCoverNode(a, *w.world, index, asked.small, opens, me.pos, asked.at, asked.out[0],
+                                               asked.least, asked.reach, asked.basis, next,
+                                               [](const fx *) { return true; })
+                                 : aiNearRouteNode(a, *w.world, index, asked.small, opens, me.pos, asked.at,
+                                                   asked.out[0], asked.out[1], asked.least, asked.reach, asked.basis,
+                                                   next);
+            answer.found = node >= 0;
+            answer.goalNode = static_cast<std::int16_t>(node);
+            answer.fromNode = static_cast<std::int16_t>(next);
+            break;
+        }
 #endif
         default:
             answer.found = false;

@@ -572,7 +572,12 @@ namespace
         {
             ActorState &actor = g.actors.states[i];
             const AiMonster *m = aiFind(g.actors, i);
-            if (isKind(actor, ActorKind::Grunt) && (m == nullptr || m->squadLeader != leader))
+            // (The squad alone: no other soldiers, and nobody else who
+            // thinks -- a scientist the fight comes near says his lines at
+            // full, which is not what is heard of the squad.)
+            const bool otherGrunt = isKind(actor, ActorKind::Grunt) && (m == nullptr || m->squadLeader != leader);
+            const bool otherThinker = !isKind(actor, ActorKind::Grunt) && actorThinks(actor.kind);
+            if (otherGrunt || otherThinker)
             {
                 actor.active = false;
                 actorPlaceBox(g.actors, i);

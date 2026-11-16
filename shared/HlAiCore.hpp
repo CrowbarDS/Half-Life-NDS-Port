@@ -1150,30 +1150,29 @@ namespace hldata
 
     inline int aiHull(const AiCtx &c) { return monsterHull(c.me.kind); }
 
-    /// FindCover: a node between `minDist` and `maxDist` off that the
-    /// threat (at `threat`, with its eyes `viewOfs` above) has no line to,
-    /// and that it is no further from along the ways than the threat is --
-    /// the first such, searching from where the last search left off.
-    inline bool aiFindCover(AiCtx &c, const fx *threat, fx viewOfs, int minDist, int maxDist)
+    /// FindCover's search over the nodes, with no mind of its own (the
+    /// worker runs it too, outside the frame): the first node, from `start`
+    /// on, between `minDist` and `maxDist` off that the threat (at `threat`,
+    /// its eyes `viewOfs` above) has no line to, and that the one at `me`
+    /// (actor `index`) is no further from along the ways than the threat is,
+    /// and that `accept` takes. -1 if none; `next`: where the next search
+    /// goes on from.
+    template <typename Accept>
+    inline int aiCoverNode(const ActorWorld &a, const MoveWorld &world, int index, int hull, bool opens, const fx *me,
+                           const fx *threat, fx viewOfs, int minDist, int maxDist, int start, int &next, Accept accept)
     {
-        if (maxDist == 0)
-            maxDist = 784;
-        if (minDist > maxDist / 2)
-            minDist = maxDist / 2;
-        const ActorWorld &a = c.a;
+        next = start;
         if (a.nodeCount == 0)
-            return false;
-        const int hull = aiHull(c);
-        const int mine = pathNearest(a, *c.w.world, c.me.pos, hull, c.index);
+            return -1;
+        const int mine = pathNearest(a, world, me, hull, index);
         if (mine < 0)
-            return false;
-        int theirs = pathNearest(a, *c.w.world, threat);
+            return -1;
+        int theirs = pathNearest(a, world, threat);
         if (theirs < 0)
             theirs = mine;
         const fx looker[3] = {threat[0], threat[1], threat[2] + viewOfs};
         std::uint16_t fromMe[kMaxPathNodes], fromThem[kMaxPathNodes];
         const std::uint8_t size = pathSizeOf(hull);
-        const bool opens = opensDoors(c.me.kind);
         aiPathDistances(a, mine, size, opens, fromMe);
         if (theirs != mine)
             aiPathDistances(a, theirs, size, opens, fromThem);
@@ -1181,25 +1180,54 @@ namespace hldata
         for (int i = 0; i < a.nodeCount; ++i)
         {
             thinkPoint(pause, 8);
-            const int n = (i + c.ai.lastCoverSearch) % a.nodeCount;
-            c.ai.lastCoverSearch = n + 1;
+            // (From where the last step left it, as the game's -- which
+            // skips on further each step.)
+            const int n = (i + next) % a.nodeCount;
+            next = n + 1;
             const fx *p = a.nodes[n].pos;
-            const fx dist = aiDist(c.me.pos, p);
+            const fx dist = aiDist(me, p);
             if (dist < fxFromInt(minDist) || dist >= fxFromInt(maxDist))
                 continue;
             const fx from[3] = {p[0], p[1], p[2] + viewOfs};
-            if (lineClear(*c.w.world, from, looker))
+            if (lineClear(world, from, looker))
                 continue;
             if (fromMe[n] == 0xFFFF)
                 continue;
             if (theirs != mine && fromMe[n] > fromThem[n])
                 continue;
-            if (!aiValidateCover(c, p))
+            if (!accept(p))
                 continue;
-            aiMoveToLocation(c, kActRun, 0, p);
-            return true;
+            return n;
         }
-        return false;
+        return -1;
+    }
+
+    /// FindCover's distances as the game takes them (0: 784 at most; the
+    /// least no more than half the most).
+    inline void aiCoverRange(int &minDist, int &maxDist)
+    {
+        if (maxDist == 0)
+            maxDist = 784;
+        if (minDist > maxDist / 2)
+            minDist = maxDist / 2;
+    }
+
+    /// FindCover: a node between `minDist` and `maxDist` off that the
+    /// threat (at `threat`, with its eyes `viewOfs` above) has no line to,
+    /// and that it is no further from along the ways than the threat is --
+    /// the first such, searching from where the last search left off.
+    inline bool aiFindCover(AiCtx &c, const fx *threat, fx viewOfs, int minDist, int maxDist)
+    {
+        aiCoverRange(minDist, maxDist);
+        int next = c.ai.lastCoverSearch;
+        const int n = aiCoverNode(c.a, *c.w.world, c.index, aiHull(c), opensDoors(c.me.kind), c.me.pos, threat, viewOfs,
+                                  minDist, maxDist, c.ai.lastCoverSearch, next,
+                                  [&](const fx *p) { return aiValidateCover(c, p); });
+        c.ai.lastCoverSearch = next;
+        if (n < 0)
+            return false;
+        aiMoveToLocation(c, kActRun, 0, c.a.nodes[n].pos);
+        return true;
     }
 
     /// FindLateralCover: up to five steps of 48 to either side, the first
@@ -1228,43 +1256,136 @@ namespace hldata
         return false;
     }
 
-    /// BuildNearestRoute: a node from which the threat can be seen, between
-    /// `minDist` and `maxDist` of it, that it can get to.
-    inline bool aiBuildNearestRoute(AiCtx &c, const fx *threat, fx viewOfs, int minDist, int maxDist)
+    /// BuildNearestRoute's search, with no mind of its own (the worker runs
+    /// it too): the first node, from `start` on, that the one at `me` (actor
+    /// `index`) can get to, between `minDist` and `maxDist` of the threat,
+    /// from which its eyes (`eye` above the node) see the threat's (`viewOfs`
+    /// above it). -1 if none; `next` as for aiCoverNode.
+    inline int aiNearRouteNode(const ActorWorld &a, const MoveWorld &world, int index, int hull, bool opens,
+                               const fx *me, const fx *threat, fx viewOfs, fx eye, int minDist, int maxDist, int start,
+                               int &next)
     {
-        if (maxDist == 0)
-            maxDist = 784;
-        if (minDist > maxDist / 2)
-            minDist = maxDist / 2;
-        const ActorWorld &a = c.a;
+        next = start;
         if (a.nodeCount == 0)
-            return false;
-        const int hull = aiHull(c);
-        const int mine = pathNearest(a, *c.w.world, c.me.pos, hull, c.index);
+            return -1;
+        const int mine = pathNearest(a, world, me, hull, index);
         if (mine < 0)
-            return false;
+            return -1;
         std::uint8_t reached[kMaxPathNodes];
-        pathReach(a, mine, pathSizeOf(hull), opensDoors(c.me.kind), reached);
+        pathReach(a, mine, pathSizeOf(hull), opens, reached);
         const fx looker[3] = {threat[0], threat[1], threat[2] + viewOfs};
         int pause = 0;
         for (int i = 0; i < a.nodeCount; ++i)
         {
             thinkPoint(pause, 8);
-            const int n = (i + c.ai.lastCoverSearch) % a.nodeCount;
-            c.ai.lastCoverSearch = n + 1;
+            // (From where the last step left it, as the game's -- which
+            // skips on further each step.)
+            const int n = (i + next) % a.nodeCount;
+            next = n + 1;
             if (n == mine || !reached[n])
                 continue;
             const fx *p = a.nodes[n].pos;
             const fx dist = aiDist(threat, p);
             if (dist <= fxFromInt(minDist) || dist >= fxFromInt(maxDist))
                 continue;
-            const fx from[3] = {p[0], p[1], p[2] + c.kind.eye};
-            if (!lineClear(*c.w.world, from, looker))
+            const fx from[3] = {p[0], p[1], p[2] + eye};
+            if (!lineClear(world, from, looker))
                 continue;
-            aiMoveToLocation(c, c.m.movementActivity, 0, p);
-            return true;
+            return n;
         }
-        return false;
+        return -1;
+    }
+
+    /// BuildNearestRoute: a node from which the threat can be seen, between
+    /// `minDist` and `maxDist` of it, that it can get to.
+    inline bool aiBuildNearestRoute(AiCtx &c, const fx *threat, fx viewOfs, int minDist, int maxDist)
+    {
+        aiCoverRange(minDist, maxDist);
+        int next = c.ai.lastCoverSearch;
+        const int n = aiNearRouteNode(c.a, *c.w.world, c.index, aiHull(c), opensDoors(c.me.kind), c.me.pos, threat,
+                                      viewOfs, c.kind.eye, minDist, maxDist, c.ai.lastCoverSearch, next);
+        c.ai.lastCoverSearch = next;
+        if (n < 0)
+            return false;
+        aiMoveToLocation(c, c.m.movementActivity, 0, c.a.nodes[n].pos);
+        return true;
+    }
+
+    /// What asking for a node search comes to, this think.
+    inline constexpr int kAiAskWaiting = 0; ///< asked; the answer is not in yet
+    inline constexpr int kAiAskFound = 1;   ///< a node, made for (aiMoveToLocation)
+    inline constexpr int kAiAskNone = 2;    ///< none
+    /// How many of its thinks (100 ms) it waits for the worker to take its
+    /// question up before it works it out itself.
+    inline constexpr int kAiAskPatience = 10;
+
+    /// FindCover (`what` kThinkCover) or BuildNearestRoute (kThinkNearRoute),
+    /// worked out outside the frame where there is a worker: asked on one
+    /// think, its answer taken up at a later one (the task meanwhile goes
+    /// on running). Here and now where there is none.
+    inline int aiAskNode(AiCtx &c, std::uint8_t what, const fx *threat, fx viewOfs, int minDist, int maxDist)
+    {
+        auto here = [&]()
+        {
+            const bool found = what == kThinkCover ? aiFindCover(c, threat, viewOfs, minDist, maxDist)
+                                                   : aiBuildNearestRoute(c, threat, viewOfs, minDist, maxDist);
+            return found ? kAiAskFound : kAiAskNone;
+        };
+#ifdef HLDS_CHILD
+        return here();
+#else
+        ThinkQueue *q = c.a.think;
+        ThinkSlot *slot = q != nullptr && q->deferred && c.index < q->count ? &q->slots[c.index] : nullptr;
+        if (slot == nullptr)
+            return here();
+        if (slot->kind == what && slot->state == kThinkDone)
+        {
+            slot->state = kThinkFree;
+            c.ai.lastCoverSearch = slot->fromNode;
+            const int n = slot->goalNode;
+            if (n < 0 || n >= c.a.nodeCount)
+                return kAiAskNone;
+            const fx *p = c.a.nodes[n].pos;
+            if (what == kThinkCover)
+            {
+                // (A squad's: not where another of it is -- if so, the
+                // search goes on from there, here.)
+                if (!aiValidateCover(c, p))
+                    return here();
+                aiMoveToLocation(c, kActRun, 0, p);
+            }
+            else
+            {
+                aiMoveToLocation(c, c.m.movementActivity, 0, p);
+            }
+            return kAiAskFound;
+        }
+        if (slot->kind == what && slot->state == kThinkAsked)
+        {
+            // (Not taken up yet: the worker has the others' first. In the
+            // end it is done here, as it always was.)
+            if (++slot->waited < kAiAskPatience)
+                return kAiAskWaiting;
+            slot->state = kThinkFree;
+            return here();
+        }
+        // (Its own question of another kind, or this one being worked out.)
+        if (slot->state == kThinkAsked || slot->state == kThinkWorking)
+            return kAiAskWaiting;
+        aiCoverRange(minDist, maxDist);
+        slot->kind = what;
+        slot->state = kThinkAsked;
+        slot->waited = 0;
+        for (int k = 0; k < 3; ++k)
+            slot->at[k] = threat[k];
+        slot->out[0] = viewOfs;
+        slot->out[1] = c.kind.eye;
+        slot->small = static_cast<std::int16_t>(aiHull(c));
+        slot->least = static_cast<std::int16_t>(minDist);
+        slot->reach = static_cast<std::int16_t>(maxDist);
+        slot->basis = static_cast<std::int16_t>(c.ai.lastCoverSearch % (c.a.nodeCount > 0 ? c.a.nodeCount : 1));
+        return kAiAskWaiting;
+#endif
     }
 
     /// A route to a place: straight if that is a walk, else by the nodes
@@ -1883,6 +2004,106 @@ namespace hldata
     }
 
     /// CBaseMonster::StartTask
+    /// The tasks that look over the nodes for cover or a way to see the
+    /// enemy, from their start (`starting`) and on each think after while
+    /// the answer is worked out outside the frame (aiAskNode). The cheap
+    /// tries -- cover to either side, a route straight or by the ways --
+    /// only as they start. False for any other task.
+    inline bool aiNodeTask(AiCtx &c, const AiTask &task, bool starting)
+    {
+        auto settle = [&](int r)
+        {
+            if (r == kAiAskFound)
+                aiTaskComplete(c);
+            else if (r == kAiAskNone)
+                aiTaskFail(c);
+        };
+        auto settleCover = [&](int r)
+        {
+            if (r != kAiAskWaiting)
+                aiFindCoverTask(c, r == kAiAskFound, task.data);
+        };
+        switch (task.task)
+        {
+        case kTaskFindNearNodeCoverFromEnemy:
+        case kTaskFindFarNodeCoverFromEnemy:
+        case kTaskFindNodeCoverFromEnemy:
+        {
+            if (c.m.enemy == kAiNone)
+            {
+                aiTaskFail(c);
+                return true;
+            }
+            fx at[3], viewOfs;
+            aiEnemyEyes(c, at, viewOfs);
+            const int least = task.task == kTaskFindFarNodeCoverFromEnemy ? task.data : 0;
+            const int most = task.task == kTaskFindNearNodeCoverFromEnemy ? task.data : 784;
+            settle(aiAskNode(c, kThinkCover, at, viewOfs, least, most));
+            return true;
+        }
+        case kTaskFindCoverFromEnemy:
+        {
+            fx at[3], viewOfs;
+            aiEnemyEyes(c, at, viewOfs);
+            if (starting && aiFindLateralCover(c, at, viewOfs))
+            {
+                aiFindCoverTask(c, true, task.data);
+                return true;
+            }
+            settleCover(aiAskNode(c, kThinkCover, at, viewOfs, 0, 784));
+            return true;
+        }
+        case kTaskFindCoverFromOrigin:
+            settleCover(aiAskNode(c, kThinkCover, c.me.pos, c.kind.eye, 0, 784));
+            return true;
+        case kTaskFindCoverFromBestSound:
+        {
+            const AiSound *sound = aiBestSound(c);
+            if (sound == nullptr)
+                aiFindCoverTask(c, false, task.data);
+            else
+                settleCover(aiAskNode(c, kThinkCover, sound->origin, 0, sound->volume, 784));
+            return true;
+        }
+        case kTaskGetPathToEnemyLkp:
+        {
+            fx at[3];
+            for (int k = 0; k < 3; ++k)
+                at[k] = c.m.enemyLkp[k];
+            if (c.m.enemy == kAiPlayer)
+                at[2] -= c.player.ducked ? kCrouchedFeet : kStandingFeet;
+            if (starting && aiBuildRoute(c, kMoveGoalLocation, at))
+            {
+                aiTaskComplete(c);
+                return true;
+            }
+            settle(aiAskNode(c, kThinkNearRoute, c.m.enemyLkp, c.kind.eye, 0, fxToInt(aiDist(c.m.enemyLkp, c.me.pos))));
+            return true;
+        }
+        case kTaskGetPathToEnemy:
+        {
+            AiTarget t;
+            if (!aiTargetOf(c.w, c.player, c.m.enemy, t))
+            {
+                aiTaskFail(c);
+                return true;
+            }
+            fx feet[3] = {t.origin[0], t.origin[1], t.origin[2]};
+            if (t.isPlayer)
+                feet[2] -= t.height / 2;
+            if (starting && aiBuildRoute(c, kMoveGoalEnemy, feet))
+            {
+                aiTaskComplete(c);
+                return true;
+            }
+            settle(aiAskNode(c, kThinkNearRoute, t.origin, t.eye[2] - t.origin[2], 0, fxToInt(aiDist(t.origin, c.me.pos))));
+            return true;
+        }
+        default:
+            return false;
+        }
+    }
+
     inline void aiBaseStartTask(AiCtx &c, const AiTask &task)
     {
         switch (task.task)
@@ -1945,39 +2166,11 @@ namespace hldata
         case kTaskFindNearNodeCoverFromEnemy:
         case kTaskFindFarNodeCoverFromEnemy:
         case kTaskFindNodeCoverFromEnemy:
-        {
-            if (c.m.enemy == kAiNone)
-            {
-                aiTaskFail(c);
-                return;
-            }
-            fx at[3], viewOfs;
-            aiEnemyEyes(c, at, viewOfs);
-            const int least = task.task == kTaskFindFarNodeCoverFromEnemy ? task.data : 0;
-            const int most = task.task == kTaskFindNearNodeCoverFromEnemy ? task.data : 784;
-            if (aiFindCover(c, at, viewOfs, least, most))
-                aiTaskComplete(c);
-            else
-                aiTaskFail(c);
-            break;
-        }
         case kTaskFindCoverFromEnemy:
-        {
-            fx at[3], viewOfs;
-            aiEnemyEyes(c, at, viewOfs);
-            const bool found = aiFindLateralCover(c, at, viewOfs) || aiFindCover(c, at, viewOfs, 0, 784);
-            aiFindCoverTask(c, found, task.data);
-            break;
-        }
         case kTaskFindCoverFromOrigin:
-            aiFindCoverTask(c, aiFindCover(c, c.me.pos, c.kind.eye, 0, 784), task.data);
-            break;
         case kTaskFindCoverFromBestSound:
-        {
-            const AiSound *sound = aiBestSound(c);
-            aiFindCoverTask(c, sound != nullptr && aiFindCover(c, sound->origin, 0, sound->volume, 784), task.data);
+            aiNodeTask(c, task, true);
             break;
-        }
         case kTaskFaceHintNode:
             aiSetTurnActivity(c);
             break;
@@ -2098,37 +2291,9 @@ namespace hldata
             aiTaskComplete(c);
             break;
         case kTaskGetPathToEnemyLkp:
-        {
-            fx at[3];
-            for (int k = 0; k < 3; ++k)
-                at[k] = c.m.enemyLkp[k];
-            if (c.m.enemy == kAiPlayer)
-                at[2] -= c.player.ducked ? kCrouchedFeet : kStandingFeet;
-            if (aiBuildRoute(c, kMoveGoalLocation, at) ||
-                aiBuildNearestRoute(c, c.m.enemyLkp, c.kind.eye, 0, fxToInt(aiDist(c.m.enemyLkp, c.me.pos))))
-                aiTaskComplete(c);
-            else
-                aiTaskFail(c);
-            break;
-        }
         case kTaskGetPathToEnemy:
-        {
-            AiTarget t;
-            if (!aiTargetOf(c.w, c.player, c.m.enemy, t))
-            {
-                aiTaskFail(c);
-                return;
-            }
-            fx feet[3] = {t.origin[0], t.origin[1], t.origin[2]};
-            if (t.isPlayer)
-                feet[2] -= t.height / 2;
-            if (aiBuildRoute(c, kMoveGoalEnemy, feet) ||
-                aiBuildNearestRoute(c, t.origin, t.eye[2] - t.origin[2], 0, fxToInt(aiDist(t.origin, c.me.pos))))
-                aiTaskComplete(c);
-            else
-                aiTaskFail(c);
+            aiNodeTask(c, task, true);
             break;
-        }
         case kTaskGetPathToEnemyCorpse:
         {
             fx forward[3];
@@ -2257,6 +2422,10 @@ namespace hldata
     /// CBaseMonster::RunTask
     inline void aiBaseRunTask(AiCtx &c, const AiTask &task)
     {
+        // (A search over the nodes still being worked out -- not one that
+        // failed as it started.)
+        if (!aiHas(c, kCondTaskFailed) && aiNodeTask(c, task, false))
+            return;
         switch (task.task)
         {
         case kTaskTurnRight:

@@ -433,6 +433,15 @@ namespace hldata
     /// walkLookRound: a wall ahead on its way, seen coming, and a way round
     /// it (it goes on walking meanwhile).
     inline constexpr std::uint8_t kThinkLook = 3;
+    /// FindCover's search over the nodes: one the threat (at `at`, its eyes
+    /// out[0] above) has no line to, `least`..`reach` off, from the node
+    /// `basis` on (the world's m_iLastCoverSearch). Answer: the node
+    /// (goalNode, -1 none) and where the next search goes on from (fromNode).
+    inline constexpr std::uint8_t kThinkCover = 4;
+    /// BuildNearestRoute's: a node it can get to that sees the threat (at
+    /// `at`, eyes out[0] above) from its own eyes (out[1]), `least`..`reach`
+    /// from it. Answered as kThinkCover is.
+    inline constexpr std::uint8_t kThinkNearRoute = 5;
 
     inline constexpr std::uint8_t kThinkFree = 0;
     inline constexpr std::uint8_t kThinkAsked = 1;
@@ -444,6 +453,9 @@ namespace hldata
     {
         std::uint8_t kind = 0;
         std::uint8_t state = kThinkFree;
+        /// How many of the asker's thinks have gone by with it asked and not
+        /// yet taken up by the worker (it then works it out itself).
+        std::uint8_t waited = 0;
         // Asked: where to, or from what; how (crouched or not, how far a
         // straight walk is looked for, how near cover may be); and where the
         // actor was on its way (an answer to an older question is not taken).
