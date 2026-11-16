@@ -502,7 +502,9 @@ namespace hldata
             return walkClear(world, a, index, small, from, p, (fxLength(e) >> (kFxShift + 4)) + 2) &&
                    walkClear(world, a, index, small, p, far, (fxLength(g) >> (kFxShift + 4)) + 2);
         };
-        for (int round = 0; round < 8; ++round, out += size * 2)
+        // (A DSi tries four more, further out still: farPlans.)
+        const int rounds = a != nullptr && farPlans(*a) ? 12 : 8;
+        for (int round = 0; round < rounds; ++round, out += size * 2)
         {
             for (int side = 0; side < 2; ++side)
             {
@@ -583,8 +585,12 @@ namespace hldata
     inline int pathNearest(const ActorWorld &a, const MoveWorld &world, const fx *feet, int hull = -1,
                            int index = -1, bool air = false)
     {
-        int best[3] = {-1, -1, -1};
-        fx bestD[3] = {0, 0, 0};
+        // (Of the three nearest within 768, as the game's; a DSi the five
+        // nearest within 1024: farPlans.)
+        const int tries = farPlans(a) ? 5 : 3;
+        const fx within = fxFromInt(farPlans(a) ? 1024 : 768);
+        int best[5] = {-1, -1, -1, -1, -1};
+        fx bestD[5] = {0, 0, 0, 0, 0};
         for (int n = 0; n < a.nodeCount; ++n)
         {
             // (The nodes in the air are for what flies: `air`.)
@@ -595,13 +601,13 @@ namespace hldata
             // (Height counts double: the node on the floor above is not near.)
             const fx distance = (d[0] < 0 ? -d[0] : d[0]) + (d[1] < 0 ? -d[1] : d[1]) +
                                 2 * (d[2] < 0 ? -d[2] : d[2]);
-            if (distance > fxFromInt(768))
+            if (distance > within)
                 continue;
-            for (int k = 0; k < 3; ++k)
+            for (int k = 0; k < tries; ++k)
             {
                 if (best[k] >= 0 && bestD[k] <= distance)
                     continue;
-                for (int j = 2; j > k; --j)
+                for (int j = tries - 1; j > k; --j)
                 {
                     best[j] = best[j - 1];
                     bestD[j] = bestD[j - 1];
@@ -616,7 +622,7 @@ namespace hldata
         // reached); failing that, one that can be seen.
         const fx eye[3] = {feet[0], feet[1], feet[2] + fxFromInt(20)};
         int seen = -1;
-        for (int k = 0; k < 3; ++k)
+        for (int k = 0; k < tries; ++k)
         {
             if (best[k] < 0)
                 break;
@@ -897,6 +903,15 @@ namespace hldata
                         fx speed, int ms, const PlayerState *player, fx half, fx height,
                         bool still = false, std::uint16_t *idealYaw = nullptr);
 #else
+    /// How far walkTick looks for a straight walk before it goes by the
+    /// nodes: 480 (1024 for something going to its mark, which asks less
+    /// often); half as far again on a DSi (farPlans).
+    inline int walkReach(const ActorWorld &a, bool still)
+    {
+        const int reach = still ? 1024 : 480;
+        return farPlans(a) ? reach * 3 / 2 : reach;
+    }
+
     HL_HOT int walkTick(ActorWorld &a, const MoveWorld &world, int index, int small, const fx *dest,
                         fx speed, int ms, const PlayerState *player, fx half, fx height,
                         bool still = false, std::uint16_t *idealYaw = nullptr)
@@ -911,7 +926,7 @@ namespace hldata
             bool planned = slot == nullptr;
             if (slot == nullptr)
             {
-                detail::walkPlan(a, world, index, small, dest, still ? 1024 : 480);
+                detail::walkPlan(a, world, index, small, dest, walkReach(a, still));
             }
             else if (slot->kind == kThinkPlan && slot->state == kThinkDone)
             {
@@ -937,7 +952,7 @@ namespace hldata
                 for (int i = 0; i < 3; ++i)
                     slot->at[i] = dest[i];
                 slot->small = static_cast<std::int16_t>(small);
-                slot->reach = static_cast<std::int16_t>(still ? 1024 : 480);
+                slot->reach = static_cast<std::int16_t>(walkReach(a, still));
                 slot->basis = actor.fromNode;
             }
             if (planned)

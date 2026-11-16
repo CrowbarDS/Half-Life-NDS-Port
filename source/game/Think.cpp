@@ -155,6 +155,9 @@ namespace hlrt
         queue.count = w.actors->count;
         gameApi.thinkClear(queue);
         queue.deferred = started_;
+        // (A DSi's monsters look further for their ways: the worker has the
+        // time for it.)
+        queue.farPlans = started_ && isDSiMode();
         queue.abort = false;
         w.actors->think = &queue;
         world = &w;
@@ -176,6 +179,7 @@ namespace hlrt
         queue.slots = nullptr;
         queue.count = 0;
         queue.deferred = false;
+        queue.farPlans = false;
         queue.abort = false;
     }
 } // namespace hlrt

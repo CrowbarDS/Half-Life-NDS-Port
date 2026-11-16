@@ -484,6 +484,11 @@ namespace hldata
         /// finished at once, without stopping for the frame, and thrown away.
         volatile bool abort = false;
         int next = 0; ///< where the worker looks for the next question
+        /// A DSi's monsters look further for their ways (the engine sets it
+        /// with the worker; not saved): ways round further out, a straight
+        /// walk tried further, more nodes tried as the nearest, a wall seen
+        /// sooner. The game's own limits when not (a DS; the host's tests).
+        bool farPlans = false;
     };
 
     /// Where long work stops a moment for the frame (the console's worker
@@ -576,6 +581,16 @@ namespace hldata
         /// or -1 where the map has not got them: then they do not come apart.
         std::int16_t humanGibs = -1, alienGibs = -1;
     };
+
+    /// Whether this map's monsters look further for their ways: a DSi's
+    /// (ThinkQueue::farPlans).
+#ifdef HLDS_CHILD
+    // (Never in the Download Play child, which has no worker: the game's
+    // own limits, and none of the code for further ones.)
+    inline constexpr bool farPlans(const ActorWorld &) { return false; }
+#else
+    inline bool farPlans(const ActorWorld &a) { return a.think != nullptr && a.think->farPlans; }
+#endif
 
     inline const ModelView *actorModel(const ActorWorld &a, const ActorState &actor)
     {
