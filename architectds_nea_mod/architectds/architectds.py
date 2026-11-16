@@ -1354,7 +1354,8 @@ class Arm9DynamicLibrary(GenericArmBinary):
                  cflags='-Wall -O2',
                  cxxflags='-Wall -O2',
                  ldflags='',
-                 post_tool=None):
+                 post_tool=None,
+                 post_outputs=[]):
         '''
         Constructor of ARM9 dynamic libraries.
 
@@ -1379,10 +1380,13 @@ class Arm9DynamicLibrary(GenericArmBinary):
         - 'post_tool': Optional (command, [files it depends on]): run as
           `command <dsltool's output> <the DSL>` to write the final DSL from
           what dsltool made (kept as <name>.full.dsl).
+        - 'post_outputs': Other files the post_tool writes beside the DSL
+          (paths), for others to depend on.
         '''
         super().__init__(self.ASSETS_BARRIER_ARM9_DYNAMIC_LIBRARY + str(name))
 
         self.post_tool = post_tool
+        self.post_outputs = list(post_outputs)
 
         if main_binary is not None:
             assert type(main_binary).__name__ == 'Arm9Binary'
@@ -1475,7 +1479,8 @@ class Arm9DynamicLibrary(GenericArmBinary):
             command, deps = self.post_tool
             full_path = os.path.splitext(self.dsl_path)[0] + '.full.dsl'
             self.print(
-                f'build {self.dsl_path}: dsl_post {full_path} | {" ".join(deps)} || {self.out_dir}\n'
+                f'build {self.dsl_path}{" | " + " ".join(self.post_outputs) if self.post_outputs else ""}: '
+                f'dsl_post {full_path} | {" ".join(deps)} || {self.out_dir}\n'
                 f'  post = {command}\n'
                 '\n'
             )
