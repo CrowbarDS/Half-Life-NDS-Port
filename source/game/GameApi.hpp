@@ -5,27 +5,23 @@
 //
 // The game -- the monsters and their thinking, the weapons, the logic
 // entities, a map's saved state, the changes of map, the multiplayer match's
-// rules -- is a dynamic library, dsl/hl.dsl in the ROM's NitroFS (built from
-// dll/hl/). The engine loads it at startup (GameDll.arm.cpp), and from then on
-// the two speak only through two tables:
+// rules -- is built from dll/ and the shared headers. Its core is linked into
+// the program (HL_STATIC_GAME); the families a map can do without (the
+// bosses, the soldiers, the match's rules) are libraries of their own,
+// loaded with the map that needs them (FamilyApi.hpp, Families.cpp). The
+// engine and the game speak through two tables all the same:
 //
 //   GameFuncs    what the engine asks of the game (hl.dll's DLL_FUNCTIONS):
 //                set a map up, advance it, save it, change it.
 //   EngineFuncs  what the game may ask of the engine (enginefuncs_t): its
 //                objects, the few of their functions the game calls, and the
-//                hot code that lives in ITCM, where a library cannot go.
+//                hot code that lives in ITCM.
 //
 // The engine owns the memory, as it owns the edicts in Half-Life: `game` and
 // all it points to are the engine's, and the renderer and the sound read
-// them as they always have. The library has only the code that changes them.
-//
-// The library binds by address to nothing of the engine but libc's, libnds's
-// and the compiler's functions, and this one table, `hlEngine` (it is read
-// while the library's own globals are set up, before any call could hand it
-// over). Everything else goes through it: tools/arm9-report.sh --check says
-// if anything does not. The library is built against this very ELF and
-// carried in the same ROM, so the two cannot be of different builds; the
-// handshake checks it all the same.
+// them as they always have. The game has only the code that changes them.
+// The handshake (GetGameAPI) checks that both sides were built from the
+// same headers.
 
 #include <cstdint>
 #include <string>
@@ -177,16 +173,15 @@ namespace hlrt
         void (*netLobby)(hldata::NetMatch &, hldata::LogicWorld &none, hldata::PlayerState &nobody);
     };
 
-    /// The game, once loadGame() has it (GameDll.arm.cpp).
+    /// The game, once loadGame() has it (GameDll.arm.cpp). Its net* entries
+    /// are the net family's, there while it is loaded (Families.cpp).
     extern GameFuncs gameApi;
 
-    /// Load dsl/hl.dsl and take its table. False, with why, if it cannot be
-    /// had or is not of this build.
+    /// Take the game's table. False, with why, if it is not of this build.
     bool loadGame(const char **why);
 } // namespace hlrt
 
-/// The engine's table, the one thing of the engine's the library takes by
-/// its address (see above).
+/// The engine's table.
 extern "C" const hlrt::EngineFuncs hlEngine;
 
 /// The library's one export: takes the engine's table and fills the game's.

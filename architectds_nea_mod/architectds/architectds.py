@@ -382,6 +382,12 @@ class GenericBinary():
             'rule ld_arm\n'
             '  command = ${CC_ARM} -o $out $in ${ldflags}\n'
             '\n'
+            'rule ld_arm_post\n'
+            '  command = ${CC_ARM} -o $out $in ${ldflags} && ${post} $out\n'
+            '\n'
+            'rule ld_arm_first\n'
+            '  command = ${CC_ARM} -o $out ${ldflags_first} $in ${ldflags}\n'
+            '\n'
             'rule as_teak\n'
             '  command = ${CC_TEAK} ${asflags} -MMD -MP -c -o $out $in\n'
             '  deps = gcc\n'
@@ -713,11 +719,23 @@ class GenericArmBinary(GenericCpuBinary):
 
         obj_file_paths_str = ' '.join(self.obj_file_paths)
 
-        self.print(
-            f'build {self.elf_path} | {self.map_path}: ld_arm {obj_file_paths_str} || {self.out_dir}\n'
-            f'  ldflags = {ldflags}\n'
-            '\n'
-        )
+        # post_link: (command, [files it depends on]), run as `command <elf>`
+        # once the ELF is linked, in the same step (it may rewrite the ELF).
+        post_link = getattr(self, 'post_link', None)
+        if post_link is None:
+            self.print(
+                f'build {self.elf_path} | {self.map_path}: ld_arm {obj_file_paths_str} || {self.out_dir}\n'
+                f'  ldflags = {ldflags}\n'
+                '\n'
+            )
+        else:
+            command, deps = post_link
+            self.print(
+                f'build {self.elf_path} | {self.map_path}: ld_arm_post {obj_file_paths_str} | {" ".join(deps)} || {self.out_dir}\n'
+                f'  ldflags = {ldflags}\n'
+                f'  post = {command}\n'
+                '\n'
+            )
 
 class Arm9Binary(GenericArmBinary):
     '''
@@ -732,7 +750,8 @@ class Arm9Binary(GenericArmBinary):
                  asflags='',
                  cflags='-Wall -O2',
                  cxxflags='-Wall -O2',
-                 ldflags=''):
+                 ldflags='',
+                 post_link=None):
         '''
         Constructor of ARM9 binaries.
 
@@ -749,8 +768,12 @@ class Arm9Binary(GenericArmBinary):
         - 'cflags': Optional flags to be passed to the C compiler.
         - 'cxxflags': Optional flags to be passed to the C++ compiler.
         - 'ldflags': Optional flags to be passed to the linker.
+        - 'post_link': Optional (command, [files it depends on]): run as
+          `command <the ELF>` right after the link, in the same step.
         '''
         super().__init__(self.ASSETS_BARRIER_ARM9)
+
+        self.post_link = post_link
 
         self.sourcefiles = sourcefiles
         self.sourcedirs = sourcedirs
@@ -1355,7 +1378,9 @@ class Arm9DynamicLibrary(GenericArmBinary):
                  cxxflags='-Wall -O2',
                  ldflags='',
                  post_tool=None,
-                 post_outputs=[]):
+                 post_outputs=[],
+                 ldflags_first='',
+                 link_deps=[]):
         '''
         Constructor of ARM9 dynamic libraries.
 
@@ -1382,11 +1407,17 @@ class Arm9DynamicLibrary(GenericArmBinary):
           what dsltool made (kept as <name>.full.dsl).
         - 'post_outputs': Other files the post_tool writes beside the DSL
           (paths), for others to depend on.
+        - 'ldflags_first': Linker flags put before the objects (such as
+          -Wl,--just-symbols=<program ELF>, which only binds the objects'
+          symbols to the program's when it comes first).
+        - 'link_deps': Files the link reads besides the objects.
         '''
         super().__init__(self.ASSETS_BARRIER_ARM9_DYNAMIC_LIBRARY + str(name))
 
         self.post_tool = post_tool
         self.post_outputs = list(post_outputs)
+        self.ldflags_first = ldflags_first
+        self.link_deps = list(link_deps)
 
         if main_binary is not None:
             assert type(main_binary).__name__ == 'Arm9Binary'
@@ -1468,8 +1499,10 @@ class Arm9DynamicLibrary(GenericArmBinary):
 
         obj_file_paths_str = ' '.join(self.obj_file_paths)
 
+        deps = (' | ' + ' '.join(self.link_deps)) if self.link_deps else ''
         self.print(
-            f'build {self.elf_path} | {self.map_path}: ld_arm {obj_file_paths_str} || {self.out_dir}\n'
+            f'build {self.elf_path} | {self.map_path}: ld_arm_first {obj_file_paths_str}{deps} || {self.out_dir}\n'
+            f'  ldflags_first = {self.ldflags_first}\n'
             f'  ldflags = {ldflags}\n'
             '\n'
         )

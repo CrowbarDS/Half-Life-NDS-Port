@@ -49,10 +49,16 @@ PATH="${WONDERFUL_TOOLCHAIN}/toolchain/gcc-arm-none-eabi/bin:${PATH}" python too
 python build.py "$@"
 # The ELFs of every build, by its name, for looking up a crash screen's
 # addresses afterwards (arm-none-eabi-addr2line -e build/elf/<name>/arm9.elf);
-# the last twelve kept.
-if [ -f build/arm9/arm9.elf ] && [ -f build/hl/hl.elf ]; then
+# the last twelve kept. With the families' (build/<family>/<family>.elf): an
+# address in one is its ELF's at the offset from where it was loaded.
+if [ -f build/arm9/arm9.elf ]; then
     mkdir -p "build/elf/${BUILD_ID}"
-    cp build/arm9/arm9.elf build/hl/hl.elf "build/elf/${BUILD_ID}/"
+    cp build/arm9/arm9.elf "build/elf/${BUILD_ID}/"
+    for family in boss military net; do
+        if [ -f "build/${family}/${family}.elf" ]; then
+            cp "build/${family}/${family}.elf" "build/elf/${BUILD_ID}/"
+        fi
+    done
     ls -1t build/elf | tail -n +13 | while read -r old; do
         rm -rf "build/elf/${old:?}"
     done

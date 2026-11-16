@@ -399,6 +399,15 @@ namespace
         DsMapCost lighter = c3a1;
         lighter.models = c3a1.models / 2;
         check(dsSoundRoom(lighter) > dsSoundRoom(c3a1), "lighter models leave its sounds room");
+
+        // A map's families come out of the same heap.
+        DsMapCost soldiers = c1a0;
+        soldiers.families = familyBit(kFamilyMilitary);
+        check(dsMapNeedBeforeSounds(soldiers) == dsMapNeedBeforeSounds(c1a0) + kDsFamilyBytes[kFamilyMilitary],
+              "the soldiers' family is reckoned with the map that has them");
+        check(dsFamilyBytes(familyBit(kFamilyBoss) | familyBit(kFamilyNet)) ==
+                  kDsFamilyBytes[kFamilyBoss] + kDsFamilyBytes[kFamilyNet],
+              "each family once");
     }
     /// The cut a DS reads (HlDsCut.hpp) is trusted only whole and in order.
     void testDsCut()

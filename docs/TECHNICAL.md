@@ -1195,70 +1195,84 @@ Milestone 11, "levels of detail".
 The program is cut where Half-Life cuts it, between the engine and
 `hl.dll`. The game -- the monsters and their thinking, the weapons, the logic
 entities, a map's saved state, the changes of map, the multiplayer match's
-rules -- is built from `dll/hl/` (and the shared headers it instantiates).
+rules -- is built from `dll/` (and the shared headers it instantiates).
 Its core is linked into the program (`HL_STATIC_GAME`, since 2026-11-16):
 as a BlocksDS dynamic library of its own, loaded at startup, it cost a DS
 63.5 KB more heap -- the loader's veneer pool (8 bytes a relocation, never
-used), code both sides carried, the forwarders between them. What a map can
-do without -- the bosses, the soldiers, the match's rules -- registers
-itself with the core (HlAi.hpp's family tables, HlMonsters.hpp's
-`FamilyHooks`) and is to be a library of its own, loaded with the map that
-needs it. The two halves still speak only through two tables
-(`source/game/GameApi.hpp`; `GetGameAPI`, asked for in
-`source/game/GameDll.arm.cpp`):
+used), code both sides carried, the forwarders between them. The two halves
+still speak through two tables (`source/game/GameApi.hpp`; `GetGameAPI`,
+asked for in `source/game/GameDll.arm.cpp`):
 
 - `GameFuncs`, what the engine asks of the game (`DLL_FUNCTIONS`): `Game`'s own
   functions -- set a map up, advance it, save it, change it -- each a one-line
   hand-on in `source/game/Game.cpp`; the think worker's question; fall damage;
   `killall`; the match's start, tick, events and USE.
 - `EngineFuncs`, what the game may ask of the engine (`enginefuncs_t`): its
-  objects (`game`, `camera`, `player`, `sound`, ... -- the library's
-  `HL_ENGINE_OBJECT`s are references to them), the twenty-odd of their
-  functions the game calls, and the hot code in ITCM -- `traceHull`,
-  `traceAll`, `poseModel`, `actorAdvance`, `walkTick` -- whose declarations
-  are bodiless in the library's build (`HL_DSL`).
+  objects, the twenty-odd of their functions the game calls, and the hot
+  code in ITCM.
 
-The engine owns the memory, as it owns the edicts: the renderer and the sound
-read `game` as they always have. The library binds by address to nothing of
-the engine but libc's, libnds's and the compiler's functions and the table
-itself, `hlEngine`; a handshake compares the API's version and the sizes of
-two dozen structures both sides lay out, and refuses a library of another
-build. Saves are as they were: a save written before the split loads.
+### The families
 
-What it costs and what it took:
+What a map can do without is a library of its own in the ROM's NitroFS,
+loaded with the map that needs it (`source/game/Families.cpp`), so that a DS
+has the heap for the rest:
 
-- Heap on the DS beyond the code itself: the loader keeps 8 bytes per
-  relocation for branch veneers (none is ever used: no jump goes to Thumb
-  code) and the whole symbol table, for as long as the library is loaded.
-  dsltool's file (`build/hl/hl.full.dsl`) names every symbol a relocation
-  points at and lists every branch within the library, which the loader
-  leaves alone; `tools/dsl_strip.py` keeps only what the loader acts on --
-  the words it moves, the 23 symbols of the program and the 6 public ones --
-  and the build stops unless the result loads to the same bytes, with the
-  same sum for the guard, as dsltool's (2026-11-08: 6,701 relocations to
-  3,303, 1,109 symbols to 30, 88 KB more heap, measured on c0a0 in DS mode).
-  Frames take what they took (c1a1 with a zombie: DS 52-56% of the frame,
-  before 55-60%; DSi 36%, as before).
-- The library is ARM throughout. An ARM-to-Thumb tail call inside it goes
-  through a stub the linker writes with an absolute address and no
-  relocation: the loader cannot move it, and the call lands where the library
-  was linked (a hang on the DS, an abort on the DSi).
-- The loader's branches reach 8 MB, not 32 (libnds checks a byte offset
-  against a word one's limit), and ITCM is linked 17 MB below the library.
-  The hardware divide the library calls is therefore called at ITCM's mirror
-  just under main RAM (a symbol resolver), with the protection unit's ITCM
-  region opened over the mirrors. The library is loaded before anything else
-  takes the heap, so that it sits next to the program.
-- Its build is given `__NDS__`, `__BLOCKSDS__` and `ARM9` as the program's
-  is: libnds's and the engine's headers lay their structures out by them.
+| Family | What | Heap (2026-11-16) | Maps |
+|---|---|---|---|
+| `boss` | gargantua, baby crab, ichthyosaur, tentacle, big momma, nihilanth | 70 KB | 13 of 125 |
+| `military` | soldiers, assassins, osprey, apache | 60 KB | 37 of 125 |
+| `net` | the match's rules | 36 KB | multiplayer |
 
-`tools/arm9-report.sh --check` holds both to this: no Thumb code and no
-linker stub in the library, nothing of the engine taken by name, and none of
-the game's code left in the program. It also holds the library to what the
-loader (libnds `dlfcn.c`) silently gets wrong: no section aligned on more
-than eight bytes (the block is malloc's), one relocation section (only the
-first is applied), no word pointing *into* something of the program (the
-addend is dropped); and `hlDslData` where the library's data begins.
+Each registers itself with the core when it is loaded (HlAi.hpp's family
+tables of kinds and schedules, HlMonsters.hpp's `FamilyHooks`; the net
+family fills `GameFuncs`' `net*` entries), and lets go when it is not. The
+core never names a family's code: `tools/arm9-report.sh --check` fails the
+build if the program has any. Saves are as they were: the save's list of
+schedules keeps its order with the families' entries by (family, index),
+and a save written before the split loads.
+
+**Which are loaded.** A map's header says which families its actors need,
+and those of anyone who may follow the player in from a neighbouring map
+(`LevelHeader::families`, level format 72; the converter fills it in). A map
+cooked before that loads every family. `loadLevel` adds the families of whoever
+did come along and, in a match, the rules. It loads them once the old map is
+gone and before anything of the new one, so that they sit low on the heap,
+and lets go of the families the new map does not need. The match's rules are
+also loaded the first time the lobby needs them.
+
+**How a family reaches the core.** A family is linked against the program's
+own ELF, which is put first on the link line (`--just-symbols`, build.py):
+what it calls of the core, of libc and the rest binds to the program's
+copy, at the program's address, and none of it is copied in (an inline
+function the program has no body of is; so are the small clones the compiler
+makes of one, a few KB in all). It is built `-mlong-calls`, so a call into
+the program is through an address in a word, which reaches anywhere. dsltool
+does not know about any of this: it lists the program's symbols as the
+library's own. `tools/dsl_family.py` therefore:
+- marks the program's symbols as the program's;
+- leaves a word that holds a program address as the link wrote it (libnds's
+  loader would put the bare symbol there and lose `+ 8` of `&table[2]`);
+- keeps only the two exports public;
+- strips the rest as `tools/dsl_strip.py` does, held to the same loading
+  test.
+
+A family has no constructors: the loader runs them at load, before the
+family could be checked.
+
+**The program's ID.** Those addresses are right only for the program the
+family was linked against, and nothing in the family would say so.
+- The program carries an ID: `hlProgramId`, the first 8 bytes of a SHA-1 of
+  its ELF, taken with those bytes zeroed. `tools/program_id.py` stamps it as
+  part of the link.
+- `dsl_family.py` stamps the same ID into each family (`hlFamilyProgramId`).
+- The loader refuses a family whose ID is not the program's, before anything
+  of it has run, with an error that names the file.
+- A debug build (`HLDS_DEBUG=1`) also has the loader's symbol resolver check
+  that every address a family is given lies in the program's main RAM, ITCM
+  or DTCM.
+
+The Download Play child still links every family in (no
+`HL_FAMILIES_APART`).
 
 ### Guards, and the crash screen
 
@@ -1269,7 +1283,7 @@ neighbour whose links had been zeroed) -- the culprit long gone.
 
 - **The heap.** Every malloc, calloc, realloc, memalign, aligned_alloc,
   posix_memalign and free -- the program's by `--wrap` (build.py), the
-  library's by the loader's resolver (GameDll) -- goes through the guard.
+  families' by their link's `--wrap` (build.py) -- goes through the guard.
   - **In every build**, the allocator's own chain is walked at each map load
     (old map gone, new one in) and save: libnds's dlmalloc keeps a size word
     in front of every chunk, chunks follow one another from the heap's start
@@ -1297,15 +1311,14 @@ neighbour whose links had been zeroed) -- the culprit long gone.
     it each time; c2a5e did not start on a DS before.
 - **The stack.** Sixteen words at the bottom of the stack's room in DTCM hold
   a pattern, looked at every frame.
-- **The library's code** (and constants) is summed once loaded and at each
-  check: a write into it stops the game.
 - **The crash screen** (in place of libnds's): the build's name
   (`tools/buildid.py`: commit, and `+` the time if the tree was not clean),
   what happened, pc and lr placed (`main`, `dsl+offset`, `itcm+offset`), the
   registers, the code addresses found on the stack, and the three checks.
   `make.sh` keeps each build's ELFs in `build/elf/<name>/` (the last twelve):
   `arm-none-eabi-addr2line -f -C -e build/elf/<name>/arm9.elf <address>`; an
-  address in the library is `hl.elf` at its offset.
+  address in a family is in its ELF (kept there too) at its offset from where
+  the family was loaded.
 
 ## Achievements
 

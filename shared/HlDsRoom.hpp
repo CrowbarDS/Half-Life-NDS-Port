@@ -12,21 +12,40 @@
 // sight, and the sounds read on first play, have nowhere to go.
 //
 // The converter makes a map fit this by cooking a DS lighter models and
-// fewer, lower sounds; a DSi has the full ones beside them.
+// fewer, lower sounds; a DSi has the full ones beside them. The game's
+// families the map needs come out of the same heap, loaded first
+// (source/game/Families.hpp).
 
 #include <cstddef>
 #include <cstdint>
 
+#include "HlLevel.hpp"
+
 namespace hldata
 {
-    /// The heap free as a DS begins to load a map, less a margin for arriving
-    /// by a level change rather than at a start. Measured 2,175,824 bytes on
-    /// 2026-11-16 (t0a0b and c1a0 alike), with the game's core linked into
-    /// the program: 63.5 KB more than as a library apart (2,110,768 earlier
-    /// that day), whose loader kept a veneer pool and a symbol table, and
-    /// whose code both sides partly carried. Measure again
+    /// The heap free as a DS begins to load a map, before its families, less
+    /// a margin for arriving by a level change rather than at a start.
+    /// Measured 2,301,440 bytes on 2026-11-16 (c1a0, c3a1, c1a3a, c2a3a
+    /// alike), with the game's core linked into the program and its families
+    /// apart: 122.9 KB more than with them linked in (2,175,824), 63.5 KB more
+    /// again than with the whole game a library (2,110,768). Measure again
     /// (tools/emu/room.sh ds) whenever the program grows.
-    inline constexpr std::size_t kDsMapHeap = 2175824 - 32 * 1024;
+    inline constexpr std::size_t kDsMapHeap = 2301440 - 32 * 1024;
+    /// What each family takes of the heap loaded (GameFamily's order):
+    /// measured in melonDS's DS mode on 2026-11-16, 70,764 and 60,724 bytes
+    /// for the bosses and the soldiers (perf.txt's room line), the rules
+    /// reckoned from their file (35,544) and the loader's own the same;
+    /// rounded up. tools/dsl_family.py prints each as it is built: raise
+    /// these when a family grows past them.
+    inline constexpr std::size_t kDsFamilyBytes[kFamilyCount] = {0, 72 * 1024, 62 * 1024, 37 * 1024};
+    /// What the families in `mask` (familyBit) take of the heap.
+    inline std::size_t dsFamilyBytes(std::uint8_t mask)
+    {
+        std::size_t bytes = 0;
+        for (int f = 0; f < kFamilyCount; ++f)
+            bytes += (mask & familyBit(static_cast<GameFamily>(f))) ? kDsFamilyBytes[f] : 0;
+        return bytes;
+    }
     /// What a map's load takes besides the files counted here: its sound
     /// table, sprite and model lists, the texture stream's tables, the
     /// archive's members open. Measured 71-75 KB (c1a0, c1a1, c1a4f).
@@ -45,6 +64,7 @@ namespace hldata
         std::size_t sounds = 0;     ///< the sounds kept with the map, as a DS has them
         std::uint32_t actors = 0;
         std::uint32_t logicRecords = 0;
+        std::uint8_t families = 0;  ///< the game's families it needs (familyBit)
     };
 
     /// All but the sounds: what the map needs before any is loaded, play's
@@ -52,7 +72,7 @@ namespace hldata
     inline std::size_t dsMapNeedBeforeSounds(const DsMapCost &cost)
     {
         return cost.level + cost.models + cost.heldSkins + kDsMapTables + kDsPlayRoom +
-               cost.actors * kDsActorBytes + cost.logicRecords * kDsLogicBytes;
+               cost.actors * kDsActorBytes + cost.logicRecords * kDsLogicBytes + dsFamilyBytes(cost.families);
     }
 
     /// What is left for its sounds (0 if nothing is).

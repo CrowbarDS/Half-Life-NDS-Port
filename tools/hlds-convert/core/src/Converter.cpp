@@ -1097,6 +1097,15 @@ namespace hlds
                 dsLevelWhole = dsTrial.size();
             dsCost.actors = static_cast<std::uint32_t>(level.actors.size());
             dsCost.logicRecords = static_cast<std::uint32_t>(level.logic.size());
+            // (The game's families it needs: its actors', its visitors', and
+            // the match's rules on a map a match is played on.)
+            dsCost.families = static_cast<std::uint8_t>(
+                (hldata::familiesOfActors(level.actors) | level.visitorFamilies) & ~hldata::kLevelFamiliesKnown);
+            for (const Entity &entity : entities)
+            {
+                if (entity.className() == "info_player_deathmatch")
+                    dsCost.families |= hldata::familyBit(hldata::kFamilyNet);
+            }
         }
         hldata::DsCutHeader dsCut{};
         DsGxPages dsPages;

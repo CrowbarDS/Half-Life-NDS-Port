@@ -80,7 +80,8 @@ arm9 = Arm9Binary(
     # the geometry engine, on the overlay and in perf.txt. Off, every one of
     # its entry points is an empty inline (DebugLog.hpp), so the shipped
     # build carries none of it.
-    defines=['HL_HW_MATH', 'HL_STATIC_GAME'] + profile + guard,
+    # HL_FAMILIES_APART: the families (below) are not linked in.
+    defines=['HL_HW_MATH', 'HL_STATIC_GAME', 'HL_FAMILIES_APART'] + profile + guard,
     # The wireless is the dswifi fork that also does DS Download Play
     # (github.com/Warioware64/dswifi, installed as "dswifi_dl" beside the
     # stock one). Its headers have the stock names (dswifi9.h), so
@@ -116,9 +117,56 @@ arm9 = Arm9Binary(
         # DTCM's own data and its heap (dtcm_malloc), at the top of DTCM;
         # the stack has the rest under it.
         ['-Wl,--defsym=__dtcm_data_size=' + str(DTCM_DATA_SIZE)]),
+    # The program's ID (a hash of this ELF), stamped as it is linked: the
+    # families are built for this program alone, and say so
+    # (tools/program_id.py; source/game/FamilyApi.hpp).
+    post_link=('python3 tools/program_id.py stamp', ['tools/program_id.py']),
 )
 
 arm9.generate_elf()
+
+# THE FAMILIES: the bosses, the soldiers, the match's rules, each a library
+# of its own (dll/family/, once for each), loaded with the map that needs it
+# (source/game/Families.cpp). Each is linked against the program's ELF,
+# taken first: what it calls of the core, of libc and the rest is the
+# program's, at the program's addresses, and none of it is copied in.
+# -mlong-calls: a call into the program is to an address in a word, which
+# reaches anywhere (a branch from the heap of a 16 MB DSi might not).
+# Then tools/dsl_family.py: the program's symbols marked as such, what the
+# loader would keep for nothing dropped, the program's ID stamped in.
+FAMILY_WRAPS = ['malloc', 'free', 'calloc', 'realloc', 'memalign', 'aligned_alloc', 'posix_memalign'] + HW_MATH_WRAPS
+families = []
+for family in ('boss', 'military', 'net'):
+    lib = Arm9DynamicLibrary(
+        name=family,
+        main_binary=arm9,
+        sourcedirs=['dll/family'],
+        includedirs=['source', 'shared', 'thirdparty'],
+        # (What Arm9Binary defines by itself, as well: libnds's and the
+        # engine's headers lay their structures out by them. And the
+        # program's own, all of them: the core's code it shares is the same
+        # only if it is compiled the same.)
+        defines=['__NDS__', '__BLOCKSDS__', 'ARM9', 'HL_HW_MATH', 'HL_STATIC_GAME', 'HL_FAMILIES_APART',
+                 'HL_FAMILY_' + family.upper()] + profile + guard,
+        # (Only their headers: a family links nothing of its own.)
+        libdirs=[
+            '${BLOCKSDS}/libs/libnds',
+            '${BLOCKSDSEXT}/dswifi_dl',
+            '${BLOCKSDSEXT}/nitro-engine-advanced',
+        ],
+        cxxflags='-Wall -Werror=stack-usage=4096 -O2 -std=gnu++26 -mlong-calls -D_LITTLE_ENDIAN '
+                 '-include yas/detail/config/endian.hpp',
+        ldflags_first='-Wl,--just-symbols=' + arm9.elf_path,
+        link_deps=[arm9.elf_path],
+        # (By the wrapped names it finds the program's guarded heap and
+        # divide. Only what its two exports reach is kept.)
+        ldflags=' '.join(['-Wl,--wrap=' + f for f in FAMILY_WRAPS] +
+                         ['-Wl,--gc-sections', '-Wl,-u,GetFamilyAPI', '-Wl,-u,hlFamilyProgramId']),
+        post_tool=('python3 tools/dsl_family.py ' + arm9.elf_path,
+                   ['tools/dsl_family.py', 'tools/dsl_strip.py', 'tools/program_id.py', arm9.elf_path]),
+    )
+    lib.generate_dsl()
+    families.append(lib)
 
 # The other processor's program: the game's own (arm7/source) -- what
 # BlocksDS's default does, with the game's own sound core. It links
@@ -136,6 +184,8 @@ arm7.generate_elf()
 
 
 nitrofs = NitroFS()
+for lib in families:
+    nitrofs.add_arm9_dsl(lib)
 # The program the host sends consoles without the game by Download Play
 # (child/build.py: built after this one, whose ARM7 program it uses -- so it
 # is here from make.sh's second pass of this file on).
@@ -145,7 +195,7 @@ if os.path.isfile(CHILD_ROM):
 nitrofs.generate_image()
 
 nds = NdsRom(
-    binaries=[arm9, arm7, nitrofs],
+    binaries=[arm9, arm7] + families + [nitrofs],
     nds_path='half-life-nds-port.nds',
     game_icon="Logo.bmp",
     game_title='HALF-LIFE DS',

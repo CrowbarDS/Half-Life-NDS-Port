@@ -31,6 +31,7 @@
 #include "data/TextureStream.hpp"
 #include "platform/Rumble.hpp"
 #include "platform/Slot2.hpp"
+#include "game/Families.hpp"
 #include "game/Game.hpp"
 #include "game/GameApi.hpp"
 #include "game/Input.hpp"
@@ -349,7 +350,7 @@ namespace
     /// took judged part by part.
     struct LoadLive
     {
-        std::uint32_t level = 0, textures = 0, models = 0, game = 0;
+        std::uint32_t families = 0, level = 0, textures = 0, models = 0, game = 0;
     };
     LoadLive loadLive;
 
@@ -375,8 +376,8 @@ namespace
 #endif
         std::fprintf(log, "room: %s top %lu, largest hole %lu, %lu in holes; copies %d (%d KB); sounds %s%d of %d, "
                           "%d not tried for room, %d failed, %d in the Pak (%lu KB of it used, level %lu KB)%s; reserve %s; "
-                          "before the map live %lu, free %lu, now live %lu; live after level %lu, textures %lu, "
-                          "models %lu (files %lu, skins %lu), game %lu\n",
+                          "before the map live %lu, free %lu, now live %lu; families %s%s%s (live after %lu); "
+                          "live after level %lu, textures %lu, models %lu (files %lu, skins %lu), game %lu\n",
                      map, static_cast<unsigned long>(room.top), static_cast<unsigned long>(room.largestHole),
                      static_cast<unsigned long>(room.inHoles), st.copies, st.copiesKb,
                      snd.tableFailed ? "NONE (no room for their list), " : "", snd.loaded, snd.kept,
@@ -385,7 +386,11 @@ namespace
                      static_cast<unsigned long>(hlrt::level.pakBytes() / 1024), seek,
                      reserve.letGoLoad > 0 ? "LET GO in the load" : (reserve.held ? "held" : "none"),
                      static_cast<unsigned long>(beforeMap.live), static_cast<unsigned long>(beforeMap.free),
-                     static_cast<unsigned long>(hlrt::guard::liveBytes()), static_cast<unsigned long>(loadLive.level),
+                     static_cast<unsigned long>(hlrt::guard::liveBytes()),
+                     (hlrt::families::loaded() & hldata::familyBit(hldata::kFamilyBoss)) ? "boss " : "",
+                     (hlrt::families::loaded() & hldata::familyBit(hldata::kFamilyMilitary)) ? "military " : "",
+                     (hlrt::families::loaded() & hldata::familyBit(hldata::kFamilyNet)) ? "net" : "",
+                     static_cast<unsigned long>(loadLive.families), static_cast<unsigned long>(loadLive.level),
                      static_cast<unsigned long>(loadLive.textures), static_cast<unsigned long>(loadLive.models),
                      static_cast<unsigned long>(hlrt::modelCache.fileBytes()),
                      static_cast<unsigned long>(hlrt::modelCache.skinBytes()), static_cast<unsigned long>(loadLive.game));
@@ -784,6 +789,29 @@ namespace
         if (!kept && !quietLoad && hlrt::hudDraw.showLoading())
             hlrt::screenFade.curtainUp();
 
+        // The game's families this map needs (Families.hpp): those of its
+        // actors, of whoever came along, and the match's rules in a match.
+        // Loaded now, the old map gone and before anything of the new one,
+        // so they sit low on the heap; those it needs not let go.
+        {
+            std::uint8_t families = hlrt::families::ofHeader(header);
+            for (int v = 0; arrival != nullptr && v < hldata::kMaxVisitors; ++v)
+            {
+                const hldata::GameFamily f =
+                    hldata::familyOfKind(arrival->visitors[v].kind & hldata::kVisitorKind);
+                if (arrival->visitors[v].model != 0 && f != hldata::kFamilyCore)
+                    families |= hldata::familyBit(f);
+            }
+            if (hlrt::netGame.on())
+                families |= hldata::familyBit(hldata::kFamilyNet);
+            const char *why = nullptr;
+            if (!hlrt::families::want(families, &why))
+            {
+                error = why;
+                return LoadResult::Failed;
+            }
+            loadLive.families = hlrt::guard::liveBytes();
+        }
         clock.mark("down");
 #ifndef HLDS_CHILD
         hlrt::netrelay::keepAlive();

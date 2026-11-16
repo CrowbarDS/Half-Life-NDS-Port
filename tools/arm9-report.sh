@@ -8,12 +8,12 @@
 #     instruction), and which of those helpers are the hardware's (HwMath.s);
 #   - which of the game's functions are Thumb.
 #
-# And the game library, build/hl/hl.elf (dsl/hl.dsl in the ROM: see
-# source/game/GameApi.hpp), the same way -- the game's functions are there now
-# -- with what the library must not have: Thumb code (an ARM-to-Thumb jump in
-# it goes through a linker stub the loader cannot move), anything of the
-# engine taken by its name rather than through the engine's table, and the
-# game's code left behind in the ELF.
+# And the game's families, build/<family>/<family>.elf (dsl/<family>.dsl in
+# the ROM: see source/game/FamilyApi.hpp), the same way, with what a family
+# must not have: Thumb code (an ARM-to-Thumb jump in it goes through a linker
+# stub the loader cannot move), and a copy of anything the program has --
+# a function it should have called, or worse, data it should have shared.
+# And the program must have none of the families' code.
 #
 # And the Download Play child (child/build/arm9/arm9.elf), which is the engine
 # and the game linked into one program: the same, but the game is meant to be
@@ -38,12 +38,12 @@ for arg in "$@"; do
         *) ELF="$arg" ;;
     esac
 done
-DSL="$(dirname "$ELF")/../hl/hl.elf"
+FAMILIES="boss military net"
 [ -f "$ELF" ] || { echo "arm9-report: no $ELF (build first)" >&2; exit 2; }
 
-# One ELF: the program (KIND=main), the child (KIND=child) or the game
-# library (KIND=dsl). (-r: in
-# the library a call to the program is a relocation, not an address.)
+# One ELF: the program (KIND=main), the child (KIND=child) or a family
+# (KIND=dsl). (-r: in a family a branch to the program is a relocation, not
+# an address.)
 report() {
 "$BIN/arm-none-eabi-objdump" -dr -C "$3" | MODE="$1" KIND="$2" python3 -c '
 import os, re, subprocess, sys
@@ -117,15 +117,20 @@ for line in run(tools + "/arm-none-eabi-size", "-A", elf).splitlines():
     if len(part) == 3 and part[0].startswith("."):
         sizes[part[0]] = (int(part[1]), int(part[2]))
 
-# Symbols: address, size, name; Thumb ones have the low bit set.
-symbols = []
+# Symbols: address, size, name; Thumb ones have the low bit set. (A family
+# is linked against the program: the symbols of the program are in its ELF
+# too, at the addresses of the program. Its own are from 0, below them.)
+PROGRAM_LOW = 0x01000000
+all_symbols = []
 for line in run(tools + "/arm-none-eabi-readelf", "-sW", elf).splitlines():
     part = line.split()
     if len(part) >= 8 and part[3] in ("FUNC", "OBJECT") and part[6] != "UND":
         try:
-            symbols.append((int(part[1], 16), int(part[2], 0), part[3], part[7]))
+            all_symbols.append((int(part[1], 16), int(part[2], 0), part[3], part[7]))
         except ValueError:
             pass
+symbols = [s for s in all_symbols if kind_of_elf != "dsl" or s[0] < PROGRAM_LOW]
+programs = [s for s in all_symbols if kind_of_elf == "dsl" and s[0] >= PROGRAM_LOW]
 # The marks the linker sets (no type, no size).
 marks = {}
 for line in run(tools + "/arm-none-eabi-readelf", "-sW", elf).splitlines():
@@ -137,7 +142,7 @@ demangle = dict(zip([s[3] for s in symbols],
                     subprocess.run([tools + "/arm-none-eabi-c++filt"], input="\n".join(s[3] for s in symbols),
                                    capture_output=True, text=True).stdout.splitlines()))
 address = {}
-for at, size, kind, name in symbols:
+for at, size, kind, name in all_symbols:
     if name in HELPERS:
         address[at & ~1] = name
 
@@ -201,8 +206,8 @@ for name, by in calls.items():
         else:
             soft += count
 
-summary = ("hl.dsl: %d bytes; the game: %d ARM functions, %d Thumb; helper calls: %d on the hardware, %d in the library"
-           % (sizes.get(".progbits", (0, 0))[0] + sizes.get(".nobits", (0, 0))[0], len(arm_game), len(thumb_game),
+summary = ("%s.dsl: %d bytes; the game: %d ARM functions, %d Thumb; helper calls: %d on the hardware, %d in the library"
+           % (os.path.splitext(os.path.basename(elf))[0], sizes.get(".progbits", (0, 0))[0] + sizes.get(".nobits", (0, 0))[0], len(arm_game), len(thumb_game),
               hard, soft)) if kind_of_elf == "dsl" else \
           ("%s: ITCM %d of 32768 bytes (heap %d), stack %d, DTCM data %d (heap %d); "
            "the game: %d ARM functions, %d Thumb; helper calls: %d on the hardware, %d in the library"
@@ -242,17 +247,21 @@ if kind_of_elf == "dsl":
     for at, size, kind, name in symbols:
         if name.endswith("_from_arm") or name.endswith("_from_thumb"):
             failed.append("a linker stub in the library: %s" % name)
-    # What it takes of the program by name: libc, libnds, the compiler'"'"'s
-    # helpers and the engine'"'"'s table; nothing of the engine'"'"'s own.
-    for line in run(tools + "/arm-none-eabi-nm", "-uC", elf).splitlines():
-        name = line.split()[-1]
-        if game(name) or name.startswith("Global::") or name.startswith("NEA_"):
-            failed.append("the library takes %s by its name (not through hlEngine)" % name)
+    # A copy of what the program has: data of its own where the program'"'"'s
+    # is meant (two of one thing, each half of the game seeing its own), or
+    # a function the link should have taken from the program. (A clone the
+    # compiler made of one -- .isra, .constprop, .part -- is local to each
+    # side and holds nothing: it only costs its bytes.)
+    theirs = {name for at, size, kind, name in programs}
+    for at, size, kind, name in symbols:
+        if name in theirs and "." not in name:
+            failed.append("the family has its own %s %s, which the program has too"
+                          % ("data" if kind == "OBJECT" else "copy of", demangle.get(name, name)))
     # What libnds'"'"'s loader (dlfcn.c) does not do, and would get wrong
     # without a word: put a section on more than eight bytes (the block is
-    # malloc'"'"'s), apply more than the first relocation section, keep the
-    # addend of a word that points into the program.
-    progbits_offset = None
+    # malloc'"'"'s), apply more than the first relocation section. (A word
+    # pointing into the program keeps what the link wrote:
+    # tools/dsl_family.py.)
     rel_sections = 0
     for line in run(tools + "/arm-none-eabi-readelf", "-SW", elf).splitlines():
         m = re.match(r"\s*\[\s*\d+\]\s+(\S+)\s+(\S+)\s+([0-9a-f]+)\s+([0-9a-f]+)\s+([0-9a-f]+)\s+\S+\s+(\S*)\s+\d+\s+\d+\s+(\d+)", line)
@@ -260,45 +269,22 @@ if kind_of_elf == "dsl":
             continue
         name, kind, flags, align = m.group(1), m.group(2), m.group(6), int(m.group(7))
         if "A" in flags and align > 8:
-            failed.append("library section %s wants %d-byte alignment (the loader gives 8)" % (name, align))
+            failed.append("family section %s wants %d-byte alignment (the loader gives 8)" % (name, align))
         if kind == "REL":
             rel_sections += 1
-        if name == ".progbits":
-            progbits_offset = int(m.group(4), 16)
     if rel_sections > 1:
-        failed.append("the library has %d relocation sections (the loader applies the first)" % rel_sections)
-    if progbits_offset is not None:
-        with open(elf, "rb") as f:
-            image = f.read()
-        for line in run(tools + "/arm-none-eabi-readelf", "-rW", elf).splitlines():
-            part = line.split()
-            # (Against a name of the program -- not the library'"'"'s own
-            # section, which the loader moves by adding.)
-            if len(part) >= 5 and part[2] == "R_ARM_ABS32" and int(part[3], 16) == 0 and \
-                    not part[4].startswith("."):
-                at = progbits_offset + int(part[0], 16)
-                addend = int.from_bytes(image[at:at + 4], "little")
-                if addend != 0:
-                    failed.append("a word of the library points %d bytes into %s (the loader drops it)"
-                                  % (addend, part[4]))
-    # Where its data begins, as it says (Guard.hpp sums what is before).
-    marker = [at for at, size, kind, name in symbols if name == "hlDslData"]
-    data_at = None
-    try:
-        with open(os.path.join(os.path.dirname(elf), "hl.map")) as f:
-            lines = f.read().splitlines()
-        for n, line in enumerate(lines):
-            if line.strip() == "*(.data*)" and n > 0:
-                m = re.search(r"0x([0-9a-f]+)\s+\. = ALIGN", lines[n - 1])
-                if m:
-                    data_at = int(m.group(1), 16)
-    except OSError:
-        pass
-    if not marker or data_at is None or marker[0] != data_at:
-        failed.append("hlDslData is not where the library data begins (%s, %s)"
-                      % ("%x" % marker[0] if marker else "none", "%x" % data_at if data_at is not None else "?"))
+        failed.append("the family has %d relocation sections (the loader applies the first)" % rel_sections)
 else:
     # The guarded heap is linked in (build.py: --wrap).
+    if kind_of_elf == "main":
+        # None of the families'"'"' code: they are loaded with the map that
+        # needs them (HL_FAMILIES_APART).
+        family_code = re.compile(r"hldata::(garg|babycrab|icky|tentacle|momma|nihilanth|grunt|assassin|osprey|"
+                                 r"apache|boss|military)::|hldata::net(Tick|Start|Read|Lobby|Used)\(|"
+                                 r"hldata::detail::(stompTick|mommaSpitTick|repelTick|netApply)\(")
+        for at, size, kind, name in symbols:
+            if family_code.search(demangle.get(name, name)):
+                failed.append("the program has a family'"'"'s %s" % demangle.get(name, name))
     if not any(name == "__wrap_malloc" for at, size, kind, name in symbols):
         failed.append("the program has no guarded heap (__wrap_malloc): see --wrap in build.py")
 if itcm_size > ITCM_BUDGET:
@@ -354,8 +340,12 @@ case "$(realpath "$ELF")" in */child/build/*) KIND=child ;; esac
 
 status=0
 report "$MODE" "$KIND" "$ELF" || status=$?
-if [ -f "$DSL" ]; then
-    [ "$MODE" = full ] && echo
-    report "$MODE" dsl "$DSL" || status=$?
+if [ "$KIND" = main ]; then
+    for family in $FAMILIES; do
+        DSL="$(dirname "$ELF")/../$family/$family.elf"
+        [ -f "$DSL" ] || continue
+        [ "$MODE" = full ] && echo
+        report "$MODE" dsl "$DSL" || status=$?
+    done
 fi
 exit $status

@@ -255,19 +255,18 @@ if(HLDS_BUILD_TESTS)
     add_test(NAME dspsim COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../dspsim/run.sh)
     set_tests_properties(dspsim PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "DSPSIM_BUDGET=25")
 
-    # The game library as the ROM carries it, held to loading as dsltool's
-    # does (tools/dsl_strip.py): a made-up library always, the built one when
-    # there is a build.
+    # The game's families as the ROM carries them, held to loading as
+    # dsltool's do (tools/dsl_strip.py, tools/dsl_family.py), and the
+    # program's ID they are tied to (tools/program_id.py): on made-up ones.
     # (Python is the ROM build's; a system that builds only the converter may
     # have none, and then these are left out.)
     find_package(Python3 QUIET COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
         add_test(NAME dsl_strip_self COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../dsl_strip.py --self-test)
+        add_test(NAME dsl_family_self COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../dsl_family.py --self-test)
+        add_test(NAME program_id_self COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../program_id.py --self-test)
         # (What may be moved into ITCM at load, and what is refused: tools/dsl_kernels.py.)
         add_test(NAME dsl_kernels_self COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../dsl_kernels.py --self-test)
-        add_test(NAME dsl_strip_built COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../dsl_strip.py --check
-                 ${CMAKE_CURRENT_SOURCE_DIR}/../../build/hl/hl.full.dsl ${CMAKE_CURRENT_SOURCE_DIR}/../../build/hl/hl.dsl)
-        set_tests_properties(dsl_strip_built PROPERTIES SKIP_RETURN_CODE 77)
     else()
         message(STATUS "Python 3 not found: the dsl_strip tests are left out")
     endif()

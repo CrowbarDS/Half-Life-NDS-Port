@@ -43,6 +43,15 @@ namespace
         .hurtPlayer = [](hldata::PlayerState &player, std::int32_t amount, std::uint32_t type)
         { hldata::logicHurt(player, amount, 0, type); },
         .killAllOfKind = [](hldata::LogicWorld &w, hldata::ActorKind kind) { return hldata::killAllOfKind(w, kind); },
+#ifdef HL_FAMILIES_APART
+        // (The match's rules are a family of their own: Families.cpp puts
+        // them here when it is loaded.)
+        .netStart = nullptr,
+        .netTick = nullptr,
+        .netRead = nullptr,
+        .netUsed = nullptr,
+        .netLobby = nullptr,
+#else
         .netStart = [](hldata::NetMatch &match, hldata::LogicWorld &w, hldata::PlayerState &player, int firstActor,
                        int model, const hldata::NetSpawn *spawns, int spawnCount, std::uint32_t seed) {
             hldata::netStart(match, w, player, firstActor, model, spawns, spawnCount, seed);
@@ -58,6 +67,7 @@ namespace
         .netLobby = [](hldata::NetMatch &match, hldata::LogicWorld &none, hldata::PlayerState &nobody) {
             hldata::netLobby(match, none, nobody);
         },
+#endif
     };
 } // namespace
 

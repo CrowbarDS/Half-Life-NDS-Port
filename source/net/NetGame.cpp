@@ -14,7 +14,9 @@
 #include "Settings.hpp"
 #include "data/LevelFile.hpp"
 #include "game/Game.hpp"
+#include "game/Families.hpp"
 #include "game/GameApi.hpp"
+#include "Guard.hpp"
 #include "game/Player.hpp"
 #include "render/BottomScreen.hpp"
 #include "ui/TouchCanvas.hpp"
@@ -48,6 +50,17 @@ namespace hlrt
 
     namespace
     {
+        /// The match's rules (gameApi.net*), a family of the game's of their
+        /// own: loaded the first time they are asked for. Without them
+        /// (a ROM's file missing, or not of this build) nothing can go on.
+        GameFuncs &rules()
+        {
+            const char *why = nullptr;
+            if (!families::need(kFamilyNet, &why))
+                guard::crash(why);
+            return gameApi;
+        }
+
         /// The pieces of a stream sent a frame while a match waits for it.
         constexpr int kAirServeFrames = 4;
         /// What is asked for (HlAirBank.hpp), the pieces a frame online:
@@ -2419,7 +2432,7 @@ namespace hlrt
             if (std::strcmp(view.modelRefs[m].name, "player") == 0)
                 model = static_cast<int>(m);
         }
-        gameApi.netStart(match_, game.logic, player.state, static_cast<int>(view.actorCount), model, spawns_.data(),
+        rules().netStart(match_, game.logic, player.state, static_cast<int>(view.actorCount), model, spawns_.data(),
                  static_cast<int>(spawns_.size()), tokenOfThisConsole());
         phase_ = Phase::Playing;
         // Everyone's spray, made into its picture now, while the map is
@@ -2669,7 +2682,7 @@ namespace hlrt
                 continue;
 #endif
             }
-            gameApi.netRead(match_, bytes, size, from);
+            rules().netRead(match_, bytes, size, from);
         }
 #ifndef HLDS_CHILD
         // Who is left out of a stream for saying nothing is let go; a
@@ -2702,7 +2715,7 @@ namespace hlrt
         {
             static LogicWorld none;
             static PlayerState nobody;
-            gameApi.netLobby(match_, none, nobody);
+            rules().netLobby(match_, none, nobody);
             voteFrame(17); // (a vote before the first match)
             if (isHost())
             {
@@ -2990,7 +3003,7 @@ namespace hlrt
     {
         if (phase_ != Phase::Playing)
             return;
-        gameApi.netTick(match_, game.logic, player.state, yaw, pitch, did, lamp, ms);
+        rules().netTick(match_, game.logic, player.state, yaw, pitch, did, lamp, ms);
         // The match over: its scores for a while, then the lobby -- when the
         // host says, so that nobody is still here when the next map is sent.
         if (match_.over && !lobbyAsked_)
@@ -3947,7 +3960,7 @@ namespace hlrt
     void NetGame::used(int index)
     {
         if (phase_ == Phase::Playing)
-            gameApi.netUsed(match_, index);
+            rules().netUsed(match_, index);
     }
 
     bool NetGame::notice(char *line, int room)
