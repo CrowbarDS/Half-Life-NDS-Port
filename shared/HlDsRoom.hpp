@@ -19,10 +19,13 @@
 
 namespace hldata
 {
-    /// The heap free as a DS begins to load a map (2,127,504 bytes measured,
-    /// 2026-11-14, the same on every map tried), less a margin for arriving
-    /// by a level change rather than at a start.
-    inline constexpr std::size_t kDsMapHeap = 2127504 - 32 * 1024;
+    /// The heap free as a DS begins to load a map, less a margin for arriving
+    /// by a level change rather than at a start. Measured 2,110,768 bytes on
+    /// 2026-11-16 (t0a0b and c1a0 alike): 16.3 KB under the 2,127,504 of
+    /// 2026-11-14 -- the actors' thinking thread (6.5 KB), a larger BlocksDS
+    /// (2 KB), 2.7 KB more taken at start-up, and what was added between.
+    /// Measure again (tools/emu/room.sh ds) whenever the program grows.
+    inline constexpr std::size_t kDsMapHeap = 2110768 - 32 * 1024;
     /// What a map's load takes besides the files counted here: its sound
     /// table, sprite and model lists, the texture stream's tables, the
     /// archive's members open. Measured 71-75 KB (c1a0, c1a1, c1a4f).
