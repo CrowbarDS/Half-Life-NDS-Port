@@ -1392,7 +1392,9 @@ namespace hldata
         {
             fx sine, cosine, ps, pc;
             fxSinCos(c.me.yaw, sine, cosine);
-            fxSinCos(static_cast<std::uint16_t>((static_cast<std::int64_t>(c.me.aimPitch) * 65536) / (360 * kFxOne)), ps, pc);
+            // (Degrees Q12 to turns: * 65536 / (360 * 4096), which is * 2 / 45
+            // exactly -- in 32 bits, a multiply.)
+            fxSinCos(static_cast<std::uint16_t>(c.me.aimPitch * 2 / 45), ps, pc);
             forward[0] = fxMulShort(cosine, pc); // (sines and cosines: 16-bit)
             forward[1] = fxMulShort(sine, pc);
             forward[2] = ps;
@@ -1558,10 +1560,17 @@ namespace hldata
                 // DeadThink: it floats up, or falls, slowly.
                 if (!c.m.inAir)
                 {
-                    const fx up[3] = {c.me.pos[0], c.me.pos[1], c.me.pos[2] + static_cast<fx>((static_cast<std::int64_t>(fxFromInt(8)) * ms) / 1000)};
+                    const fx up[3] = {c.me.pos[0], c.me.pos[1], c.me.pos[2] + fxFromInt(8) * ms / 1000};
                     if (inWater(c, up) && traceShot(*c.w.world, c.me.pos, up).fraction >= kFractionOne)
                         c.me.pos[2] = up[2];
                 }
+                return;
+            }
+            // (Out of the player's sight it is still -- its think stopped it
+            // there, as the game's does -- and nothing of this is done.)
+            if (!c.m.inAir && !aiClientInPvs(c))
+            {
+                c.me.velocity[0] = c.me.velocity[1] = c.me.velocity[2] = 0;
                 return;
             }
             if (!inWater(c, c.me.pos))
@@ -1584,9 +1593,13 @@ namespace hldata
             facing(c, forward);
             for (int k = 0; k < 3; ++k)
                 c.me.velocity[k] = static_cast<fx>((static_cast<std::int64_t>(forward[k]) * c.m.value1) >> kFxShift);
+            // (A speed of tens of units a second, for a frame's ms: 32 bits,
+            // and the divide by a constant a multiply.)
             fx to[3];
             for (int k = 0; k < 3; ++k)
-                to[k] = c.me.pos[k] + static_cast<fx>((static_cast<std::int64_t>(c.me.velocity[k]) * ms) / 1000);
+                to[k] = c.me.pos[k] + c.me.velocity[k] * ms / 1000;
+            if (to[0] == c.me.pos[0] && to[1] == c.me.pos[1] && to[2] == c.me.pos[2])
+                return;
             const Shot shot = traceShot(*c.w.world, c.me.pos, to);
             if (shot.fraction >= kFractionOne && inWater(c, to))
             {
