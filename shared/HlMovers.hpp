@@ -189,7 +189,7 @@ namespace hldata
     /// What is at `p`: kContentsEmpty, Solid, Water, Slime or Lava. The
     /// world's own leaf first; a body of liquid that is a brush entity
     /// overrides it, as in the game.
-    inline int pointContents(const MoveWorld &world, const fx *p)
+    HL_HOT int pointContents(const MoveWorld &world, const fx *p)
     {
         int contents = kContentsEmpty;
         if (world.nodes != nullptr)
@@ -570,6 +570,7 @@ namespace hldata
         /// `wall`, if it is asked for, is then what it ran into: the plane
         /// the line last crossed, twice its number, plus one if it was
         /// crossed from behind (-1: none, it began in the solid).
+        /// (Not in ITCM: measured there, it gained nothing -- 2026-11-16.)
         inline bool lineThrough(const MoveWorld &world, std::int32_t num, std::int32_t f1,
                                 std::int32_t f2, const fx *from, const fx *to, std::int32_t &hit,
                                 int depth, int crossed = -1, int *wall = nullptr)
@@ -689,7 +690,7 @@ namespace hldata
         }
     } // namespace detail
 
-    inline Shot traceShot(const MoveWorld &world, const fx *start, const fx *end)
+    HL_HOT Shot traceShot(const MoveWorld &world, const fx *start, const fx *end)
     {
         Shot shot;
         if (world.nodes != nullptr)

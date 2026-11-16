@@ -54,7 +54,7 @@ elf, tools = sys.argv[1], sys.argv[2]
 
 # Code the ITCM may hold before the build is told to think again. (The link
 # fails by itself at 32768.)
-ITCM_BUDGET = 30000
+ITCM_BUDGET = 32000  # (2026-11-16: with the game core linked in, its shot traces too)
 
 # The helpers. "soft" ones are the library routines; the others are ours,
 # on the divider and the square-root unit (source/HwMath.s).
@@ -100,14 +100,12 @@ HOT = {
     "hldata::monstersTick": ["lmul"],
     "hldata::logicTick": ["lmul"],
 }
-# The game'"'"'s own, which the program must not have (the library does).
-GAME_ONLY = ["hldata::aiTick", "hldata::aiWorldTick", "hldata::logicTick", "hldata::monstersTick",
-             "hldata::detail::weaponsTickBody", "hldata::detail::projectilesTick", "hldata::detail::actorsTick",
-             "hldata::detail::netApply", "hldata::logicUse", "hldata::radiusDamage"]
-# ... and what has to be in the ITCM.
+# What has to be in the ITCM. (The game'"'"'s core is linked into the program:
+# its shot traces with the rest.)
 HOT_ITCM = ["hldata::detail::hullCheck", "hldata::traceHull", "hldata::traceAll", "hldata::poseModel",
             "hldata::detail::sampleTrack", "hldata::walkStep", "hldata::walkTick",
-            "hlrt::ModelDraw::drawActor", "hlrt::ModelDraw::draw", "hlrt::WorldDraw::walk"]
+            "hlrt::ModelDraw::drawActor", "hlrt::ModelDraw::draw", "hlrt::WorldDraw::walk",
+            "hldata::traceShot", "hldata::pointContents"]
 
 def run(*args):
     return subprocess.run(args, capture_output=True, text=True, check=True).stdout
@@ -303,11 +301,6 @@ else:
     # The guarded heap is linked in (build.py: --wrap).
     if not any(name == "__wrap_malloc" for at, size, kind, name in symbols):
         failed.append("the program has no guarded heap (__wrap_malloc): see --wrap in build.py")
-    # The program: none of the game left in it (GameApi.hpp). (The child
-    # has no library: the game is linked into it.)
-    for at, size, name in functions if kind_of_elf == "main" else []:
-        if bare(name) in GAME_ONLY:
-            failed.append("%s is in the program, not the library" % name)
 if itcm_size > ITCM_BUDGET:
     failed.append("the ITCM holds %d bytes, over its budget of %d" % (itcm_size, ITCM_BUDGET))
 

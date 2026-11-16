@@ -10,13 +10,12 @@
 # by tools/hlds-convert from the player's own copy of Half-Life and read from
 # the SD card under _nds/hl_nds/data/ at runtime.
 #
-# THE GAME is a dynamic library apart, as hl.dll is on the PC: the monsters,
-# the weapons, the logic, the saves' map state (dll/hl/, and the shared
-# headers it instantiates). It is built against the ELF below and carried in
-# the ROM's NitroFS as dsl/hl.dsl; the engine loads it at startup and the two
-# speak through the tables in source/game/GameApi.hpp. HL_DSL is defined in
-# its build: there the engine's objects and hot code are reached through the
-# engine's table.
+# THE GAME's core -- the monsters, the weapons, the logic, the saves' map
+# state (dll/hl/, and the shared headers it instantiates) -- is linked into
+# the program (HL_STATIC_GAME), and still speaks to the engine through the
+# tables in source/game/GameApi.hpp, as hl.dll does on the PC. What a map
+# can do without -- the bosses, the soldiers, the match's rules -- is a
+# library of its own, loaded with the map that needs it.
 #
 # HOT CODE: a source named Foo.arm.cpp is built as ARM instead of Thumb
 # (architectds), and one named Foo.itcm.arm.cpp is ALSO placed in the 32 KB
@@ -67,7 +66,12 @@ WIFI_TWL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build',
 wifi_twl.make(os.path.join(os.path.expandvars('${BLOCKSDSEXT}'), 'dswifi_dl'), WIFI_TWL_DIR)
 
 arm9 = Arm9Binary(
-    sourcedirs=['source'],
+    # The engine (source/) and the game's core (dll/hl/), linked together
+    # (HL_STATIC_GAME): a library of the core cost the heap ~53 KB more than
+    # the same code linked in -- its loader's veneer pool, code both sides
+    # carried, the forwarders between them. Families the core can do without
+    # are libraries of their own, loaded with the map that needs them.
+    sourcedirs=['source', 'dll/hl'],
     # 'thirdparty' puts yas on the include path as <yas/...>, the same spelling
     # the host converter uses -- both sides must agree on the serializer.
     includedirs=['source', 'shared', 'thirdparty'],
@@ -76,7 +80,7 @@ arm9 = Arm9Binary(
     # the geometry engine, on the overlay and in perf.txt. Off, every one of
     # its entry points is an empty inline (DebugLog.hpp), so the shipped
     # build carries none of it.
-    defines=['HL_HW_MATH'] + profile + guard,
+    defines=['HL_HW_MATH', 'HL_STATIC_GAME'] + profile + guard,
     # The wireless is the dswifi fork that also does DS Download Play
     # (github.com/Warioware64/dswifi, installed as "dswifi_dl" beside the
     # stock one). Its headers have the stock names (dswifi9.h), so
@@ -130,41 +134,8 @@ arm7 = Arm7Binary(
 )
 arm7.generate_elf()
 
-hl = Arm9DynamicLibrary(
-    name='hl',
-    main_binary=arm9,
-    sourcedirs=['dll/hl'],
-    includedirs=['source', 'shared', 'thirdparty'],
-    # (What Arm9Binary defines by itself, as well: libnds's and the engine's
-    # headers lay their structures out by them, and the library reads the
-    # engine's.)
-    defines=['__NDS__', '__BLOCKSDS__', 'ARM9', 'HL_HW_MATH', 'HL_DSL'] + profile,
-    # (Only their headers: the library links nothing of its own. What it
-    # calls of libc and the rest is the ELF's, by address.)
-    libdirs=[
-        '${BLOCKSDS}/libs/libnds',
-        '${BLOCKSDSEXT}/dswifi_dl',
-        '${BLOCKSDSEXT}/nitro-engine-advanced',
-    ],
-    cxxflags='-Wall -Werror=stack-usage=4096 -O2 -std=gnu++26 -D_LITTLE_ENDIAN -include yas/detail/config/endian.hpp',
-    # (By these names it finds the program's: without them, the library's.)
-    ldflags=' '.join(['-Wl,--wrap=' + f for f in HW_MATH_WRAPS]),
-    # What dsltool writes (build/hl/hl.full.dsl) has a name for every symbol
-    # and every branch within the library among its relocations; the loader
-    # keeps the names and 8 bytes per relocation on the heap for good. Only
-    # what it acts on is kept, and the build stops unless the library then
-    # loads to the same bytes with the same code sum (tools/dsl_strip.py).
-    # Then the table of its functions moved into ITCM at load
-    # (tools/dsl_kernels.py; source/game/Kernels.cpp).
-    post_tool=('python3 tools/dsl_post.py',
-               ['tools/dsl_post.py', 'tools/dsl_strip.py', 'tools/dsl_kernels.py']),
-    post_outputs=['build/hl/hl.kernels'],
-)
-hl.generate_dsl()
 
 nitrofs = NitroFS()
-nitrofs.add_arm9_dsl(hl)
-nitrofs.add_file('build/hl/hl.kernels', 'dsl/hl.kernels')
 # The program the host sends consoles without the game by Download Play
 # (child/build.py: built after this one, whose ARM7 program it uses -- so it
 # is here from make.sh's second pass of this file on).
@@ -174,7 +145,7 @@ if os.path.isfile(CHILD_ROM):
 nitrofs.generate_image()
 
 nds = NdsRom(
-    binaries=[arm9, arm7, hl, nitrofs],
+    binaries=[arm9, arm7, nitrofs],
     nds_path='half-life-nds-port.nds',
     game_icon="Logo.bmp",
     game_title='HALF-LIFE DS',

@@ -10,9 +10,10 @@ namespace hlrt
 {
     Game game;
 
-    // (A console that was sent the game has it linked in: Game's code is
-    // the game's own, called straight, and none of this goes between.)
-#ifndef HLDS_CHILD
+    // (Where the game is linked in -- the program's own, and a console sent
+    // the game -- Game's code is the game's own, called straight, and none
+    // of this goes between.)
+#ifndef HL_STATIC_GAME
     bool Game::reserve() { return gameApi.reserve(*this); }
     bool Game::create() { return gameApi.create(*this); }
     void Game::destroy() { gameApi.destroy(*this); }

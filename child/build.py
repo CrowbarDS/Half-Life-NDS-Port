@@ -54,7 +54,7 @@ if os.environ.get('HLDS_DEBUG'):
 arm9 = Arm9Binary(
     sourcedirs=['engine', 'game'],
     includedirs=['engine', 'shared', 'thirdparty'],
-    defines=['HL_HW_MATH', 'HLDS_CHILD'] + extra,
+    defines=['HL_HW_MATH', 'HLDS_CHILD', 'HL_STATIC_GAME'] + extra,
     # (The same libraries as the parent's: see ../build.py.)
     libs=['NEA', 'nds9', 'dswifi_dl9_noip'],
     libdirs=[

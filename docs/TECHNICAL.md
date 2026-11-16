@@ -528,7 +528,10 @@ Milestone 11, "levels of detail".
   Link-time ITCM stays for what must be there or is hottest and measured --
   the vectors and the interrupt path, the hardware divide, the traces, the
   drawing -- where calls are direct and the budget is checked by the build.
-- The rest of ITCM takes the game library's busiest functions as it loads,
+- traceShot and pointContents are link-time ITCM (`HL_HOT`), chosen by the
+  console's own sampler: from 3.3-4.1% of a DS's time at c1a3a to about 2%
+  (lineThrough, tried there too, gained nothing and was left out).
+- The rest of ITCM can take a game library's busiest functions as it loads,
   as they were built (`source/game/Kernels.cpp`, `shared/HlKernelMove.hpp`):
   each is copied there, the calls in it are aimed again from where the copy
   runs (ITCM's mirror just under main RAM, which even a Thumb call reaches
@@ -538,8 +541,9 @@ Milestone 11, "levels of detail".
   function whose every reference outside itself is an address the loader
   fills in or a call with a relocation; anything else stops the build. Its
   table gives the offsets of those words, the only ones changed, and a sum of
-  the rest, checked before anything is moved. traceShot, lineThrough and
-  pointContents: 2.8 KB, from 3.3-4.1% of a DS's time at c1a3a to 2.35%.
+  the rest, checked before anything is moved. (It moved traceShot,
+  lineThrough and pointContents while the core was a library; it is kept for
+  the families' libraries.)
 - A trace no longer asks every brush of the map whether the move comes near
   it. A map has some hundreds, each a hundred bytes of record: now there is
   a table of twelve bytes a brush, read first (`MoverReach`). At the fight
@@ -1186,16 +1190,22 @@ Milestone 11, "levels of detail".
     pieces the other end lacks), which is for consoles started by Download
     Play, when that is built.
 
-## The game as a library
+## The game, and its families
 
 The program is cut where Half-Life cuts it, between the engine and
 `hl.dll`. The game -- the monsters and their thinking, the weapons, the logic
 entities, a map's saved state, the changes of map, the multiplayer match's
-rules -- is a BlocksDS dynamic library, `dsl/hl.dsl`, built from `dll/hl/`
-(and the shared headers it instantiates) against the ARM9 ELF and carried in
-the ROM's NitroFS. The engine loads it at startup (`source/game/GameDll.arm.cpp`)
-and from then on the two speak through two tables
-(`source/game/GameApi.hpp`):
+rules -- is built from `dll/hl/` (and the shared headers it instantiates).
+Its core is linked into the program (`HL_STATIC_GAME`, since 2026-11-16):
+as a BlocksDS dynamic library of its own, loaded at startup, it cost a DS
+63.5 KB more heap -- the loader's veneer pool (8 bytes a relocation, never
+used), code both sides carried, the forwarders between them. What a map can
+do without -- the bosses, the soldiers, the match's rules -- registers
+itself with the core (HlAi.hpp's family tables, HlMonsters.hpp's
+`FamilyHooks`) and is to be a library of its own, loaded with the map that
+needs it. The two halves still speak only through two tables
+(`source/game/GameApi.hpp`; `GetGameAPI`, asked for in
+`source/game/GameDll.arm.cpp`):
 
 - `GameFuncs`, what the engine asks of the game (`DLL_FUNCTIONS`): `Game`'s own
   functions -- set a map up, advance it, save it, change it -- each a one-line
