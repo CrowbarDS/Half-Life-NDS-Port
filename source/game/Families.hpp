@@ -1,8 +1,10 @@
 #pragma once
 
 // The game's families, loaded with the map that needs them (FamilyApi.hpp).
-// A program built with them linked in (no HL_FAMILIES_APART: the Download
-// Play child, for now) has them all, always, and these do nothing.
+// What a program has linked in instead is always there: the parent has none
+// of them linked in (HL_FAMILIES_APART, HL_NET_APART); the Download Play
+// child has the match's rules (every guest needs them from the lobby on),
+// and is sent the others by the host when a demo's map needs them.
 
 #include <cstdint>
 
@@ -24,6 +26,11 @@ namespace hlrt::families
     /// it cannot be had.
     bool need(hldata::GameFamily family, const char **why);
 
-    /// Those loaded now (familyBit).
+    /// Those loaded now, or linked in (familyBit).
     std::uint8_t loaded();
+
+    /// The ROM's file of `family` for this program (dsl/), and the one built
+    /// for the Download Play child (dlplay/, what a host sends it). Null: none.
+    const char *path(hldata::GameFamily family);
+    const char *sentPath(hldata::GameFamily family);
 } // namespace hlrt::families

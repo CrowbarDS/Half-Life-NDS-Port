@@ -68,7 +68,7 @@ ctest --test-dir build/convert
 | `shared/` | File formats, fixed-point maths, game rules: compiled by the ROM and the converter, so host tests run the console's code |
 | `source/` | The ARM9 engine |
 | `dll/` | The game: its core linked into both programs; its families (bosses, soldiers, match rules) register with it |
-| `child/` | The Download Play child: the same engine and game, linked into one program |
+| `child/` | The Download Play child: the same engine and game core in one program; the host sends the families a demo needs |
 | `arm7/` | The ARM7 program |
 | `teak/` | The DSi's DSP program |
 | `tools/hlds-convert/` | The converter: `core` (no Qt), `cli`, `gui`, `tests` |

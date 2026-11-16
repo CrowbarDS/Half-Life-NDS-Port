@@ -542,6 +542,11 @@ namespace hlrt
         };
         static constexpr int kDemoTracks = 8;
         DemoTrack demoTracks_[kDemoTracks];
+        /// The game's families built for the child (dlplay/), sent to a
+        /// demo's console when a map of it needs one: their length and
+        /// checksum, worked out the first time one is asked for (0: not yet).
+        std::uint32_t demoFamilyLength_[hldata::kFamilyCount] = {};
+        std::uint32_t demoFamilyCrc_[hldata::kFamilyCount] = {};
         bool demoRead(int stream, std::uint32_t at, std::uint8_t *to, int count);
         void demoClose(int stream);
         bool demoLiveNow_ = false;    ///< a stream someone is waiting for went out this frame

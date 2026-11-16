@@ -276,12 +276,14 @@ if kind_of_elf == "dsl":
         failed.append("the family has %d relocation sections (the loader applies the first)" % rel_sections)
 else:
     # The guarded heap is linked in (build.py: --wrap).
-    if kind_of_elf == "main":
+    if kind_of_elf in ("main", "child"):
         # None of the families'"'"' code: they are loaded with the map that
-        # needs them (HL_FAMILIES_APART).
+        # needs them (HL_FAMILIES_APART, HL_NET_APART). (The child has the
+        # match'"'"'s rules linked in: every guest needs them.)
         family_code = re.compile(r"hldata::(garg|babycrab|icky|tentacle|momma|nihilanth|grunt|assassin|osprey|"
-                                 r"apache|boss|military)::|hldata::net(Tick|Start|Read|Lobby|Used)\(|"
-                                 r"hldata::detail::(stompTick|mommaSpitTick|repelTick|netApply)\(")
+                                 r"apache|boss|military)::|hldata::detail::(stompTick|mommaSpitTick|repelTick)\(" +
+                                 (r"|hldata::net(Tick|Start|Read|Lobby|Used)\(|hldata::detail::netApply\("
+                                  if kind_of_elf == "main" else ""))
         for at, size, kind, name in symbols:
             if family_code.search(demangle.get(name, name)):
                 failed.append("the program has a family'"'"'s %s" % demangle.get(name, name))
@@ -340,7 +342,8 @@ case "$(realpath "$ELF")" in */child/build/*) KIND=child ;; esac
 
 status=0
 report "$MODE" "$KIND" "$ELF" || status=$?
-if [ "$KIND" = main ]; then
+[ "$KIND" = child ] && FAMILIES="boss military"
+if [ "$KIND" = main ] || [ "$KIND" = child ]; then
     for family in $FAMILIES; do
         DSL="$(dirname "$ELF")/../$family/$family.elf"
         [ -f "$DSL" ] || continue

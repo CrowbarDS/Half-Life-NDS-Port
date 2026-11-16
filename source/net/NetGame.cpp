@@ -3360,6 +3360,31 @@ namespace hlrt
             return;
         const std::uint32_t map = static_cast<std::uint16_t>(event.v[0]) | static_cast<std::uint32_t>(static_cast<std::uint16_t>(event.v[1])) << 16;
         const std::uint32_t from = static_cast<std::uint16_t>(event.v[2]) | static_cast<std::uint32_t>(static_cast<std::uint16_t>(event.v[3])) << 16;
+        // A family of the game's, as the child has them apart (Families.cpp,
+        // GuestLoad's demoGetFamily): asked for past the track numbers.
+        if (event.v[4] >= 0x100)
+        {
+            const int f = event.v[4] - 0x100;
+            const char *path = f > kFamilyCore && f < kFamilyCount ? families::sentPath(static_cast<GameFamily>(f)) : nullptr;
+            if (path == nullptr || nameHash(kFamilyNames[f]) != map)
+                return;
+            if (demoFamilyLength_[f] == 0)
+            {
+                demoFamilyLength_[f] = demoFileLength(path);
+                demoFamilyCrc_[f] = demoFamilyLength_[f] != 0 ? demoStreamCrc(path, std::string()) : 0;
+            }
+            if (demoFamilyLength_[f] == 0)
+                return;
+            demoTokens_[c] = match_.host.clients[c].token;
+            if (from == 0xFFFFFFFFu)
+            {
+                demoServer_.lost(demoTokens_[c]);
+                return;
+            }
+            demoServer_.want(demoTokens_[c], c, map, true, from, kFamilyNames[f], demoFamilyLength_[f],
+                             demoFamilyCrc_[f], static_cast<std::uint16_t>(0x400 | f), AirStream::Library);
+            return;
+        }
         // A track of the music: one of those the demo's maps play.
         if (event.v[4] != 0)
         {
@@ -3508,6 +3533,15 @@ namespace hlrt
                 {
                     const int track = (air.name[5] - '0') * 10 + (air.name[6] - '0');
                     demoFile_[stream] = std::fopen(demoTrackPath(track).c_str(), "rb");
+                    demoFileGuest_[stream] = air.length;
+                }
+                else if (air.stream == AirStream::Library)
+                {
+                    // (Its name is the family's: kFamilyNames.)
+                    const char *path = nullptr;
+                    for (int f = kFamilyBoss; f < kFamilyCount; ++f)
+                        path = std::strcmp(air.name, kFamilyNames[f]) == 0 ? families::sentPath(static_cast<GameFamily>(f)) : path;
+                    demoFile_[stream] = path != nullptr ? std::fopen(path, "rb") : nullptr;
                     demoFileGuest_[stream] = air.length;
                 }
                 else

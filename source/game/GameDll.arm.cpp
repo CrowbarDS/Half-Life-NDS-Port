@@ -1,6 +1,7 @@
 #include "game/GameLayout.hpp"
 
 #include <cstring>
+#include <filesystem.h>
 #include <nds.h>
 
 #include "DebugLog.hpp"
@@ -100,6 +101,17 @@ namespace hlrt
 
     bool loadGame(const char **why)
     {
+#ifndef HLDS_CHILD
+        // The ROM's own file system (its families, and the child's to send:
+        // Families.cpp), read through the card's FAT, which Global::Init has
+        // brought up. At start, as the whole game's library once was, so
+        // that nothing is read with one working folder and then another.
+        if (!nitroFSInit(nullptr))
+        {
+            *why = "The ROM's files cannot be read.";
+            return false;
+        }
+#endif
         if (!GetGameAPI(kGameApiVersion, gameLayout(), &hlEngine, &gameApi))
         {
             *why = "The game linked in is not of this build.";

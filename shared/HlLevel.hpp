@@ -1156,6 +1156,9 @@ namespace hldata
         kFamilyCount = 4,
     };
     inline constexpr std::uint8_t familyBit(GameFamily f) { return static_cast<std::uint8_t>(1u << f); }
+    /// Each family's name: its library's (dsl/<name>.dsl), and its stream's
+    /// to a console sent the game (AirStream::Library).
+    inline constexpr const char *kFamilyNames[kFamilyCount] = {"core", "boss", "military", "net"};
 
     /// Which family a kind's code is in.
     inline GameFamily familyOfKind(std::uint8_t kind)

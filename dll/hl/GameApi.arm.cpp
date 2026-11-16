@@ -43,7 +43,7 @@ namespace
         .hurtPlayer = [](hldata::PlayerState &player, std::int32_t amount, std::uint32_t type)
         { hldata::logicHurt(player, amount, 0, type); },
         .killAllOfKind = [](hldata::LogicWorld &w, hldata::ActorKind kind) { return hldata::killAllOfKind(w, kind); },
-#ifdef HL_FAMILIES_APART
+#ifdef HL_NET_APART
         // (The match's rules are a family of their own: Families.cpp puts
         // them here when it is loaded.)
         .netStart = nullptr,

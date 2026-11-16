@@ -790,11 +790,11 @@ namespace
             hlrt::screenFade.curtainUp();
 
         // The game's families this map needs (Families.hpp): those of its
-        // actors, of whoever came along, and the match's rules in a match.
-        // Loaded now, the old map gone and before anything of the new one,
-        // so they sit low on the heap; those it needs not let go.
+        // actors, of whoever came along, and the match's rules in a match;
+        // those it needs not let go.
+        auto takeFamilies = [&](const hldata::LevelHeader &of)
         {
-            std::uint8_t families = hlrt::families::ofHeader(header);
+            std::uint8_t families = hlrt::families::ofHeader(of);
             for (int v = 0; arrival != nullptr && v < hldata::kMaxVisitors; ++v)
             {
                 const hldata::GameFamily f =
@@ -805,13 +805,18 @@ namespace
             if (hlrt::netGame.on())
                 families |= hldata::familyBit(hldata::kFamilyNet);
             const char *why = nullptr;
-            if (!hlrt::families::want(families, &why))
-            {
+            const bool had = hlrt::families::want(families, &why);
+            if (!had)
                 error = why;
-                return LoadResult::Failed;
-            }
             loadLive.families = hlrt::guard::liveBytes();
-        }
+            return had;
+        };
+#ifndef HLDS_CHILD
+        // Loaded now, the old map gone and before anything of the new one, so
+        // they sit low on the heap.
+        if (!takeFamilies(header))
+            return LoadResult::Failed;
+#endif
         clock.mark("down");
 #ifndef HLDS_CHILD
         hlrt::netrelay::keepAlive();
@@ -825,6 +830,13 @@ namespace
         }
         if (!hlrt::level.load(error))
             return LoadResult::Failed;
+#ifdef HLDS_CHILD
+        // (Sent the game, the map's header is not known before the map is
+        // read: its families after it, from the host -- the bosses and the
+        // soldiers, to a demo's console; the match's rules are linked in.)
+        if (!takeFamilies(*hlrt::level.view.header))
+            return LoadResult::Failed;
+#endif
         // The game's arrays for this level next, in one block, while the
         // heap is still in one piece: the rest of the load breaks it up.
         // (If there is no room even now, create says so below.)

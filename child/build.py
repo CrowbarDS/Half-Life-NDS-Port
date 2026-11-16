@@ -7,9 +7,12 @@
 # the engine (engine -> ../source) and the game (game -> ../dll/hl) -- built
 # once more with HLDS_CHILD:
 #
-#  - the game is linked into the program rather than loaded from NitroFS as
-#    dsl/hl.dsl: Download Play sends the header and the two processors'
-#    programs, never a file system;
+#  - the game's core and the match's rules are linked into the program:
+#    Download Play sends the header and the two processors' programs, never
+#    a file system. The bosses and the soldiers are libraries apart (family ->
+#    ../dll/family, built against this program's ELF, as the parent's are),
+#    which the parent carries (dlplay/) and sends a demo's console when one
+#    of its maps needs them (source/game/Families.cpp);
 #  - no card is looked for; the game's data is what it is sent, served from
 #    memory by the "air:" drive (source/net/AirDevice.hpp);
 #  - a Nintendo DS program only (unit code 0): sent over the air it runs in
@@ -54,7 +57,8 @@ if os.environ.get('HLDS_DEBUG'):
 arm9 = Arm9Binary(
     sourcedirs=['engine', 'game'],
     includedirs=['engine', 'shared', 'thirdparty'],
-    defines=['HL_HW_MATH', 'HLDS_CHILD', 'HL_STATIC_GAME'] + extra,
+    # HL_FAMILIES_APART: the bosses and the soldiers are not linked in.
+    defines=['HL_HW_MATH', 'HLDS_CHILD', 'HL_STATIC_GAME', 'HL_FAMILIES_APART'] + extra,
     # (The same libraries as the parent's: see ../build.py.)
     libs=['NEA', 'nds9', 'dswifi_dl9_noip'],
     libdirs=[
@@ -73,14 +77,47 @@ arm9 = Arm9Binary(
 )
 # airpack_bin[] / airpack_bin_size: empty unless a test asked for a map.
 arm9.add_data([os.path.dirname(TESTPACK)])
+# (Its ID, as the parent's: ../tools/program_id.py.)
+arm9.post_link = ('python3 ../tools/program_id.py stamp', ['../tools/program_id.py'])
 arm9.generate_elf()
+
+# The bosses and the soldiers, built against this program as the parent's are
+# against the parent (../build.py: THE FAMILIES), with this program's
+# defines: the parent puts them in its NitroFS as dlplay/<family>.dsl.
+FAMILY_WRAPS = ['malloc', 'free', 'calloc', 'realloc', 'memalign', 'aligned_alloc', 'posix_memalign',
+                '__aeabi_ldivmod', '__aeabi_uldivmod']
+families = []
+for family in ('boss', 'military'):
+    lib = Arm9DynamicLibrary(
+        name=family,
+        main_binary=arm9,
+        sourcedirs=['family'],
+        includedirs=['engine', 'shared', 'thirdparty'],
+        defines=['__NDS__', '__BLOCKSDS__', 'ARM9', 'HL_HW_MATH', 'HLDS_CHILD', 'HL_STATIC_GAME',
+                 'HL_FAMILIES_APART', 'HL_FAMILY_' + family.upper()] + extra,
+        libdirs=[
+            '${BLOCKSDS}/libs/libnds',
+            '${BLOCKSDSEXT}/dswifi_dl',
+            '${BLOCKSDSEXT}/nitro-engine-advanced',
+        ],
+        cxxflags='-Wall -Werror=stack-usage=4096 -O2 -std=gnu++26 -mlong-calls -D_LITTLE_ENDIAN '
+                 '-include yas/detail/config/endian.hpp',
+        ldflags_first='-Wl,--just-symbols=' + arm9.elf_path,
+        link_deps=[arm9.elf_path],
+        ldflags=' '.join(['-Wl,--wrap=' + f for f in FAMILY_WRAPS] +
+                         ['-Wl,--gc-sections', '-Wl,-u,GetFamilyAPI', '-Wl,-u,hlFamilyProgramId']),
+        post_tool=('python3 ../tools/dsl_family.py ' + arm9.elf_path,
+                   ['../tools/dsl_family.py', '../tools/dsl_strip.py', '../tools/program_id.py', arm9.elf_path]),
+    )
+    lib.generate_dsl()
+    families.append(lib)
 
 # The parent's ARM7 program, as it is (built first, by ../make.sh): the
 # sound core and the wireless are the same.
 arm7 = Arm7BinaryDefault(elf_path=os.path.join(ROOT, 'build', 'arm7', 'arm7.elf'))
 
 nds = NdsRom(
-    binaries=[arm9, arm7],
+    binaries=[arm9, arm7] + families,
     nds_path='out/hl-child.nds',
     game_icon='../Logo.bmp',
     game_title='HALF-LIFE DS',

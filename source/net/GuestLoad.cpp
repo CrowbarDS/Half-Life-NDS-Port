@@ -2,6 +2,8 @@
 #ifdef HLDS_CHILD
 #include "net/GuestLoad.hpp"
 
+#include "HlDsRoom.hpp"
+
 #include <cstdlib>
 #include <cstring>
 #include <malloc.h>
@@ -585,6 +587,99 @@ namespace hlrt::guest
             }
         }
 
+        /// The most a family of the game's may come to (its stream is
+        /// refused if longer): what the child's builds are, with room to grow.
+        constexpr std::uint32_t kFamilyMostBytes = 128 * 1024;
+        /// What a family of the game's is asked for by, to the host: past the
+        /// music's track numbers.
+        constexpr int kFamilyAsk = 0x100;
+
+        /// Family `family`'s library for this program, from the host, into a
+        /// block of its own (`data`, the caller's to free). False, with why.
+        /// (Not folded into its caller: it puts the radio's sink in, which
+        /// tools/irq-divider.py knows it for.)
+        __attribute__((noinline)) bool demoGetFamily(hldata::GameFamily family, std::uint8_t *&data,
+                                                     std::uint32_t &size, const char **why)
+        {
+            data = nullptr;
+            size = 0;
+            const char *named = hldata::kFamilyNames[family];
+            const std::uint32_t hash = hldata::nameHash(named);
+            auto *room = static_cast<std::uint8_t *>(std::malloc(kFamilyMostBytes));
+            if (room == nullptr)
+            {
+                *why = "no room to receive it";
+                return false;
+            }
+            const char *const before = demoStepNow;
+            demoStepNow = "Receiving the game";
+            bool had = false;
+            for (int wrong = 0; wrong < 3 && !had;)
+            {
+                {
+                    const Hold hold;
+                    receiver.wantDirect(hldata::AirStream::Library, named, room, 0, kFamilyMostBytes);
+                }
+                demoTaking = hash;
+                demoTakingTrack = kFamilyAsk + family;
+                streamSince = demoAskedAt = Global::vblanks();
+                quietSince = streamSince;
+                demoCrcAt = 0;
+                demoCrcSoFar = hldata::kCrcStart;
+                demoSaidDone = 0;
+                netlink::setSink(sinkTake);
+                netGame.demoAsk(hash, true, 0, kFamilyAsk + family);
+                std::uint32_t lastBase = 0, lastAt = Global::vblanks();
+                int result = 0;
+                while (result == 0)
+                {
+                    if (!netGame.on())
+                        break;
+                    bool done, refused;
+                    std::uint32_t base;
+                    {
+                        const Hold hold;
+                        done = receiver.done();
+                        refused = receiver.refused;
+                        base = receiver.base;
+                    }
+                    if (refused)
+                        break;
+                    if (done)
+                        result = demoCheck(room, kDemoCheckBytes);
+                    if (base != lastBase)
+                    {
+                        lastBase = base;
+                        lastAt = Global::vblanks();
+                    }
+                    else if (Global::vblanks() - lastAt > kDemoGiveUpVblanks)
+                        break;
+                    netGame.frame();
+                    swiWaitForVBlank();
+                }
+                if (result > 0)
+                    had = true;
+                else if (result < 0)
+                    ++wrong;
+                else
+                    break; // (refused, or the host has gone quiet)
+            }
+            // (Back to the map, as the music's fetch leaves it.)
+            demoTaking = demoMap;
+            demoTakingTrack = 0;
+            demoSaidDone = 0;
+            demoStepNow = before;
+            if (!had)
+            {
+                std::free(room);
+                *why = "not received from the host";
+                return false;
+            }
+            data = room;
+            size = receiver.length;
+            return true;
+        }
+
         /// beginMap's, for a demo's map: all of its stream here and right, its
         /// bank mounted, and the tracks it plays here too. False: the host has
         /// gone quiet.
@@ -942,10 +1037,11 @@ namespace hlrt::guest
         replySize = 0;
         if (!hldata::airRead(bytes, size, head))
             return false;
-        // A demo's map, a track of its music: where it belongs (the first
-        // heard of it, sinkTake from then on), and never a match's to load.
+        // A demo's map, a track of its music, a family of the game's: where
+        // it belongs (the first heard of it, sinkTake from then on), and
+        // never a match's to load.
         if (netGame.demo() != 0 && (head.stream == hldata::AirStream::Map || head.stream == hldata::AirStream::MapFull ||
-                                    head.stream == hldata::AirStream::Music))
+                                    head.stream == hldata::AirStream::Music || head.stream == hldata::AirStream::Library))
         {
             const Hold hold;
             if (receiver.direct && receiver.frame(head))
@@ -1067,6 +1163,12 @@ namespace hlrt::guest
             std::uint32_t places, music;
         } ways[] = {{2, music}, {1, music}, {1, 0}};
         demoNeedKb = demoHadKb = 0;
+        // (Uplink's maps have the bosses' and the soldiers' monsters: room
+        // left for a family as it comes -- received whole, then loaded beside
+        // that -- one at a time, the last let go first. The hazard course's
+        // have none.)
+        const std::uint32_t familyRoom =
+            netGame.demo() == hldata::kDemoUplink ? kFamilyMostBytes + hldata::kDsFamilyBytes[hldata::kFamilyBoss] : 0;
         for (const auto &way : ways)
         {
             if (demoOn)
@@ -1087,12 +1189,12 @@ namespace hlrt::guest
             // (What was let go of counts as well as what was never had.)
             const struct mallinfo info = mallinfo();
             const std::size_t free = global.heapHeadroom() + info.fordblks;
-            if (demoNeedKb == 0 || bytes + kDemoPlayBytes < demoNeedKb * 1024u)
+            if (demoNeedKb == 0 || bytes + kDemoPlayBytes + familyRoom < demoNeedKb * 1024u)
             {
-                demoNeedKb = (bytes + kDemoPlayBytes) / 1024;
+                demoNeedKb = (bytes + kDemoPlayBytes + familyRoom) / 1024;
                 demoHadKb = static_cast<std::uint32_t>(free / 1024);
             }
-            if (free < bytes + kDemoPlayBytes)
+            if (free < bytes + kDemoPlayBytes + familyRoom)
                 continue;
             demoRoom = static_cast<std::uint8_t *>(memalign(32, bytes));
             if (demoRoom != nullptr)
@@ -1248,6 +1350,20 @@ namespace hlrt::guest
     }
 
     bool demoMapHere() { return demoArena.isWhole(demoMap) || (demoTaking == demoMap && receiver.done()); }
+
+    bool familyFetch(hldata::GameFamily family, std::uint8_t *&data, std::uint32_t &size, const char **why)
+    {
+        data = nullptr;
+        size = 0;
+        // (Only a demo's maps need one: no game between consoles is played
+        // on a map with monsters of a family's.)
+        if (!demoOn)
+        {
+            *why = "a game between consoles has none";
+            return false;
+        }
+        return demoGetFamily(family, data, size, why);
+    }
 
     bool demoLoading() { return demoLoadingNow; }
 

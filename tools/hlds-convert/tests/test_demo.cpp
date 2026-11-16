@@ -464,6 +464,28 @@ namespace
         check(!server.streams[0].on && !server.streams[1].on, "all had: nothing more sent");
     }
 
+    // A family of the game's for the child (dlplay/boss.dsl), as a map of a
+    // demo needs it: sent as a stream of its own kind, beside a map's.
+    void testFamily()
+    {
+        const File map = file("hldemo2", 25 * kAirPiece + 11, 7);
+        const File family = file("boss", 116 * kAirPiece + 40, 9);
+        DemoServer server;
+        Console a{100, 1}, b{200, 2};
+        b.kind = AirStream::Library;
+        a.want(map);
+        b.want(family);
+        server.want(a.token, a.seat, map.map, true, 0, map.name, static_cast<std::uint32_t>(map.bytes.size()), map.crc, 4);
+        server.want(b.token, b.seat, family.map, true, 0, family.name, static_cast<std::uint32_t>(family.bytes.size()),
+                    family.crc, 0x401, AirStream::Library);
+        check(server.streams[1].air.stream == AirStream::Library, "a family is sent as one");
+        std::vector<Console *> consoles{&a, &b};
+        a.loss = b.loss = 10;
+        air(server, {&map, &family}, consoles, 600);
+        check(same(b, family), "the family, whole, beside a map");
+        check(same(a, map), "the map, whole, beside a family");
+    }
+
     // A stream longer than the room it is wanted into: not taken at all.
     void testTooLong()
     {
@@ -601,6 +623,7 @@ int main()
     testLiveFirst();
     testSharing();
     testTrack();
+    testFamily();
     testTooLong();
     testLayout();
     testBank();

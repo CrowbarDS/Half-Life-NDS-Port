@@ -112,8 +112,12 @@ namespace hldata
     // strike ten times a second (16 Nov 2026): none; t0a0b1 about 17 KB under.
     // Raised 1 KB for the families' tables (the bosses and the soldiers set
     // up as they come, 16 Nov 2026) -- until the child goes without them:
-    // none; t0a0b1 about 16 KB under.
-    inline constexpr std::uint32_t kGuestImageBytes = 0x165B6C + 90 * 1024;
+    // none; t0a0b1 about 16 KB under. Lowered 92 KB when it did (0x021646C8,
+    // 16 Nov 2026): the bosses and the soldiers are libraries apart, which
+    // the host sends a demo's console as one of its maps needs them, and no
+    // map of a match has (source/game/Families.cpp). A match's guest's peak
+    // has nothing of them.
+    inline constexpr std::uint32_t kGuestImageBytes = 0x1646C8 + 1 * 1024;
     /// The heap's end: the end of main RAM less what the start-up code keeps.
     inline constexpr std::uint32_t kGuestRamBytes = 0x3F4000;
     /// What the engine holds beside a map's data -- its tables, the world's

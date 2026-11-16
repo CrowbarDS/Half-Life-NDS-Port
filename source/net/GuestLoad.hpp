@@ -23,6 +23,7 @@
 #include <string>
 
 #include "HlGuest.hpp"
+#include "HlLevel.hpp"
 #include "HlNetAir.hpp"
 
 namespace hldata
@@ -148,6 +149,10 @@ namespace hlrt::guest
 
     /// All of the map being played has come.
     bool demoMapHere();
+    /// A family of the game's, built for this program (Families.cpp), from
+    /// the host: into a block of its own (`data`, the caller's to free).
+    /// False, with why: not a demo's console, or not had.
+    bool familyFetch(hldata::GameFamily family, std::uint8_t *&data, std::uint32_t &size, const char **why);
     /// A map being loaded: its textures wait, for the air it comes on.
     bool demoLoading();
     /// The map is loaded: where its ways out lead, to get them ready.

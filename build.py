@@ -80,8 +80,8 @@ arm9 = Arm9Binary(
     # the geometry engine, on the overlay and in perf.txt. Off, every one of
     # its entry points is an empty inline (DebugLog.hpp), so the shipped
     # build carries none of it.
-    # HL_FAMILIES_APART: the families (below) are not linked in.
-    defines=['HL_HW_MATH', 'HL_STATIC_GAME', 'HL_FAMILIES_APART'] + profile + guard,
+    # HL_FAMILIES_APART, HL_NET_APART: the families (below) are not linked in.
+    defines=['HL_HW_MATH', 'HL_STATIC_GAME', 'HL_FAMILIES_APART', 'HL_NET_APART'] + profile + guard,
     # The wireless is the dswifi fork that also does DS Download Play
     # (github.com/Warioware64/dswifi, installed as "dswifi_dl" beside the
     # stock one). Its headers have the stock names (dswifi9.h), so
@@ -147,7 +147,7 @@ for family in ('boss', 'military', 'net'):
         # program's own, all of them: the core's code it shares is the same
         # only if it is compiled the same.)
         defines=['__NDS__', '__BLOCKSDS__', 'ARM9', 'HL_HW_MATH', 'HL_STATIC_GAME', 'HL_FAMILIES_APART',
-                 'HL_FAMILY_' + family.upper()] + profile + guard,
+                 'HL_NET_APART', 'HL_FAMILY_' + family.upper()] + profile + guard,
         # (Only their headers: a family links nothing of its own.)
         libdirs=[
             '${BLOCKSDS}/libs/libnds',
@@ -192,6 +192,12 @@ for lib in families:
 CHILD_ROM = os.path.join('child', 'out', 'hl-child-twl.nds')
 if os.path.isfile(CHILD_ROM):
     nitrofs.add_file(CHILD_ROM, 'dlplay/child.nds')
+    # ... and the families built for it, sent to a demo's console that needs
+    # one (source/net/NetGame.cpp: a family's stream).
+    for family in ('boss', 'military'):
+        sent = os.path.join('child', 'build', family, family + '.dsl')
+        if os.path.isfile(sent):
+            nitrofs.add_file(sent, 'dlplay/' + family + '.dsl')
 nitrofs.generate_image()
 
 nds = NdsRom(

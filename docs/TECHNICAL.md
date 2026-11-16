@@ -1271,8 +1271,22 @@ family was linked against, and nothing in the family would say so.
   that every address a family is given lies in the program's main RAM, ITCM
   or DTCM.
 
-The Download Play child still links every family in (no
-`HL_FAMILIES_APART`).
+**The Download Play child** links the core and the match's rules in: every
+guest needs the rules from the lobby on, and no map of a match has a
+family's monsters. The bosses and the soldiers are apart (`HL_FAMILIES_APART`
+without `HL_NET_APART`), which took 92 KB off its image (1,517 KB to 1,425;
+`kGuestImageBytes`), so a match's guest has that much more for its map.
+- `child/build.py` builds those two again against the child's own ELF, with
+  its defines and its own ID, and the parent carries them as
+  `dlplay/<family>.dsl`.
+- Only Uplink's maps need them (hldemo1 the bosses, hldemo2 and hldemo3 the
+  soldiers). A demo's console asks the host for one, as it asks for a track of
+  the music, once the map's level is read (a guest does not know a map's
+  header before that). It comes as a stream of its own (`AirStream::Library`,
+  by the family's name) into a block of its own, is loaded from there
+  (`dlopen_FILE` on `fmemopen`), and the block is let go.
+- `demoBegin` keeps room for it: the received block and the largest family
+  beside it.
 
 ### Guards, and the crash screen
 
