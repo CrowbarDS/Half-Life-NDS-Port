@@ -35,6 +35,10 @@ namespace hldata
         fx half = 0;
         fx velocity[3] = {0, 0, 0};
         std::uint16_t yaw = 0;
+        /// The way it faces, flat (Q12, unit): its yaw's -- a player's as it
+        /// is kept, with no angle worked out of it (`yaw` is not set for the
+        /// player).
+        fx facing[2] = {kFxOne, 0};
         fx fov = fxDot(0.5);
         bool onGround = true;
         int health = 0;
@@ -83,7 +87,10 @@ namespace hldata
             t.eye[2] += player.viewHeight;
             t.height = tall * 2;
             t.half = fxFromInt(16);
-            t.yaw = fxAtan2Turns(player.facingXY[1], player.facingXY[0]);
+            // (Its facing as it is kept: no angle is worked out of it, which
+            // would be a divide -- t.yaw is not used for the player.)
+            t.facing[0] = player.facingXY[0];
+            t.facing[1] = player.facingXY[1];
             t.onGround = player.onGround;
             t.health = player.health;
             t.alive = player.health > 0;
@@ -119,6 +126,7 @@ namespace hldata
         if (isTurret(actor.kind))
             t.eye[2] = t.center[2];
         t.yaw = actor.yaw;
+        fxSinCos(actor.yaw, t.facing[1], t.facing[0]);
         t.alive = aiAlive(*w.actors, id);
         t.onGround = !actor.airborne;
         if (const AiMonster *m = aiFind(*w.actors, id))
@@ -208,6 +216,17 @@ namespace hldata
         fx sine, cosine;
         fxSinCos(yaw, sine, cosine);
         return static_cast<fx>((static_cast<std::int64_t>(d[0]) * cosine + static_cast<std::int64_t>(d[1]) * sine) /
+                               length);
+    }
+    /// The same for a target, by the way it faces (AiTarget::facing).
+    inline fx aiDot2D(const AiTarget &t, const fx *to)
+    {
+        const fx d[3] = {to[0] - t.origin[0], to[1] - t.origin[1], 0};
+        const fx length = fxLength(d);
+        if (length <= 0)
+            return 0;
+        return static_cast<fx>((static_cast<std::int64_t>(d[0]) * t.facing[0] +
+                                static_cast<std::int64_t>(d[1]) * t.facing[1]) /
                                length);
     }
     inline void aiEye(const AiCtx &c, fx *eye)
@@ -600,7 +619,7 @@ namespace hldata
                 if (c.me.flags & kActorWaitSeen)
                 {
                     // (Until the player has it in view: then it is free to.)
-                    if (aiDot2D(t.yaw, t.origin, c.me.pos) <= t.fov)
+                    if (aiDot2D(t, c.me.pos) <= t.fov)
                         return;
                     c.me.flags &= static_cast<std::uint8_t>(~kActorWaitSeen);
                 }
@@ -899,7 +918,7 @@ namespace hldata
             for (int k = 0; k < 3; ++k)
                 c.m.enemyLkp[k] = t.origin[k];
             // (Whether it has us in its own view.)
-            if (aiDot2D(t.yaw, t.origin, c.me.pos) > t.fov)
+            if (aiDot2D(t, c.me.pos) > t.fov)
                 aiSet(c, kCondEnemyFacingMe);
             else
                 aiClear(c, kCondEnemyFacingMe);

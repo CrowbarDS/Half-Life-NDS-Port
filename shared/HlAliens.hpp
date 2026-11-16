@@ -2546,7 +2546,7 @@ namespace hldata
                 const fx far = unit(to);
                 const fx facing = dot(forward, to);
                 // (Whether it is in its enemy's own view.)
-                if (sees && aiDot2D(t.yaw, t.origin, c.me.pos) > t.fov)
+                if (sees && aiDot2D(t, c.me.pos) > t.fov)
                     aiSet(c, kCondEnemyFacingMe);
                 else
                     aiClear(c, kCondEnemyFacingMe);

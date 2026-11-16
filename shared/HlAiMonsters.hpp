@@ -1837,8 +1837,7 @@ namespace hldata
                     // little behind where it faces).
                     AiTarget t;
                     aiTargetOf(c.w, c.player, c.m.enemy, t);
-                    fx sine, cosine;
-                    fxSinCos(t.yaw, sine, cosine);
+                    const fx cosine = t.facing[0], sine = t.facing[1];
                     fx at[3] = {c.me.pos[0] - cosine * 6, c.me.pos[1] - sine * 6, t.origin[2]};
                     c.m.value1 -= fxFromInt(kPullSpeed);
                     at[2] += fxFromInt(kPullSpeed);
