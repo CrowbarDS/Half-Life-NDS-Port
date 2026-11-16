@@ -115,6 +115,12 @@ namespace hldata
             return w.effectSeed >> 8;
         }
 
+        // A hurting beam's state.hurt (beamBurn).
+        inline constexpr std::int32_t kBeamOnSomething = 1;
+        inline constexpr std::int32_t kBeamStruck = 2;
+        inline constexpr int kBeamGoneShift = 8;
+        inline constexpr std::int32_t kBeamStrikeMs = 100;
+
         /// Where a Beam record's two ends are aimed: fixed, following
         /// something, or (its end) wherever its present strike was sent.
         inline void beamAimedEnds(const LogicWorld &w, int index, fx *from, fx *to)
@@ -141,7 +147,7 @@ namespace hldata
     {
         detail::beamAimedEnds(w, index, from, to);
         const LogicState &state = w.states[index];
-        if (state.hurt != 0)
+        if (state.hurt & detail::kBeamOnSomething)
         {
             for (int k = 0; k < 3; ++k)
                 to[k] = state.base[k];
@@ -309,9 +315,27 @@ namespace hldata
         {
             const LogicRecord &record = w.records[index];
             LogicState &state = w.states[index];
-            state.hurt = 0;
             if (!effectSeen(record, state) || w.world == nullptr)
+            {
+                state.hurt = 0;
                 return;
+            }
+            // Ten times a second, as the game's (CLaser::StrikeThink) --
+            // at once as it comes on, then each tenth -- with the time since,
+            // so that it burns as much a second. (`hurt`: bit 0, its end is
+            // on something, as beamEnds reads it; bit 1, it has struck since
+            // it came on; above them, the ms since it last did.)
+            if (state.hurt & kBeamStruck)
+            {
+                const std::int32_t gone = (state.hurt >> kBeamGoneShift) + ms;
+                if (gone < kBeamStrikeMs)
+                {
+                    state.hurt = (gone << kBeamGoneShift) | (state.hurt & (kBeamOnSomething | kBeamStruck));
+                    return;
+                }
+                ms = gone;
+            }
+            state.hurt = kBeamStruck;
             fx from[3], to[3];
             beamAimedEnds(w, index, from, to);
             const Shot shot = traceShot(*w.world, from, to);
@@ -373,7 +397,7 @@ namespace hldata
                         state.base[k] = from[k] + static_cast<fx>((static_cast<std::int64_t>(to[k] - from[k]) * nearest) >>
                                                                   kFractionShift);
                 }
-                state.hurt = 1;
+                state.hurt |= kBeamOnSomething;
             }
             // (So much a second: the parts of a point are kept.)
             state.speed += static_cast<fx>(record.damage) * ms;
@@ -410,7 +434,7 @@ namespace hldata
             {
                 if (!(end == 0 ? sparksStart : sparksEnd))
                     continue;
-                const fx *at = end == 0 ? from : (state.hurt != 0 ? state.base : to);
+                const fx *at = end == 0 ? from : ((state.hurt & kBeamOnSomething) ? state.base : to);
                 Effect &spark = effectAdd(*w.actors, kEffectSprite, at, nullptr, 14, 150);
                 spark.sprite = static_cast<std::uint16_t>(CommonSprite::Glow);
                 spark.colour = 0x3BFF; // (as an env_spark's)
