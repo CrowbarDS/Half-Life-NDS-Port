@@ -28,6 +28,14 @@ namespace hlrt
     void Game::rememberMap(std::uint32_t mapHash) { gameApi.rememberMap(*this, mapHash); }
     void Game::restoreMap(std::uint32_t mapHash) { gameApi.restoreMap(*this, mapHash); }
     hldata::SaveData Game::snapshot(const std::string &map) { return gameApi.snapshot(*this, map); }
+    hldata::SaveData Game::snapshotSplit(const std::string &map, std::size_t &middleAt, std::uint32_t &middleBytes)
+    {
+        return gameApi.snapshotSplit(*this, map, middleAt, middleBytes);
+    }
+    bool Game::streamState(bool (*sink)(void *, const std::uint8_t *, std::size_t), void *context)
+    {
+        return gameApi.streamState(*this, sink, context);
+    }
     void Game::adoptProgress(const hldata::SaveData &save) { gameApi.adoptProgress(*this, save); }
     void Game::placeFromSave(const hldata::SaveData &save) { gameApi.placeFromSave(*this, save); }
     bool Game::arrivalOf(const hldata::SaveData &save, hldata::Arrival &out) { return gameApi.arrivalOf(save, out); }

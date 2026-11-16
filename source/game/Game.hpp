@@ -134,6 +134,13 @@ namespace hlrt
         void restoreMap(std::uint32_t mapHash);
         /// Everything a save holds, for the map called `map`.
         hldata::SaveData snapshot(const std::string &map);
+        /// The same without the map's own state -- its largest part, 100 KB
+        /// and more -- which belongs at `middleAt` in its state and comes to
+        /// `middleBytes`: streamState makes it, a piece at a time, as the
+        /// save is written (SaveWriter's beginSplit). The game must not move
+        /// in between.
+        hldata::SaveData snapshotSplit(const std::string &map, std::size_t &middleAt, std::uint32_t &middleBytes);
+        bool streamState(bool (*sink)(void *context, const std::uint8_t *bytes, std::size_t size), void *context);
         /// Take a save's switches and broken things as the game's own. Call
         /// BEFORE loading its map: the map reads the switches as it starts.
         void adoptProgress(const hldata::SaveData &save);
@@ -246,6 +253,10 @@ namespace hlrt
         /// to) does besides: what it was doing at that moment is cleared,
         /// what moves sounds again, the limits are this console's.
         void afterLay();
+        /// snapshot's and snapshotSplit's: the map's own state in it, or
+        /// (`split`) only where it goes and how long it is.
+        hldata::SaveData snapshotParts(const std::string &map, bool split, std::size_t &middleAt,
+                                       std::uint32_t &middleBytes);
         /// The player left the last map at its train's controls (makeArrival),
         /// and has this one's (applyArrival).
         mutable bool trainCarried_ = false;

@@ -443,8 +443,91 @@ namespace
     }
 } // namespace
 
+namespace
+{
+    /// A save whose map state is made as it is written (SaveWriter's
+    /// beginSplit, the DS's way when the heap is short): byte for byte the
+    /// file a save written whole makes, and read back the same.
+    void testSplit()
+    {
+        SaveData whole = game("c1a3a", 77);
+        whole.arsenal.antidotes = 3;
+        whole.state.resize(40000);
+        for (std::size_t i = 0; i < whole.state.size(); ++i)
+            whole.state[i] = static_cast<std::uint8_t>(i * 7 + (i >> 9));
+        const std::size_t middleAt = 1200, middleBytes = 30000;
+        SaveData light = whole;
+        light.state.erase(light.state.begin() + middleAt, light.state.begin() + middleAt + middleBytes);
+        struct Middle
+        {
+            const std::uint8_t *bytes;
+            std::size_t size;
+            int asked = 0;
+            static bool write(void *context, SaveMiddle::Sink sink, void *sinkContext)
+            {
+                auto *m = static_cast<Middle *>(context);
+                ++m->asked;
+                // (In pieces, as the map's state is streamed.)
+                for (std::size_t at = 0; at < m->size; at += 1024)
+                {
+                    if (!sink(sinkContext, m->bytes + at, m->size - at < 1024 ? m->size - at : 1024))
+                        return false;
+                }
+                return true;
+            }
+        } middle{whole.state.data() + middleAt, middleBytes};
+        const SaveHeading h = heading("c1a3a", "UNFORESEEN", 500);
+
+        // The parts, put together, are writeSave's file.
+        SaveSplit split = writeSaveSplit(light, h, middleAt, static_cast<std::uint32_t>(middleBytes));
+        std::uint32_t crc = saveSplitCrcStart(split);
+        crc = crc32Update(crc, middle.bytes, middle.size);
+        saveSplitSeal(split, crc);
+        std::vector<std::uint8_t> joined = split.front;
+        joined.insert(joined.end(), middle.bytes, middle.bytes + middle.size);
+        joined.insert(joined.end(), split.back.begin(), split.back.end());
+        check(joined == writeSave(whole, h), "a save in parts is the same file as one written whole");
+
+        // Written so, through the writer: read back as the whole.
+        MemoryCard card;
+        SaveIndex index;
+        saveIndexLoad(card, index);
+        SaveWriter writer;
+        SaveMiddle part;
+        part.bytes = static_cast<std::uint32_t>(middleBytes);
+        part.context = &middle;
+        part.write = &Middle::write;
+        check(writer.beginSplit(card, index, kSlotArrival, light, middleAt, part, h) && writer.finish(),
+              "a save with its state made as it is written is written");
+        SaveData read;
+        check(saveSlotRead(card, kSlotArrival, read) && read.state == whole.state && read.health == 77 &&
+                  read.arsenal.antidotes == 3,
+              "... and read back whole");
+        check(middle.asked == 2, "its state made twice: once counted, once written");
+
+        // A state that comes out other than it was counted: refused, and the
+        // old save left as it was.
+        struct Wrong
+        {
+            static bool write(void *, SaveMiddle::Sink sink, void *sinkContext)
+            {
+                static int n = 0;
+                const std::uint8_t b[4] = {1, 2, 3, static_cast<std::uint8_t>(n++)};
+                return sink(sinkContext, b, sizeof(b));
+            }
+        };
+        SaveMiddle wrong;
+        wrong.bytes = 4;
+        wrong.write = &Wrong::write;
+        const std::vector<std::uint8_t> before = card.files["arrival.sav"];
+        const bool wrote = writer.beginSplit(card, index, kSlotArrival, light, middleAt, wrong, h) && writer.finish();
+        check(!wrote && card.files["arrival.sav"] == before, "a state not the same twice is not saved over the last");
+    }
+} // namespace
+
 int main()
 {
+    testSplit();
     testMany();
     testOldCard();
     testRefusingCard();

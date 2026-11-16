@@ -531,6 +531,18 @@ namespace hldata
     /// a file removed or renamed -- so a game can write a save over a few
     /// frames and go on being played. Cut off anywhere, it leaves what
     /// saveRecover puts right; failed, the old save is still there.
+    /// A part of a save's state that is not held in memory, but made as it is
+    /// written (writeSaveSplit): the map's state, straight to the card.
+    struct SaveMiddle
+    {
+        using Sink = bool (*)(void *context, const std::uint8_t *bytes, std::size_t size);
+        std::uint32_t bytes = 0;
+        void *context = nullptr;
+        /// All of its bytes, in order, through `sink`; the same each time it
+        /// is asked. False: it could not be made.
+        bool (*write)(void *context, Sink sink, void *sinkContext) = nullptr;
+    };
+
     class SaveWriter
     {
     public:
@@ -546,6 +558,60 @@ namespace hldata
         /// the rest -- copied in from their files, or (`byRef`) only named.
         bool begin(SaveCard &card, SaveIndex &index, int slot, const SaveData &data, SaveHeading heading,
                    const RunIndex *run = nullptr, bool byRef = false)
+        {
+            if (!settle(card, index, slot, heading))
+                return false;
+            bytes_ = writeSave(data, heading);
+            if (bytes_.size() > kSaveMaxBytes + kSaveHeadBytes)
+            {
+                failedAt_ = "too big";
+                letGo();
+                return false;
+            }
+            middle_ = SaveMiddle();
+            tail_.clear();
+            return start(card, index, slot, heading, run, byRef, bytes_);
+        }
+
+        /// The same, with `middle` -- the state's part not in `data.state`,
+        /// at `middleAt` in it -- made as it is written, a piece at a time:
+        /// the save is never in memory whole (writeSaveSplit). Its bytes are
+        /// the same. To be finished at once (finish()): `middle` is made
+        /// from the game as it is, which must not change in between.
+        bool beginSplit(SaveCard &card, SaveIndex &index, int slot, const SaveData &data, std::size_t middleAt,
+                        const SaveMiddle &middle, SaveHeading heading, const RunIndex *run = nullptr,
+                        bool byRef = false)
+        {
+            if (!settle(card, index, slot, heading))
+                return false;
+            SaveSplit split = writeSaveSplit(data, heading, middleAt, middle.bytes);
+            if (split.front.empty() || middle.write == nullptr ||
+                split.front.size() - kSaveHeadBytes + middle.bytes + split.back.size() > kSaveMaxBytes)
+            {
+                failedAt_ = split.front.empty() || middle.write == nullptr ? "split" : "too big";
+                letGo();
+                return false;
+            }
+            // Its CRC, and the payload's, once through.
+            Counted counted{saveSplitCrcStart(split), kCrcStart, 0};
+            if (!middle.write(middle.context, &Counted::take, &counted) || counted.bytes != middle.bytes)
+            {
+                failedAt_ = "state";
+                letGo();
+                return false;
+            }
+            saveSplitSeal(split, counted.chain);
+            middleCrc_ = crc32Finish(counted.alone);
+            middle_ = middle;
+            bytes_ = std::move(split.front);
+            tail_ = std::move(split.back);
+            return start(card, index, slot, heading, run, byRef, tail_);
+        }
+
+    private:
+        /// What may stop a save of `slot` before anything is written; the
+        /// heading made this save's.
+        bool settle(SaveCard &card, SaveIndex &index, int slot, SaveHeading &heading)
         {
             stage_ = Stage::Idle;
             failedAt_ = "begin";
@@ -577,15 +643,15 @@ namespace hldata
             }
             heading.kind = saveSlotKind(slot);
             heading.serial = index.nextSerial;
-            bytes_ = writeSave(data, heading);
-            if (bytes_.size() > kSaveMaxBytes + kSaveHeadBytes)
-            {
-                failedAt_ = "too big";
-                letGo();
-                return false;
-            }
-            // The maps left: a heading and their table, here; their files
-            // after, copied a piece at a time (Copy).
+            return true;
+        }
+
+        /// The save's last part (`last`) followed by the maps left: a heading
+        /// and their table; their files after, copied a piece at a time
+        /// (Copy). Then begun.
+        bool start(SaveCard &card, SaveIndex &index, int slot, const SaveHeading &heading, const RunIndex *run,
+                   bool byRef, std::vector<std::uint8_t> &last)
+        {
             files_.clear();
             VisitedHead head{};
             std::memcpy(head.magic, kVisitedMagic, 4);
@@ -604,11 +670,11 @@ namespace hldata
                 fileBytes += entry.bytes;
             head.bytes = static_cast<std::uint32_t>(tableBytes + (byRef ? 0 : fileBytes));
             head.tableCrc = crc32(reinterpret_cast<const std::uint8_t *>(files_.data()), static_cast<std::uint32_t>(tableBytes));
-            const std::size_t at = bytes_.size();
-            bytes_.resize(at + sizeof(head) + tableBytes);
-            std::memcpy(bytes_.data() + at, &head, sizeof(head));
+            const std::size_t at = last.size();
+            last.resize(at + sizeof(head) + tableBytes);
+            std::memcpy(last.data() + at, &head, sizeof(head));
             if (tableBytes != 0)
-                std::memcpy(bytes_.data() + at + sizeof(head), files_.data(), tableBytes);
+                std::memcpy(last.data() + at + sizeof(head), files_.data(), tableBytes);
             if (byRef)
                 files_.clear();
             card_ = &card;
@@ -621,6 +687,35 @@ namespace hldata
             return true;
         }
 
+        /// The middle's bytes counted: its CRC alone, and the payload's
+        /// going on through it.
+        struct Counted
+        {
+            std::uint32_t chain, alone, bytes;
+            static bool take(void *context, const std::uint8_t *data, std::size_t size)
+            {
+                auto *c = static_cast<Counted *>(context);
+                c->chain = crc32Update(c->chain, data, size);
+                c->alone = crc32Update(c->alone, data, size);
+                c->bytes += static_cast<std::uint32_t>(size);
+                return true;
+            }
+        };
+        /// ... and written to the save's new file.
+        struct ToCard
+        {
+            SaveCard *card;
+            const char *name;
+            std::uint32_t bytes;
+            static bool take(void *context, const std::uint8_t *data, std::size_t size)
+            {
+                auto *c = static_cast<ToCard *>(context);
+                c->bytes += static_cast<std::uint32_t>(size);
+                return c->card->append(c->name, data, size, false);
+            }
+        };
+
+    public:
         bool busy() const { return stage_ != Stage::Idle; }
         int slot() const { return slot_; }
         /// Where the last write that failed stopped ("write", "swap" ...).
@@ -639,6 +734,31 @@ namespace hldata
                     return fail("write");
                 at_ += n;
                 if (at_ == bytes_.size())
+                {
+                    stage_ = middle_.write != nullptr ? Stage::WriteMiddle : (files_.empty() ? Stage::Close : Stage::Copy);
+                    file_ = 0;
+                    fileAt_ = 0;
+                }
+                return Result::Busy;
+            }
+            case Stage::WriteMiddle:
+            {
+                // (All of it in one step: it is made from the game as it is.)
+                ToCard to{card_, fresh_.c_str(), 0};
+                if (!middle_.write(middle_.context, &ToCard::take, &to) || to.bytes != middle_.bytes)
+                    return fail("write state");
+                at_ = 0;
+                stage_ = Stage::WriteTail;
+                return Result::Busy;
+            }
+            case Stage::WriteTail:
+            {
+                const std::size_t left = tail_.size() - at_;
+                const std::size_t n = left < kSaveStepBytes ? left : kSaveStepBytes;
+                if (!card_->append(fresh_.c_str(), tail_.data() + at_, n, false))
+                    return fail("write");
+                at_ += n;
+                if (at_ == tail_.size())
                 {
                     stage_ = files_.empty() ? Stage::Close : Stage::Copy;
                     file_ = 0;
@@ -681,7 +801,7 @@ namespace hldata
                 // and no longer.)
                 const std::size_t n = piece();
                 std::vector<std::uint8_t> back;
-                const bool last = at_ + n == bytes_.size() && files_.empty();
+                const bool last = at_ + n == bytes_.size() && files_.empty() && middle_.write == nullptr;
                 if (!card_->readAt(fresh_.c_str(), at_, n + (last ? 1 : 0), back))
                     return fail("read back");
                 if (back.size() != n || std::memcmp(back.data(), bytes_.data() + at_, n) != 0)
@@ -689,9 +809,46 @@ namespace hldata
                 at_ += n;
                 if (at_ == bytes_.size())
                 {
+                    if (middle_.write != nullptr)
+                    {
+                        stage_ = Stage::CheckMiddle;
+                        return Result::Busy;
+                    }
                     stage_ = files_.empty() ? Stage::Swap : Stage::CheckFiles;
                     file_ = 0;
                     fileAt_ = at_;
+                    if (files_.empty())
+                        card_->finish(fresh_.c_str());
+                }
+                return Result::Busy;
+            }
+            case Stage::CheckMiddle:
+            {
+                // (By its CRC: it is not kept to be compared with.)
+                std::uint32_t crc = 0;
+                if (!cardCrc(*card_, fresh_.c_str(), bytes_.size(), middle_.bytes, piece_, crc) || crc != middleCrc_)
+                    return fail("state read back");
+                at_ = 0;
+                stage_ = Stage::CheckTail;
+                return Result::Busy;
+            }
+            case Stage::CheckTail:
+            {
+                const std::size_t left = tail_.size() - at_;
+                const std::size_t n = left < kSaveStepBytes ? left : kSaveStepBytes;
+                const std::size_t from = bytes_.size() + middle_.bytes + at_;
+                std::vector<std::uint8_t> back;
+                const bool last = at_ + n == tail_.size() && files_.empty();
+                if (!card_->readAt(fresh_.c_str(), from, n + (last ? 1 : 0), back))
+                    return fail("read back");
+                if (back.size() != n || std::memcmp(back.data(), tail_.data() + at_, n) != 0)
+                    return fail("not as written");
+                at_ += n;
+                if (at_ == tail_.size())
+                {
+                    stage_ = files_.empty() ? Stage::Swap : Stage::CheckFiles;
+                    file_ = 0;
+                    fileAt_ = bytes_.size() + middle_.bytes + tail_.size();
                     if (files_.empty())
                         card_->finish(fresh_.c_str());
                 }
@@ -754,9 +911,13 @@ namespace hldata
         {
             Idle,
             Write,
+            WriteMiddle,
+            WriteTail,
             Copy,
             Close,
             Check,
+            CheckMiddle,
+            CheckTail,
             CheckFiles,
             Swap
         };
@@ -781,6 +942,8 @@ namespace hldata
         void letGo()
         {
             std::vector<std::uint8_t>().swap(bytes_);
+            std::vector<std::uint8_t>().swap(tail_);
+            middle_ = SaveMiddle();
             std::vector<RunEntry>().swap(files_);
             std::vector<std::uint8_t>().swap(piece_);
             std::string().swap(fresh_);
@@ -793,7 +956,10 @@ namespace hldata
         int slot_ = -1;
         SaveHeading heading_;
         std::string fresh_;
-        std::vector<std::uint8_t> bytes_;
+        std::vector<std::uint8_t> bytes_; ///< all of the save; or, split, its front
+        std::vector<std::uint8_t> tail_;  ///< split: what is after the middle
+        SaveMiddle middle_;               ///< split: the part made as it is written
+        std::uint32_t middleCrc_ = 0;
         std::size_t at_ = 0;
         std::vector<RunEntry> files_; ///< the maps left whose files are copied in
         std::size_t file_ = 0, fileAt_ = 0;

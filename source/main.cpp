@@ -1345,7 +1345,7 @@ namespace
             // (One is being written still: this one waits for nothing, it is
             // written at once.)
         }
-        const bool saved = hlrt::SaveGame::write(hlrt::game.snapshot(currentMap), slot, heading);
+        const bool saved = hlrt::SaveGame::writeGame(currentMap, slot, heading);
 #ifdef HLDS_CHILD
         // (The host may be out of reach: nothing the player can do about it.)
         if (!saved)

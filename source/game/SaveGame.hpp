@@ -20,6 +20,12 @@ namespace hlrt::SaveGame
     /// Write it. False if the card would not take it: the save that was
     /// there is then there still.
     bool write(const hldata::SaveData &save, int slot, const hldata::SaveHeading &heading);
+    /// The game as it is now, saved as the map `map`, at once. On a card,
+    /// the map's own state is made as it is written (Game::snapshotSplit):
+    /// a save never holds 100 KB and more of the heap at once, which a DS's,
+    /// full after a map's load, has not got in one piece (2026-11-16: the
+    /// heap trace of c1a3a).
+    bool writeGame(const std::string &map, int slot, const hldata::SaveHeading &heading);
     /// One of the player's saves gone from the card and the list. False if
     /// it is not theirs or would not go.
     bool remove(int slot);

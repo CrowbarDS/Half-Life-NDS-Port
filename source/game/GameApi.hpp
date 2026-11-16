@@ -47,7 +47,7 @@ namespace hlrt
     class TopText;
 
     /// Changed whenever either table or anything they carry changes shape.
-    inline constexpr std::uint32_t kGameApiVersion = 10;
+    inline constexpr std::uint32_t kGameApiVersion = 11;
 
     /// The sizes of what both sides lay out, compared at the handshake: a
     /// library built from other headers, or with other settings, is refused
@@ -142,6 +142,9 @@ namespace hlrt
         void (*rememberMap)(Game &, std::uint32_t mapHash);
         void (*restoreMap)(Game &, std::uint32_t mapHash);
         hldata::SaveData (*snapshot)(Game &, const std::string &map);
+        hldata::SaveData (*snapshotSplit)(Game &, const std::string &map, std::size_t &middleAt,
+                                          std::uint32_t &middleBytes);
+        bool (*streamState)(Game &, bool (*sink)(void *, const std::uint8_t *, std::size_t), void *context);
         void (*adoptProgress)(Game &, const hldata::SaveData &);
         void (*placeFromSave)(Game &, const hldata::SaveData &);
         bool (*arrivalOf)(const hldata::SaveData &, hldata::Arrival &);

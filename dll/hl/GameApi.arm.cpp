@@ -19,6 +19,12 @@ namespace
         .rememberMap = [](Game &g, std::uint32_t mapHash) { g.rememberMap(mapHash); },
         .restoreMap = [](Game &g, std::uint32_t mapHash) { g.restoreMap(mapHash); },
         .snapshot = [](Game &g, const std::string &map) { return g.snapshot(map); },
+        .snapshotSplit = [](Game &g, const std::string &map, std::size_t &middleAt, std::uint32_t &middleBytes) {
+            return g.snapshotSplit(map, middleAt, middleBytes);
+        },
+        .streamState = [](Game &g, bool (*sink)(void *, const std::uint8_t *, std::size_t), void *context) {
+            return g.streamState(sink, context);
+        },
         .adoptProgress = [](Game &g, const hldata::SaveData &save) { g.adoptProgress(save); },
         .placeFromSave = [](Game &g, const hldata::SaveData &save) { g.placeFromSave(save); },
         .arrivalOf = [](const hldata::SaveData &save, hldata::Arrival &out) { return Game::arrivalOf(save, out); },

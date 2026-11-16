@@ -76,6 +76,10 @@ namespace hlrt::SaveGame
         guest::demoSendReady(slotFile(slot), room, static_cast<std::uint32_t>(bytes.size()));
         return true;
     }
+    bool writeGame(const std::string &map, int slot, const hldata::SaveHeading &heading)
+    {
+        return write(game.snapshot(map), slot, heading);
+    }
     bool remove(int) { return false; }
     bool begin(const hldata::SaveData &, int, const hldata::SaveHeading &) { return false; }
     hldata::SaveWriter::Result step() { return hldata::SaveWriter::Result::Done; }
@@ -529,6 +533,30 @@ namespace hlrt::SaveGame
         // that long (Sound::holdPipeline).
         sound.holdPipeline(true);
         const bool wrote = writer.begin(card, list, slot, save, heading, &run, namesFolder(slot)) && writer.finish();
+        sound.holdPipeline(false);
+        return wrote;
+    }
+
+    bool writeGame(const std::string &map, int slot, const hldata::SaveHeading &heading)
+    {
+        if (!global.hasFat)
+            return false;
+        guard::check("save");
+        need();
+        finish();
+        needRun();
+        std::size_t middleAt = 0;
+        std::uint32_t middleBytes = 0;
+        const hldata::SaveData save = game.snapshotSplit(map, middleAt, middleBytes);
+        hldata::SaveMiddle middle;
+        middle.bytes = middleBytes;
+        middle.context = &game;
+        middle.write = [](void *g, hldata::SaveMiddle::Sink sink, void *sinkContext) {
+            return static_cast<Game *>(g)->streamState(sink, sinkContext);
+        };
+        sound.holdPipeline(true);
+        const bool wrote = writer.beginSplit(card, list, slot, save, middleAt, middle, heading, &run, namesFolder(slot)) &&
+                           writer.finish();
         sound.holdPipeline(false);
         return wrote;
     }

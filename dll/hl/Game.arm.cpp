@@ -437,6 +437,31 @@ namespace hlrt
 
     SaveData Game::snapshot(const std::string &map)
     {
+        std::size_t middleAt = 0;
+        std::uint32_t middleBytes = 0;
+        SaveData save = snapshotParts(map, false, middleAt, middleBytes);
+        return save;
+    }
+
+    SaveData Game::snapshotSplit(const std::string &map, std::size_t &middleAt, std::uint32_t &middleBytes)
+    {
+        return snapshotParts(map, true, middleAt, middleBytes);
+    }
+
+    bool Game::streamState(bool (*sink)(void *, const std::uint8_t *, std::size_t), void *context)
+    {
+        // (A kilobyte at a time, from here: nothing of it on the heap.)
+        std::uint8_t piece[1024];
+        hldata::detail::StreamOut out;
+        out.sink = sink;
+        out.context = context;
+        out.buffer = piece;
+        out.capacity = sizeof(piece);
+        return streamMapState(out, logic, player.state, level.view.header->crc32) && out.flush();
+    }
+
+    SaveData Game::snapshotParts(const std::string &map, bool split, std::size_t &middleAt, std::uint32_t &middleBytes)
+    {
         rememberMap(nameHash(map.c_str()));
         SaveData save;
         save.map = map;
@@ -492,8 +517,21 @@ namespace hlrt
         // The whole of this map, as it is (HlSaveState.hpp); before it, how
         // the player came into it; after it, what is the console's own.
         hldata::appendState(save.state, came_);
-        const std::vector<std::uint8_t> state = takeMapState(logic, player.state, level.view.header->crc32);
-        save.state.insert(save.state.end(), state.begin(), state.end());
+        middleAt = save.state.size();
+        if (split)
+        {
+            // (Made as it is written: streamState. Its length, from its
+            // heading, as takeMapState would make it.)
+            const hldata::detail::StateHeading heading =
+                hldata::detail::stateHeading(logic, player.state, level.view.header->crc32);
+            middleBytes = static_cast<std::uint32_t>(sizeof(heading) + heading.bytes);
+        }
+        else
+        {
+            const std::vector<std::uint8_t> state = takeMapState(logic, player.state, level.view.header->crc32);
+            save.state.insert(save.state.end(), state.begin(), state.end());
+            middleBytes = 0;
+        }
         ConsoleKept kept{};
         kept.playMs = playMs_;
         kept.music = sound.musicTrack();

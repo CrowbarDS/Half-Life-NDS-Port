@@ -321,6 +321,92 @@ namespace hldata
         return out;
     }
 
+    /// writeSave's file in two parts, for a save whose state has a part of
+    /// `middleBytes` more at `middleAt` that is not in `data.state` but
+    /// written to the card as it is made (the map's state: SaveWriter's
+    /// beginSplit), so that the save never has it in memory whole. `front`
+    /// is the file up to that part -- its header, the heading, the payload
+    /// up to there, with the state's length counting the part -- and `back`
+    /// the payload after it. saveSplitSeal puts the payload's CRC in the
+    /// header once the part has been through (saveSplitCrcStart). Together:
+    /// the bytes writeSave makes of the whole.
+    struct SaveSplit
+    {
+        std::vector<std::uint8_t> front, back;
+        std::uint32_t middleBytes = 0;
+    };
+
+    inline SaveSplit writeSaveSplit(const SaveData &data, const SaveHeading &heading, std::size_t middleAt,
+                                    std::uint32_t middleBytes)
+    {
+        constexpr std::size_t flags = yas::mem | yas::binary | yas::no_header;
+        SaveSplit split;
+        split.middleBytes = middleBytes;
+        if (middleAt > data.state.size())
+            return split;
+        // The payload as writeSave makes it, of what `data` holds: the state
+        // is the last of SaveData's own (serialize), its length an 8-byte
+        // word in front of it; what comes after it is written apart.
+        std::size_t stateEnd = 0;
+        yas::mem_ostream os;
+        {
+            yas::binary_oarchive<yas::mem_ostream, flags> oa(os);
+            oa &data;
+            stateEnd = os.get_intrusive_buffer().size;
+            Arsenal arsenal = data.arsenal;
+            oa &arsenal;
+            std::int16_t antidotes = data.arsenal.antidotes, cards = data.arsenal.securityCards;
+            oa &antidotes &cards;
+        }
+        const auto buf = os.get_intrusive_buffer();
+        const auto *p = reinterpret_cast<const std::uint8_t *>(buf.data);
+        const std::size_t n = data.state.size();
+        if (stateEnd < n + 8)
+            return split;
+        const std::size_t lengthAt = stateEnd - n - 8;
+        std::uint64_t said = 0;
+        std::memcpy(&said, p + lengthAt, 8);
+        if (said != n)
+            return split; // (not as written above: none)
+        const std::uint64_t whole = n + middleBytes;
+        split.front.resize(kSaveHeadBytes + lengthAt + 8 + middleAt);
+        std::uint8_t *f = split.front.data() + kSaveHeadBytes;
+        std::memcpy(f, p, lengthAt);
+        std::memcpy(f + lengthAt, &whole, 8);
+        std::memcpy(f + lengthAt + 8, data.state.data(), middleAt);
+        split.back.assign(p + lengthAt + 8 + middleAt, p + buf.size);
+
+        SaveHeader header{};
+        std::memcpy(header.magic, kSaveMagic, sizeof(header.magic));
+        header.version = kSaveVersion;
+        header.levelVersion = kLevelVersion;
+        header.minReader = kSaveMinReader;
+        header.payloadBytes =
+            static_cast<std::uint32_t>(split.front.size() - kSaveHeadBytes + middleBytes + split.back.size());
+        header.headingCrc = crc32(reinterpret_cast<const std::uint8_t *>(&heading), sizeof(heading));
+        std::memcpy(split.front.data(), &header, sizeof(header));
+        std::memcpy(split.front.data() + sizeof(header), &heading, sizeof(heading));
+        return split;
+    }
+
+    /// The CRC the part goes on from: of the payload in `front`.
+    inline std::uint32_t saveSplitCrcStart(const SaveSplit &split)
+    {
+        return split.front.size() < kSaveHeadBytes
+                   ? kCrcStart
+                   : crc32Update(kCrcStart, split.front.data() + kSaveHeadBytes, split.front.size() - kSaveHeadBytes);
+    }
+
+    /// The payload's CRC in the header: `afterMiddle`, the CRC (not
+    /// finished) that saveSplitCrcStart's became with the part's bytes.
+    inline void saveSplitSeal(SaveSplit &split, std::uint32_t afterMiddle)
+    {
+        SaveHeader header;
+        std::memcpy(&header, split.front.data(), sizeof(header));
+        header.crc32 = crc32Finish(crc32Update(afterMiddle, split.back.data(), split.back.size()));
+        std::memcpy(split.front.data(), &header, sizeof(header));
+    }
+
     /// What the first bytes of a file say it is (kSave*), and its heading
     /// if it has a whole one. `size` is how many bytes of it were read: at
     /// least kSaveHeadBytes of a save.
