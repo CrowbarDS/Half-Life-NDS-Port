@@ -953,6 +953,9 @@ namespace hldata
                     slot->at[i] = dest[i];
                 slot->small = static_cast<std::int16_t>(small);
                 slot->reach = static_cast<std::int16_t>(walkReach(a, still));
+                // (A mark does not move: its walker can wait the longest.
+                // The AI says when it is a fight's: aiMoveTick.)
+                slot->band = still ? kThinkBandIdle : kThinkBandWalk;
                 slot->basis = actor.fromNode;
             }
             if (planned)

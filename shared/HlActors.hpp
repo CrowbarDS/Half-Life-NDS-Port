@@ -443,6 +443,15 @@ namespace hldata
     /// from it. Answered as kThinkCover is.
     inline constexpr std::uint8_t kThinkNearRoute = 5;
 
+    /// How soon a question is worked out, of those waiting (ThinkSlot::band):
+    /// a fight's first, then a walk's, then a walk to a mark.
+    inline constexpr std::uint8_t kThinkBandIdle = 0;
+    inline constexpr std::uint8_t kThinkBandWalk = 1;
+    inline constexpr std::uint8_t kThinkBandFight = 2;
+    /// Every so many questions the worker takes the next in turn, whatever
+    /// its band, so that none waits for ever behind a fight.
+    inline constexpr int kThinkTurnEvery = 4;
+
     inline constexpr std::uint8_t kThinkFree = 0;
     inline constexpr std::uint8_t kThinkAsked = 1;
     inline constexpr std::uint8_t kThinkWorking = 2;
@@ -456,6 +465,7 @@ namespace hldata
         /// How many of the asker's thinks have gone by with it asked and not
         /// yet taken up by the worker (it then works it out itself).
         std::uint8_t waited = 0;
+        std::uint8_t band = kThinkBandWalk; ///< kThinkBand*
         // Asked: where to, or from what; how (crouched or not, how far a
         // straight walk is looked for, how near cover may be); and where the
         // actor was on its way (an answer to an older question is not taken).
@@ -484,6 +494,7 @@ namespace hldata
         /// finished at once, without stopping for the frame, and thrown away.
         volatile bool abort = false;
         int next = 0; ///< where the worker looks for the next question
+        int picks = 0; ///< questions taken up, for kThinkTurnEvery
         /// A DSi's monsters look further for their ways (the engine sets it
         /// with the worker; not saved): ways round further out, a straight
         /// walk tried further, more nodes tried as the nearest, a wall seen

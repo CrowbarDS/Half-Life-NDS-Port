@@ -506,6 +506,44 @@ namespace
         check(g.times(CommonSound::BodySplat) == 1, "... heard");
     }
 
+    // ------------------------------------------------------- think order
+
+    /// The worker's order among the questions waiting (thinkPick): a
+    /// fight's first, then a walk's, then a mark's -- and every
+    /// kThinkTurnEvery-th the next in turn, whatever its band.
+    void testThinkOrder()
+    {
+        std::vector<ThinkSlot> slots(6);
+        ThinkQueue queue;
+        queue.slots = slots.data();
+        queue.count = 6;
+        auto ask = [&](int i, std::uint8_t band)
+        {
+            slots[i].state = kThinkAsked;
+            slots[i].band = band;
+        };
+        auto take = [&]()
+        {
+            const int i = thinkPick(queue, 6);
+            if (i >= 0)
+            {
+                slots[i].state = kThinkFree;
+                queue.next = i + 1;
+            }
+            return i;
+        };
+        ask(0, kThinkBandIdle);
+        ask(2, kThinkBandWalk);
+        ask(4, kThinkBandFight);
+        const int first = take(), second = take(), third = take();
+        check(first == 4 && second == 2 && third == 0, "a fight's question first, then a walk's, then a mark's");
+        ask(1, kThinkBandIdle);
+        ask(5, kThinkBandFight);
+        queue.next = 0;
+        check(take() == 1, "... but every fourth the next in turn, whatever its band");
+        check(take() == 5 && take() == -1, "... and then the fight's again, and none when none is asked");
+    }
+
     // ------------------------------------------------------------- squads
 
     /// `deferred`: their long thinking (ways somewhere) asked for and
@@ -1189,6 +1227,7 @@ namespace
 
 int main()
 {
+    testThinkOrder();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir != nullptr && dir[0] != '\0')
     {

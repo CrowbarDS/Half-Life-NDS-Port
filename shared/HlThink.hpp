@@ -14,6 +14,29 @@
 
 namespace hldata
 {
+    /// Which waiting question the worker takes next, -1 if none: of the
+    /// highest band, the first after the one it last took; but every
+    /// kThinkTurnEvery-th the first in turn, whatever its band.
+    inline int thinkPick(ThinkQueue &q, int count)
+    {
+        const bool turn = ++q.picks >= kThinkTurnEvery;
+        if (turn)
+            q.picks = 0;
+        int index = -1;
+        for (int n = 0; n < count; ++n)
+        {
+            const int i = (q.next + n) % (count > 0 ? count : 1);
+            const ThinkSlot &slot = q.slots[i];
+            if (slot.state != kThinkAsked)
+                continue;
+            if (turn)
+                return i;
+            if (index < 0 || slot.band > q.slots[index].band)
+                index = i;
+        }
+        return index;
+    }
+
     /// Works out one question that is waiting, if there is one. False if
     /// there was none.
     inline bool thinkRunOne(LogicWorld &w)
@@ -23,13 +46,7 @@ namespace hldata
         ActorWorld &a = *w.actors;
         ThinkQueue &q = *a.think;
         const int count = q.count < a.count ? q.count : a.count;
-        int index = -1;
-        for (int n = 0; n < count && index < 0; ++n)
-        {
-            const int i = (q.next + n) % (count > 0 ? count : 1);
-            if (q.slots[i].state == kThinkAsked)
-                index = i;
-        }
+        const int index = thinkPick(q, count);
         if (index < 0)
             return false;
         q.next = index + 1;

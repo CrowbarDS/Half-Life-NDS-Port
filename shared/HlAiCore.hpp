@@ -1376,6 +1376,7 @@ namespace hldata
         slot->kind = what;
         slot->state = kThinkAsked;
         slot->waited = 0;
+        slot->band = kThinkBandFight;
         for (int k = 0; k < 3; ++k)
             slot->at[k] = threat[k];
         slot->out[0] = viewOfs;
@@ -3381,6 +3382,7 @@ namespace hldata
             return false;
         slot->kind = kThinkDetour;
         slot->state = kThinkAsked;
+        slot->band = c.m.state == kStateCombat ? kThinkBandFight : kThinkBandWalk;
         for (int k = 0; k < 3; ++k)
             slot->at[k] = far[k];
         slot->small = static_cast<std::int16_t>(aiHull(c));
@@ -3429,6 +3431,7 @@ namespace hldata
             return false;
         slot->kind = kThinkLook;
         slot->state = kThinkAsked;
+        slot->band = c.m.state == kStateCombat ? kThinkBandFight : kThinkBandWalk;
         for (int k = 0; k < 3; ++k)
             slot->at[k] = aim[k];
         slot->small = static_cast<std::int16_t>(aiHull(c));
@@ -3635,6 +3638,15 @@ namespace hldata
         const int went = walkTick(c.a, *c.w.world, c.index, aiHull(c), dest, speed, ms, &c.player, kind.half,
                                   kind.height, round.detouring || c.m.movementGoal == kMoveGoalLocation,
                                   &c.m.idealYaw);
+#ifndef HLDS_CHILD
+        // (Its plan, asked as a walk's: a fight's, if it is fighting.)
+        if (c.m.state == kStateCombat && c.a.think != nullptr && c.a.think->deferred && c.index < c.a.think->count)
+        {
+            ThinkSlot &slot = c.a.think->slots[c.index];
+            if (slot.state == kThinkAsked && slot.kind == kThinkPlan)
+                slot.band = kThinkBandFight;
+        }
+#endif
         if (went != kWalkNoWay)
             aiChangeYaw(c);
         if (went == kWalkMoved)
