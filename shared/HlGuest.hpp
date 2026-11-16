@@ -108,7 +108,9 @@ namespace hldata
     // them (14 Nov 2026): none; t0a0b1 about 20 KB under.
     // Raised 2 KB for BlocksDS's own growth (its allocator now has the fast
     // memories' heaps; 16 Nov 2026): none; t0a0b1 about 18 KB under.
-    inline constexpr std::uint32_t kGuestImageBytes = 0x165B6C + 88 * 1024;
+    // Raised 1 KB for leeches that keep still out of sight and lasers that
+    // strike ten times a second (16 Nov 2026): none; t0a0b1 about 17 KB under.
+    inline constexpr std::uint32_t kGuestImageBytes = 0x165B6C + 89 * 1024;
     /// The heap's end: the end of main RAM less what the start-up code keeps.
     inline constexpr std::uint32_t kGuestRamBytes = 0x3F4000;
     /// What the engine holds beside a map's data -- its tables, the world's
