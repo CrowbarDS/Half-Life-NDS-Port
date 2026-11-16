@@ -942,9 +942,10 @@ namespace hlrt::guest
         replySize = 0;
         if (!hldata::airRead(bytes, size, head))
             return false;
-        // A demo's map: where it belongs (the first heard of it, sinkTake from
-        // then on), and never a match's to load.
-        if (netGame.demo() != 0 && (head.stream == hldata::AirStream::Map || head.stream == hldata::AirStream::MapFull))
+        // A demo's map, a track of its music: where it belongs (the first
+        // heard of it, sinkTake from then on), and never a match's to load.
+        if (netGame.demo() != 0 && (head.stream == hldata::AirStream::Map || head.stream == hldata::AirStream::MapFull ||
+                                    head.stream == hldata::AirStream::Music))
         {
             const Hold hold;
             if (receiver.direct && receiver.frame(head))
