@@ -802,6 +802,13 @@ namespace
         leavingAbandoned = false;
         hlrt::gpuStats.beginMap();
         dropMap();
+        // ... and its level, now: nothing reads it after this. (Let go only
+        // as the next one was read, it held its block -- 357 KB, c1a3b's --
+        // under all that came before that: the families, the archive. On a
+        // DS it then left a hole the next level did not fit, and a level
+        // change ran short where a fresh start did not: 2026-11-16, the heap
+        // trace.)
+        hlrt::level.unload();
         hlrt::guard::renewReserve();
         // (A trace build: what is still held now that the old map is gone.)
         traceWrite([&](std::FILE *out) {
