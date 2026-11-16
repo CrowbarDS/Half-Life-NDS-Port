@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 71;
+    inline constexpr std::uint16_t kLevelVersion = 72;
     /// The oldest level format this build reads. (49: a map's textures are
     /// stored in its archive as they are, never compressed, so that one that
     /// streams is read straight in during play. 50: each texture's record
@@ -117,7 +117,8 @@ namespace hldata
     /// squad's name and may refuse the map for. (69: that light may be one
     /// that flickers by itself, which a build of 68 takes as none.) 70: a
     /// track node's record is longer (its name and its branch), which a
-    /// build before cannot read.
+    /// build before cannot read. (72: the families the map needs, in the
+    /// header's `families`, which a build before leaves alone.)
     inline constexpr std::uint16_t kLevelMinReader = 70;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,
@@ -254,7 +255,13 @@ namespace hldata
         /// converter's portal flood, Portals.cpp): the view is never drawn
         /// farther. Whole units, kLevelFarLeast..kLevelFarMost; 0 = not known.
         std::uint32_t farUnits;
-        std::uint32_t reserved[4];
+        /// The game's families (GameFamily) the map's actors need, with
+        /// kLevelFamiliesKnown: what is loaded before the map
+        /// (source/game/Families.hpp). 0 in a file cooked before 72: every
+        /// family is loaded.
+        std::uint8_t families;
+        std::uint8_t pad[3];
+        std::uint32_t reserved[3];
     };
 
     struct Plane
@@ -1170,6 +1177,24 @@ namespace hldata
         default:
             return kFamilyCore;
         }
+    }
+
+    /// LevelHeader::families: set in every file that says which families it
+    /// needs (none needed is then this bit alone).
+    inline constexpr std::uint8_t kLevelFamiliesKnown = 0x80;
+
+    /// The families the actors of a map need (familyBit of each), with
+    /// kLevelFamiliesKnown.
+    template <typename Actors> inline std::uint8_t familiesOfActors(const Actors &actors)
+    {
+        std::uint8_t mask = kLevelFamiliesKnown;
+        for (const auto &actor : actors)
+        {
+            const GameFamily f = familyOfKind(actor.kind);
+            if (f != kFamilyCore)
+                mask |= familyBit(f);
+        }
+        return mask;
     }
 
     /// The kinds a DS leaves out of a map, and their models: its heap has

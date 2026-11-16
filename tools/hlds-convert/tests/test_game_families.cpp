@@ -131,6 +131,24 @@ namespace
                 check(aiFamilyKind[kind] != nullptr, "a family's thinking kind is registered by it");
         }
     }
+
+    // What a map's header says it needs (LevelHeader::families): its actors'
+    // families, known even when none is needed.
+    void testFamiliesOfActors()
+    {
+        struct A
+        {
+            std::uint8_t kind;
+        };
+        const A none[] = {{k(ActorKind::Scientist)}, {k(ActorKind::Headcrab)}};
+        const A mixed[] = {{k(ActorKind::Scientist)}, {k(ActorKind::Grunt)}, {k(ActorKind::Tentacle)}};
+        check(familiesOfActors(none) == kLevelFamiliesKnown, "a map of the core's kinds needs no family");
+        check(familiesOfActors(mixed) ==
+                  (kLevelFamiliesKnown | familyBit(kFamilyBoss) | familyBit(kFamilyMilitary)),
+              "a map with a soldier and a tentacle needs both families");
+        check((kLevelFamiliesKnown & (familyBit(kFamilyBoss) | familyBit(kFamilyMilitary) | familyBit(kFamilyNet))) == 0,
+              "the known bit is none of the families'");
+    }
 } // namespace
 
 int main()
@@ -139,6 +157,7 @@ int main()
     testFamilyAway(kFamilyBoss, ActorKind::Gargantua, &garg::slFlame);
     testFamilyAway(kFamilyMilitary, ActorKind::Grunt, &grunt::slTakeCover);
     testFamilyOfKind();
+    testFamiliesOfActors();
     std::printf("test_game_families: %s\n", failures == 0 ? "passed" : "FAILED");
     return failures == 0 ? 0 : 1;
 }

@@ -420,7 +420,9 @@ namespace hlds
         int modelTexels = 0;
         std::vector<ModelNeed> needs = collectModelNeeds(entities);
         // And of those who may walk in from next door: each neighbouring map
-        // is looked at for who stands by the door.
+        // is looked at for who stands by the door. (Their families' code too:
+        // a soldier who follows the player into a map of none.)
+        std::uint8_t visitorFamilies = 0;
         for (const Entity &entity : entities)
         {
             if (entity.className() != "trigger_changelevel")
@@ -431,7 +433,8 @@ namespace hlds
             std::vector<Entity> otherEntities;
             std::string ignored;
             if (other.load(next, ignored) && parseEntities(other.entities, otherEntities, ignored))
-                addVisitorNeeds(entities, otherEntities, std::string(entity.value("landmark")), needs);
+                addVisitorNeeds(entities, otherEntities, std::string(entity.value("landmark")), needs,
+                                &visitorFamilies);
         }
         // What the player may be holding by the time they are in this map.
         // The game's own maps are known: nothing before the crowbar is found
@@ -1017,6 +1020,7 @@ namespace hlds
         std::vector<std::uint8_t> bytes;
         if (!cookLevel(bsp, cookOptions, plan, level, report, result.error))
             return result;
+        level.visitorFamilies = visitorFamilies;
 
         // Store color such that it can be properly drawn
         // even if the texture is not loaded yet.

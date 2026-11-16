@@ -52,6 +52,9 @@ namespace hlds
         std::vector<char> strings = {'\0'};
         std::vector<hldata::ModelRef> modelRefs;
         std::vector<hldata::ActorRecord> actors;
+        /// The game's families (familyBit) of those who may come in from a
+        /// neighbouring map, besides the actors' own (LevelHeader::families).
+        std::uint8_t visitorFamilies = 0;
         std::vector<hldata::PathNode> pathNodes;
         std::vector<hldata::PathLink> pathLinks;
         std::vector<hldata::SoundRef> sounds;

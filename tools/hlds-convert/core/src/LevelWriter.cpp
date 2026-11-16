@@ -111,6 +111,7 @@ namespace hlds
         header.worstTexels = level.worstTexels;
         header.skyTexture = level.skyTexture;
         header.viewModel = level.viewModel;
+        header.families = static_cast<std::uint8_t>(familiesOfActors(level.actors) | level.visitorFamilies);
         header.crc32 = crc32(out.data() + sizeof(LevelHeader),
                              static_cast<std::uint32_t>(out.size() - sizeof(LevelHeader)));
         std::memcpy(out.data(), &header, sizeof(header));

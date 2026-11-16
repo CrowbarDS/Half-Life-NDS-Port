@@ -1135,7 +1135,7 @@ namespace hlds
     }
 
     void addVisitorNeeds(const std::vector<Entity> &entities, const std::vector<Entity> &neighbour,
-                         const std::string &landmark, std::vector<ModelNeed> &needs)
+                         const std::string &landmark, std::vector<ModelNeed> &needs, std::uint8_t *families)
     {
         double mark[3] = {0, 0, 0};
         bool found = false;
@@ -1161,6 +1161,8 @@ namespace hlds
                                            std::fabs(origin[1] - mark[1]) > 2048 ||
                                            std::fabs(origin[2] - mark[2]) > 2048)))
                 continue;
+            if (families != nullptr && hldata::familyOfKind(static_cast<std::uint8_t>(info.kind)) != hldata::kFamilyCore)
+                *families |= hldata::familyBit(hldata::familyOfKind(static_cast<std::uint8_t>(info.kind)));
             ModelNeed *need = nullptr;
             for (ModelNeed &have : needs)
             {

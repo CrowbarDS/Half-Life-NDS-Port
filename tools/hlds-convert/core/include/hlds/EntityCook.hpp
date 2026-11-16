@@ -128,8 +128,11 @@ namespace hlds
     /// there come along when the player crosses (the guard who opens the
     /// tram's door at the station is waiting in the map before it), and this
     /// map must have their models, with the clips its scripts have them play.
+    /// `families`, if given, gains the game's families those actors need
+    /// (familyBit of each: their code, loaded with the map).
     void addVisitorNeeds(const std::vector<Entity> &entities, const std::vector<Entity> &neighbour,
-                         const std::string &landmark, std::vector<ModelNeed> &needs);
+                         const std::string &landmark, std::vector<ModelNeed> &needs,
+                         std::uint8_t *families = nullptr);
 
     /// Add to `needs` what a multiplayer map needs besides: the model the
     /// other players are seen as (kPlayerModelName), with what a body does
