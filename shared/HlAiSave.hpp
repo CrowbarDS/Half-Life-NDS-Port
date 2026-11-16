@@ -23,17 +23,28 @@ namespace hldata
     HL_FIELDS(AiMoveRound, 6);
     HL_FIELDS(AiMonster, 66);
 
-    /// Every schedule there is, in a fixed order: a schedule in a save is
-    /// its place here.
-    inline const AiSchedule *const *aiSchedules(int &count)
+    namespace detail
     {
-        static const AiSchedule *const kAll[] = {
+        /// A place in the save's list that is a family's: the family, and the
+        /// `index`-th of its own (as it registers them: HlAi.hpp).
+        constexpr std::uint8_t familyCode(GameFamily f, int index)
+        {
+            return static_cast<std::uint8_t>((f << 6) | index);
+        }
+
+        /// Every schedule there is, in a fixed order: a schedule in a save is
+        /// its place here. (A family's are none while it is not there; a save
+        /// with one of them is read with its family loaded first.)
+        inline constexpr const AiSchedule *kAiScheduleCore[] = {
             // CBaseMonster's (defaultai.cpp)
             &slFail, &slIdleStand, &slIdleTrigger, &slIdleWalk, &slAmbush, &slActiveIdle, &slWakeAngry,
-            &slAlertFace, &slAlertSmallFlinch, &slAlertStand, &slInvestigateSound, &slCombatStand, &slCombatFace,
+            &slAlertFace, &slAlertSmallFlinch, &slAlertStand, &slInvestigateSound, &slCombatStand,
+            &slCombatFace,
             &slStandoff, &slArmWeapon, &slReload, &slRangeAttack1, &slRangeAttack2, &slPrimaryMeleeAttack,
-            &slSecondaryMeleeAttack, &slSpecialAttack1, &slSpecialAttack2, &slChaseEnemy, &slChaseEnemyFailed,
-            &slSmallFlinch, &slDie, &slVictoryDance, &slBarnacleVictimGrab, &slBarnacleVictimChomp, &slError,
+            &slSecondaryMeleeAttack, &slSpecialAttack1, &slSpecialAttack2, &slChaseEnemy,
+            &slChaseEnemyFailed,
+            &slSmallFlinch, &slDie, &slVictoryDance, &slBarnacleVictimGrab, &slBarnacleVictimChomp,
+            &slError,
             &slCower, &slTakeCoverFromOrigin, &slTakeCoverFromBestSound, &slTakeCoverFromEnemy,
             // the kinds' own
             &headcrab::slRangeAttack1, &slave::slSlaveAttack1, &bullsquid::slRangeAttack1,
@@ -41,57 +52,107 @@ namespace hldata
             &bullsquid::slSniffAndEat, &bullsquid::slWallow, &houndeye::slGuardPack, &houndeye::slRangeAttack,
             &houndeye::slSleep, &houndeye::slWakeLazy, &houndeye::slWakeUrgent, &houndeye::slSpecialAttack1,
             &houndeye::slAgitated, &houndeye::slHopRetreat, &houndeye::slCombatFailPvs,
-            &houndeye::slCombatFailNoPvs, &grunt::slFail, &grunt::slCombatFail, &grunt::slVictoryDance,
-            &grunt::slEstablishLineOfFire, &grunt::slFoundEnemy, &grunt::slCombatFace, &grunt::slSignalSuppress,
-            &grunt::slSuppress, &grunt::slWaitInCover, &grunt::slTakeCover, &grunt::slGrenadeCover,
-            &grunt::slTossGrenadeCover, &grunt::slTakeCoverFromBestSound, &grunt::slHideReload, &grunt::slSweep,
-            &grunt::slRangeAttack1A, &grunt::slRangeAttack1B, &grunt::slRangeAttack2,
+            &houndeye::slCombatFailNoPvs,
+            // the soldiers' (military: hgrunt.cpp)
+            nullptr, nullptr, nullptr,
+            nullptr,
+            nullptr, nullptr, nullptr,
+            nullptr,
+            nullptr, nullptr, nullptr,
+            nullptr,
+            nullptr, nullptr, nullptr,
+            nullptr,
+            nullptr, nullptr,
             // the people's (talkmonster.cpp, scientist.cpp, barney.cpp)
-            &slIdleResponse, &slIdleSpeak, &slIdleSpeakWait, &slIdleHello, &slIdleStopShooting, &slMoveAway,
+            &slIdleResponse, &slIdleSpeak, &slIdleSpeakWait, &slIdleHello, &slIdleStopShooting,
+            &slMoveAway,
             &slMoveAwayFail, &slMoveAwayFollow, &slTlkIdleWatchClient, &slTlkIdleWatchClientStare,
-            &slTlkIdleEyecontact, &scientist::slFollow, &scientist::slFollowScared, &scientist::slFaceTargetScared,
+            &slTlkIdleEyecontact, &scientist::slFollow, &scientist::slFollowScared,
+            &scientist::slFaceTargetScared,
             &scientist::slStopFollowing, &scientist::slHeal, &scientist::slFaceTarget, &scientist::slSciPanic,
             &scientist::slIdleSciStand, &scientist::slScientistCover, &scientist::slScientistHide,
-            &scientist::slScientistStartle, &scientist::slFear, &barney::slBaFollow, &barney::slBarneyEnemyDraw,
+            &scientist::slScientistStartle, &scientist::slFear, &barney::slBaFollow,
+            &barney::slBarneyEnemyDraw,
             &barney::slBaFaceTarget, &barney::slIdleBaStand,
             // round 3's (HlAliens.hpp: agrunt.cpp)
             &agrunt::slAGruntFail, &agrunt::slAGruntCombatFail, &agrunt::slAGruntStandoff,
             &agrunt::slAGruntRangeAttack1, &agrunt::slAGruntTakeCoverFromEnemy, &agrunt::slAGruntVictoryDance,
             &agrunt::slAGruntThreatDisplay,
-            // round 4's (gargantua.cpp, headcrab.cpp's CBabyCrab, hassassin.cpp)
-            &garg::slFlame, &garg::slSwipe, &babycrab::slRangeAttack1Fast, &assassin::slFail, &assassin::slExposed,
-            &assassin::slTakeCoverFromEnemy, &assassin::slTakeCoverFromEnemy2, &assassin::slTakeCoverFromBestSound,
-            &assassin::slHide, &assassin::slHunt, &assassin::slJump, &assassin::slJumpAttack, &assassin::slJumpLand,
-            // round 5's (bigmomma.cpp)
-            &momma::slBigNode, &momma::slNodeFail,
+            // round 4's (gargantua.cpp, headcrab.cpp's CBabyCrab: boss;
+            // hassassin.cpp: military)
+            nullptr, nullptr, nullptr,
+            nullptr, nullptr, nullptr,
+            nullptr,
+            nullptr, nullptr, nullptr,
+            nullptr,
+            nullptr, nullptr,
+            // round 5's (bigmomma.cpp: boss)
+            nullptr, nullptr,
             // the controller's (controller.cpp), left out until now: added
             // last, so that what is in a save already keeps its place
             &controller::slControllerChaseEnemy, &controller::slControllerStrafe,
             &controller::slControllerTakeCover, &controller::slControllerFail,
-            // a soldier's on a rope (hgrunt.cpp), likewise
-            &grunt::slRepel, &grunt::slRepelAttack, &grunt::slRepelLand,
+            // a soldier's on a rope (hgrunt.cpp: military), likewise
+            nullptr, nullptr, nullptr,
         };
-        count = static_cast<int>(sizeof(kAll) / sizeof(kAll[0]));
-        return kAll;
+        /// ... and where it is a family's: which (the top two bits) and the
+        /// how-manyth of its own (the rest); 0 for the core's.
+        inline constexpr std::uint8_t kAiScheduleFamily[] = {
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, familyCode(kFamilyMilitary, 0),
+            familyCode(kFamilyMilitary, 1), familyCode(kFamilyMilitary, 2), familyCode(kFamilyMilitary, 3),
+            familyCode(kFamilyMilitary, 4), familyCode(kFamilyMilitary, 5), familyCode(kFamilyMilitary, 6),
+            familyCode(kFamilyMilitary, 7), familyCode(kFamilyMilitary, 8), familyCode(kFamilyMilitary, 9),
+            familyCode(kFamilyMilitary, 10), familyCode(kFamilyMilitary, 11), familyCode(kFamilyMilitary, 12),
+            familyCode(kFamilyMilitary, 13), familyCode(kFamilyMilitary, 14), familyCode(kFamilyMilitary, 15),
+            familyCode(kFamilyMilitary, 16), familyCode(kFamilyMilitary, 17), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, familyCode(kFamilyBoss, 0),
+            familyCode(kFamilyBoss, 1), familyCode(kFamilyBoss, 2), familyCode(kFamilyMilitary, 18),
+            familyCode(kFamilyMilitary, 19), familyCode(kFamilyMilitary, 20), familyCode(kFamilyMilitary, 21),
+            familyCode(kFamilyMilitary, 22), familyCode(kFamilyMilitary, 23), familyCode(kFamilyMilitary, 24),
+            familyCode(kFamilyMilitary, 25), familyCode(kFamilyMilitary, 26), familyCode(kFamilyMilitary, 27),
+            familyCode(kFamilyBoss, 3), familyCode(kFamilyBoss, 4), 0, 0, 0, 0, familyCode(kFamilyMilitary, 28),
+            familyCode(kFamilyMilitary, 29), familyCode(kFamilyMilitary, 30),
+        };
+        static_assert(sizeof(kAiScheduleFamily) == sizeof(kAiScheduleCore) / sizeof(kAiScheduleCore[0]));
+        inline constexpr int kAiScheduleCount = static_cast<int>(sizeof(kAiScheduleFamily));
+    } // namespace detail
+
+    /// The schedule at a place of the save's list; null if there is none, or
+    /// its family is not there. (Out of line: asked from each of the save's
+    /// readings and writings.)
+    [[gnu::noinline]] inline const AiSchedule *aiScheduleAt(int id)
+    {
+        if (id < 0 || id >= detail::kAiScheduleCount)
+            return nullptr;
+        if (const AiSchedule *core = detail::kAiScheduleCore[id])
+            return core;
+        const int family = detail::kAiScheduleFamily[id] >> 6, index = detail::kAiScheduleFamily[id] & 63;
+        aiFamiliesReady();
+        const AiSchedule *const *theirs = aiFamilySchedules[family];
+        return theirs != nullptr && index < aiFamilyScheduleCount[family] ? theirs[index] : nullptr;
     }
 
-    inline std::int16_t aiScheduleId(const AiSchedule *schedule)
+    /// The whole list, as it is now (the tests').
+    inline const AiSchedule *const *aiSchedules(int &count)
     {
-        int count = 0;
-        const AiSchedule *const *all = aiSchedules(count);
-        for (int i = 0; i < count && schedule != nullptr; ++i)
+        static const AiSchedule *resolved[detail::kAiScheduleCount];
+        for (int i = 0; i < detail::kAiScheduleCount; ++i)
+            resolved[i] = aiScheduleAt(i);
+        count = detail::kAiScheduleCount;
+        return resolved;
+    }
+
+    [[gnu::noinline]] inline std::int16_t aiScheduleId(const AiSchedule *schedule)
+    {
+        for (int i = 0; i < detail::kAiScheduleCount && schedule != nullptr; ++i)
         {
-            if (all[i] == schedule)
+            if (aiScheduleAt(i) == schedule)
                 return static_cast<std::int16_t>(i);
         }
         return -1;
     }
-    inline const AiSchedule *aiScheduleById(int id)
-    {
-        int count = 0;
-        const AiSchedule *const *all = aiSchedules(count);
-        return id >= 0 && id < count ? all[id] : nullptr;
-    }
+    inline const AiSchedule *aiScheduleById(int id) { return aiScheduleAt(id); }
 
     namespace detail
     {

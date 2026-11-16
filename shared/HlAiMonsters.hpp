@@ -2009,10 +2009,6 @@ namespace hldata
         }
     } // namespace barnacle
 
-    namespace grunt
-    {
-        inline const AiKind &kind(); // (HlGrunt.hpp)
-    }
     // (HlAiPeople.hpp)
     namespace scientist
     {
@@ -2036,7 +2032,8 @@ namespace hldata
     }
     inline const AiKind *aiAlienKindOf(std::uint8_t kind); // (HlAliens.hpp)
 
-    inline const AiKind *aiKindOf(std::uint8_t kind)
+    // (Out of line: looked at from everywhere, and copied into each.)
+    [[gnu::noinline]] inline const AiKind *aiKindOf(std::uint8_t kind)
     {
         switch (static_cast<ActorKind>(kind))
         {
@@ -2046,7 +2043,6 @@ namespace hldata
         case ActorKind::Bullsquid: return &bullsquid::kind();
         case ActorKind::Houndeye:  return &houndeye::kind();
         case ActorKind::Barnacle:  return &barnacle::kind();
-        case ActorKind::Grunt:     return &grunt::kind();
         case ActorKind::Scientist: return &scientist::kind();
         case ActorKind::Guard:     return &barney::kind();
         case ActorKind::Sitter:    return &sitter::kind();

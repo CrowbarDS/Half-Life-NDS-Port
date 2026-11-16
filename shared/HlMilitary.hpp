@@ -1513,14 +1513,34 @@ namespace hldata
         }
     } // namespace apache
 
-    inline const AiKind *aiMilitaryKindOf(std::uint8_t kind)
+    namespace military
     {
-        switch (static_cast<ActorKind>(kind))
+        /// The soldiers' and the assassins' schedules, in the order the save's
+        /// list has them.
+        inline const AiSchedule *const kSchedules[] = {
+            &grunt::slFail, &grunt::slCombatFail, &grunt::slVictoryDance, &grunt::slEstablishLineOfFire,
+            &grunt::slFoundEnemy, &grunt::slCombatFace, &grunt::slSignalSuppress, &grunt::slSuppress,
+            &grunt::slWaitInCover, &grunt::slTakeCover, &grunt::slGrenadeCover, &grunt::slTossGrenadeCover,
+            &grunt::slTakeCoverFromBestSound, &grunt::slHideReload, &grunt::slSweep, &grunt::slRangeAttack1A,
+            &grunt::slRangeAttack1B, &grunt::slRangeAttack2,
+            &assassin::slFail, &assassin::slExposed, &assassin::slTakeCoverFromEnemy,
+            &assassin::slTakeCoverFromEnemy2, &assassin::slTakeCoverFromBestSound, &assassin::slHide,
+            &assassin::slHunt, &assassin::slJump, &assassin::slJumpAttack, &assassin::slJumpLand,
+            &grunt::slRepel, &grunt::slRepelAttack, &grunt::slRepelLand,
+        };
+
+        /// The family set up (`on`) or let go: its kinds, its schedules, what
+        /// the core asks of it.
+        inline void familyRegister(bool on)
         {
-        case ActorKind::Osprey:   return &osprey::kind();
-        case ActorKind::Assassin: return &assassin::kind();
-        case ActorKind::Apache:   return &apache::kind();
-        default:                  return nullptr;
+            aiFamilyKind[static_cast<int>(ActorKind::Grunt)] = on ? &grunt::kind : nullptr;
+            aiFamilyKind[static_cast<int>(ActorKind::Osprey)] = on ? &osprey::kind : nullptr;
+            aiFamilyKind[static_cast<int>(ActorKind::Assassin)] = on ? &assassin::kind : nullptr;
+            aiFamilyKind[static_cast<int>(ActorKind::Apache)] = on ? &apache::kind : nullptr;
+            aiFamilySchedules[kFamilyMilitary] = on ? kSchedules : nullptr;
+            aiFamilyScheduleCount[kFamilyMilitary] =
+                on ? static_cast<int>(sizeof(kSchedules) / sizeof(kSchedules[0])) : 0;
+            familyHooks.repelTick = on ? &detail::repelTick : nullptr;
         }
-    }
+    } // namespace military
 } // namespace hldata

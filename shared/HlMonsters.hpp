@@ -1288,6 +1288,23 @@ namespace hldata
 
         /// A snark's next bite and how many it has had (Projectile::sprite).
         inline int snarkBites(const Projectile &shot) { return shot.sprite & 0xFF; }
+    } // namespace detail
+
+    /// What the core asks of the families (HlLevel.hpp's GameFamily), set by
+    /// each as it comes and cleared as it goes: null, not there -- what is
+    /// theirs then does nothing (none of it is in a map without them).
+    struct FamilyHooks
+    {
+        /// A soldier on his rope (military: HlMilitary.hpp).
+        void (*repelTick)(LogicWorld &, PlayerState &, int index, int ms) = nullptr;
+        /// A gargantua's stomp, a big momma's spit (boss).
+        void (*stompTick)(LogicWorld &, PlayerState &, Projectile &, int ms) = nullptr;
+        void (*mommaSpitTick)(LogicWorld &, PlayerState &, Projectile &, int ms) = nullptr;
+    };
+    inline FamilyHooks familyHooks;
+
+    namespace detail
+    {
 
         /// A gargantua's stomp, a frame on (CStomp::Think, in the frame's
         /// time rather than tenths of a second): it gathers speed, and its
@@ -1565,14 +1582,15 @@ namespace hldata
             {
                 if (!shot.active)
                     continue;
-                if (shot.kind == kShotStomp)
+                if (shot.kind == kShotStomp || shot.kind == kShotMommaSpit)
                 {
-                    stompTick(w, player, shot, ms);
-                    continue;
-                }
-                if (shot.kind == kShotMommaSpit)
-                {
-                    mommaSpitTick(w, player, shot, ms);
+                    // (The bosses': theirs to move. Without them, none is made.)
+                    aiFamiliesReady();
+                    auto tick = shot.kind == kShotStomp ? familyHooks.stompTick : familyHooks.mommaSpitTick;
+                    if (tick != nullptr)
+                        tick(w, player, shot, ms);
+                    else
+                        shot.active = false;
                     continue;
                 }
                 if (shot.kind == kShotNihilZap || shot.kind == kShotNihilPortal || shot.kind == kShotNihilGreen)
@@ -3487,7 +3505,6 @@ namespace hldata
     {
         inline void tankTick(LogicWorld &w, PlayerState &player, int index, int ms);
         inline void mortarTick(LogicWorld &w, PlayerState &player, int index, int ms);
-        inline void repelTick(LogicWorld &w, PlayerState &player, int index, int ms); // (HlMilitary.hpp)
     }
 
     inline void xenTick(LogicWorld &w, PlayerState &player, int ms); // (HlXen.hpp)
@@ -3664,7 +3681,12 @@ namespace hldata
             else if (kind == LogicKind::MortarField)
                 detail::mortarTick(w, player, i, ms);
             else if (kind == LogicKind::Repel)
-                detail::repelTick(w, player, i, ms);
+            {
+                // (The soldiers' family's: without it, a map has none to send.)
+                aiFamiliesReady();
+                if (familyHooks.repelTick != nullptr)
+                    familyHooks.repelTick(w, player, i, ms);
+            }
         }
         // (The triggers the monsters set off, as they are this frame. Not on
         // a console sent the game: a match has no monsters, and it has no
@@ -6331,3 +6353,18 @@ namespace hldata
 #include "HlMilitary.hpp"
 #include "HlPeople.hpp"
 #include "HlXen.hpp"
+
+namespace hldata
+{
+    /// The families built into this program, set up before the first look
+    /// (HlAi.hpp: aiFamiliesReady). A build that has them as libraries of
+    /// their own (HL_FAMILIES_APART) sets up none here: each does it as it
+    /// is loaded.
+    inline void aiRegisterLinkedFamilies()
+    {
+#ifndef HL_FAMILIES_APART
+        boss::familyRegister(true);
+        military::familyRegister(true);
+#endif
+    }
+} // namespace hldata

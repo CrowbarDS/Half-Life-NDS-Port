@@ -641,6 +641,38 @@ namespace hldata
 
     inline const AiKind *aiKindOf(std::uint8_t kind); // HlAiMonsters.hpp
 
+    // The families' (HlLevel.hpp's GameFamily): what of theirs the core
+    // reaches is what they set here as they come, and clear as they go --
+    // no core code names a family's.
+    using AiKindFn = const AiKind &(*)();
+    /// A family's kinds' tables, by kind (null: not there).
+    inline AiKindFn aiFamilyKind[static_cast<int>(ActorKind::Count)] = {};
+    /// A family's schedules, in the order the save's list has them
+    /// (HlAiSave.hpp: aiSchedules).
+    inline const AiSchedule *const *aiFamilySchedules[kFamilyCount] = {};
+    inline int aiFamilyScheduleCount[kFamilyCount] = {};
+    /// The families built into this program set themselves up once
+    /// (HlMonsters.hpp: aiRegisterLinkedFamilies): before the first look.
+    inline void aiRegisterLinkedFamilies();
+    inline bool aiFamiliesLinked = false;
+    // (Out of line, these: asked from every look at a kind, they would
+    // otherwise be copied into each.)
+    [[gnu::noinline]] inline void aiFamiliesReady()
+    {
+        if (!aiFamiliesLinked)
+        {
+            aiFamiliesLinked = true;
+            aiRegisterLinkedFamilies();
+        }
+    }
+    /// A kind of a family's: its table, if the family is there.
+    [[gnu::noinline]] inline const AiKind *aiFamilyKindOf(std::uint8_t kind)
+    {
+        aiFamiliesReady();
+        const AiKindFn f = kind < static_cast<int>(ActorKind::Count) ? aiFamilyKind[kind] : nullptr;
+        return f != nullptr ? &f() : nullptr;
+    }
+
     /// Where the monsters' thinking goes, in a build that measures it: the
     /// game sets the clock, and reads (and clears) what each part took --
     /// looking; listening, and looking to its enemy; going about.

@@ -222,6 +222,7 @@ if(HLDS_BUILD_TESTS)
             test_physics
             test_dsp
             test_kernels
+            test_game_families
             test_save
             test_savefiles
             test_savestate

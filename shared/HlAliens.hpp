@@ -4878,8 +4878,8 @@ namespace hldata
         }
     } // namespace boid
 
-    inline const AiKind *aiMilitaryKindOf(std::uint8_t kind); // (HlMilitary.hpp)
-
+    /// The core's aliens; a family's (the bosses: here too, until they are a
+    /// library of their own) through its table (HlAi.hpp: aiFamilyKindOf).
     inline const AiKind *aiAlienKindOf(std::uint8_t kind)
     {
         switch (static_cast<ActorKind>(kind))
@@ -4889,15 +4889,32 @@ namespace hldata
         case ActorKind::AlienGrunt: return &agrunt::kind();
         case ActorKind::Controller: return &controller::kind();
         case ActorKind::Leech:      return &leech::kind();
-        case ActorKind::Gargantua:  return &garg::kind();
-        case ActorKind::BabyCrab:   return &babycrab::kind();
-        case ActorKind::Ichthyosaur: return &icky::kind();
-        case ActorKind::Tentacle:   return &tentacle::kind();
-        case ActorKind::BigMomma:   return &momma::kind();
-        case ActorKind::Nihilanth:  return &nihilanth::kind();
         case ActorKind::Boid:       return &boid::kind();
         case ActorKind::Rat:        return &rat::kind();
-        default:                    return aiMilitaryKindOf(kind);
+        default:                    return aiFamilyKindOf(kind);
         }
     }
+
+    namespace boss
+    {
+        /// The bosses' schedules, in the order the save's list has them.
+        inline const AiSchedule *const kSchedules[] = {&garg::slFlame, &garg::slSwipe, &babycrab::slRangeAttack1Fast,
+                                                       &momma::slBigNode, &momma::slNodeFail};
+
+        /// The family set up (`on`) or let go: its kinds, its schedules, what
+        /// the core asks of it.
+        inline void familyRegister(bool on)
+        {
+            aiFamilyKind[static_cast<int>(ActorKind::Gargantua)] = on ? &garg::kind : nullptr;
+            aiFamilyKind[static_cast<int>(ActorKind::BabyCrab)] = on ? &babycrab::kind : nullptr;
+            aiFamilyKind[static_cast<int>(ActorKind::Ichthyosaur)] = on ? &icky::kind : nullptr;
+            aiFamilyKind[static_cast<int>(ActorKind::Tentacle)] = on ? &tentacle::kind : nullptr;
+            aiFamilyKind[static_cast<int>(ActorKind::BigMomma)] = on ? &momma::kind : nullptr;
+            aiFamilyKind[static_cast<int>(ActorKind::Nihilanth)] = on ? &nihilanth::kind : nullptr;
+            aiFamilySchedules[kFamilyBoss] = on ? kSchedules : nullptr;
+            aiFamilyScheduleCount[kFamilyBoss] = on ? static_cast<int>(sizeof(kSchedules) / sizeof(kSchedules[0])) : 0;
+            familyHooks.stompTick = on ? &detail::stompTick : nullptr;
+            familyHooks.mommaSpitTick = on ? &detail::mommaSpitTick : nullptr;
+        }
+    } // namespace boss
 } // namespace hldata

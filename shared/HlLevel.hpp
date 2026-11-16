@@ -1137,6 +1137,41 @@ namespace hldata
                kind == static_cast<std::uint8_t>(ActorKind::Turret);
     }
 
+    /// The game's families: code a map has only when it needs it -- a
+    /// library of its own, loaded with the map (docs/TECHNICAL.md) -- and
+    /// the core, always there.
+    enum GameFamily : std::uint8_t
+    {
+        kFamilyCore = 0,
+        kFamilyBoss = 1,     ///< the nihilanth, tentacle, ichthyosaur, gargantua, big momma, baby crab
+        kFamilyMilitary = 2, ///< soldiers, assassins, the osprey and the apache
+        kFamilyNet = 3,      ///< the match's rules
+        kFamilyCount = 4,
+    };
+    inline constexpr std::uint8_t familyBit(GameFamily f) { return static_cast<std::uint8_t>(1u << f); }
+
+    /// Which family a kind's code is in.
+    inline GameFamily familyOfKind(std::uint8_t kind)
+    {
+        switch (static_cast<ActorKind>(kind))
+        {
+        case ActorKind::Gargantua:
+        case ActorKind::BabyCrab:
+        case ActorKind::Ichthyosaur:
+        case ActorKind::Tentacle:
+        case ActorKind::BigMomma:
+        case ActorKind::Nihilanth:
+            return kFamilyBoss;
+        case ActorKind::Grunt:
+        case ActorKind::Osprey:
+        case ActorKind::Assassin:
+        case ActorKind::Apache:
+            return kFamilyMilitary;
+        default:
+            return kFamilyCore;
+        }
+    }
+
     /// The kinds a DS leaves out of a map, and their models: its heap has
     /// no room for them on the tightest (the rats: t0a0b).
     inline bool actorDsiOnly(std::uint8_t kind)
