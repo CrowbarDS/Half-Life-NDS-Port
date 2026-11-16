@@ -3,7 +3,9 @@
 
 #include <cerrno>
 #include <cstddef>
+#include <cstdio>
 #include <cstring>
+#include <new>
 
 #include <nds.h>
 #include <nds/cpu_asm.h>
@@ -332,29 +334,116 @@ namespace hlrt::guard
         bool inPlay = false;
         std::uint32_t letGoLoad = 0, letGoPlay = 0, letGoAsked = 0;
 
-        void *take(std::size_t align, std::size_t size, std::uint32_t)
+#ifdef HLDS_HEAP_TRACE
+        // ---- the heap trace (Guard.hpp): 8 bytes in front of each block,
+        // and, for one aligned on more than 8, the same at the start of what
+        // the allocator gave (where a walk of its chain finds it).
+        constexpr std::uint32_t kTraceMagic = 0xC0DE0000u;
+        struct TraceHead
         {
-            void *p = align <= 8 ? __real_malloc(size) : __real_memalign(align, size);
+            std::uint32_t caller;
+            std::uint32_t word; ///< kTraceMagic, then the lead's log2 (4 bits), then the generation (12 bits)
+        };
+        std::uint32_t generation = 1;
+        /// Set by operator new for the malloc it makes: whose it really is.
+        std::uint32_t pendingCaller = 0;
+        std::uint32_t loadStartLive = 0, loadPeakLive = 0, heapEndHigh = 0;
+        /// The last block that could not be had: its size and who asked.
+        std::uint32_t failSize = 0, failCaller = 0, failCount = 0;
+
+        bool traced(const void *at, TraceHead &h)
+        {
+            std::memcpy(&h, at, sizeof(h));
+            return (h.word & 0xFFFF0000u) == kTraceMagic;
+        }
+        std::uint32_t leadOf(const TraceHead &h) { return 1u << ((h.word >> 12) & 15); }
+#endif
+
+        void *take(std::size_t align, std::size_t size, std::uint32_t caller)
+        {
+#ifdef HLDS_HEAP_TRACE
+            if (pendingCaller != 0)
+            {
+                caller = pendingCaller;
+                pendingCaller = 0;
+            }
+            const std::size_t lead = align <= 8 ? 8 : align;
+            std::uint32_t log2 = 3;
+            while ((1u << log2) < lead)
+                ++log2;
+            const std::size_t whole = lead + size;
+#else
+            const std::size_t whole = size;
+            (void)caller;
+#endif
+            void *p = align <= 8 ? __real_malloc(whole) : __real_memalign(align, whole);
             if (p == nullptr && reserve != nullptr)
             {
                 __real_free(reserve);
                 reserve = nullptr;
                 ++(inPlay ? letGoPlay : letGoLoad);
                 letGoAsked = static_cast<std::uint32_t>(size);
-                p = align <= 8 ? __real_malloc(size) : __real_memalign(align, size);
+                p = align <= 8 ? __real_malloc(whole) : __real_memalign(align, whole);
             }
-            if (p != nullptr)
-                counted(p, 1);
+            if (p == nullptr)
+            {
+#ifdef HLDS_HEAP_TRACE
+                failSize = static_cast<std::uint32_t>(size);
+                failCaller = caller;
+                ++failCount;
+#endif
+                return nullptr;
+            }
+            counted(p, 1);
+#ifdef HLDS_HEAP_TRACE
+            const TraceHead h{caller, kTraceMagic | (log2 << 12) | (generation & 0xFFF)};
+            std::uint8_t *user = static_cast<std::uint8_t *>(p) + lead;
+            std::memcpy(user - sizeof(h), &h, sizeof(h));
+            if (lead > sizeof(h))
+                std::memcpy(p, &h, sizeof(h));
+            if (bytes > loadPeakLive)
+                loadPeakLive = bytes;
+            const std::uint32_t end = reinterpret_cast<std::uint32_t>(getHeapEnd());
+            if (end > heapEndHigh)
+                heapEndHigh = end;
+            return user;
+#else
             return p;
+#endif
         }
 
         void give(void *p, std::uint32_t)
         {
             if (p == nullptr)
                 return;
+#ifdef HLDS_HEAP_TRACE
+            // (One the allocator gave someone else -- newlib's own, by its
+            // own names -- has no head: let go as it is.)
+            TraceHead h;
+            auto *user = static_cast<std::uint8_t *>(p);
+            if (traced(user - sizeof(h), h))
+            {
+                std::memset(user - sizeof(h), 0, sizeof(h));
+                p = user - leadOf(h);
+            }
+#endif
             counted(p, -1);
             __real_free(p);
         }
+
+#ifdef HLDS_HEAP_TRACE
+        /// What a block holds for its user: what the allocator gave, less
+        /// the head (0: not one of ours).
+        std::uint32_t tracedUsable(void *user, std::uint32_t &align)
+        {
+            TraceHead h;
+            auto *u = static_cast<std::uint8_t *>(user);
+            if (!traced(u - sizeof(h), h))
+                return 0;
+            align = leadOf(h) <= 8 ? 8 : leadOf(h);
+            return static_cast<std::uint32_t>(malloc_usable_size(u - leadOf(h))) - leadOf(h);
+        }
+#endif
 #endif
         std::uint32_t callerOf(void *returnAddress) { return reinterpret_cast<std::uint32_t>(returnAddress); }
 
@@ -664,6 +753,134 @@ namespace hlrt::guard
     std::uint32_t liveBlocks() { return blocks; }
     std::uint32_t liveBytes() { return bytes; }
 
+#ifdef HLDS_HEAP_TRACE
+    void traceGeneration() { ++generation; }
+
+    void traceLoadBegin()
+    {
+        loadStartLive = loadPeakLive = bytes;
+        heapEndHigh = reinterpret_cast<std::uint32_t>(getHeapEnd());
+    }
+
+    void traceDump(void *outFile, const char *label, const char *map)
+    {
+        auto *out = static_cast<std::FILE *>(outFile);
+        // Every block in use, by a walk of the allocator's chain (as
+        // walkChain's): those of ours, by their heads; the rest apart.
+        struct Group
+        {
+            std::uint32_t gen, caller, count, bytes;
+        };
+        constexpr int kGroups = 384;
+        static Group groups[kGroups];
+        int groupCount = 0, dropped = 0;
+        std::uint32_t older = 0, olderCount = 0, now = 0, nowCount = 0, other = 0, otherCount = 0;
+        const int saved = enterCriticalSection();
+        const std::uint32_t start = reinterpret_cast<std::uint32_t>(getHeapStart());
+        const std::uint32_t end = reinterpret_cast<std::uint32_t>(getHeapEnd());
+        const std::uint32_t reserveAt = reinterpret_cast<std::uint32_t>(reserve);
+        std::uint32_t c = start + ((8 - ((start + 8) & 7)) & 7);
+        while (end > start + 64 && c + 8 <= end)
+        {
+            const std::uint32_t head = *reinterpret_cast<const std::uint32_t *>(c + 4);
+            const std::uint32_t size = head & ~7u;
+            if (size < 8 || c + size > end)
+                break;
+            if (c + size == end && (head & 3) == 0)
+                break; // (the false last chunk)
+            if ((head & 2) != 0 && c + 8 != reserveAt)
+            {
+                TraceHead h;
+                const std::uint32_t holds = size - 4;
+                if (traced(reinterpret_cast<const void *>(c + 8), h))
+                {
+                    const std::uint32_t gen = h.word & 0xFFF;
+                    if (gen == (generation & 0xFFF))
+                    {
+                        now += holds;
+                        ++nowCount;
+                    }
+                    else
+                    {
+                        older += holds;
+                        ++olderCount;
+                        int g = 0;
+                        while (g < groupCount && (groups[g].gen != gen || groups[g].caller != h.caller))
+                            ++g;
+                        if (g == groupCount && groupCount < kGroups)
+                            groups[groupCount++] = Group{gen, h.caller, 0, 0};
+                        if (g < groupCount)
+                        {
+                            ++groups[g].count;
+                            groups[g].bytes += holds;
+                        }
+                        else
+                            ++dropped;
+                    }
+                }
+                else
+                {
+                    other += holds;
+                    ++otherCount;
+                }
+            }
+            c += size;
+        }
+        leaveCriticalSection(saved);
+        if (out == nullptr)
+            return;
+        // (The largest first.)
+        for (int i = 1; i < groupCount; ++i)
+        {
+            const Group g = groups[i];
+            int j = i;
+            while (j > 0 && groups[j - 1].bytes < g.bytes)
+            {
+                groups[j] = groups[j - 1];
+                --j;
+            }
+            groups[j] = g;
+        }
+        std::fprintf(out,
+                     "trace: %s, %s: generation %lu; from older generations %lu bytes in %lu blocks, this one %lu "
+                     "in %lu, not ours (newlib's own) %lu in %lu; reserve %s\n",
+                     label, map, static_cast<unsigned long>(generation), static_cast<unsigned long>(older),
+                     static_cast<unsigned long>(olderCount), static_cast<unsigned long>(now),
+                     static_cast<unsigned long>(nowCount), static_cast<unsigned long>(other),
+                     static_cast<unsigned long>(otherCount), reserve != nullptr ? "held" : "let go");
+        for (int i = 0; i < groupCount && i < 80; ++i)
+            std::fprintf(out, "  gen %lu caller %08lx: %lu blocks, %lu bytes\n", static_cast<unsigned long>(groups[i].gen),
+                         static_cast<unsigned long>(groups[i].caller), static_cast<unsigned long>(groups[i].count),
+                         static_cast<unsigned long>(groups[i].bytes));
+        if (groupCount > 80 || dropped > 0)
+            std::fprintf(out, "  (%d more groups, %d blocks past the table)\n", groupCount > 80 ? groupCount - 80 : 0,
+                         dropped);
+    }
+
+    void traceLoadEnd(void *outFile, const char *map, const char *how)
+    {
+        auto *out = static_cast<std::FILE *>(outFile);
+        if (out == nullptr)
+            return;
+        std::fprintf(out,
+                     "trace: load %s %s: live at its start %lu, at its peak %lu (+%lu), now %lu; heap's end at its "
+                     "highest %08lx, of a limit %08lx\n",
+                     map, how, static_cast<unsigned long>(loadStartLive), static_cast<unsigned long>(loadPeakLive),
+                     static_cast<unsigned long>(loadPeakLive - loadStartLive), static_cast<unsigned long>(bytes),
+                     static_cast<unsigned long>(heapEndHigh), reinterpret_cast<unsigned long>(getHeapLimit()));
+        if (failCount != 0)
+            std::fprintf(out, "trace: %lu blocks could not be had; the last %lu bytes, caller %08lx\n",
+                         static_cast<unsigned long>(failCount), static_cast<unsigned long>(failSize),
+                         static_cast<unsigned long>(failCaller));
+        // (The largest hole, then: whether the room was there, but in pieces.)
+        const ChainWalk chain = walkChain();
+        std::fprintf(out, "trace: free at the top %lu, in holes %lu, the largest hole %lu\n",
+                     static_cast<unsigned long>(chain.topFree), static_cast<unsigned long>(chain.inHoles),
+                     static_cast<unsigned long>(chain.largestHole));
+        failCount = 0;
+    }
+#endif
+
     void renewReserve()
     {
 #ifndef HLDS_GUARD_FULL
@@ -736,7 +953,7 @@ extern "C"
     {
         if (size != 0 && count > 0x0FFFFFFF / size)
             return nullptr;
-#ifdef HLDS_GUARD_FULL
+#if defined(HLDS_GUARD_FULL) || defined(HLDS_HEAP_TRACE)
         void *p = hlrt::guard::take(8, count * size, reinterpret_cast<std::uint32_t>(__builtin_return_address(0)));
         if (p != nullptr)
             std::memset(p, 0, count * size);
@@ -795,10 +1012,40 @@ extern "C"
         hlrt::guard::give(p, caller);
         return q;
 #else
+#ifdef HLDS_HEAP_TRACE
+        // (One of ours: moved to a new block of ours, with its head.)
+        std::uint32_t align = 8;
+        if (const std::uint32_t had = hlrt::guard::tracedUsable(p, align))
+        {
+            void *q = hlrt::guard::take(align, size, caller);
+            if (q == nullptr)
+                return nullptr;
+            std::memcpy(q, p, had < size ? had : size);
+            hlrt::guard::give(p, caller);
+            return q;
+        }
+#endif
         hlrt::guard::counted(p, -1);
         void *q = __real_realloc(p, size);
         hlrt::guard::counted(q != nullptr ? q : p, 1);
         return q;
 #endif
     }
+
+#ifdef HLDS_HEAP_TRACE
+    // operator new (build.py: --wrap, in a trace build): whose the block it
+    // asks malloc for really is.
+    void *__real__Znwj(std::size_t size);
+    void *__real__Znaj(std::size_t size);
+    void *__wrap__Znwj(std::size_t size)
+    {
+        hlrt::guard::pendingCaller = reinterpret_cast<std::uint32_t>(__builtin_return_address(0));
+        return __real__Znwj(size);
+    }
+    void *__wrap__Znaj(std::size_t size)
+    {
+        hlrt::guard::pendingCaller = reinterpret_cast<std::uint32_t>(__builtin_return_address(0));
+        return __real__Znaj(size);
+    }
+#endif
 }

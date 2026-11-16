@@ -48,6 +48,16 @@ profile += ['HLDS_VOICE_DUMP=1'] if os.environ.get('HLDS_VOICE_DUMP') else []
 # (HLDS_DEBUG_BUILD: what else a debug build says, on the screen and in
 # perf.txt -- an archive that seeks the slow way.)
 guard = ['HLDS_GUARD_FULL', 'HLDS_DEBUG_BUILD'] if os.environ.get('HLDS_DEBUG') else []
+# HLDS_HEAP_TRACE=1 ./make.sh: a debug build that says who holds the heap
+# (Guard.hpp: the heap trace) -- each block's caller and generation, the
+# blocks still held from before each map's load, and its peak, in
+# data/heaptrace.txt (tools/heaptrace.py names the callers). On the
+# release allocator, 8 bytes a block: not with HLDS_DEBUG's full guard.
+trace = os.environ.get('HLDS_HEAP_TRACE')
+if trace and guard:
+    raise SystemExit('HLDS_HEAP_TRACE and HLDS_DEBUG are two ways of watching the heap: one at a time')
+if trace:
+    guard = ['HLDS_HEAP_TRACE', 'HLDS_DEBUG_BUILD']
 
 # The 64-bit divide goes to the console's divider (source/HwMath.s), and to
 # the library's for what the divider would answer otherwise.
@@ -113,6 +123,8 @@ arm9 = Arm9Binary(
     ldflags=' '.join(['-Wl,--wrap=' + f for f in (
         'malloc', 'free', 'calloc', 'realloc', 'memalign', 'aligned_alloc', 'posix_memalign')] +
         ['-Wl,--wrap=' + f for f in HW_MATH_WRAPS] +
+        # (A heap trace's: operator new says whose its block is.)
+        (['-Wl,--wrap=_Znwj', '-Wl,--wrap=_Znaj'] if trace else []) +
         ['-Wl,--undefined=calloc'] +
         # DTCM's own data and its heap (dtcm_malloc), at the top of DTCM;
         # the stack has the rest under it.

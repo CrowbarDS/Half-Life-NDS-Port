@@ -64,8 +64,30 @@ namespace
 {
     /// Show why the game cannot start, and stop. Everything past this point
     /// reads data that is not there, so this is a dead end on purpose.
+#ifdef HLDS_HEAP_TRACE
+    /// The heap trace (Guard.hpp), to data/heaptrace.txt.
+    template <class Write> void traceWrite(Write write)
+    {
+        if (std::FILE *out = std::fopen(global.dataPath("heaptrace.txt").c_str(), "a"))
+        {
+            write(out);
+            std::fclose(out);
+        }
+    }
+#else
+    template <class Write> void traceWrite(Write) {}
+#endif
+
+    char loadingMap[32] = {};
+
     [[noreturn]] void haltWith(const char *l1, const char *l2, const char *l3)
     {
+        // (A trace build: what was held when it stopped, and the load's peak.)
+        traceWrite([&](std::FILE *out) {
+            std::fprintf(out, "trace: HALTED: %s %s %s\n", l1, l2, l3);
+            hlrt::guard::traceLoadEnd(out, loadingMap, "(halted)");
+            hlrt::guard::traceDump(out, "as it halted", loadingMap);
+        });
         // (The touch screen may not have been set up yet: this does it.)
         hlrt::bottomScreen.showFatal(l1, l2, l3);
         while (true)
@@ -73,9 +95,8 @@ namespace
     }
 
     std::string currentMap;
-    /// The map being loaded, while it is (for the screen that says it did
-    /// not fit: currentMap is still the one left).
-    char loadingMap[32] = {};
+    // (loadingMap, above: the map being loaded, while it is -- for the screen
+    // that says it did not fit: currentMap is still the one left.)
     /// A map loaded only to be photographed (takeAllPreviews): nothing of it
     /// is shown -- the curtain stays down, the touch screen says what is
     /// being done.
@@ -730,6 +751,10 @@ namespace
         // (A save still being written is of the map being left: finished
         // first, at once.)
         hlrt::SaveGame::finish();
+        // (A trace build: what this load takes is a generation of its own.)
+        const bool wasLoaded = hlrt::level.loaded();
+        hlrt::guard::traceGeneration();
+        hlrt::guard::traceLoadBegin();
         if (!hlrt::Level::peekHeader(name, header))
         {
             leavingAbandoned = false;
@@ -778,6 +803,14 @@ namespace
         hlrt::gpuStats.beginMap();
         dropMap();
         hlrt::guard::renewReserve();
+        // (A trace build: what is still held now that the old map is gone.)
+        traceWrite([&](std::FILE *out) {
+            hlrt::guard::traceDump(out,
+                                   changing ? "level change, the old map gone"
+                                   : wasLoaded ? "a map begun again, the old one gone"
+                                               : "the first map since the title",
+                                   name.c_str());
+        });
         if (perfLogging())
         {
             const hlrt::guard::HeapRoom room = hlrt::guard::heapRoom();
@@ -1015,6 +1048,7 @@ namespace
             hlrt::guest::demoLoaded(hlrt::level.view);
 #endif
         hlrt::guard::check("map loaded");
+        traceWrite([&](std::FILE *out) { hlrt::guard::traceLoadEnd(out, name.c_str(), "loaded"); });
         return LoadResult::Ok;
     }
 
@@ -1401,6 +1435,13 @@ namespace
     bool loadSave(std::string &error, int slot)
     {
         static hldata::SaveData save; // not on the stack: it holds vectors of vectors
+        // (A trace build: what is held as a save is begun -- from the title,
+        // or in play.)
+        traceWrite([&](std::FILE *out) {
+            hlrt::guard::traceDump(out, hlrt::level.loaded() ? "a save, in play, before it is read"
+                                                             : "a save from the title, before it is read",
+                                   "-");
+        });
         save = hldata::SaveData();
         hldata::LevelHeader header{};
         if (slot < 0 || !hlrt::SaveGame::read(save, slot) ||
@@ -1872,7 +1913,10 @@ int main(int argc, char *argv[])
             hlrt::screenFade.curtainUp();
         }
         // (Before anything is loaded, the picture is kept and its textures go.)
-        auto leaving = [&]() { hlrt::hudDraw.hideMenu(); };
+        auto leaving = [&]() {
+            hlrt::hudDraw.hideMenu();
+            hlrt::guard::traceGeneration(); // (a trace build: the title's is a generation of its own)
+        };
         auto back = [&]() { moving = hlrt::hudDraw.showMenu(); };
         // (A match over: its lobby, not the title.)
         if (hlrt::netGame.on())

@@ -49,6 +49,26 @@ namespace hlrt::guard
     std::uint32_t liveBlocks();
     std::uint32_t liveBytes();
 
+    /// The heap trace (HLDS_HEAP_TRACE=1 ./make.sh, a debug build only):
+    /// every block has 8 bytes in front of it -- who asked for it (the
+    /// return address of the call to malloc or operator new) and the
+    /// generation it was taken in, one more at each map's load and as the
+    /// title is left for the game. traceDump writes the blocks still held
+    /// from before the generation now, by generation and caller, to `out`
+    /// (a FILE *); traceLoad* the heap's peak in a load. Without it, these
+    /// do nothing.
+#ifdef HLDS_HEAP_TRACE
+    void traceGeneration();
+    void traceLoadBegin();
+    void traceDump(void *out, const char *label, const char *map);
+    void traceLoadEnd(void *out, const char *map, const char *how);
+#else
+    inline void traceGeneration() {}
+    inline void traceLoadBegin() {}
+    inline void traceDump(void *, const char *, const char *) {}
+    inline void traceLoadEnd(void *, const char *, const char *) {}
+#endif
+
     /// From now on, how far the heap's live bytes rise above what they are
     /// now (playRise): what play takes on top of what a map's load left.
     void markPlay();
