@@ -30,10 +30,15 @@ namespace
             return g.layStored(in, sentAway, landed);
         },
 
+#ifdef HLDS_CHILD
+        // (The Download Play child has no worker to ask it: game/Think.cpp.)
+        .thinkRunOne = nullptr,
+#else
         .thinkRunOne = [](hldata::LogicWorld &w, void (*yield)()) {
             hldata::thinkYield = yield;
             return hldata::thinkRunOne(w);
         },
+#endif
         .thinkClear = [](hldata::ThinkQueue &q) { hldata::thinkClear(q); },
         .hurtPlayer = [](hldata::PlayerState &player, std::int32_t amount, std::uint32_t type)
         { hldata::logicHurt(player, amount, 0, type); },
