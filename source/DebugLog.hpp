@@ -50,6 +50,11 @@ namespace hlrt::DebugLog
         void logEvery(const char *map, int frames);
         /// Paint the unused stack, for logEvery to see how far it was used.
         void markStack();
+        /// Where the game library's code is (GameDll), for the sampler: where
+        /// the ARM9 is, several thousand times a second, counted by 256-byte
+        /// piece of the program, of the library and of ITCM -- written with
+        /// the rest (perf.txt "pcs:"; tools/pcsample.py names them).
+        void noteLibrary(const void *base, std::uint32_t codeBytes);
 
         struct Scope
         {
@@ -68,6 +73,7 @@ namespace hlrt::DebugLog
         inline void endFrame() {}
         inline void logEvery(const char *, int) {}
         inline void markStack() {}
+        inline void noteLibrary(const void *, std::uint32_t) {}
         inline std::uint32_t micros(Section) { return 0; }
         struct Scope
         {

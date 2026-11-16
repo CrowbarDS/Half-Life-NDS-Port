@@ -191,7 +191,10 @@ namespace hlrt
         const auto *base = static_cast<const std::uint8_t *>(dlmembase(library));
         const auto *data = static_cast<const std::uint8_t *>(dlsym(library, "hlDslData"));
         if (base != nullptr && data != nullptr && data > base)
+        {
             guard::noteLibrary(base, static_cast<std::uint32_t>(data - base), static_cast<std::uint32_t>(data - base));
+            DebugLog::Perf::noteLibrary(base, static_cast<std::uint32_t>(data - base));
+        }
         const auto api = reinterpret_cast<GetGameApiFn>(dlsym(library, "GetGameAPI"));
         if (api == nullptr || !api(kGameApiVersion, gameLayout(), &hlEngine, &gameApi))
         {

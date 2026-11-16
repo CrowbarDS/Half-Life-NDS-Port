@@ -475,6 +475,13 @@ Milestone 11, "levels of detail".
   with the debug readout on, or in a build with `HLDS_PROFILE`: otherwise
   nothing is written there (a line after every map rewrote the directory of
   the folder the maps are in, the write a failing card can take them with).
+- Where the time goes, by function, on the console itself: a build with
+  `HLDS_PROFILE` samples where the ARM9 is 4000 times a second (timer 2) and
+  writes the busiest 256-byte pieces of code -- ITCM, the program, the game
+  library -- and how long it slept, after each `time:` line in `perf.txt`.
+  `tools/pcsample.py perf.txt [map]` names them from that build's ELFs. It is
+  how the leeches that swam out of sight and the lasers that struck every
+  frame were found (c3a1 on a DSi: 11.3 ms a frame down to 7.7).
 - Player movement with Half-Life's own numbers: walking, jumping, crouching,
   steps, climbing, sliding along walls, in fixed point throughout (the DS has
   no FPU).

@@ -43,18 +43,20 @@ HANDLERS = [
     "hlrt::netlink::(anonymous namespace)::radioWord(unsigned long, void*)",  # ... and with it, ours does
     "Wifi_DlPlayFromClientHandler",
     "my_sys_counter",  # lwIP's clock (online play, a DSi's): a count, on timer 3
+    "hlrt::DebugLog::Perf::(anonymous namespace)::sample()",  # HLDS_PROFILE's sampler, on timer 2
 ]
 # (What the radio's interrupt calls by a pointer, each of these: fromHost's sink
 # is the child's sinkTake, which takes a map's pieces as they arrive.)
 HANDLER_PATTERN = re.compile(r"netlink::.*(fromClient|fromHost)\(|guest::.*sinkTake\(")
 # Handlers that only some programs have (the child sends nothing).
-OPTIONAL = {"Wifi_DlPlayFromClientHandler", "my_sys_counter"}
+OPTIONAL = {"Wifi_DlPlayFromClientHandler", "my_sys_counter",
+            "hlrt::DebugLog::Perf::(anonymous namespace)::sample()"}
 # Who may install one. Anyone new may be installing a handler this cannot see:
 # it fails until that handler is in HANDLERS and its caller here.
 INSTALLERS = {
     "irqSet": {"Global::Init(char const*)", "fifoInit", "ne_gxfifo_wait_room", "timerStart"},
     "irqSetAUX": set(),
-    "timerStart": {"sys_init"},
+    "timerStart": {"sys_init", "hlrt::DebugLog::Perf::begin()"},
     "fifoSetValue32Handler": {"Wifi_Deinit", "Wifi_InitDefault", "initSystem",
                               "hlrt::netlink::(anonymous namespace)::start()"},
     "fifoSetDatamsgHandler": {"initSystem"},
