@@ -8,6 +8,7 @@
 
 #include "Global.hpp"
 #include "Guard.hpp"
+#include "game/Think.hpp"
 
 // (The linker's: where the stack starts, under DTCM's own data, which sits
 // at the top of DTCM. It grows down to the bottom of DTCM.)
@@ -67,9 +68,11 @@ namespace hlrt::DebugLog::Perf
                 std::fprintf(log, ", %s %lu/%lu", kNames[i],
                              static_cast<unsigned long>(toMicros(summed[i] / static_cast<unsigned>(framesIn))),
                              static_cast<unsigned long>(toMicros(worst[i])));
-            std::fprintf(log, "\n");
+            std::fprintf(log, ", answered %lu, think stack %lu\n", static_cast<unsigned long>(think.answered),
+                         static_cast<unsigned long>(think.stackPeak()));
             std::fclose(log);
         }
+        think.answered = 0;
         for (int i = 0; i < kCount; ++i)
         {
             summed[i] = 0;

@@ -1,4 +1,5 @@
 #include "Guard.hpp"
+#include "game/Think.hpp"
 
 #include <cerrno>
 #include <cstddef>
@@ -623,6 +624,8 @@ namespace hlrt::guard
     {
         if (!stackIntact())
             crash("STACK: overflowed (DTCM)", reinterpret_cast<std::uint32_t>(stackFloor()), kStackWords * 4);
+        if (const void *end = think.stackOverflowed())
+            crash("STACK: overflowed (thinking)", reinterpret_cast<std::uint32_t>(end), 64);
     }
 
     void check(const char *where)
