@@ -21,6 +21,25 @@
 
 namespace hlrt
 {
+#ifdef HLDS_CHILD
+    // Sent the game, a console stays in DS mode, which has no DSP (and has not
+    // the speakers' mix it would need: dsiSpeakers): every call does nothing,
+    // and none of the DSP's code is in its program.
+    class DspAudio
+    {
+    public:
+        static bool available() { return false; }
+        bool start() { return false; }
+        void stop() {}
+        bool up() const { return false; }
+        bool failed() const { return false; }
+        void room(int) {}
+        void frame() {}
+        std::uint32_t dry() const { return 0; }
+        int heard() const { return 0; }
+    };
+    inline DspAudio dspAudio;
+#else
     class DspAudio
     {
     public:
@@ -72,4 +91,5 @@ namespace hlrt
     };
 
     extern DspAudio dspAudio;
+#endif
 } // namespace hlrt
