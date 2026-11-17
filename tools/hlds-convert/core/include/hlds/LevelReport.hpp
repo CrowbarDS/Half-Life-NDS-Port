@@ -75,8 +75,12 @@ namespace hlds
     {
         std::vector<std::uint32_t> starts; ///< each page's first word, then the stream's end
         std::uint32_t slotWords = 0;       ///< the longest page
-        std::uint32_t worstWorldPages = 0; ///< the world's pages the worst view needs
-        std::uint32_t brushPages = 0;      ///< pages holding the brush entities' (kept in)
+        /// The pages the worst view needs: the world's, and those of the
+        /// brush entities it sees (not kept in).
+        std::uint32_t worstWorldPages = 0;
+        /// Pages kept in whatever is in view: those of the brush entities
+        /// that roam (a train), drawn wherever they are.
+        std::uint32_t brushPages = 0;
         std::uint32_t slotCount = 0;       ///< what a DS keeps: the worst view's, a quarter more, the brushes'
         std::uint32_t pages() const { return starts.empty() ? 0 : static_cast<std::uint32_t>(starts.size() - 1); }
     };

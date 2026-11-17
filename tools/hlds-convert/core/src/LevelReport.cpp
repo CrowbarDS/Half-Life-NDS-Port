@@ -330,12 +330,46 @@ namespace hlds
         const std::uint32_t last = first + view.models[0].surfaceCount;
         auto isWorld = [&](std::uint32_t s) { return s >= first && s < last; };
 
-        // The brush entities' pages: kept in, whatever is in view.
+        // The brush entities' pages. One that roams (a train: wherever its
+        // track has taken it) is drawn whatever is in view, and its pages
+        // are counted as kept in; any other is drawn only when one of its
+        // leaves is seen (WorldDraw::planBrushes), and its pages are counted
+        // with the views that see it, as the world's are.
         std::vector<char> pinned(pages, 0);
+        auto pagesOfModel = [&](std::uint32_t model, auto &&each)
+        {
+            if (model >= view.modelCount)
+                return;
+            const Model &m = view.models[model];
+            for (std::uint32_t s = m.firstSurface; s < std::uint32_t{m.firstSurface} + m.surfaceCount; ++s)
+            {
+                if (s >= view.surfaceCount || view.surfaces[s].gxWords == 0)
+                    continue;
+                const Surface &surface = view.surfaces[s];
+                for (std::uint32_t p = pageOf(surface.gxOfs); p <= pageOf(surface.gxOfs + surface.gxWords - 1); ++p)
+                    each(p);
+            }
+        };
+        std::vector<char> brushed(view.surfaceCount, 0);
+        for (std::uint32_t b = 0; b < view.brushCount; ++b)
+        {
+            const Brush &brush = view.brushes[b];
+            if (brush.model < view.modelCount)
+            {
+                const Model &m = view.models[brush.model];
+                for (std::uint32_t s = m.firstSurface; s < std::uint32_t{m.firstSurface} + m.surfaceCount && s < view.surfaceCount; ++s)
+                    brushed[s] = 1;
+            }
+            if ((brush.flags & kBrushRoams) != 0)
+                pagesOfModel(brush.model, [&](std::uint32_t p) { pinned[p] = 1; });
+        }
+        // (A surface of no world and no brush entity -- a model never placed
+        // -- is never drawn; one of a brush entity's model that is not one of
+        // the level's brushes, kept in, as before.)
         for (std::uint32_t s = 0; s < view.surfaceCount; ++s)
         {
             const Surface &surface = view.surfaces[s];
-            if (isWorld(s) || surface.gxWords == 0)
+            if (isWorld(s) || brushed[s] != 0 || surface.gxWords == 0)
                 continue;
             for (std::uint32_t p = pageOf(surface.gxOfs); p <= pageOf(surface.gxOfs + surface.gxWords - 1); ++p)
                 pinned[p] = 1;
@@ -344,7 +378,8 @@ namespace hlds
             out.brushPages += p != 0 ? 1u : 0u;
 
         // Each leaf's view, as reportLevel walks it: the world's pages it needs.
-        std::vector<std::uint32_t> pageStamp(pages, 0), nodeStamp(view.nodeCount, 0), nodes, row;
+        std::vector<std::uint32_t> pageStamp(pages, 0), nodeStamp(view.nodeCount, 0), leafStamp(view.leafCount, 0),
+            nodes, row;
         auto above = [&](std::uint32_t leaf)
         {
             nodes.clear();
@@ -395,6 +430,34 @@ namespace hlds
                             take(view.nodeMarks[span.first + k]);
                     }
                 }
+            }
+            // The brush entities this view sees: one of their leaves in its row.
+            for (const std::uint32_t seen : row)
+            {
+                if (seen < leafStamp.size())
+                    leafStamp[seen] = stamp;
+            }
+            for (std::uint32_t b = 0; b < view.brushCount; ++b)
+            {
+                const Brush &brush = view.brushes[b];
+                if ((brush.flags & kBrushRoams) != 0)
+                    continue;
+                bool seen = false;
+                for (std::uint32_t k = 0; k < brush.leafCount && !seen; ++k)
+                {
+                    const std::uint32_t l = view.brushLeaves[brush.firstLeaf + k];
+                    seen = l < leafStamp.size() && leafStamp[l] == stamp;
+                }
+                if (!seen)
+                    continue;
+                pagesOfModel(brush.model, [&](std::uint32_t p)
+                             {
+                                 if (pageStamp[p] != stamp && pinned[p] == 0)
+                                 {
+                                     pageStamp[p] = stamp;
+                                     ++need;
+                                 }
+                             });
             }
             out.worstWorldPages = std::max(out.worstWorldPages, need);
         }
