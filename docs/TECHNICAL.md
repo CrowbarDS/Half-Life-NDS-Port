@@ -1023,27 +1023,49 @@ Milestone 11, "levels of detail".
   eight; the stereo music and room echo of its DSP,
   when that is switched on.
 - What a DS gives up on a map too big for it (`shared/HlDsRoom.hpp`,
-  `shared/HlDsCut.hpp`). A DS has about 2 MB of heap when a map's load
-  begins (2,127,504 bytes, measured), and keeps 160 KB of it for play. The
-  converter reckons what each map needs of it (the level file, the model
-  files, the weapons' skins kept in main memory, the game's arrays, the
-  sounds kept), prints a `DS:` line per map, and while the sounds would have
-  less than 128 KB it gives up, a step at a time:
+  `shared/HlDsCut.hpp`). A DS has about 2.2 MB of heap when a map's load
+  begins (`kDsMapHeap`, measured with `tools/emu/room.sh ds`), and keeps
+  160 KB of it for play. The converter reckons what each map needs of it
+  (the level file, the model files, the weapons' skins kept in main memory,
+  the game's arrays and families, the sounds kept), prints a `DS:` line per
+  map, and while the sounds would have less than 128 KB it gives up, a step
+  at a time:
   1. the models with one level of detail;
   2. a little looser animation;
   3. the visibility rows read from the card (`ds.vis`), the camera's
      row on a leaf change; the AI then treats the map as unvised;
   4. the lights that change stay as they were lit (LightPatch left out);
-  5. the geometry read from the card in pages of about 4 KB (`ds.gx`);
-     the stream is laid out leaf by leaf for it;
-  6. looser animation still.
+  5. the weapons' skins kept in main memory at 128 x 128 at most;
+  6. the geometry read from the card in pages of about 4 KB (`ds.gx`);
+     the stream is laid out leaf by leaf for it. The slots kept are those
+     the worst view needs, a quarter more, and the pages of the brush
+     entities that roam (trains): any other brush entity is counted with
+     the views that see one of its leaves, as it is drawn;
+  7. the models' animation keys read from the card as a clip is played
+     (`kModelKeysApart`): the card's `mdl/<name>.hmd` without them and
+     `mdl/<name>.hmk` beside it, stored. `source/data/KeyCache.cpp` keeps
+     the clips read lately in one block (three of the map's largest clip,
+     96 KB at least: `dsKeyCacheBytes`), taken in turn round it; a clip not
+     there is read in the frame that poses it. A pose needs its keys only
+     while `poseModel` works it out, so nothing is held across a frame;
+  8. looser animation still, then looser still.
 
   The sounds get what is left, and the console loads them until that runs
-  out. Steps 3 to 5 are said in `ds.cut` beside the level. A DSi, and a DS
-  with an Expansion Pak, load the level whole and never read them. Lighter
-  models go in the plain files, with a DSi's full ones beside them (`.dsi.hmd`).
-  The room line in perf.txt gives the heap after each part of the load, to
-  check the reckoning against: tools/emu/room.sh tabulates it.
+  out. Steps 3, 4, 6 and 7 are said in `ds.cut` beside the level. A DSi
+  loads the level whole and never reads them, and reads its own whole models
+  (`.dsi.hmd`); a DS with an Expansion Pak loads the level whole. A console
+  sent the map by Download Play gets whole models. The room line in
+  perf.txt gives the heap after each part of the load, the models refused
+  (MISSING) and what the key cache holds; the play line the clips read: to
+  check the reckoning against, tools/emu/room.sh tabulates it, a map at a
+  time from a start or along a walk of maps by their own ways
+  (`--walk`, `tools/emu/campaign_walk.py`, debug_start.txt's `go` lines).
+- Saves on a DS. Arrival, quick and manual saves stream the map's state to
+  the card as they are written. The game's own save in play (a
+  `trigger_autosave`) is written a step at a time, holding the whole save
+  twice over while it is; a DS does that only when the heap's top has three
+  times the map's state to spare, and otherwise writes it at once, streamed.
+  A save loaded is let go of while its map loads, and read again after.
 - The controls (`shared/HlControls.hpp`). What is held this frame goes in
   and what the player is doing comes out, by one function for both layouts,
   either hand and the two swaps of pad and stylus; the console's part
