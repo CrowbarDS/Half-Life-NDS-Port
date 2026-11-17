@@ -1,4 +1,5 @@
 #include "data/KeyCache.hpp"
+#include "DebugLog.hpp"
 
 #ifndef HLDS_CHILD
 #include <cstdlib>
@@ -162,7 +163,14 @@ namespace hlrt
                 other.at = -1;
         }
         const std::uint32_t keyBytes = clip.keyCount * sizeof(hldata::ModelKey);
-        if (!cardReadMember(model.member, clip.firstKey * sizeof(hldata::ModelKey), block_ + from, keyBytes))
+#ifdef HLDS_PROFILE
+        const std::uint32_t readFrom = DebugLog::Perf::now();
+#endif
+        const bool got = cardReadMember(model.member, clip.firstKey * sizeof(hldata::ModelKey), block_ + from, keyBytes);
+#ifdef HLDS_PROFILE
+        DebugLog::Perf::noteKeyRead(DebugLog::Perf::now() - readFrom);
+#endif
+        if (!got)
         {
             ++failed_;
             return false;

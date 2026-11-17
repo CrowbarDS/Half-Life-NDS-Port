@@ -32,7 +32,11 @@ namespace hlrt::DebugLog::Perf
         constexpr std::uint32_t kStackPaint = 0x5AC3E5A1u;
 
         constexpr const char *kNames[kCount] = {"input", "logic", "move", "walk",
-                                                "emit",  "pose",  "models", "frame", "monsters", "look", "hear", "going"};
+                                                "emit",  "pose",  "models", "frame", "monsters", "look", "hear", "going",
+                                                "keys"};
+        // Key reads since the last line: how many, the longest one, and what
+        // of the worst frame was reading keys (does a read make that frame?).
+        std::uint32_t keyReads = 0, keyLongest = 0, keysInWorstFrame = 0;
         // The sampler: timer 2 (0 and 1 are the clock above; 3 the
         // wireless's), kSampleHz times a second, adds one to the 256-byte
         // piece of code the ARM9 was in -- ITCM first, then the program, then
@@ -157,8 +161,10 @@ namespace hlrt::DebugLog::Perf
                 std::fprintf(log, ", %s %lu/%lu", kNames[i],
                              static_cast<unsigned long>(toMicros(summed[i] / static_cast<unsigned>(framesIn))),
                              static_cast<unsigned long>(toMicros(worst[i])));
-            std::fprintf(log, ", answered %lu, think stack %lu\n", static_cast<unsigned long>(think.answered),
-                         static_cast<unsigned long>(think.stackPeak()));
+            std::fprintf(log, ", answered %lu, think stack %lu, key reads %lu, longest read %lu, keys in worst frame %lu\n",
+                         static_cast<unsigned long>(think.answered), static_cast<unsigned long>(think.stackPeak()),
+                         static_cast<unsigned long>(keyReads), static_cast<unsigned long>(toMicros(keyLongest)),
+                         static_cast<unsigned long>(toMicros(keysInWorstFrame)));
             writePieces(log);
             std::fclose(log);
         }
@@ -171,6 +177,7 @@ namespace hlrt::DebugLog::Perf
             leaveCriticalSection(saved);
         }
         think.answered = 0;
+        keyReads = keyLongest = keysInWorstFrame = 0;
         for (int i = 0; i < kCount; ++i)
         {
             summed[i] = 0;
@@ -232,8 +239,19 @@ namespace hlrt::DebugLog::Perf
         return (latched[static_cast<int>(section)] * 2u) / 67u;
     }
 
+    void noteKeyRead(std::uint32_t ticks)
+    {
+        running[static_cast<int>(Section::Keys)] += ticks;
+        ++keyReads;
+        if (ticks > keyLongest)
+            keyLongest = ticks;
+    }
+
     void endFrame()
     {
+        // (The worst frame yet: what of it was reading keys.)
+        if (running[static_cast<int>(Section::Frame)] > worst[static_cast<int>(Section::Frame)])
+            keysInWorstFrame = running[static_cast<int>(Section::Keys)];
         for (int i = 0; i < kCount; ++i)
         {
             latched[i] = running[i];

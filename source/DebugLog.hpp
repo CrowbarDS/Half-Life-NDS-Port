@@ -29,6 +29,7 @@ namespace hlrt::DebugLog
         AiLook,   ///< ... their looking and listening (HlAi.hpp's aiSpent)
         AiSched,  ///< ... their hearing, and their enemy looked to
         AiMove,   ///< ... their going about
+        Keys,     ///< animation keys read off the card (data/KeyCache.cpp: a DS's key paging)
         Count
     };
 
@@ -39,6 +40,10 @@ namespace hlrt::DebugLog
         void begin();
         std::uint32_t now();
         void add(Section section, std::uint32_t ticks);
+        /// One read of a clip's keys off the card, `ticks` long: added to
+        /// Section::Keys and counted, for the line's reads, its longest
+        /// read, and what of the window's worst frame was reading keys.
+        void noteKeyRead(std::uint32_t ticks);
         /// Microseconds spent in a section during the last reported frame.
         std::uint32_t micros(Section section);
         /// Latch this frame's totals for micros() and clear the accumulators.
@@ -74,6 +79,7 @@ namespace hlrt::DebugLog
         inline void logEvery(const char *, int) {}
         inline void markStack() {}
         inline void noteLibrary(const void *, std::uint32_t) {}
+        inline void noteKeyRead(std::uint32_t) {}
         inline std::uint32_t micros(Section) { return 0; }
         struct Scope
         {
