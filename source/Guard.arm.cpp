@@ -769,7 +769,7 @@ namespace hlrt::guard
         // walkChain's): those of ours, by their heads; the rest apart.
         struct Group
         {
-            std::uint32_t gen, caller, count, bytes;
+            std::uint32_t gen, caller, count, bytes, highest;
         };
         constexpr int kGroups = 384;
         static Group groups[kGroups];
@@ -804,19 +804,22 @@ namespace hlrt::guard
                     {
                         older += holds;
                         ++olderCount;
-                        int g = 0;
-                        while (g < groupCount && (groups[g].gen != gen || groups[g].caller != h.caller))
-                            ++g;
-                        if (g == groupCount && groupCount < kGroups)
-                            groups[groupCount++] = Group{gen, h.caller, 0, 0};
-                        if (g < groupCount)
-                        {
-                            ++groups[g].count;
-                            groups[g].bytes += holds;
-                        }
-                        else
-                            ++dropped;
                     }
+                    // (This generation's too: a block of it can be what
+                    // parts the heap, put in a hole of the map before.)
+                    int g = 0;
+                    while (g < groupCount && (groups[g].gen != gen || groups[g].caller != h.caller))
+                        ++g;
+                    if (g == groupCount && groupCount < kGroups)
+                        groups[groupCount++] = Group{gen, h.caller, 0, 0, 0};
+                    if (g < groupCount)
+                    {
+                        ++groups[g].count;
+                        groups[g].bytes += holds;
+                        groups[g].highest = c + 8;
+                    }
+                    else
+                        ++dropped;
                 }
                 else
                 {
@@ -849,9 +852,10 @@ namespace hlrt::guard
                      static_cast<unsigned long>(nowCount), static_cast<unsigned long>(other),
                      static_cast<unsigned long>(otherCount), reserve != nullptr ? "held" : "let go");
         for (int i = 0; i < groupCount && i < 80; ++i)
-            std::fprintf(out, "  gen %lu caller %08lx: %lu blocks, %lu bytes\n", static_cast<unsigned long>(groups[i].gen),
-                         static_cast<unsigned long>(groups[i].caller), static_cast<unsigned long>(groups[i].count),
-                         static_cast<unsigned long>(groups[i].bytes));
+            std::fprintf(out, "  gen %lu caller %08lx: %lu blocks, %lu bytes, the highest at %08lx\n",
+                         static_cast<unsigned long>(groups[i].gen), static_cast<unsigned long>(groups[i].caller),
+                         static_cast<unsigned long>(groups[i].count), static_cast<unsigned long>(groups[i].bytes),
+                         static_cast<unsigned long>(groups[i].highest));
         if (groupCount > 80 || dropped > 0)
             std::fprintf(out, "  (%d more groups, %d blocks past the table)\n", groupCount > 80 ? groupCount - 80 : 0,
                          dropped);
