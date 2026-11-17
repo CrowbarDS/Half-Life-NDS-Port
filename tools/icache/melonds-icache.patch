@@ -1,0 +1,73 @@
+--- a/src/CP15.cpp
++++ b/src/CP15.cpp
+@@ -38,6 +38,50 @@
+ const int kDataCacheTiming = 3;//2;
+ const int kCodeCacheTiming = 3;//5;
+ 
++// HLDS I-cache profiler (Half-Life NDS port, tools only): per 32-byte line of
++// main RAM, how often code entered the line (a lookup) and how often it missed.
++// With HLDS_ICACHE_OUT set, a snapshot of the counts so far is written every
++// 2^26 lookups to $HLDS_ICACHE_OUT.<n> ("addr lookups misses" in hex, lines
++// with any), so that a scene is the difference of two snapshots.
++namespace
++{
++constexpr u32 kHlLines = 0x400000 >> 5; // 4 MB of main RAM
++u32 hlLookups[kHlLines];
++u32 hlMisses[kHlLines];
++u64 hlTotal = 0;
++int hlSnapshot = 0;
++const char* hlOut = nullptr;
++bool hlChecked = false;
++
++void hlWriteSnapshot()
++{
++    char name[1024];
++    snprintf(name, sizeof(name), "%s.%d", hlOut, hlSnapshot++);
++    FILE* f = fopen(name, "w");
++    if (!f) return;
++    fprintf(f, "# lookups %llu\n", (unsigned long long)hlTotal);
++    for (u32 i = 0; i < kHlLines; i++)
++        if (hlLookups[i] || hlMisses[i])
++            fprintf(f, "%08x %x %x\n", 0x02000000u + (i << 5), hlLookups[i], hlMisses[i]);
++    fclose(f);
++}
++
++inline void hlCount(u32 addr, bool miss)
++{
++    if (!hlChecked)
++    {
++        hlChecked = true;
++        hlOut = getenv("HLDS_ICACHE_OUT");
++    }
++    if (!hlOut || (addr & 0xFF000000) != 0x02000000) return;
++    u32 i = (addr & 0x3FFFFF) >> 5;
++    if (miss) { hlMisses[i]++; return; }
++    hlLookups[i]++;
++    if ((++hlTotal & ((1u << 26) - 1)) == 0) hlWriteSnapshot();
++}
++}
++
++
+ 
+ void ARMv5::CP15Reset()
+ {
+@@ -384,6 +428,7 @@
+     line += id;
+ 
+     addr &= ~0x1F;
++    hlCount(addr, true);
+     u8* ptr = &ICache[line << 5];
+ 
+     if (CodeMem.Mem)
+@@ -802,7 +847,10 @@
+     if (CodeCycles == 0xFF) // cached memory. hax
+     {
+         if (branch || !(addr & 0x1F))
+-            CodeCycles = kCodeCacheTiming;//ICacheLookup(addr);
++        {
++            hlCount(addr, false);
++            ICacheLookup(addr); // (HLDS profiler: the cache modelled, for its timing and misses)
++        }
+         else
+             CodeCycles = 1;
+ 

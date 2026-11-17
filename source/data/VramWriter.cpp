@@ -57,7 +57,7 @@ namespace hlrt
         leaveCriticalSection(state);
     }
 
-    HL_ARM HL_ITCM void VramWriter::onVblank()
+    HL_ARM HL_ITCM_IRQ void VramWriter::onVblank()
     {
         if (written == queued)
             return;

@@ -16,4 +16,14 @@
 // from where it runs at the same speed whatever else the frame has pushed
 // out of the cache. See HL_HOT (HlFixed.hpp), which is the same for the
 // shared code, for what earns a place.
+#ifdef HLDS_ITCM_OFF
+// (A build to measure ITCM with, build.py: in main memory.)
+#define HL_ITCM
+#else
 #define HL_ITCM __attribute__((section(".itcm.text.hl")))
+#endif
+
+// HL_ITCM_IRQ: in ITCM always, measuring build or not -- what an interrupt
+// runs (VramWriter::onVblank), which is to take the same time whatever the
+// cache holds.
+#define HL_ITCM_IRQ __attribute__((section(".itcm.text.hl")))

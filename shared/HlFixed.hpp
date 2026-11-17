@@ -61,7 +61,12 @@ extern "C" std::uint32_t hlHwSqrt64(std::uint64_t value); // source/HwMath.s
 // merges, one it does not -- cannot share one.)
 #define HL_HOT_TEXT2(n) #n
 #define HL_HOT_TEXT(n) HL_HOT_TEXT2(n)
+#ifdef HLDS_ITCM_OFF
+// (A build to measure ITCM with, build.py: ARM code as ever, in main memory.)
+#define HL_HOT inline __attribute__((target("arm")))
+#else
 #define HL_HOT inline __attribute__((target("arm"), section(".itcm.text.hl_hot." HL_HOT_TEXT(__COUNTER__))))
+#endif
 #else
 #define HL_HOT inline
 #endif

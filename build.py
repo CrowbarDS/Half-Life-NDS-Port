@@ -41,6 +41,12 @@ profile += ['HLDS_BOX_TEST=1'] if os.environ.get('HLDS_BOX_TEST') else []
 # and the first 8 s of what others said, as it came, to data/heard.wav (with
 # heard.txt: how many packets were brought down or dropped).
 profile += ['HLDS_VOICE_DUMP=1'] if os.environ.get('HLDS_VOICE_DUMP') else []
+# HLDS_ITCM_OFF=1 ./make.sh: a build to measure with, not to play -- the
+# program's code out of ITCM, but for the interrupts' (HL_ITCM_IRQ) and the
+# divide's (HwMath.s), so that the I-cache profiler (build/tools/melonds-icache,
+# tools/icache_rank.py) sees what each function would cost from main memory.
+# arm9-report.sh --check fails on it, as it should.
+profile += ['HLDS_ITCM_OFF=1'] if os.environ.get('HLDS_ITCM_OFF') else []
 # HLDS_DEBUG=1 ./make.sh builds the full heap guard in (source/Guard.hpp): a
 # header and four bytes after every block, and small blocks held a while once
 # given back. Without it (the release) the blocks are the allocator's own,

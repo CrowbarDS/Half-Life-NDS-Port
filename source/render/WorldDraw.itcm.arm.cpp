@@ -1,3 +1,7 @@
+// (In a build to measure ITCM with, HLDS_ITCM_OFF, this file is empty and
+// WorldDrawMain.arm.cpp has its code, in main memory: the linker puts a file
+// named .itcm in ITCM whatever it holds.)
+#if !defined(HLDS_ITCM_OFF) || defined(HLDS_WORLDDRAW_IN_MAIN)
 #include "render/HudDraw.hpp"
 #include "render/WorldDraw.hpp"
 
@@ -547,3 +551,4 @@ namespace hlrt
         stats_.hwVertices = GFX_VERTEX_RAM_USAGE;
     }
 } // namespace hlrt
+#endif
