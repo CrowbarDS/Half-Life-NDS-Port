@@ -66,7 +66,7 @@ arm9 = Arm9Binary(
         '${BLOCKSDSEXT}/dswifi_dl',
         '${BLOCKSDSEXT}/nitro-engine-advanced',
     ],
-    cxxflags='-Wall -Werror=stack-usage=4096 -O2 -std=gnu++26 -D_LITTLE_ENDIAN -include yas/detail/config/endian.hpp',
+    cxxflags='-Wall -Werror=stack-usage=4096 -O2 -std=gnu++26 -fno-threadsafe-statics -D_LITTLE_ENDIAN -include yas/detail/config/endian.hpp',
     ldflags=' '.join(['-Wl,--wrap=' + f for f in (
         'malloc', 'free', 'calloc', 'realloc', 'memalign', 'aligned_alloc', 'posix_memalign')] +
         # (The divide: source/HwMath.s, and ../build.py.)
@@ -103,7 +103,7 @@ for family in ('boss', 'military'):
             '${BLOCKSDSEXT}/dswifi_dl',
             '${BLOCKSDSEXT}/nitro-engine-advanced',
         ],
-        cxxflags='-Wall -Werror=stack-usage=4096 -O2 -std=gnu++26 -mlong-calls -D_LITTLE_ENDIAN '
+        cxxflags='-Wall -Werror=stack-usage=4096 -O2 -std=gnu++26 -fno-threadsafe-statics -mlong-calls -D_LITTLE_ENDIAN '
                  '-include yas/detail/config/endian.hpp',
         ldflags_first='-Wl,--just-symbols=' + arm9.elf_path,
         link_deps=[arm9.elf_path],

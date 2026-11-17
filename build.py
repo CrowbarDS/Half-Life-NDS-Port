@@ -117,7 +117,10 @@ arm9 = Arm9Binary(
     # stack-usage: no function may take more than 4 KB of the stack, which
     # is 14.4 KB of DTCM in all (Game::destroy's 9 KB overflowed it when a map
     # was left, 2026-10-30). The game library and the child are held to it too.
-    cxxflags='-Wall -Werror=stack-usage=4096 -O2 -std=gnu++26 -D_LITTLE_ENDIAN -include yas/detail/config/endian.hpp',
+    # -fno-threadsafe-statics: a function's static is made with no lock
+    # (source/StdHalts.cpp says why).
+    cxxflags='-Wall -Werror=stack-usage=4096 -O2 -std=gnu++26 -fno-threadsafe-statics -D_LITTLE_ENDIAN '
+             '-include yas/detail/config/endian.hpp',
     # Every malloc, free and the rest goes through the guarded heap
     # (source/Guard.hpp), which finds a write past a block or into one given
     # back, and says whose block it was.
@@ -174,7 +177,7 @@ for family in ('boss', 'military', 'net'):
             '${BLOCKSDSEXT}/dswifi_dl',
             '${BLOCKSDSEXT}/nitro-engine-advanced',
         ],
-        cxxflags='-Wall -Werror=stack-usage=4096 -O2 -std=gnu++26 -mlong-calls -D_LITTLE_ENDIAN '
+        cxxflags='-Wall -Werror=stack-usage=4096 -O2 -std=gnu++26 -fno-threadsafe-statics -mlong-calls -D_LITTLE_ENDIAN '
                  '-include yas/detail/config/endian.hpp',
         ldflags_first='-Wl,--just-symbols=' + arm9.elf_path,
         link_deps=[arm9.elf_path],
