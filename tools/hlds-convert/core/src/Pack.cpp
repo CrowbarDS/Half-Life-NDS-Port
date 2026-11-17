@@ -20,6 +20,7 @@
 #include "HlCharacters.hpp"
 #include "hlds/AtomicWrite.hpp"
 #include "hlds/Lz77.hpp"
+#include "hlds/ModelCook.hpp"
 #include "hlds/NpacWriter.hpp"
 
 namespace fs = std::filesystem;
@@ -360,6 +361,22 @@ namespace hlds
             const fs::path playerModel = stage / "gst" / (std::string(kPlayerModel) + ".hmd");
             const bool coloured = multiplayer && fs::exists(playerModel);
             std::set<std::string> colouredSkins;
+            // A map whose models a DS has with their keys apart (HlDsCut.hpp's
+            // kDsCutKeys): on the card, each file without them, and its keys
+            // beside it, never compressed (read a clip's at a time). A console
+            // sent the map has them whole: it has no card to read them from.
+            bool keysApart = false;
+            {
+                std::vector<std::uint8_t> staged;
+                std::string none;
+                hldata::DsCutHeader header;
+                if (!air && readFile(stage / "maps" / (map + ".dscut"), staged, none) &&
+                    hldata::dsCutValid(staged.data(), staged.size()))
+                {
+                    std::memcpy(&header, staged.data(), sizeof(header));
+                    keysApart = (header.flags & hldata::kDsCutKeys) != 0;
+                }
+            }
             // (Not a weapon the map has not: that is in the common archive.)
             for (std::uint32_t i = 0; i < view.modelRefCount; ++i)
             {
@@ -374,7 +391,20 @@ namespace hlds
                 if (packing.add(player ? playerModel : stage / "mdl" / map / (std::string(name) + ".hmd"),
                                 std::string("mdl/") + name + ".hmd", true))
                 {
-                    skinOf(packing.members.back(), name);
+                    std::vector<std::uint8_t> apart, keys;
+                    const bool split = keysApart && !player &&
+                                       splitModelKeys(packing.members.back().data, apart, keys) && !keys.empty();
+                    if (split)
+                    {
+                        packing.members.back().data = std::move(apart);
+                        NpacMember member;
+                        member.path = std::string("mdl/") + name + hldata::kModelKeysFile;
+                        member.data = std::move(keys);
+                        member.mayCompress = false;
+                        packing.named.insert(member.path);
+                        packing.members.push_back(std::move(member));
+                    }
+                    skinOf(packing.members[packing.members.size() - (split ? 2 : 1)], name);
                     if (player && skins.size() != skinsBefore)
                         colouredSkins.insert(skins.back());
                 }

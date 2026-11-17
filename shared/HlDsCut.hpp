@@ -16,6 +16,11 @@
 //                     pages are runs of whole surfaces, `pageCount` of them,
 //                     page i the words from start[i] to start[i + 1]. A DS
 //                     keeps `slotCount` of them at once. Implies no light patch.
+//   kDsCutKeys        the map's models have their animation keys apart
+//                     (HlModel.hpp's kModelKeysApart): the archive's
+//                     mdl/<name>.hmd without them, mdl/<name>.hmk beside it,
+//                     and a DSi's own .dsi.hmd whole. For the packer: a DS
+//                     sees it in the models themselves.
 //
 // A console with an Expansion Pak, and a DSi, read none of it.
 
@@ -32,6 +37,7 @@ namespace hldata
     inline constexpr std::uint16_t kDsCutLightPatch = 1;
     inline constexpr std::uint16_t kDsCutVis = 2;
     inline constexpr std::uint16_t kDsCutGx = 4;
+    inline constexpr std::uint16_t kDsCutKeys = 8;
 
     inline constexpr char kDsCutMagic[4] = {'H', 'D', 'S', 'C'};
     inline constexpr std::uint16_t kDsCutVersion = 1;
@@ -75,7 +81,7 @@ namespace hldata
         DsCutHeader h;
         std::memcpy(&h, bytes, sizeof(h));
         if (std::memcmp(h.magic, kDsCutMagic, sizeof(kDsCutMagic)) != 0 || h.version != kDsCutVersion ||
-            (h.flags & ~(kDsCutLightPatch | kDsCutVis | kDsCutGx)) != 0)
+            (h.flags & ~(kDsCutLightPatch | kDsCutVis | kDsCutGx | kDsCutKeys)) != 0)
             return false;
         if ((h.flags & kDsCutGx) == 0)
             return size == sizeof(DsCutHeader);

@@ -96,8 +96,16 @@ namespace hldata
         /// up they take the pose of holding it.
         std::int8_t handBone;
         std::int8_t spineBone;
-        std::uint16_t padHeader;
+        std::uint16_t flags; ///< kModel* (0 in models cooked before there were any)
     };
+
+    /// The model's animation keys are not in the file but beside it, in
+    /// mdl/<name>.hmk (kModelKeysFile): `keyCount` of them, as they would
+    /// have been. A DS too short of memory for a map's models whole reads a
+    /// clip's keys from there as it is played (source/data/KeyCache.hpp).
+    /// The file is otherwise the same, and its checksum is of what it holds.
+    inline constexpr std::uint16_t kModelKeysApart = 1;
+    inline constexpr char kModelKeysFile[] = ".hmk";
 
     /// One body part: how an entity's "body" number picks a sub-model of it,
     /// (body / base) % count.
@@ -356,7 +364,11 @@ namespace hldata
             const auto *g = reinterpret_cast<const std::uint32_t *>(take(h->gxWordCount * 4ull));
             const auto *c = reinterpret_cast<const ModelClip *>(take(h->clipCount * sizeof(ModelClip)));
             const auto *t = reinterpret_cast<const ModelTrack *>(take(h->trackCount * sizeof(ModelTrack)));
-            const auto *k = reinterpret_cast<const ModelKey *>(take(h->keyCount * sizeof(ModelKey)));
+            // (Keys apart: none here, and no pointer to them -- poseModel
+            // asks for a clip's.)
+            const bool keysApart = (h->flags & kModelKeysApart) != 0;
+            const auto *k = keysApart ? nullptr
+                                      : reinterpret_cast<const ModelKey *>(take(h->keyCount * sizeof(ModelKey)));
             const auto *e = reinterpret_cast<const ModelEvent *>(take(h->eventCount * sizeof(ModelEvent)));
             const auto *cs = reinterpret_cast<const ModelController *>(
                 take(h->controllerCount * sizeof(ModelController)));
@@ -366,7 +378,7 @@ namespace hldata
                 take(h->hitboxCount * sizeof(ModelHitbox)));
             const auto *att = reinterpret_cast<const ModelAttachment *>(
                 take(h->attachmentCount * sizeof(ModelAttachment)));
-            if (at != size)
+            if (at != size || (h->flags & ~kModelKeysApart) != 0)
                 return false;
             for (int i = 0; i < h->attachmentCount; ++i)
             {
@@ -468,6 +480,28 @@ namespace hldata
             while (count < kModelLevels && header->levelError[count] != kModelNoLevel)
                 ++count;
             return count;
+        }
+
+        /// The keys clip `clip` reads, of every blend: from `first`,
+        /// `count` of them. (The converter writes a clip's keys together,
+        /// clip after clip; this holds for any layout, as the run that
+        /// covers them all.)
+        void clipKeys(int clip, std::uint32_t &first, std::uint32_t &count) const
+        {
+            const ModelClip &c = clips[clip];
+            const ModelTrack *t = tracks + c.firstTrack;
+            const std::uint32_t n = std::uint32_t{header->boneCount} * c.blends;
+            std::uint32_t low = 0xFFFFFFFFu, high = 0;
+            for (std::uint32_t i = 0; i < n; ++i)
+            {
+                const std::uint32_t r = t[i].firstRot, p = t[i].firstPos;
+                low = r < low ? r : low;
+                low = p < low ? p : low;
+                high = r + t[i].rotCount > high ? r + t[i].rotCount : high;
+                high = p + t[i].posCount > high ? p + t[i].posCount : high;
+            }
+            first = n != 0 ? low : 0;
+            count = n != 0 ? high - low : 0;
         }
     };
 

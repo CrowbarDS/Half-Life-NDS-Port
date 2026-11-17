@@ -1135,22 +1135,39 @@ namespace hlds
             }
             return false;
         };
+        // (Keys apart, HlModel.hpp: a DS reads a clip's from the card as it is
+        // played, into a cache the size of HlDsRoom.hpp's dsKeyCacheBytes.)
+        bool dsKeysApart = false;
         auto dsModelBytes = [&]()
         {
             std::size_t bytes = 0, skins = 0;
+            std::size_t allKeys = 0, largestClip = 0, keyClips = 0, keyModels = 0;
             for (std::size_t m = 0; m < models.size(); ++m)
             {
                 if (!dsLoads(models[m]))
                     continue;
                 bytes += models[m].bytes.size();
+                std::size_t all = 0, largest = 0, clips = 0;
+                if (dsKeysApart && modelKeyBytes(models[m].bytes, all, largest, clips) && all != 0)
+                {
+                    bytes -= (all + 3) & ~std::size_t(3);
+                    allKeys += all;
+                    largestClip = std::max(largestClip, largest);
+                    keyClips += clips;
+                    ++keyModels;
+                }
                 // (A weapon's skin is in main memory until it is taken up:
                 // 4x4 blocks, 6 bytes a 16 texels, and its palette.)
                 if (heldModel(m))
                     skins += static_cast<std::size_t>(models[m].atlas.width) * models[m].atlas.height * 3 / 8 +
                              static_cast<std::size_t>(skinColours) * 2;
             }
+            if (keyModels != 0)
+                bytes += hldata::dsKeyCacheBytes(largestClip, allKeys) + keyClips * hldata::kDsKeyClipBytes +
+                         keyModels * hldata::kDsKeyModelBytes;
             dsCost.models = bytes;
             dsCost.heldSkins = skins;
+            result.dsKeyCacheKb = keyModels != 0 ? static_cast<int>(hldata::dsKeyCacheBytes(largestClip, allKeys) / 1024) : 0;
         };
         dsModelBytes();
         static constexpr ModelLean kDsLean[] = {{true, 0.75, 0.25}, {true, 1.5, 0.5}, {true, 3.0, 1.0}, {true, 6.0, 2.0}};
@@ -1201,9 +1218,9 @@ namespace hlds
             dsModelBytes();
             result.dsWeaponSkins = true;
         };
-        enum class DsStep { Lean1, Lean2, Vis, Lights, WeaponSkins, Pages, Lean3, Lean4 };
-        constexpr DsStep kDsSteps[] = {DsStep::Lean1,       DsStep::Lean2, DsStep::Vis,   DsStep::Lights,
-                                       DsStep::WeaponSkins, DsStep::Pages, DsStep::Lean3, DsStep::Lean4};
+        enum class DsStep { Lean1, Lean2, Vis, Lights, WeaponSkins, Pages, Keys, Lean3, Lean4 };
+        constexpr DsStep kDsSteps[] = {DsStep::Lean1, DsStep::Lean2, DsStep::Vis,   DsStep::Lights, DsStep::WeaponSkins,
+                                       DsStep::Pages, DsStep::Keys,  DsStep::Lean3, DsStep::Lean4};
         for (const DsStep step : kDsSteps)
         {
             if (dsLevelWhole == 0 || hldata::dsSoundRoom(dsCost) >= kDsSoundFloor)
@@ -1219,6 +1236,20 @@ namespace hlds
                     dsCut.flags |= hldata::kDsCutVis;
                 break;
             case DsStep::WeaponSkins: smallerWeaponSkins(); break;
+            case DsStep::Keys:
+                // The models' animation keys read from the card as they are
+                // played, not kept: the packer leaves them out of a DS's file
+                // (kDsCutKeys). A DSi reads its own file, whole: the model as
+                // it is, where it had none of its own.
+                dsKeysApart = true;
+                dsCut.flags |= hldata::kDsCutKeys;
+                for (ModelOut &model : models)
+                {
+                    if (dsLoads(model) && model.bytesDsi.empty())
+                        model.bytesDsi = model.bytes;
+                }
+                dsModelBytes();
+                break;
             case DsStep::Lights:
                 if (!level.lightPatches.empty())
                     dsCut.flags |= hldata::kDsCutLightPatch;
@@ -1278,6 +1309,14 @@ namespace hlds
             }
             }
             dsLevelBytes();
+        }
+        // (Short even so: no DS plays it, and its models' keys apart would
+        // only add to its archive. Kept whole.)
+        if (dsKeysApart && hldata::dsMapNeedBeforeSounds(dsCost) > hldata::kDsMapHeap)
+        {
+            dsKeysApart = false;
+            dsCut.flags = static_cast<std::uint16_t>(dsCut.flags & ~hldata::kDsCutKeys);
+            dsModelBytes();
         }
         result.dsCut = dsCut.flags;
         result.dsLevelKb = static_cast<int>(dsCost.level / 1024);

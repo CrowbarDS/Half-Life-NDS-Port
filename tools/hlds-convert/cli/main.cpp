@@ -228,6 +228,8 @@ namespace
                 cuts += "; no light changes";
             if (r.dsWeaponSkins)
                 cuts += "; weapons' skins smaller";
+            if ((r.dsCut & hldata::kDsCutKeys) != 0)
+                cuts += "; animation read from the card (" + std::to_string(r.dsKeyCacheKb) + " KB kept)";
             cuts += " (level " + std::to_string(r.dsLevelKb) + " KB, models " + std::to_string(r.dsModelKb) +
                     " KB, weapons' skins " + std::to_string(r.dsSkinKb) + " KB)";
             if (r.dsSpareKb >= r.keptSoundKb)

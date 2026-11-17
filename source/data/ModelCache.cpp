@@ -11,6 +11,7 @@
 #include "Global.hpp"
 #include "audio/Sound.hpp"
 #include "data/CardRead.hpp"
+#include "data/KeyCache.hpp"
 #include "data/LevelFile.hpp"
 #include "data/TextureCache.hpp"
 #include "data/VramWriter.hpp"
@@ -238,6 +239,8 @@ namespace hlrt
 
     void ModelCache::release(bool engineGone)
     {
+        // (The keys of the models whose keys are apart: before the models.)
+        keyCache.destroy();
         for (int i = 0; i < count_ + hldata::kCharacterSlots && views_ != nullptr; ++i)
         {
             if (blocks_ != nullptr)
@@ -867,6 +870,10 @@ namespace hlrt
             guest::count(hldata::GuestKind::Model, size);
 #endif
         }
+        // The keys of those that have them apart, read as their clips are
+        // played (KeyCache.hpp): what it keeps of them made now. (No room for
+        // it: those are not posed, and it is said in perf.txt.)
+        keyCache.create(views_, count);
         // Their skins. Without one (not on the card, or no room in video
         // memory) a model is drawn in its lighting alone.
         const std::uint32_t beforeSkins = guard::liveBytes();

@@ -446,6 +446,18 @@ namespace
         h.flags = kDsCutGx;
         check(!dsCutValid(bytesOf(h, {0, 1000, 1900, 2500}).data(), b.size()),
               "pages and light patches still made: refused");
+        h.flags = kDsCutGx | kDsCutLightPatch | kDsCutKeys;
+        check(dsCutValid(bytesOf(h, {0, 1000, 1900, 2500}).data(), b.size()), "the models' keys apart besides");
+        h.flags = 16;
+        check(!dsCutValid(bytesOf(h, {}).data(), sizeof(h)), "a flag not known is refused");
+
+        // What a DS keeps of keys apart (HlDsRoom.hpp): three of the largest
+        // clip, or kDsKeyCacheLeast, whichever is more; no more than all of
+        // them; never less than the largest clip; whole words.
+        check(dsKeyCacheBytes(10 * 1024, 900 * 1024) == kDsKeyCacheLeast, "small clips: the least it keeps");
+        check(dsKeyCacheBytes(46 * 1024, 900 * 1024) == 138 * 1024, "a large clip: three of it");
+        check(dsKeyCacheBytes(40 * 1024, 60 * 1024) == 60 * 1024, "never more than all of them");
+        check(dsKeyCacheBytes(30, 10) == 32, "never less than the largest clip, in words");
     }
 } // namespace
 

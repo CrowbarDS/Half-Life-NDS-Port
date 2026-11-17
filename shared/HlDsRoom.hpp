@@ -56,10 +56,30 @@ namespace hldata
     inline constexpr std::size_t kDsActorBytes = 264;
     inline constexpr std::size_t kDsLogicBytes = 56;
 
+    /// Animation keys apart (HlModel.hpp's kModelKeysApart): a DS keeps
+    /// what it reads of them in one block, of this size -- the same here and
+    /// on the console (source/data/KeyCache.cpp), from the map's largest
+    /// clip's keys and all its keys, in bytes. At least three of the largest
+    /// clip and kDsKeyCacheLeast; never more than all of them.
+    inline constexpr std::size_t kDsKeyCacheLeast = 96 * 1024;
+    inline std::size_t dsKeyCacheBytes(std::size_t largestClip, std::size_t allKeys)
+    {
+        std::size_t want = 3 * largestClip > kDsKeyCacheLeast ? 3 * largestClip : kDsKeyCacheLeast;
+        want = want < allKeys ? want : allKeys;
+        want = want > largestClip ? want : largestClip;
+        return (want + 3) & ~std::size_t(3);
+    }
+    /// ... and what it keeps of each clip and each model to find them: the
+    /// cache's own tables (KeyCache's Clip and Model).
+    inline constexpr std::size_t kDsKeyClipBytes = 12;
+    inline constexpr std::size_t kDsKeyModelBytes = 64;
+
     struct DsMapCost
     {
         std::size_t level = 0;      ///< the level file
-        std::size_t models = 0;     ///< the model files a DS loads (not lazy, not DSi-only)
+        /// The model files a DS loads (not lazy, not DSi-only); with their
+        /// keys apart, the files without them, and the keys' cache and tables.
+        std::size_t models = 0;
         std::size_t heldSkins = 0;  ///< weapons' skins kept in main memory
         std::size_t sounds = 0;     ///< the sounds kept with the map, as a DS has them
         std::uint32_t actors = 0;

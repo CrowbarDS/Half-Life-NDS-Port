@@ -22,6 +22,7 @@
 #include "hlds/BspFile.hpp"
 #include "hlds/TextureBudget.hpp"
 #include "hlds/Converter.hpp"
+#include "hlds/ModelCook.hpp"
 #include "hlds/NpacWriter.hpp"
 #include "hlds/Pack.hpp"
 #include "hlds/TextureEncoder.hpp"
@@ -93,11 +94,13 @@ namespace
 
         // Then, at the root, what a DS reads instead of parts of the level
         // (HlDsCut.hpp), on a map too big for its heap: the very sections.
+        bool keysApart = false;
         if (next < members.size() && members[next].path == hldata::kDsCutMember)
         {
             const hlds::NpacMember &cut = members[next++];
             hldata::DsCutHeader header{};
             std::memcpy(&header, cut.data.data(), std::min(cut.data.size(), sizeof(header)));
+            keysApart = (header.flags & hldata::kDsCutKeys) != 0;
             const auto *dir = reinterpret_cast<const hldata::SectionDir *>(joined.data() + sizeof(hldata::LevelHeader));
             check(hldata::dsCutValid(cut.data.data(), cut.data.size()) &&
                       header.levelCrc == reinterpret_cast<const hldata::LevelHeader *>(joined.data())->crc32 &&
@@ -121,8 +124,8 @@ namespace
         // Folders in the order of a load, each one's files together.
         static const char *const kOrder[] = {"tex/", "spr/", "mdl/", "snd/"};
         int folder = 0;
-        bool ordered = true, same = true, soundsStored = true, texturesStored = true;
-        int compressed = 0;
+        bool ordered = true, same = true, soundsStored = true, texturesStored = true, keysStored = true;
+        int compressed = 0, apart = 0;
         for (std::size_t i = next; i < members.size(); ++i)
         {
             const hlds::NpacMember &m = members[i];
@@ -138,6 +141,27 @@ namespace
             fs::path source = stage / m.path;
             if (folder == 2 && m.path.size() > 4 && m.path.substr(m.path.size() - 4) == ".hmd")
                 source = stage / "mdl" / map / m.path.substr(4);
+            // (... and on a map whose models have their keys apart, a DS's
+            // file is the staged one without them, its keys beside it, stored.)
+            const bool keys = folder == 2 && m.path.size() > 4 &&
+                              m.path.substr(m.path.size() - 4) == hldata::kModelKeysFile;
+            if (keys)
+                source = stage / "mdl" / map / (m.path.substr(4, m.path.size() - 8) + ".hmd");
+            if (keysApart && folder == 2 && (keys || (source.extension() == ".hmd" &&
+                                                      source.stem().extension() != ".dsi")))
+            {
+                Bytes staged, without, keyBytes;
+                const bool split = hlds::readFile(source, staged, error) &&
+                                   hlds::splitModelKeys(staged, without, keyBytes) && !keyBytes.empty();
+                if (split)
+                {
+                    same = same && (keys ? keyBytes : without) == m.data;
+                    keysStored = keysStored && (!keys || m.method == hlds::kNpacStored);
+                    apart += keys ? 1 : 0;
+                    continue;
+                }
+            }
+            same = same && !keys;
             // (... and so is a skin the map has with fewer colours.)
             if (folder == 2 && m.path.size() > 4 && m.path.substr(m.path.size() - 4) == ".htx" &&
                 fs::exists(stage / "mdl" / map / m.path.substr(4)))
@@ -146,7 +170,9 @@ namespace
             same = same && hlds::readFile(source, staged, error) && staged == m.data;
         }
         check(ordered, "then textures, sprites, models and sounds, in that order");
-        check(same, "every member is the staged file");
+        check(same, "every member is the staged file (a DS's model without its keys, where they are apart)");
+        check(keysStored, "keys apart are never compressed: a clip's are read at a time");
+        check(!keysApart || apart != 0, "keys apart: beside the models");
         check(soundsStored, "sounds are never compressed");
         check(texturesStored, "nor are textures: they are read during play");
         for (std::size_t i = 0; i < next; ++i)

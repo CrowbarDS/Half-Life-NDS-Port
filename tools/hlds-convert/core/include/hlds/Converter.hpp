@@ -123,6 +123,9 @@ namespace hlds
         /// What a DS leaves out of the level (HlDsCut.hpp's flags; 0: nothing).
         int dsCut = 0;
         bool dsWeaponSkins = false; ///< ... the weapons' skins smaller on a DS
+        /// ... the models' animation keys read from the card (kDsCutKeys):
+        /// the cache a DS keeps of them, in KB.
+        int dsKeyCacheKb = 0;
         /// ... and what a DS holds of it, in KB: its level, its models, the
         /// weapons' skins kept in main memory.
         int dsLevelKb = 0, dsModelKb = 0, dsSkinKb = 0;

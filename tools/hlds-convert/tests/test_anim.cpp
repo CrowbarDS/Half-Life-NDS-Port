@@ -19,6 +19,7 @@
 #include <cstring>
 
 #include "HlAnim.hpp"
+#include "HlDsRoom.hpp"
 #include "HlRemap.hpp"
 #include "TestBspBuilder.hpp"
 #include "hlds/ModelCook.hpp"
@@ -29,6 +30,88 @@ using namespace hldstest;
 
 namespace
 {
+    /// What KeyCache does on a DS (source/data/KeyCache.cpp), for one clip
+    /// at a time: only its run of keys (ModelView::clipKeys) in a block of
+    /// its own, handed to poseModel indexed as the file's own.
+    std::vector<ModelKey> clipBlock;
+    std::uint32_t clipFirst = 0;
+    const ModelKey *clipKeysOnly(const ModelView &, int)
+    {
+        return reinterpret_cast<const ModelKey *>(reinterpret_cast<std::uintptr_t>(clipBlock.data()) -
+                                                  clipFirst * sizeof(ModelKey));
+    }
+
+    /// A model with its keys apart (kModelKeysApart, as the packer makes it
+    /// for a DS short of room): the file opens, its keys put back give the
+    /// same file, and every clip, posed from its own run of keys alone, is
+    /// posed exactly as from the whole file.
+    void checkKeysApart(const char *file, const std::vector<std::uint8_t> &bytes, const ModelView &whole)
+    {
+        std::vector<std::uint8_t> apart, keys;
+        if (!splitModelKeys(bytes, apart, keys))
+        {
+            check(false, "its keys come apart");
+            return;
+        }
+        std::vector<std::uint32_t> aligned((apart.size() + 3) / 4);
+        std::memcpy(aligned.data(), apart.data(), apart.size());
+        ModelView view;
+        check(view.open(reinterpret_cast<const std::uint8_t *>(aligned.data()), static_cast<std::uint32_t>(apart.size())) &&
+                  view.keys == nullptr && (view.header->flags & kModelKeysApart) != 0,
+              "the file without its keys opens, and says so");
+        check(keys.size() == std::size_t{whole.header->keyCount} * sizeof(ModelKey) &&
+                  std::memcmp(keys.data(), whole.keys, keys.size()) == 0,
+              "its keys apart are the file's own");
+        std::vector<std::uint8_t> again, againKeys;
+        check(!splitModelKeys(apart, again, againKeys), "keys apart cannot come apart again");
+        if (view.header == nullptr)
+            return;
+        // (Put back: the same bytes but for the header's flags, size and sum.)
+        {
+            const std::size_t at = static_cast<std::size_t>(reinterpret_cast<const std::uint8_t *>(whole.keys) -
+                                                            reinterpret_cast<const std::uint8_t *>(whole.header));
+            std::vector<std::uint8_t> joined(apart.begin(), apart.begin() + static_cast<std::ptrdiff_t>(at));
+            joined.insert(joined.end(), keys.begin(), keys.end());
+            while (joined.size() & 3)
+                joined.push_back(0);
+            joined.insert(joined.end(), apart.begin() + static_cast<std::ptrdiff_t>(at), apart.end());
+            check(joined.size() == bytes.size() &&
+                      std::memcmp(joined.data() + sizeof(ModelHeader), bytes.data() + sizeof(ModelHeader),
+                                  bytes.size() - sizeof(ModelHeader)) == 0,
+                  "the keys put back give the file as it was");
+        }
+        const ModelKey *(*before)(const ModelView &, int) = modelKeysOf;
+        modelKeysOf = &clipKeysOnly;
+        bool same = true;
+        std::size_t largest = 0;
+        std::vector<BoneMatrix> a(whole.header->boneCount), b(whole.header->boneCount);
+        for (int c = 0; c < view.header->clipCount && same; ++c)
+        {
+            std::uint32_t count = 0;
+            view.clipKeys(c, clipFirst, count);
+            largest = std::max<std::size_t>(largest, count * sizeof(ModelKey));
+            clipBlock.assign(whole.keys + clipFirst, whole.keys + clipFirst + count);
+            const ModelClip &clip = view.clips[c];
+            for (int blend : {0, 100, 255})
+            {
+                for (std::uint32_t f = 0; f < clip.frameCount && same; ++f)
+                {
+                    poseModel(whole, c, (f << 8) + 77, a.data(), nullptr, blend);
+                    poseModel(view, c, (f << 8) + 77, b.data(), nullptr, blend);
+                    same = std::memcmp(a.data(), b.data(), a.size() * sizeof(BoneMatrix)) == 0;
+                }
+            }
+        }
+        modelKeysOf = before;
+        check(same, "posed from each clip's own keys alone, exactly as from the whole file");
+        std::size_t all = 0, mostClip = 0, clips = 0;
+        check(modelKeyBytes(bytes, all, mostClip, clips) && all == keys.size() && mostClip == largest &&
+                  clips == view.header->clipCount,
+              "its keys' bytes and its largest clip's, counted as the converter counts them");
+        std::printf("test_anim: %s: keys %zu KB, largest clip %zu KB, a DS keeps %zu KB of them\n", file,
+                    keys.size() / 1024, largest / 1024, dsKeyCacheBytes(largest, keys.size()) / 1024);
+    }
+
     void checkModel(const std::string &dir, const char *file, const std::vector<std::string> &clips)
     {
         MdlFile mdl;
@@ -60,6 +143,7 @@ namespace
               "every clip asked for is there");
         if (!report.missingClips.empty())
             return;
+        checkKeysApart(file, bytes, view);
 
         // The batches: each within the matrix stack, and between them all the
         // triangles of the model.

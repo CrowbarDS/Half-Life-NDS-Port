@@ -24,6 +24,7 @@
 #include "net/AirDevice.hpp"
 #endif
 #include "Settings.hpp"
+#include "data/KeyCache.hpp"
 #include "data/LevelFile.hpp"
 #include "data/ModelCache.hpp"
 #include "data/SpriteCache.hpp"
@@ -398,7 +399,8 @@ namespace
         std::fprintf(log, "room: %s top %lu, largest hole %lu, %lu in holes; copies %d (%d KB); sounds %s%d of %d, "
                           "%d not tried for room, %d failed, %d in the Pak (%lu KB of it used, level %lu KB)%s; reserve %s; "
                           "before the map live %lu, free %lu, now live %lu; families %s%s%s (live after %lu); "
-                          "live after level %lu, textures %lu, models %lu (files %lu, skins %lu), game %lu\n",
+                          "live after level %lu, textures %lu, models %lu (files %lu, skins %lu, keys kept %lu, "
+                          "MISSING %d), game %lu\n",
                      map, static_cast<unsigned long>(room.top), static_cast<unsigned long>(room.largestHole),
                      static_cast<unsigned long>(room.inHoles), st.copies, st.copiesKb,
                      snd.tableFailed ? "NONE (no room for their list), " : "", snd.loaded, snd.kept,
@@ -414,7 +416,9 @@ namespace
                      static_cast<unsigned long>(loadLive.families), static_cast<unsigned long>(loadLive.level),
                      static_cast<unsigned long>(loadLive.textures), static_cast<unsigned long>(loadLive.models),
                      static_cast<unsigned long>(hlrt::modelCache.fileBytes()),
-                     static_cast<unsigned long>(hlrt::modelCache.skinBytes()), static_cast<unsigned long>(loadLive.game));
+                     static_cast<unsigned long>(hlrt::modelCache.skinBytes()),
+                     static_cast<unsigned long>(hlrt::keyCache.bytes()), hlrt::modelCache.missing(),
+                     static_cast<unsigned long>(loadLive.game));
         std::fclose(log);
     }
 
@@ -488,12 +492,15 @@ namespace
         if (log == nullptr)
             return;
         std::fprintf(log, "play: %s rise %lu, live %lu, top %lu, largest hole %lu; reserve %s (%lu, last %lu bytes); "
-                          "ds cut %u, geometry pages read %lu\n",
+                          "ds cut %u, geometry pages read %lu; keys apart %d models, clips read %lu (%lu KB), %lu failed\n",
                      map, static_cast<unsigned long>(rise), static_cast<unsigned long>(live),
                      static_cast<unsigned long>(room.top), static_cast<unsigned long>(room.largestHole),
                      reserve.letGoPlay > 0 ? "LET GO in play" : (reserve.held ? "held" : "none"),
                      static_cast<unsigned long>(reserve.letGoPlay), static_cast<unsigned long>(reserve.lastAsked),
-                     static_cast<unsigned>(hlrt::level.dsCut()), static_cast<unsigned long>(hlrt::level.gxPagesRead()));
+                     static_cast<unsigned>(hlrt::level.dsCut()), static_cast<unsigned long>(hlrt::level.gxPagesRead()),
+                     hlrt::keyCache.models(), static_cast<unsigned long>(hlrt::keyCache.reads()),
+                     static_cast<unsigned long>(hlrt::keyCache.readBytes() / 1024),
+                     static_cast<unsigned long>(hlrt::keyCache.failed()));
         std::fclose(log);
 #endif
     }

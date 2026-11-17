@@ -1281,4 +1281,53 @@ namespace hlds
         }
         return true;
     }
+
+    bool splitModelKeys(const std::vector<std::uint8_t> &file, std::vector<std::uint8_t> &model,
+                        std::vector<std::uint8_t> &keys)
+    {
+        ModelView view;
+        if (!view.open(file.data(), static_cast<std::uint32_t>(file.size())) ||
+            (view.header->flags & kModelKeysApart) != 0)
+            return false;
+        // The keys' section, padded as the file has it, comes out whole.
+        const std::size_t at = static_cast<std::size_t>(reinterpret_cast<const std::uint8_t *>(view.keys) - file.data());
+        const std::size_t bytes = std::size_t{view.header->keyCount} * sizeof(ModelKey);
+        const std::size_t padded = (bytes + 3) & ~std::size_t(3);
+        keys.assign(file.begin() + static_cast<std::ptrdiff_t>(at),
+                    file.begin() + static_cast<std::ptrdiff_t>(at + bytes));
+        model.assign(file.begin(), file.begin() + static_cast<std::ptrdiff_t>(at));
+        model.insert(model.end(), file.begin() + static_cast<std::ptrdiff_t>(at + padded), file.end());
+        ModelHeader header;
+        std::memcpy(&header, model.data(), sizeof(header));
+        header.flags = static_cast<std::uint16_t>(header.flags | kModelKeysApart);
+        header.fileSize = static_cast<std::uint32_t>(model.size());
+        header.crc32 = crc32(model.data() + sizeof(ModelHeader), static_cast<std::uint32_t>(model.size() - sizeof(ModelHeader)));
+        std::memcpy(model.data(), &header, sizeof(header));
+        ModelView apart;
+        if (!apart.open(model.data(), static_cast<std::uint32_t>(model.size())))
+        {
+            model.clear();
+            keys.clear();
+            return false;
+        }
+        return true;
+    }
+
+    bool modelKeyBytes(const std::vector<std::uint8_t> &file, std::size_t &all, std::size_t &largestClip,
+                       std::size_t &clips)
+    {
+        all = largestClip = clips = 0;
+        ModelView view;
+        if (!view.open(file.data(), static_cast<std::uint32_t>(file.size())))
+            return false;
+        all = std::size_t{view.header->keyCount} * sizeof(ModelKey);
+        clips = view.header->clipCount;
+        for (int c = 0; c < view.header->clipCount; ++c)
+        {
+            std::uint32_t first = 0, count = 0;
+            view.clipKeys(c, first, count);
+            largestClip = std::max(largestClip, std::size_t{count} * sizeof(ModelKey));
+        }
+        return true;
+    }
 } // namespace hlds

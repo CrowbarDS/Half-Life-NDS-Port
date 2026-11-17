@@ -152,6 +152,17 @@ namespace hlds
     /// than return a file the console would refuse.
     bool writeModel(const CookedModel &model, std::vector<std::uint8_t> &out, std::string &error);
 
+    /// A model file (`file`, as writeModel made it) with its animation keys
+    /// apart (HlModel.hpp's kModelKeysApart): `model` the file without them,
+    /// `keys` the keys, keyCount * 6 bytes. False if `file` does not open, or
+    /// has them apart already.
+    bool splitModelKeys(const std::vector<std::uint8_t> &file, std::vector<std::uint8_t> &model,
+                        std::vector<std::uint8_t> &keys);
+    /// Of a model file: its keys' bytes, all told, and the most any one clip
+    /// reads (ModelView::clipKeys). False if it does not open.
+    bool modelKeyBytes(const std::vector<std::uint8_t> &file, std::size_t &all, std::size_t &largestClip,
+                       std::size_t &clips);
+
     /// The game's own way from three angles (radians, about x y z) to a
     /// quaternion (x y z w): AngleQuaternion. Here for the cooker and for the
     /// tests that hold the DS's maths against the game's.

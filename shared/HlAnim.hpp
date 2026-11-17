@@ -392,9 +392,25 @@ namespace hldata
     void poseModel(const ModelView &model, int clip, std::uint32_t frame, BoneMatrix *out,
                           const std::int32_t *controls = nullptr, int blend = 0);
 #else
+    /// For a model whose keys are apart (kModelKeysApart): where clip
+    /// `clip`'s are, in memory -- as if the file's own, so that a track's
+    /// firstRot and firstPos index them as they are -- for as long as one
+    /// pose is worked out; null if they cannot be had. Set by the console
+    /// (source/data/KeyCache.hpp); null elsewhere.
+    inline const ModelKey *(*modelKeysOf)(const ModelView &model, int clip) = nullptr;
+
+    /// The model in clip `clip` at `frame`, each bone's matrix in `out`.
+    /// (Keys apart that cannot be had: `out` is left as it was.)
     HL_HOT void poseModel(const ModelView &model, int clip, std::uint32_t frame, BoneMatrix *out,
                           const std::int32_t *controls = nullptr, int blend = 0)
     {
+        const ModelKey *keys = model.keys;
+        if (keys == nullptr)
+        {
+            keys = modelKeysOf != nullptr ? modelKeysOf(model, clip) : nullptr;
+            if (keys == nullptr)
+                return;
+        }
         const int controllers = controls != nullptr ? model.header->controllerCount : 0;
         const ModelClip &c = model.clips[clip];
         const std::uint32_t lastFrame = c.frameCount - 1u;
@@ -416,9 +432,9 @@ namespace hldata
         {
             std::int32_t quat[4];
             fx pos[3];
-            detail::sampleTrack(tracks[b], model.keys, spans, quat, pos);
+            detail::sampleTrack(tracks[b], keys, spans, quat, pos);
             if (others != nullptr)
-                detail::blendPose(others[b], model.keys, spans, mix, quat, pos);
+                detail::blendPose(others[b], keys, spans, mix, quat, pos);
             std::int32_t local[9];
             detail::quatToMatrix(quat, local);
             for (int n = 0; n < controllers; ++n)
