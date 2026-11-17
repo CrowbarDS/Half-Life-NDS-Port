@@ -72,6 +72,9 @@ arm9 = Arm9Binary(
         # (The divide: source/HwMath.s, and ../build.py.)
         ['-Wl,--wrap=__aeabi_ldivmod', '-Wl,--wrap=__aeabi_uldivmod'] +
         ['-Wl,--undefined=calloc'] +
+        # (printf and scanf at their integer level: as the parent's.)
+        ['-Wl,--undefined=__i_vfprintf', '-Wl,--undefined=__i_vfscanf',
+         '-Wl,--defsym=vfprintf=__i_vfprintf', '-Wl,--defsym=vfscanf=__i_vfscanf'] +
         # (DTCM's own data and heap: as the parent's, ../build.py.)
         ['-Wl,--defsym=__dtcm_data_size=1024']),
 )

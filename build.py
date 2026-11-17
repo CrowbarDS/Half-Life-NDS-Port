@@ -62,6 +62,10 @@ if trace:
 # The 64-bit divide goes to the console's divider (source/HwMath.s), and to
 # the library's for what the divider would answer otherwise.
 HW_MATH_WRAPS = ['__aeabi_ldivmod', '__aeabi_uldivmod']
+# picolibc's printf and scanf at their integer level (the program's and the
+# child's): see the program's link below.
+INTEGER_STDIO = ['-Wl,--undefined=__i_vfprintf', '-Wl,--undefined=__i_vfscanf',
+                 '-Wl,--defsym=vfprintf=__i_vfprintf', '-Wl,--defsym=vfscanf=__i_vfscanf']
 # Bytes at the top of DTCM for its own data and for dtcm_malloc; the stack
 # has the rest of DTCM under them. (The child sets the same: child/build.py.)
 DTCM_DATA_SIZE = 1024
@@ -126,6 +130,10 @@ arm9 = Arm9Binary(
         # (A heap trace's: operator new says whose its block is.)
         (['-Wl,--wrap=_Znwj', '-Wl,--wrap=_Znaj'] if trace else []) +
         ['-Wl,--undefined=calloc'] +
+        # printf and scanf without floats or 64-bit numbers (picolibc's
+        # integer level): nothing in the program formats or reads either,
+        # and the full ones cost every console about 6 KB of heap.
+        INTEGER_STDIO +
         # DTCM's own data and its heap (dtcm_malloc), at the top of DTCM;
         # the stack has the rest under it.
         ['-Wl,--defsym=__dtcm_data_size=' + str(DTCM_DATA_SIZE)]),
