@@ -298,6 +298,9 @@ namespace
 
     void printResult(const MapResult &r)
     {
+        // (Its name first: with several maps cooked at once, the report of
+        // one comes after the start of another, "[n/m] name" of that one.)
+        std::printf("%s, done:\n", r.name.c_str());
         for (const std::string &warning : r.warnings)
             std::printf("  warning: %s\n", warning.c_str());
         if (!r.ok)
