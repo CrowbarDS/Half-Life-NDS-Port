@@ -535,10 +535,34 @@ namespace hldata
             ar &data;
     }
 
-    /// How many bytes a file of `version` holds after its header: every
-    /// setting is a fixed size, so one length for each version. (A file of
-    /// another length, read, would run out, which stops the console.)
+    /// How many bytes a file of each version holds after its header, from
+    /// kSettingsVersionBefore on: every setting is a fixed size, so one
+    /// length for each version. Written down, not measured on the console --
+    /// measuring by writing one brought every old version's writer into the
+    /// program, 9 KB of it -- and checked against the writer, version by
+    /// version, on the host (tools/hlds-convert/tests/test_controls.cpp).
+    /// A new version adds its length at the end.
+    inline constexpr std::uint16_t kSettingsPayload[] = {
+        17,  20,  52,  53,  54,  57,  100, 168, 169, 170, 174, // 8 to 18
+        175, 176, 178, 179, 180, 188, 189, 192, 193, 194, 195, // 19 to 29
+    };
+    static_assert(sizeof(kSettingsPayload) / sizeof(kSettingsPayload[0]) ==
+                      kSettingsVersion - kSettingsVersionBefore + 1,
+                  "a settings version without its length in kSettingsPayload");
+
+    /// How many bytes a file of `version` holds after its header (0 for a
+    /// version there never was). (A file of another length, read, would run
+    /// out, which stops the console.)
     inline std::size_t settingsPayloadBytes(std::uint16_t version)
+    {
+        return version >= kSettingsVersionBefore && version <= kSettingsVersion
+                   ? kSettingsPayload[version - kSettingsVersionBefore]
+                   : 0;
+    }
+
+    /// ... and as the writer makes it: what the table is checked against
+    /// (the host's tests; nothing on the console calls it).
+    inline std::size_t settingsPayloadWritten(std::uint16_t version)
     {
         constexpr std::size_t flags = yas::mem | yas::binary | yas::no_header;
         SettingsData data;

@@ -1217,6 +1217,21 @@ namespace
                       !readSettings(shortFile.data(), shortFile.size(), read21),
                   "a file too short for its version is refused");
         }
+
+        // Each version's length, written down for the console, is the
+        // length its writer makes -- every version a file is read in.
+        for (int v = kSettingsVersionBefore; v <= kSettingsVersion; ++v)
+        {
+            const auto version = static_cast<std::uint16_t>(v);
+            if (settingsPayloadBytes(version) != settingsPayloadWritten(version))
+                std::printf("  version %d: table %zu, writer %zu\n", v, settingsPayloadBytes(version),
+                            settingsPayloadWritten(version));
+            check(settingsPayloadBytes(version) == settingsPayloadWritten(version),
+                  "each settings version's length is its writer's");
+        }
+        check(settingsPayloadBytes(kSettingsVersionBefore - 1) == 0 &&
+                  settingsPayloadBytes(kSettingsVersion + 1) == 0,
+              "... and a version there never was has none");
     }
 
     /// The walk: on the screen, on a button, held or toggled; and the jump
