@@ -117,7 +117,12 @@ namespace hldata
     // the host sends a demo's console as one of its maps needs them, and no
     // map of a match has (source/game/Families.cpp). A match's guest's peak
     // has nothing of them.
-    inline constexpr std::uint32_t kGuestImageBytes = 0x1646C8 + 1 * 1024;
+    // Raised 8 KB at once, to 9 KB over 0x1646C8, with the child at its
+    // allowance: room for that day's changes (code out of ITCM, the heap's
+    // fixes) and what comes next, instead of a kilobyte a fix. t0a0b1 is
+    // to stay at least 64 KB under (17 Nov 2026): none; t0a0b1 about 102 KB
+    // under.
+    inline constexpr std::uint32_t kGuestImageBytes = 0x1646C8 + 9 * 1024;
     /// The heap's end: the end of main RAM less what the start-up code keeps.
     inline constexpr std::uint32_t kGuestRamBytes = 0x3F4000;
     /// What the engine holds beside a map's data -- its tables, the world's
