@@ -39,11 +39,18 @@ namespace hlrt
         /// How fast it turns: a whole turn in about seven seconds.
         constexpr int kTurnPerBlank = 156;
 
-        BoneMatrix pose[kModelMaxBones];
+        /// The poses it is drawn in -- and, with the game, the pose with the
+        /// pistol in hand -- taken from the heap only while it is open: the
+        /// menus' share of the heap's margin, not the program's own memory
+        /// (9 KB a DS would otherwise lose during every map).
+        BoneMatrix *pose = nullptr;
 #ifndef HLDS_CHILD
-        BoneMatrix aimPose[kModelMaxBones];
+        BoneMatrix *aimPose = nullptr;
+        constexpr int kPoses = 2;
         /// What they hold (a console with the game: the pistol).
         constexpr const char *kLobbyGun = "p_9mmhandgun";
+#else
+        constexpr int kPoses = 1;
 #endif
     } // namespace
 
@@ -103,6 +110,19 @@ namespace hlrt
             delete view;
             return false;
         }
+        pose = static_cast<BoneMatrix *>(std::malloc(sizeof(BoneMatrix) * kModelMaxBones * kPoses));
+        if (pose == nullptr)
+        {
+            NEA_MaterialDelete(material);
+            if (palette != nullptr)
+                NEA_PaletteDelete(palette);
+            std::free(block);
+            delete view;
+            return false;
+        }
+#ifndef HLDS_CHILD
+        aimPose = pose + kModelMaxBones;
+#endif
         data_ = block;
         view_ = view;
         material_ = material;
@@ -192,6 +212,11 @@ namespace hlrt
         std::free(data_);
         data_ = nullptr;
         view_ = material_ = palette_ = colours_ = nullptr;
+        std::free(pose);
+        pose = nullptr;
+#ifndef HLDS_CHILD
+        aimPose = nullptr;
+#endif
     }
 
     // (The pose worked out in here, not called: a copy of poseModel of its
