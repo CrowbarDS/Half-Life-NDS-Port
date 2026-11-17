@@ -10,8 +10,17 @@
 
 Settings settings;
 
+// (Sent the game, a console has no card to keep its settings on: it has
+// those it starts with and what is changed in its menus, neither read nor
+// written -- and none of the files' readers and writers, about 16 KB of its
+// program. A test build that reads the card has them.)
+#if defined(HLDS_CHILD) && !defined(HLDS_CHILD_FROMCARD)
+#define HLDS_SETTINGS_IN_MEMORY 1
+#endif
+
 void Settings::load()
 {
+#ifndef HLDS_SETTINGS_IN_MEMORY
     if (!global.hasFat)
         return;
     std::FILE *file = std::fopen(global.dataPath("settings.dat").c_str(), "rb");
@@ -86,6 +95,7 @@ void Settings::load()
         for (int i = 0; i < hldata::kRotationMost; ++i)
             rotation[i] = data.rotation[i];
     }
+#endif
 }
 
 const char *Settings::playerName() const
@@ -168,6 +178,9 @@ void Settings::reset(int category)
 
 bool Settings::save() const
 {
+#ifdef HLDS_SETTINGS_IN_MEMORY
+    return false;
+#else
     if (!global.hasFat)
         return false;
     hldata::SettingsData data;
@@ -241,5 +254,6 @@ bool Settings::save() const
         return false;
     const bool ok = std::fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size();
     return std::fclose(file) == 0 && ok;
+#endif
 }
 
