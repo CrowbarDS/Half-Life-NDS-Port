@@ -8,6 +8,10 @@
 # EMU_FADE="r g b amount duration-ms hold-ms from after-ms" (with EMU_START)
 # puts a fade on the screen as an env_fade would, after-ms into the game
 # (from: 1 a fade from the colour, 0 into it).
+# EMU_GO="map:seconds ..." (with EMU_START): once the map in play has been up
+# that many seconds, the player is put in its way out into the next map named,
+# and it is taken (debug_start.txt's "go" lines; source/main.cpp): a walk of
+# maps by their own ways (tools/emu/campaign_walk.py).
 # EMU_AUDIO=<file> captures the sound (see below).
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -27,6 +31,9 @@ fi
 START_FILE="$ROOT/sdroot/_nds/hl_nds/data/debug_start.txt"
 [ -n "${EMU_START:-}" ] && echo "$EMU_START" > "$START_FILE"
 [ -n "${EMU_START:-}" ] && [ -n "${EMU_FADE:-}" ] && echo "fade $EMU_FADE" >> "$START_FILE"
+if [ -n "${EMU_START:-}" ] && [ -n "${EMU_GO:-}" ]; then
+    for go in $EMU_GO; do echo "go ${go%%:*} ${go##*:}"; done >> "$START_FILE"
+fi
 trap 'rm -f "$START_FILE"' EXIT
 # EMU_AUDIO=<file> writes what the emulator would have played to a file
 # instead of to the sound card (raw samples: SDL's "disk" driver), so that

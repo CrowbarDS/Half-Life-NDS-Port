@@ -749,6 +749,25 @@ namespace
     bool saveOnArrival();
 #endif
 
+    /// When the map in play was up (Global::vblanks).
+    std::uint32_t mapBeganAt = 0;
+#ifndef HLDS_CHILD
+    /// debug_start.txt's "go" lines walk the maps: only their own ways out
+    /// are taken, not one the player arrives standing in (where the go put
+    /// them in the map left, the way back often is). `debugGoWay`: the way
+    /// the go took in this map, -1 before it does.
+    bool debugWalking = false;
+    int debugGoWay = -1;
+    /// ... and when the walk came into this map, and how many loads of it
+    /// in a row: a map the game itself starts again and again (a
+    /// player_loadsaved under where the walk put the player: c4a1a's
+    /// deathfall) is one the walk leaves at its third load, saying LOOP.
+    std::uint32_t debugGoArrivedAt = 0;
+    char debugGoLastMap[32] = {};
+    int debugGoLoads = 0;
+    bool debugGoNow = false; ///< (the walk's next way, at once: a LOOP)
+#endif
+
     LoadResult loadLevel(const std::string &name, const hldata::Arrival *arrival,
                          std::string &error)
     {
@@ -1064,6 +1083,27 @@ namespace
 #endif
         hlrt::guard::check("map loaded");
         traceWrite([&](std::FILE *out) { hlrt::guard::traceLoadEnd(out, name.c_str(), "loaded"); });
+        mapBeganAt = Global::vblanks();
+#ifndef HLDS_CHILD
+        debugGoWay = -1;
+        if (std::strcmp(debugGoLastMap, name.c_str()) == 0)
+            ++debugGoLoads;
+        else
+        {
+            std::snprintf(debugGoLastMap, sizeof(debugGoLastMap), "%s", name.c_str());
+            debugGoLoads = 1;
+            debugGoArrivedAt = mapBeganAt;
+        }
+        if (debugWalking && debugGoLoads == 3)
+        {
+            if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
+            {
+                std::fprintf(log, "go: LOOP in %s, %d loads\n", name.c_str(), debugGoLoads);
+                std::fclose(log);
+            }
+            debugGoNow = true;
+        }
+#endif
         return LoadResult::Ok;
     }
 
@@ -1789,6 +1829,76 @@ namespace
         int afterMs = -1;
         int colour = 0, amount = 255, durationMs = 1000, holdMs = 0, from = 1;
     } debugFade;
+
+#ifndef HLDS_CHILD
+    /// A development aid (tools/emu/room.sh's chain and pairs): lines
+    /// "go <map> <seconds>" in debug_start.txt, after the rest, taken in
+    /// order, a map at a time. Once the map in play has been up that many
+    /// seconds, the player is put in its way out into <map> (that
+    /// trigger_changelevel's volume), and it is taken as if walked into:
+    /// the map left kept, the arrival, its saves, perf.txt's lines, as in
+    /// play. A map with no way there ends the list, and says so in
+    /// perf.txt. Only the one to come is held: the next line is read from
+    /// the card when it is taken (nothing of the heap kept for it).
+    char debugGoMap[32] = {};
+    int debugGoSeconds = -1; ///< -1: none to come
+    long debugGoNext = -1;   ///< where in debug_start.txt the line after it begins
+
+    void debugGoRead()
+    {
+        debugGoSeconds = -1;
+        if (debugGoNext < 0)
+            return;
+        std::FILE *file = std::fopen(global.dataPath("debug_start.txt").c_str(), "r");
+        if (file == nullptr)
+            return;
+        if (std::fseek(file, debugGoNext, SEEK_SET) != 0 ||
+            std::fscanf(file, " go %31s %d", debugGoMap, &debugGoSeconds) != 2 || debugGoSeconds < 0)
+            debugGoSeconds = -1;
+        debugWalking = debugWalking || debugGoSeconds >= 0;
+        debugGoNext = std::ftell(file);
+        std::fclose(file);
+    }
+
+    void debugGoTake()
+    {
+        const hldata::LevelView &view = hlrt::level.view;
+        int way = -1;
+        for (std::uint32_t i = 0; i < view.logicCount && way < 0; ++i)
+        {
+            const hldata::LogicRecord &record = view.logic[i];
+            if (record.kind == static_cast<std::uint8_t>(hldata::LogicKind::ChangeLevel) &&
+                std::strcmp(view.strings + record.extra[0], debugGoMap) == 0)
+                way = static_cast<int>(i);
+        }
+        if (way < 0)
+        {
+            if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
+            {
+                std::fprintf(log, "go: %s has no way to %s\n", currentMap.c_str(), debugGoMap);
+                std::fclose(log);
+            }
+            debugGoSeconds = -1;
+            return;
+        }
+        // (In the middle of its volume, standing on its floor, if it has one:
+        // where the player would be, walking in.)
+        const hldata::LogicRecord &record = view.logic[way];
+        if (record.maxs[0] > record.mins[0] && record.maxs[1] > record.mins[1] && record.maxs[2] > record.mins[2])
+        {
+            hldata::PlayerState &state = hlrt::player.state;
+            state.origin[0] = hldata::fxFromInt((record.mins[0] + record.maxs[0]) >> 1);
+            state.origin[1] = hldata::fxFromInt((record.mins[1] + record.maxs[1]) >> 1);
+            const int up = record.mins[2] + 37;
+            state.origin[2] = hldata::fxFromInt(up < record.maxs[2] ? up : (record.mins[2] + record.maxs[2]) >> 1);
+            for (hldata::fx &v : state.velocity)
+                v = 0;
+        }
+        hlrt::game.logic.pendingChange = way;
+        debugGoWay = way;
+        debugGoRead();
+    }
+#endif
     std::uint32_t debugFadeStart = 0;
     void debugFadeTick()
     {
@@ -1842,7 +1952,13 @@ namespace
             debugFade.from = f[6];
             debugFade.afterMs = f[7];
         }
+#ifndef HLDS_CHILD
+        debugGoNext = std::ftell(file);
+#endif
         std::fclose(file);
+#ifndef HLDS_CHILD
+        debugGoRead();
+#endif
         return true;
     }
 }
@@ -2730,6 +2846,23 @@ int main(int argc, char *argv[])
                     hlrt::bottomScreen.showPad();
                 }
 
+#ifndef HLDS_CHILD
+                // (A walk's: no way out but the go's -- cleared first, or a
+                // way the player arrived standing in, asked for again every
+                // frame, would keep the go below from ever being taken.)
+                if (debugWalking && hlrt::game.pendingChange() >= 0 && hlrt::game.pendingChange() != debugGoWay)
+                    hlrt::game.logic.pendingChange = -1;
+                // (debug_start.txt's next "go", its time come.)
+                // (Timed from the walk's arrival in the map, not from each
+                // time the game starts it again.)
+                if (debugGoSeconds >= 0 && hlrt::game.pendingChange() < 0 && !paused &&
+                    (debugGoNow ||
+                     Global::vblanks() - debugGoArrivedAt >= static_cast<std::uint32_t>(debugGoSeconds) * 60u))
+                {
+                    debugGoNow = false;
+                    debugGoTake();
+                }
+#endif
                 // The way into the next map was taken this frame. What
                 // crosses is packed first, while the old map can still say
                 // where its landmark is.

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # usage: tools/emu/room.sh <ds|dsi> <map>...
+#        tools/emu/room.sh <ds|dsi> --walk "<map> <map>..."...
 #
 # How much of the heap each map leaves, in the emulator: each map started
 # from a debug start (EMU_START), played a little, then left by the pause
@@ -26,6 +27,15 @@
 #                      QUIT TO MAIN MENU, and of YES)
 #   ROOM_OUT=<dir>     default build/logs/room/<time>
 #   ROOM_WAIT=<s>      the most to wait for melonDS to write the card back (90)
+#
+# --walk: each argument a walk of maps by their own ways between them
+# (tools/emu/campaign_walk.py), in one run of the emulator: started at the
+# first's spot, each map left ROOM_GO seconds after it is up (default 20) by
+# its way into the next (debug_start.txt's "go" lines), as if walked into --
+# the map kept, the arrival and its saves -- and the last left by the menu.
+# A row for each map gone into, in order; a walk that stopped short (a halt,
+# a map with no way to the next) says where. Each run's lines in
+# <out>/walk-<n>.txt. ROOM_LOAD=<s>: what a load is given (default 30).
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 MODE="${1:?ds or dsi}"
@@ -90,6 +100,44 @@ EOF
 }
 
 printf "%-8s %9s %9s %9s %-22s %9s %9s %-28s %9s %9s\n" map "load top" "hole" "sounds" "reserve (load)" "play rise" "play top" "reserve (play)" "free pre" "map took" > "$OUT/table.txt"
+
+if [ "${1:-}" = "--walk" ]; then
+    shift
+    n=0
+    for walk in "$@"; do
+        n=$((n + 1))
+        read -r -a maps <<< "$walk"
+        first=${maps[0]}
+        last=${maps[${#maps[@]} - 1]}
+        spot=$(spotOf "$first")
+        if [ -z "$spot" ]; then
+            echo "walk $n: no start spot for $first"
+            continue
+        fi
+        go=""
+        for map in "${maps[@]:1}"; do go="$go $map:${ROOM_GO:-20}"; done
+        python3 -I tools/emu/setstart.py "$D/manifest.bin" "$first" >/dev/null || exit 1
+        rm -f "$D/perf.txt"
+        echo "walk $n: $first .. $last (${#maps[@]} maps), from $spot"
+        total=$(( ${#maps[@]} * (${ROOM_GO:-20} + ${ROOM_LOAD:-30}) ))
+        EMU_START="$spot" EMU_GO="$go" timeout $(( total + 600 )) tools/emu/play.sh "$MODE" \
+            "ready 150; sleep $total; $EXIT; sleep 15" >/dev/null 2>&1
+        for _ in $(seq "${ROOM_WAIT:-90}"); do
+            grep -q "^play: $last " "$D/perf.txt" 2>/dev/null && break
+            sleep 1
+        done
+        sleep 3
+        grep -E "^(room|play|load|reopen|go): |^mount: " "$D/perf.txt" > "$OUT/walk-$n.txt" 2>/dev/null
+        python3 -I tools/emu/room_rows.py "$OUT/walk-$n.txt" | tee -a "$OUT/table.txt"
+        reached=$(grep -c "^room: " "$OUT/walk-$n.txt")
+        if [ "$reached" -lt "${#maps[@]}" ]; then
+            echo "  walk $n STOPPED: $reached of ${#maps[@]} maps loaded" | tee -a "$OUT/table.txt"
+        fi
+    done
+    echo "table: $OUT/table.txt"
+    exit 0
+fi
+
 for map in "$@"; do
     spot=$(spotOf "$map")
     if [ -z "$spot" ]; then
@@ -108,24 +156,7 @@ for map in "$@"; do
     done
     sleep 3
     grep -E "^(room|play|load|reopen): $map |^mount: " "$D/perf.txt" > "$OUT/$map.txt" 2>/dev/null
-    python3 -I - "$OUT/$map.txt" "$map" >> "$OUT/table.txt" <<'EOF'
-import re, sys
-lines = open(sys.argv[1]).read().splitlines()
-room = next((l for l in lines if l.startswith("room:")), "")
-play = next((l for l in lines if l.startswith("play:")), "")
-def num(pattern, text):
-    m = re.search(pattern, text)
-    return m.group(1) if m else "-"
-kb = lambda v: v if v == "-" else f"{int(v) / 1024:.1f}K"
-def map_kb(text):
-    before, now = num(r'before the map live (\d+)', text), num(r'now live (\d+)', text)
-    return "-" if "-" in (before, now) else f"{(int(now) - int(before)) / 1024:.1f}K"
-sounds = re.search(r"sounds (?:NONE \(no room for their list\), )?(\d+) of (\d+)", room)
-print(f"{sys.argv[2]:<8} {kb(num(r'top (\d+)', room)):>9} {kb(num(r'largest hole (\d+)', room)):>9} "
-      f"{(sounds.group(1) + '/' + sounds.group(2)) if sounds else '-':>9} {num(r'reserve ([^;]*)', room):<22} "
-      f"{kb(num(r'rise (\d+)', play)):>9} {kb(num(r'top (\d+)', play)):>9} {num(r'reserve ([^;]*)', play):<28} "
-      f"{kb(num(r'before the map live \d+, free (\d+)', room)):>9} {map_kb(room):>9}")
-EOF
+    python3 -I tools/emu/room_rows.py "$OUT/$map.txt" >> "$OUT/table.txt"
     tail -1 "$OUT/table.txt"
 done
 echo "table: $OUT/table.txt"
