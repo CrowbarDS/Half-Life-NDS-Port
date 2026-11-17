@@ -426,6 +426,21 @@ namespace hlrt
         mapRemember(*slot, logic, actors);
     }
 
+    void Game::settleVisited()
+    {
+        // Twice: the first copy may still be put in the small pieces left
+        // between the old blocks; with those let go, the pieces join the
+        // free heap around them, and the second copy goes low, where the
+        // map left began.
+        // (A copy as a save makes one: no more code than that.)
+        for (int pass = 0; pass < 2; ++pass)
+        {
+            std::vector<SaveMapState> fresh;
+            fresh = visited_;
+            visited_.swap(fresh);
+        }
+    }
+
     void Game::restoreMap(std::uint32_t mapHash)
     {
         for (const SaveMapState &map : visited_)

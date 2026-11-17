@@ -816,6 +816,7 @@ namespace
         // change ran short where a fresh start did not: 2026-11-16, the heap
         // trace.)
         hlrt::level.unload();
+        hlrt::game.settleVisited();
         hlrt::guard::renewReserve();
         // (A trace build: what is still held now that the old map is gone.)
         traceWrite([&](std::FILE *out) {

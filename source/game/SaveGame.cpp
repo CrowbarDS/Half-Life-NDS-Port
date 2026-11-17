@@ -414,8 +414,13 @@ namespace hlrt::SaveGame
         finish();
         needRun();
         const std::uint32_t bytes = game.storedBytes();
-        return hldata::runStore(card, run, name.c_str(), level, bytes, game.leftWith(), piece,
-                                [](hldata::detail::StreamOut &out) { game.storeMap(out); });
+        const bool stored = hldata::runStore(card, run, name.c_str(), level, bytes, game.leftWith(), piece,
+                                             [](hldata::detail::StreamOut &out) { game.storeMap(out); });
+        // (Its file shut now: opened while the map was still in memory, its
+        // blocks went into the map's last holes, and would part the heap the
+        // next map's level is read into, on a DS.)
+        const bool shut = card.close();
+        return stored && shut;
     }
 
     int arriveMap(const std::string &name, std::uint32_t level)

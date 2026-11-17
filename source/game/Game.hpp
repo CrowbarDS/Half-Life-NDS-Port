@@ -129,6 +129,11 @@ namespace hlrt
         /// Note what is broken in the map that is loaded, under its name's
         /// hash. Call before the map is let go, and before saving.
         void rememberMap(std::uint32_t mapHash);
+        /// What rememberMap keeps, made again where the heap is free now:
+        /// noted as a map is left, it went into that map's last holes, and
+        /// would part the heap under the next one. Call once the map left is
+        /// let go, before the next is read.
+        void settleVisited();
         /// Break again what was broken the last time this map was here. Call
         /// once the map is up.
         void restoreMap(std::uint32_t mapHash);
