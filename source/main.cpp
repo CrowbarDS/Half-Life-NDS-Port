@@ -1342,7 +1342,22 @@ namespace
             heading.hour = static_cast<std::uint8_t>(when->tm_hour);
             heading.minute = static_cast<std::uint8_t>(when->tm_min);
         }
-        if (slot == hldata::kSlotAuto && !quiet)
+        // The game's own save, made in play, is written a step at a time --
+        // but that holds the whole save in memory twice over while it is
+        // (its state, then the file made of it). A DS, whose heap a map
+        // fills, writes it at once instead, its state streamed to the card
+        // as an arrival save is, unless the heap's top has three times the
+        // map's state to spare. (A failed allocation there would halt.)
+        bool stepwise = slot == hldata::kSlotAuto && !quiet;
+#ifndef HLDS_CHILD
+        if (stepwise && !global.isDSi)
+        {
+            constexpr std::uint32_t kSaveBesides = 16 * 1024; // the rest of a save: progress, the player
+            const std::uint32_t state = hlrt::game.storedBytes() + kSaveBesides;
+            stepwise = hlrt::guard::heapRoom().top >= 3u * state + 32u * 1024u;
+        }
+#endif
+        if (stepwise)
         {
             if (hlrt::SaveGame::begin(hlrt::game.snapshot(currentMap), slot, heading))
             {
@@ -1469,13 +1484,19 @@ namespace
         // (Whoever came into that map with the player comes into it again.)
         static hldata::Arrival came;
         const bool arrived = hlrt::Game::arrivalOf(save, came);
+        // (Not held while the map loads -- tens of kilobytes of a DS's heap,
+        // which the map is counted on having -- but read again once it is
+        // up: the load writes no save, so the slot is as it was.)
+        save = hldata::SaveData();
         if (loadLevel(map, arrived ? &came : nullptr, error) != LoadResult::Ok)
             haltWith("Cannot go on:", error.c_str(), map.c_str());
-        hlrt::game.placeFromSave(save);
         // Every door, trigger and actor as it was -- or, from a save that
         // has not that (or not for this map as it is cooked now), the map
         // as it begins with the player put back.
-        if (!hlrt::game.layState(save))
+        const bool again = hlrt::SaveGame::read(save, slot) && save.map == map;
+        if (again)
+            hlrt::game.placeFromSave(save);
+        if (!again || !hlrt::game.layState(save))
             say("LOADED", "the map from its beginning");
         save = hldata::SaveData(); // (tens of kilobytes: not kept)
 #ifndef HLDS_CHILD
