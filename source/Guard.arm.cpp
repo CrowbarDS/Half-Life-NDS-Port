@@ -691,12 +691,29 @@ namespace hlrt::guard
         }
     } // namespace
 
+    // The program's statics are made without a lock (-fno-threadsafe-statics,
+    // source/StdHalts.cpp): right only while the threads take turns, never
+    // one cut off by another. libnds's switch for cutting them off at an
+    // interrupt (cothread_preemption_enable) is a flag of its own, not in its
+    // header: switched on, the game stops here, at once or within a frame.
+    // (Exported by libnds -- source/common/cothread/threads.c, read by its
+    // interrupt dispatcher -- but not in its header: an update of libnds may
+    // drop or rename it, and the link then fails here, which is as it should
+    // be: the check is then to be made again by the new name.)
+    extern "C" bool cothread_preemption_enabled;
+    static void checkTakingTurns()
+    {
+        if (cothread_preemption_enabled)
+            crash("THREADS: preemption is on; the statics have no lock");
+    }
+
     void install()
     {
         std::uint32_t *w = stackFloor();
         for (std::uint32_t i = 0; i < kStackWords; ++i)
             w[i] = kStackMark ^ i;
         setExceptionHandler(onException);
+        checkTakingTurns();
     }
 
     void noteLibrary(const void *base, std::uint32_t size, std::uint32_t codeBytes)
@@ -711,6 +728,7 @@ namespace hlrt::guard
 
     void frame()
     {
+        checkTakingTurns();
         if (!stackIntact())
             crash("STACK: overflowed (DTCM)", reinterpret_cast<std::uint32_t>(stackFloor()), kStackWords * 4);
         if (const void *end = think.stackOverflowed())

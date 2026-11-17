@@ -12,7 +12,9 @@
 //
 // The functions' statics are made without the library's guard as well
 // (-fno-threadsafe-statics, build.py): the worker thread (game/Think.cpp)
-// never runs while another is in the middle of one.
+// only takes turns with the main one, so never runs while another is in the
+// middle of one. Guard.arm.cpp stops the game if libnds's preemption, which
+// would end that, is ever switched on.
 //
 // What is defined here must be all the library's own file has of what is
 // used: one left out brings that file in again, and its definitions clash

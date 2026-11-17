@@ -25,6 +25,7 @@ namespace hlrt
         /// the frame, as it was until 2026-11-16.) Not in the Download Play
         /// child: what it would add to its program is room a guest's map
         /// needs, and it only meets monsters in the demo.
+        /// (Switched on or off, it only ever takes turns: see start().)
 #ifdef HLDS_CHILD
         constexpr bool kUseWorker = false;
 #else
@@ -108,6 +109,11 @@ namespace hlrt
         for (std::uint32_t i = 0; i < kGuardWords; ++i)
             stack[i] = kGuardMark ^ i;
         mainThread = cothread_get_current();
+        // (It takes turns with the main thread, at its cothread_yield calls:
+        // never cut off by it, nor it by this. The program's statics count
+        // on that -- they are made without a lock, source/StdHalts.cpp -- and
+        // the guard stops the game if libnds's preemption is ever switched
+        // on, Guard.arm.cpp.)
         const cothread_t thread = cothread_create_manual(work, nullptr, stack, kStackBytes, 0);
         if (thread < 0)
             return;
