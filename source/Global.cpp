@@ -4,6 +4,7 @@
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
+#include <malloc.h>
 #include <nds/arm9/dldi.h>
 #include <sys/stat.h>
 
@@ -387,6 +388,11 @@ void Global::mountCommon()
 
 std::size_t Global::heapHeadroom() const
 {
+    // (What is free at the heap's top is given back to it first: libnds's
+    // allocator keeps up to 2 MB of it below the heap's end otherwise, and
+    // after a big map a smaller one would find no room for its sounds and
+    // some of its models.)
+    malloc_trim(0);
     return static_cast<std::size_t>(getHeapLimit() - getHeapEnd());
 }
 
