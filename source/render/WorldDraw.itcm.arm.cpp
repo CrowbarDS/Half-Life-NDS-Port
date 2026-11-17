@@ -473,22 +473,6 @@ namespace hlrt
         }
     }
 
-    // Liquids sway: their textures' coordinates go through the texture
-    // matrix (TextureCache asks for that), and the matrix slides them round
-    // a small circle, a couple of texels across, every four seconds. In the
-    // matrix a texel is 16: the hardware feeds it a sixteenth where a vertex
-    // has a one.
-    void WorldDraw::sway()
-    {
-        const auto phase = static_cast<std::uint16_t>(Global::drawClock() * 273u);
-        fx sine, cosine;
-        fxSinCos(phase, sine, cosine);
-        glMatrixMode(GL_TEXTURE);
-        glLoadIdentity();
-        glTranslatef32(sine << 5, cosine << 5, 0);
-        glMatrixMode(GL_MODELVIEW);
-    }
-
     void WorldDraw::draw()
     {
         if (!level.loaded() || chosen_ == nullptr)

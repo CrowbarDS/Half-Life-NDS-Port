@@ -66,6 +66,16 @@ extern "C" std::uint32_t hlHwSqrt64(std::uint64_t value); // source/HwMath.s
 #define HL_HOT inline
 #endif
 #endif
+// HL_WARM: ARM code as HL_HOT is, for its multiplies, but in main memory:
+// what runs now and then in a frame (a monster's thinking), not for every
+// vertex, bone or trace, and does not earn its room in ITCM.
+#ifndef HL_WARM
+#if defined(__arm__) && defined(HL_HW_MATH)
+#define HL_WARM inline __attribute__((target("arm")))
+#else
+#define HL_WARM inline
+#endif
+#endif
 
 namespace hldata
 {
@@ -133,7 +143,7 @@ namespace hldata
     }
 
     /// Length of a Q12 vector, Q12.
-    HL_HOT constexpr fx fxLength(const fx *v)
+    HL_WARM constexpr fx fxLength(const fx *v)
     {
         const std::int64_t sum = static_cast<std::int64_t>(v[0]) * v[0] +
                                  static_cast<std::int64_t>(v[1]) * v[1] +
@@ -222,7 +232,7 @@ namespace hldata
     /// The direction of (x, y) as an angle in turns (65536 to the circle;
     /// 0 along +x, a quarter turn along +y). Good to a tenth of a degree,
     /// which is what steering a train along its track needs; (0, 0) gives 0.
-    HL_HOT constexpr std::uint16_t fxAtan2Turns(fx y, fx x)
+    HL_WARM constexpr std::uint16_t fxAtan2Turns(fx y, fx x)
     {
         const std::int64_t ax = x < 0 ? -static_cast<std::int64_t>(x) : x;
         const std::int64_t ay = y < 0 ? -static_cast<std::int64_t>(y) : y;
