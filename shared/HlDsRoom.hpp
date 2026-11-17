@@ -25,12 +25,13 @@ namespace hldata
 {
     /// The heap free as a DS begins to load a map, before its families, less
     /// a margin for arriving by a level change rather than at a start.
-    /// Measured 2,301,440 bytes on 2026-11-16 (c1a0, c3a1, c1a3a, c2a3a
-    /// alike), with the game's core linked into the program and its families
-    /// apart: 122.9 KB more than with them linked in (2,175,824), 63.5 KB more
-    /// again than with the whole game a library (2,110,768). Measure again
+    /// Measured 2,295,312 bytes on 2026-11-17 (c2a5f, c4a1b, c2a5e alike),
+    /// with the animation keys' cache (source/data/KeyCache.cpp) in the
+    /// program: 6,128 less than on 2026-11-16 (2,301,440, the game's core
+    /// linked into the program and its families apart; 2,175,824 with them
+    /// linked in, 2,110,768 with the whole game a library). Measure again
     /// (tools/emu/room.sh ds) whenever the program grows.
-    inline constexpr std::size_t kDsMapHeap = 2301440 - 32 * 1024;
+    inline constexpr std::size_t kDsMapHeap = 2295312 - 32 * 1024;
     /// What each family takes of the heap loaded (GameFamily's order):
     /// measured in melonDS's DS mode on 2026-11-16, 70,764 and 60,724 bytes
     /// for the bosses and the soldiers (perf.txt's room line), the rules
