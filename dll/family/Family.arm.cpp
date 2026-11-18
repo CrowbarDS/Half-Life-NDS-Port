@@ -14,7 +14,7 @@
 #error "build one family at a time"
 #endif
 
-/// The ID of the program this family is for: tools/dsl_post.py writes it
+/// The ID of the program this family is for: tools/dsl_family.py writes it
 /// over this placeholder (tools/program_id.py's).
 extern "C" __attribute__((visibility("default"), used)) const unsigned char hlFamilyProgramId[hlrt::kProgramIdBytes] = {
     'H', 'L', 'P', 'R', 'O', 'G', 'I', 'D'};

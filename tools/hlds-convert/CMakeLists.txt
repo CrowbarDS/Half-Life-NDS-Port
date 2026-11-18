@@ -221,7 +221,6 @@ if(HLDS_BUILD_TESTS)
             test_movers
             test_physics
             test_dsp
-            test_kernels
             test_game_families
             test_save
             test_savefiles
@@ -265,8 +264,6 @@ if(HLDS_BUILD_TESTS)
         add_test(NAME dsl_strip_self COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../dsl_strip.py --self-test)
         add_test(NAME dsl_family_self COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../dsl_family.py --self-test)
         add_test(NAME program_id_self COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../program_id.py --self-test)
-        # (What may be moved into ITCM at load, and what is refused: tools/dsl_kernels.py.)
-        add_test(NAME dsl_kernels_self COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../dsl_kernels.py --self-test)
     else()
         message(STATUS "Python 3 not found: the dsl_strip tests are left out")
     endif()

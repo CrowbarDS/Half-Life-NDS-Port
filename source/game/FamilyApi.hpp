@@ -11,7 +11,7 @@
 // That only holds for the very program it was linked against, so each
 // program carries an ID (hlProgramId: tools/program_id.py, a hash of its ELF)
 // and each family the ID of the program it was built for (hlFamilyProgramId,
-// stamped by tools/dsl_post.py). The loader refuses a family whose ID is not
+// stamped by tools/dsl_family.py). The loader refuses a family whose ID is not
 // the program's, before anything of it has run.
 
 #include <cstdint>

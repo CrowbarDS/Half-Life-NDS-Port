@@ -11,7 +11,7 @@ into the core are to the program's addresses, written into it as numbers.
 Against any other program they are wrong, and nothing in the library would
 say so. So the program carries an ID (hlProgramId, source/game/ProgramId.cpp)
 -- the first 8 bytes of a SHA-1 of its ELF, taken with the ID's own bytes
-zeroed -- and tools/dsl_post.py stamps the same ID into every family it
+zeroed -- and tools/dsl_family.py stamps the same ID into every family it
 writes (hlFamilyProgramId). The loader (source/game/Families.cpp) refuses a
 family whose ID is not its program's.
 

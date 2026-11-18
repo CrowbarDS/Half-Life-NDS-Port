@@ -53,13 +53,6 @@ def main():
     dsl = symbols(os.path.join(ROOT, 'build', 'hl', 'hl.elf'))
     text_start = next(a for a, n in prog if n == '__text_start') if any(n == '__text_start' for _, n in prog) else 0x02000800
     lines = open(perf).read().splitlines()
-    # The game library's functions moved into ITCM at load (Kernels.cpp):
-    # their pieces there are theirs, not the program's.
-    kernels = []
-    for line in lines:
-        m = re.match(r'kernel: (\S+) itcm\+([0-9a-f]+) (\d+) moved', line)
-        if m:
-            kernels.append((int(m.group(2), 16), int(m.group(3)), m.group(1) + ' (in ITCM)'))
     chosen = []
     for i, line in enumerate(lines):
         if line.startswith('pcs:') and i > 0 and lines[i - 1].startswith('time:'):
@@ -77,12 +70,6 @@ def main():
         idle += int(m.group(3) or 0)
         for kind, offset, count in re.findall(r'(itcm|prog|dsl)\+([0-9a-f]+) (\d+)', line):
             start = int(offset, 16)
-            moved = [n for at, size, n in kernels if kind == 'itcm' and at < start + 256 and start < at + size]
-            if moved:
-                name = ' .. '.join(sorted(set(moved)))
-                by_function[name] += int(count)
-                where[name] = kind
-                continue
             table, base = (prog, 0x01000000) if kind == 'itcm' else (prog, text_start) if kind == 'prog' else (dsl, 0)
             first, last_name = name_at(table, base + start), name_at(table, base + start + 255)
             # (A piece holding more than one function says so: the time may
