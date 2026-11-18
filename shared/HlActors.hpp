@@ -644,7 +644,8 @@ namespace hldata
         if (actor.kind == static_cast<std::uint8_t>(ActorKind::Scientist) ||
             actor.kind == static_cast<std::uint8_t>(ActorKind::Guard) ||
             actor.kind == static_cast<std::uint8_t>(ActorKind::Sitter) ||
-            actor.kind == static_cast<std::uint8_t>(ActorKind::Gman))
+            actor.kind == static_cast<std::uint8_t>(ActorKind::Gman) ||
+            (actor.kind == static_cast<std::uint8_t>(ActorKind::Generic) && (actor.flags & kActorHeadTurns)))
         {
             controls[0] = static_cast<std::int16_t>(actor.aimYaw);
             return controls[0] != 0;

@@ -39,7 +39,7 @@ for arg in "$@"; do
         *) ELF="$arg" ;;
     esac
 done
-FAMILIES="boss military net"
+FAMILIES="boss military net shift"
 [ -f "$ELF" ] || { echo "arm9-report: no $ELF (build first)" >&2; exit 2; }
 
 # One ELF: the program (KIND=main), the child (KIND=child) or a family
@@ -299,7 +299,7 @@ else:
         # needs them (HL_FAMILIES_APART, HL_NET_APART). (The child has the
         # match'"'"'s rules linked in: every guest needs them.)
         family_code = re.compile(r"hldata::(garg|babycrab|icky|tentacle|momma|nihilanth|grunt|assassin|osprey|"
-                                 r"apache|boss|military)::|hldata::detail::(stompTick|mommaSpitTick|repelTick)\(" +
+                                 r"apache|boss|military|shift)::|hldata::detail::(stompTick|mommaSpitTick|repelTick)\(" +
                                  (r"|hldata::net(Tick|Start|Read|Lobby|Used)\(|hldata::detail::netApply\("
                                   if kind_of_elf == "main" else ""))
         for at, size, kind, name in symbols:

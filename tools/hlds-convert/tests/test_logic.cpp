@@ -2851,6 +2851,80 @@ namespace
         }
     }
 
+namespace
+{
+    /// Blue Shift's map rules: a count (game_counter) and what sets it
+    /// (game_counter_set); the player's controls taken (trigger_playerfreeze);
+    /// a ball of Xen's light (env_warpball).
+    void testBlueShiftLogic()
+    {
+        shift::familyRegister(true); // (the warp ball is its family's: HlShift.hpp)
+        BoxRoom room;
+        room.extraEntities =
+            "{\n\"classname\" \"game_counter\"\n\"targetname\" \"count\"\n\"health\" \"3\"\n\"frags\" \"0\"\n"
+            "\"target\" \"seen\"\n\"spawnflags\" \"2\"\n}\n"
+            "{\n\"classname\" \"game_counter\"\n\"targetname\" \"seen\"\n\"health\" \"99\"\n\"frags\" \"0\"\n}\n"
+            "{\n\"classname\" \"game_counter_set\"\n\"targetname\" \"set\"\n\"target\" \"count\"\n\"frags\" \"2\"\n}\n"
+            "{\n\"classname\" \"game_counter\"\n\"targetname\" \"locked\"\n\"health\" \"1\"\n\"master\" \"ms\"\n"
+            "\"target\" \"seen\"\n}\n"
+            "{\n\"classname\" \"multisource\"\n\"targetname\" \"ms\"\n}\n"
+            "{\n\"classname\" \"trigger_relay\"\n\"targetname\" \"r\"\n\"target\" \"ms\"\n}\n"
+            "{\n\"classname\" \"trigger_playerfreeze\"\n\"targetname\" \"freeze\"\n}\n"
+            "{\n\"classname\" \"env_warpball\"\n\"targetname\" \"warp\"\n\"origin\" \"0 0 36\"\n"
+            "\"radius\" \"128\"\n\"damage_delay\" \"0\"\n\"spawnflags\" \"1\"\n}\n";
+        Game g;
+        build(g, room);
+        check(g.ok, "the Blue Shift room cooks");
+        if (!g.ok)
+            return;
+        const int count = g.recordOfKind(LogicKind::GameCounter, 0);
+        const int seen = g.recordOfKind(LogicKind::GameCounter, 1);
+        const int locked = g.recordOfKind(LogicKind::GameCounter, 2);
+        const int set = g.recordOfKind(LogicKind::GameCounterSet);
+        const int freeze = g.recordOfKind(LogicKind::PlayerFreeze);
+        const int warp = g.recordOfKind(LogicKind::WarpBall);
+        check(count >= 0 && seen >= 0 && locked >= 0 && set >= 0 && freeze >= 0 && warp >= 0,
+              "each is cooked to its own kind");
+        if (count < 0 || seen < 0 || locked < 0 || set < 0 || freeze < 0 || warp < 0)
+            return;
+        check(g.view.logic[count].extra[0] == 3 && g.view.logic[count].extra[2] == 2 &&
+                  g.view.logic[set].extra[0] == 2 && g.view.logic[warp].maxs[0] == 128,
+              "... with its limit, its flags, its number, its reach");
+
+        // Three uses, and it fires (and, flag 2, starts again).
+        g.use(count);
+        g.use(count);
+        check(g.states[seen].phase == 0, "a count short of its limit fires nothing");
+        g.use(count);
+        check(g.states[seen].phase == 1 && g.states[count].phase == 0 && !g.states[count].dead,
+              "at its limit it fires its target, and starts again");
+        // Set to two: one more use is the third.
+        g.use(set);
+        check(g.states[count].phase == 2, "game_counter_set puts the count at its number");
+        g.use(count);
+        check(g.states[seen].phase == 2, "... and the next use reaches the limit");
+        // A master that is off: nothing counts.
+        g.use(locked);
+        check(g.states[locked].phase == 0 && g.states[seen].phase == 2, "with its master off, a count does not count");
+
+        // The player's controls, taken and given back.
+        check(logicFreezeRecord(g.logic) == freeze && !g.states[freeze].running, "the controls are the player's");
+        g.use(freeze);
+        check(g.states[freeze].running, "trigger_playerfreeze takes them");
+        g.use(freeze);
+        check(!g.states[freeze].running, "... and gives them back");
+
+        // The warp: plays its time, then (flag 1) is done.
+        g.use(warp);
+        check(g.states[warp].running, "a warpball used plays");
+        g.use(warp);
+        check(g.states[warp].running, "... and being used again meanwhile changes nothing");
+        for (int t = 0; t <= kWarpBallMs / 100; ++t)
+            effectsTick(g.logic, g.player, 100); // (as monstersTick has it ticked)
+        check(!g.states[warp].running && g.states[warp].dead, "it is over in its time, and done (flag 1)");
+    }
+} // namespace
+
 int main()
 {
     testHoldingCell();
@@ -2883,6 +2957,7 @@ int main()
     testLevelChange();
     testTransitionVolume();
     testCrushKillAndSwing();
+    testBlueShiftLogic();
     if (g_failures == 0)
         std::printf("test_logic: ok\n");
     return g_failures == 0 ? 0 : 1;

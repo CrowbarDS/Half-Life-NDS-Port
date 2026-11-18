@@ -32,7 +32,7 @@ namespace hlrt::families
         /// in, always there.
         constexpr std::uint8_t kApart =
 #ifdef HL_FAMILIES_APART
-            familyBit(hldata::kFamilyBoss) | familyBit(hldata::kFamilyMilitary) |
+            familyBit(hldata::kFamilyBoss) | familyBit(hldata::kFamilyMilitary) | familyBit(hldata::kFamilyShift) |
 #endif
 #ifdef HL_NET_APART
             familyBit(hldata::kFamilyNet) |
@@ -59,7 +59,8 @@ namespace hlrt::families
     const char *path(GameFamily family)
     {
         static const char *const kPath[hldata::kFamilyCount] = {nullptr, "nitro:/dsl/boss.dsl",
-                                                                "nitro:/dsl/military.dsl", "nitro:/dsl/net.dsl"};
+                                                                "nitro:/dsl/military.dsl", "nitro:/dsl/net.dsl",
+                                                                "nitro:/dsl/shift.dsl"};
         return family < hldata::kFamilyCount ? kPath[family] : nullptr;
     }
 
@@ -210,7 +211,7 @@ namespace hlrt::families
             // the family's own ELF says the rest.)
             if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
             {
-                static const char *const kName[hldata::kFamilyCount] = {"", "boss", "military", "net"};
+                static const char *const kName[hldata::kFamilyCount] = {"", "boss", "military", "net", "shift"};
                 std::fprintf(log, "family: %s %08lx\n", kName[f], static_cast<unsigned long>(reinterpret_cast<std::uintptr_t>(api)));
                 std::fclose(log);
             }

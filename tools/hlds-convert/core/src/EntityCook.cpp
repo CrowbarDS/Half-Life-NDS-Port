@@ -82,7 +82,7 @@ namespace hlds
                 "weapon_egon", "weapon_hornetgun", "weaponbox", "monster_cockroach", "monster_leech",
                 "monster_alien_grunt", "monster_alien_controller", "monster_snark", "monster_osprey",
                 "xen_hair", "xen_spore_small", "xen_spore_medium", "xen_spore_large", "xen_tree", "xen_plantlight",
-                "item_antidote", "item_security", "item_airtank", "item_longjump",
+                "item_antidote", "item_security", "item_airtank", "item_longjump", "item_armorvest", "item_helmet",
                 "monster_gargantua", "monster_babycrab", "monster_hevsuit_dead",
                 "monster_human_assassin", "monster_ichthyosaur", "monster_rat",
                 "func_tank", "func_tanklaser", "func_tankrocket", "func_tankmortar", "func_tankcontrols",
@@ -235,6 +235,8 @@ namespace hlds
             {"item_security", ItemKind::Security, "models/w_security.mdl"},
             {"item_airtank", ItemKind::Airtank, "models/w_oxygen.mdl"},
             {"item_longjump", ItemKind::LongJump, "models/w_longjump.mdl"},
+            {"item_armorvest", ItemKind::ArmorVest, "models/barney_vest.mdl"},
+            {"item_helmet", ItemKind::Helmet, "models/barney_helmet.mdl"},
         };
 
         /// What a func_breakable or func_pushable leaves when it breaks: its
@@ -2557,6 +2559,45 @@ namespace hlds
                 const double count = numberKey(entity, "count");
                 record.extra[0] = static_cast<std::uint32_t>(count >= 1 ? std::lround(count) : 2);
             }
+            else if (cls == "game_counter")
+            {
+                make = true;
+                record.kind = static_cast<std::uint8_t>(LogicKind::GameCounter);
+                record.extra[0] = static_cast<std::uint32_t>(static_cast<std::int32_t>(std::lround(numberKey(entity, "health"))));
+                record.extra[1] = static_cast<std::uint32_t>(static_cast<std::int32_t>(std::lround(numberKey(entity, "frags"))));
+                record.extra[2] = static_cast<std::uint32_t>(spawnflags & 3);
+            }
+            else if (cls == "game_counter_set")
+            {
+                make = true;
+                record.kind = static_cast<std::uint8_t>(LogicKind::GameCounterSet);
+                record.extra[0] = static_cast<std::uint32_t>(static_cast<std::int32_t>(std::lround(numberKey(entity, "frags"))));
+                record.extra[2] = static_cast<std::uint32_t>(spawnflags & 1);
+            }
+            else if (cls == "env_warpball")
+            {
+                // (Blue Shift's: its sprites and its sound the game's own.)
+                const std::uint16_t flare = spriteIndex("sprites/xflare1.spr", true);
+                const std::uint16_t glow = spriteIndex("sprites/fexplo1.spr", true);
+                if (flare != kNoSprite && glow != kNoSprite)
+                {
+                    make = true;
+                    record.kind = static_cast<std::uint8_t>(LogicKind::WarpBall);
+                    for (int a = 0; a < 3; ++a)
+                        record.move[a] = fxFromDouble(origin[a]);
+                    record.netName = nameId(entity.value("warp_target"));
+                    record.extra[0] = flare | static_cast<std::uint32_t>(glow) << 16;
+                    record.extra[1] = static_cast<std::uint32_t>(std::max(0, millis(numberKey(entity, "damage_delay"))));
+                    record.extra[2] = static_cast<std::uint32_t>(spawnflags & 3);
+                    record.maxs[0] = static_cast<std::int16_t>(
+                        std::clamp(std::lround(numberKey(entity, "radius", 256)), 16L, 4096L));
+                }
+            }
+            else if (cls == "trigger_playerfreeze")
+            {
+                make = true;
+                record.kind = static_cast<std::uint8_t>(LogicKind::PlayerFreeze);
+            }
             else if (cls == "trigger_changetarget")
             {
                 make = true;
@@ -3458,6 +3499,10 @@ namespace hlds
                 if (stop >= 1 && stop <= 8)
                     sound.stop = soundIndex(kStops[stop], false);
             }
+            else if (cls == "env_warpball")
+            {
+                sound.move = soundIndex("debris/alien_teleport.wav", false);
+            }
             else if (cls == "func_tracktrain")
             {
                 // Its engine for as long as it goes, its brakes as it stops
@@ -3805,6 +3850,10 @@ namespace hlds
                     actor.flags |= kActorLeader;
                 if (spawnflags & 128)
                     actor.flags |= kActorWaitScript;
+                // (A monster_generic: Blue Shift's that turns its head.)
+                if (info.kind == ActorKind::Generic)
+                    actor.flags = static_cast<std::uint8_t>((actor.flags & ~kActorLeader) |
+                                                            ((spawnflags & 8) ? kActorHeadTurns : 0));
                 if (info.kind == ActorKind::Slave && (spawnflags & 64))
                     actor.flags |= kActorCeiling; // (HlAiMonsters.hpp: slave::kActorWaitProvoked)
                 // One of the people before the disaster: will not follow.

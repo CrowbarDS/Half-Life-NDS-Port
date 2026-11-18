@@ -258,15 +258,19 @@ namespace
             check(with != nullptr, "a room with Rosenberg cooks");
             if (with != nullptr)
             {
-                int rose = -1;
+                int rose = -1, generic = -1;
                 for (int i = 0; i < with->actors.count; ++i)
                 {
                     if (with->actors.states[i].kind == static_cast<std::uint8_t>(ActorKind::Scientist) &&
                         (with->actors.states[i].item & kPersonRosenberg))
                         rose = i;
+                    if (with->actors.states[i].kind == static_cast<std::uint8_t>(ActorKind::Generic))
+                        generic = i;
                 }
                 check(rose >= 0 && (with->actors.states[rose].item & kPersonRosenberg),
                       "... as a scientist who is Rosenberg");
+                check(generic >= 0 && (with->actors.states[generic].flags & kActorHeadTurns),
+                      "Blue Shift's monster_generic of flag 8 turns its head as it talks");
                 const auto hello = linesOf(*with, kVoiceScientist, kTalkHello);
                 const auto idle = linesOf(*with, kVoiceScientist, kTalkIdle);
                 auto saysWord = [&](std::uint16_t line, const char *path)

@@ -64,6 +64,50 @@ namespace
 
     // ------------------------------------------------------------ the table
 
+    template <typename Field>
+    void compareCfg(const std::string &path, const Field *kFields, std::size_t fieldCount, int expected)
+    {
+        std::ifstream file(path);
+        std::stringstream text;
+        text << file.rdbuf();
+        const std::string all = text.str();
+        int compared = 0, wrong = 0;
+        const std::regex line(R"re((sk_\w+?)([123])\s+"([^"]+)")re");
+        for (auto it = std::sregex_iterator(all.begin(), all.end(), line); it != std::sregex_iterator(); ++it)
+        {
+            const std::string name = (*it)[1];
+            const int level = std::stoi((*it)[2]);
+            const double value = std::stod((*it)[3]);
+            for (std::size_t f = 0; f < fieldCount; ++f)
+            {
+                const Field &field = kFields[f];
+                if (name != field.name)
+                    continue;
+                // (What a battery gives is what taking one gives: Blue Shift's
+                // family's, in a Blue Shift game.)
+                int ours = skillData(level).*field.member;
+                if (name == "sk_battery")
+                {
+                    PlayerState player;
+                    player.inv.have |= kHaveSuit;
+                    std::uint32_t got = 0;
+                    hldata::detail::itemTake(player, static_cast<std::uint8_t>(ItemKind::Battery), got, skillData(level));
+                    ours = player.inv.armor;
+                }
+                const double want = name == "sk_bigmomma_health_factor" ? value * 10 : value;
+                ++compared;
+                if (std::lround(want) != ours)
+                {
+                    ++wrong;
+                    std::printf("test_skill: %s%d is %s, the table has %d\n", name.c_str(), level,
+                                std::string((*it)[3]).c_str(), ours);
+                }
+            }
+        }
+        std::printf("test_skill: %d values of %s against the table, %d wrong\n", compared, path.c_str(), wrong);
+        check(compared == expected && wrong == 0, "the table is skill.cfg's, value for value");
+    }
+
     void testTable(const char *dir)
     {
         struct Field
@@ -163,34 +207,18 @@ namespace
               "the three levels, and MEDIUM for anything else");
         if (dir == nullptr)
             return;
-        std::ifstream file(std::string(dir) + "/skill.cfg");
-        std::stringstream text;
-        text << file.rdbuf();
-        const std::string all = text.str();
-        int compared = 0, wrong = 0;
-        const std::regex line(R"re((sk_\w+?)([123])\s+"([^"]+)")re");
-        for (auto it = std::sregex_iterator(all.begin(), all.end(), line); it != std::sregex_iterator(); ++it)
+        compareCfg(std::string(dir) + "/skill.cfg", kFields, sizeof(kFields) / sizeof(kFields[0]), 83 * 3);
+        // Blue Shift's, beside it: Half-Life's numbers but the battery's
+        // (skillBattery), when the game is Blue Shift.
+        const std::string shift = std::string(dir) + "/../bshift/skill.cfg";
+        if (std::ifstream(shift))
         {
-            const std::string name = (*it)[1];
-            const int level = std::stoi((*it)[2]);
-            const double value = std::stod((*it)[3]);
-            for (const Field &field : kFields)
-            {
-                if (name != field.name)
-                    continue;
-                const int ours = skillData(level).*field.member;
-                const double want = name == "sk_bigmomma_health_factor" ? value * 10 : value;
-                ++compared;
-                if (std::lround(want) != ours)
-                {
-                    ++wrong;
-                    std::printf("test_skill: %s%d is %s, the table has %d\n", name.c_str(), level,
-                                std::string((*it)[3]).c_str(), ours);
-                }
-            }
+            activeGame = kGameBlueShift;
+            compareCfg(shift, kFields, sizeof(kFields) / sizeof(kFields[0]), 83 * 3);
+            activeGame = kGameHalfLife;
         }
-        std::printf("test_skill: %d values of skill.cfg against the table, %d wrong\n", compared, wrong);
-        check(compared == 83 * 3 && wrong == 0, "the table is skill.cfg's, value for value");
+        else
+            std::printf("test_skill: no bshift beside the game: Blue Shift's skill.cfg not compared\n");
     }
 
     // ------------------------------------------------------- the levels
@@ -218,6 +246,35 @@ namespace
             std::uint32_t got = 0;
             hldata::detail::itemTake(player, static_cast<std::uint8_t>(ItemKind::HealthKit), got, skillData(level));
             check(player.health == 50 + (level == kSkillHard ? 10 : 15), "a health kit gives the level's");
+        }
+        // Blue Shift's armour (its family's: HlShift.hpp): a battery gives 20
+        // at every level; a vest 60, a helmet 40 -- to someone in the suit,
+        // up to 100.
+        {
+            shift::familyRegister(true);
+            activeGame = kGameBlueShift;
+            PlayerState player;
+            std::uint32_t got = 0;
+            using hldata::detail::itemTake;
+            check(!itemTake(player, static_cast<std::uint8_t>(ItemKind::ArmorVest), got, skillData(kSkillHard)) &&
+                      player.inv.armor == 0,
+                  "a vest is left lying for someone without the suit");
+            player.inv.have |= kHaveSuit;
+            check(itemTake(player, static_cast<std::uint8_t>(ItemKind::Battery), got, skillData(kSkillHard)) &&
+                      player.inv.armor == 20,
+                  "Blue Shift's battery gives 20, even DIFFICULT");
+            check(itemTake(player, static_cast<std::uint8_t>(ItemKind::ArmorVest), got, skillData(kSkillHard)) &&
+                      player.inv.armor == 80,
+                  "a vest 60");
+            check(itemTake(player, static_cast<std::uint8_t>(ItemKind::Helmet), got, skillData(kSkillHard)) &&
+                      player.inv.armor == 100,
+                  "a helmet 40, up to 100");
+            check(!itemTake(player, static_cast<std::uint8_t>(ItemKind::Helmet), got, skillData(kSkillHard)),
+                  "... and none is taken at 100");
+            activeGame = kGameHalfLife;
+            player.inv.armor = 0;
+            itemTake(player, static_cast<std::uint8_t>(ItemKind::Battery), got, skillData(kSkillHard));
+            check(player.inv.armor == 10, "Half-Life's battery is still its own (10, DIFFICULT)");
         }
     }
 
@@ -595,6 +652,7 @@ namespace
 int main()
 {
     const char *dir = std::getenv("HLDS_VALVE_DIR");
+    shift::familyRegister(true); // (Blue Shift's batteries: HlShift.hpp)
     testTable(dir != nullptr && dir[0] != '\0' ? dir : nullptr);
     testLevels();
     if (dir == nullptr || dir[0] == '\0')

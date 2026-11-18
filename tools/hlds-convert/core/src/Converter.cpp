@@ -1053,7 +1053,9 @@ namespace hlds
         std::vector<std::uint8_t> bytes;
         if (!cookLevel(bsp, cookOptions, plan, level, report, result.error))
             return result;
-        level.visitorFamilies = visitorFamilies;
+        // (Blue Shift's own family: every map of it.)
+        level.visitorFamilies = static_cast<std::uint8_t>(
+            visitorFamilies | (options_.game == hldata::kGameBlueShift ? hldata::familyBit(hldata::kFamilyShift) : 0));
 
         // Store color such that it can be properly drawn
         // even if the texture is not loaded yet.

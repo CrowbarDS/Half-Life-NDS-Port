@@ -182,6 +182,27 @@ namespace hldata
 
     /// Everything the logic works on. The pointers are the caller's arrays:
     /// level data is read, live state is written.
+    struct LogicWorld;
+    struct PlayerState;
+    struct SkillData;
+    struct AiCtx;
+    /// What an expansion's family (HlShift.hpp) does in the core's place:
+    /// set as it is loaded, cleared as it goes. (The core names none of
+    /// its code: none of it is in the program.)
+    struct ExpansionHooks
+    {
+        /// An item it has (its armour; its batteries, by its numbers): true
+        /// if it is one of its, `took` then whether it was taken.
+        bool (*itemTake)(PlayerState &, std::uint8_t item, std::uint32_t &got, const SkillData &, bool &took) = nullptr;
+        /// Its logic kinds (the map rules, LogicKind::GameCounter on, and
+        /// LogicKind::WarpBall): used, and each frame.
+        void (*logicUse)(LogicWorld &, PlayerState &, int index, int useType, int depth) = nullptr;
+        void (*logicTick)(LogicWorld &, PlayerState &, int index, int ms) = nullptr;
+        /// A monster_generic of its (kActorHeadTurns), as it thinks.
+        void (*genericRunAI)(AiCtx &) = nullptr;
+    };
+    inline ExpansionHooks expansionHooks;
+
     struct LogicWorld
     {
         const LogicRecord *records = nullptr;
@@ -933,6 +954,18 @@ namespace hldata
         }
         logicKill(w, record.killTarget);
         logicFire(w, player, logicTargetOf(w, index), index, useType, depth);
+    }
+
+    /// The first PlayerFreeze record of the map (-1: none), whose `running`
+    /// says the player's controls are taken: found once, as the map comes.
+    inline int logicFreezeRecord(const LogicWorld &w)
+    {
+        for (int i = 0; i < w.recordCount; ++i)
+        {
+            if (w.records[i].kind == static_cast<std::uint8_t>(LogicKind::PlayerFreeze))
+                return i;
+        }
+        return -1;
     }
 
     inline bool logicMasterAllows(const LogicWorld &w, int index)
@@ -5018,6 +5051,15 @@ namespace hldata
             {
                 effectAdd(*w.actors, kEffectRing, record.move, nullptr, 160, 700);
             }
+            break;
+
+        case LogicKind::GameCounter:
+        case LogicKind::GameCounterSet:
+        case LogicKind::PlayerFreeze:
+        case LogicKind::WarpBall:
+            // (The expansions' map rules and warp balls: their families'.)
+            if (expansionHooks.logicUse != nullptr)
+                expansionHooks.logicUse(w, player, index, useType, depth);
             break;
 
         case LogicKind::Counter:

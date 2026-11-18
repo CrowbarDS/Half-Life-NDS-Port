@@ -1529,6 +1529,22 @@ expansion has no matches between consoles, no demos and no achievements
 (Half-Life: Legacy's are Half-Life's), and its display and menus are in its
 own colour: Blue Shift's blue, Opposing Force's green.
 
+**Blue Shift's own entities** are a family of the game's (`shift`,
+`shared/HlShift.hpp`), loaded with every Blue Shift map and never on a DS:
+the core reaches them only through `expansionHooks`. Its armour
+(`item_armorvest`, 60; `item_helmet`, 40; for someone in the suit, up to
+100) and its batteries (20 at every level, its `skill.cfg`'s only
+difference); its map rules (`game_counter`, `game_counter_set`,
+`trigger_playerfreeze`); its warp balls (`env_warpball`: a green flare and
+glow for 1.9 s, lightning striking the world within its radius, a shake, its
+sound, a shock at its middle); and a `monster_generic` of spawnflag 8 that
+turns its head to whom it talks to. Rosenberg is a scientist with twice the
+health whom the player cannot provoke; his voice is the converter's: in his
+one map, where he is the only scientist, the scientists' lines are his
+(RO_). The level format is Half-Life's (76).
+Still missing: `info_node_air` (the controllers fly without it, as in
+Half-Life's maps) and `func_monsterclip`, which Half-Life's maps have too.
+
 ## Not yet
 
 A roach measures the one light that changes most over its floor --

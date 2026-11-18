@@ -252,6 +252,8 @@ namespace hlrt
         mutable std::int16_t leftWith_[hldata::kMaxVisitors] = {-1, -1, -1, -1};
         std::uint8_t placed_ = 0;
         int cameraWas_ = -1;
+        /// The map's trigger_playerfreeze, if it has one (logicFreezeRecord).
+        int freezeRecord_ = -1;
         std::uint16_t ownYaw_ = 0;
         std::int16_t ownPitch_ = 0;
         /// What laying a state back over the map (a save's, a map come back

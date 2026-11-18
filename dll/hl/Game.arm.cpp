@@ -306,6 +306,7 @@ namespace hlrt
         weapon_ = WeaponState();
         held = ActorState();
         inHand_ = -1;
+        freezeRecord_ = logicFreezeRecord(logic);
         // (What the monsters think and hear: HlAi.hpp.)
         {
             const int thinkers = aiNeeded(actors);
@@ -892,7 +893,9 @@ namespace hlrt
         playMs_ += static_cast<std::uint64_t>(ms);
         // A view from a camera that takes the controls (trigger_camera's
         // flag 4): the player can do nothing meanwhile.
-        if (logic.camera >= 0 && (logic.records[logic.camera].extra[0] & 4))
+        // (Or one that only takes them: trigger_playerfreeze.)
+        if ((logic.camera >= 0 && (logic.records[logic.camera].extra[0] & 4)) ||
+            (freezeRecord_ >= 0 && logic.states[freezeRecord_].running))
         {
             input.moveForward = input.moveSide = 0;
             input.jump = input.duck = input.usePressed = input.useHeld = input.attack = input.second = false;

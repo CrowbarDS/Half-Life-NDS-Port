@@ -861,6 +861,28 @@ namespace hldata
         /// (func_friction): extra[0] is its hold, in percent of the world's
         /// friction. Its brush, if it is seen, is drawn as any other.
         Friction,
+        // Blue Shift's (its maps only: no Half-Life map has them).
+        /// A count (game_counter): used on, or toggled, it counts up; off,
+        /// down. On reaching extra[0] it fires `target` (toggle), and is
+        /// done (extra[2] bit 0) or starts again from extra[1] (bit 1). It
+        /// counts from extra[1]: state.phase is how far it is from there.
+        /// Its master, if it has one, has to be on.
+        GameCounter,
+        /// Sets the counts it targets to extra[0] (game_counter_set), then
+        /// is done if extra[2] bit 0.
+        GameCounterSet,
+        /// Takes the player's controls, or gives them back: each use the
+        /// other (trigger_playerfreeze).
+        PlayerFreeze,
+        /// A ball of Xen's light, where something comes through
+        /// (env_warpball): used, at `move` -- or at what `netName` names --
+        /// its flare and glow (sprites extra[0] and extra[0] >> 16) play
+        /// for kWarpBallMs, lightning strikes the world within maxs[0]
+        /// units, the view shakes, its sound (LogicSound::move) is heard,
+        /// and it fires `target`. What is at its middle is hurt: at once
+        /// with no delay (extra[1], ms), else after it if extra[2] bit 1.
+        /// extra[2] bit 0: it is done once played.
+        WarpBall,
         Count
     };
     // A tank's spawnflags (LogicKind::Tank, maxs[0]): the game's.
@@ -986,6 +1008,8 @@ namespace hldata
         return keyed && record.pad != 0 ? record.pad : 127;
     }
     inline constexpr std::uint16_t kBeamRandom = 1; ///< LogicKind::Beam, in maxs[1]
+    /// How long a WarpBall plays: its flare's twenty frames at ten a second.
+    inline constexpr int kWarpBallMs = 1900;
     inline constexpr std::uint16_t kBeamRing = 2;   ///< ... a circle between its two ends
     inline constexpr std::uint16_t kBeamSparkStart = 4; ///< ... sparks fly at its start
     inline constexpr std::uint16_t kBeamSparkEnd = 8;   ///< ... and where it ends
@@ -1174,12 +1198,15 @@ namespace hldata
         kFamilyBoss = 1,     ///< the nihilanth, tentacle, ichthyosaur, gargantua, big momma, baby crab
         kFamilyMilitary = 2, ///< soldiers, assassins, the osprey and the apache
         kFamilyNet = 3,      ///< the match's rules
-        kFamilyCount = 4,
+        /// Blue Shift's own (HlShift.hpp): its armour, its warp balls, its
+        /// talking props. Every Blue Shift map has it; a DS, none.
+        kFamilyShift = 4,
+        kFamilyCount = 5,
     };
     inline constexpr std::uint8_t familyBit(GameFamily f) { return static_cast<std::uint8_t>(1u << f); }
     /// Each family's name: its library's (dsl/<name>.dsl), and its stream's
     /// to a console sent the game (AirStream::Library).
-    inline constexpr const char *kFamilyNames[kFamilyCount] = {"core", "boss", "military", "net"};
+    inline constexpr const char *kFamilyNames[kFamilyCount] = {"core", "boss", "military", "net", "shift"};
 
     /// Which family a kind's code is in.
     inline GameFamily familyOfKind(std::uint8_t kind)
@@ -1302,6 +1329,10 @@ namespace hldata
     /// soldier's and a tripmine's for other things.)
     inline constexpr std::uint8_t kActorCentred = kActorAuto;
     inline constexpr std::uint8_t kActorGag = 128;
+    /// A monster_generic that turns its head to whom it talks to (Blue
+    /// Shift's spawnflag 8, SF_HEAD_CONTROLLER). (The bit is a squad
+    /// leader's, which no monster_generic is.)
+    inline constexpr std::uint8_t kActorHeadTurns = kActorLeader;
 
     // What a soldier carries (ActorRecord::item, the low 8 bits): the
     // game's own "weapons" bits.
@@ -1464,6 +1495,9 @@ namespace hldata
         Airtank,
         // From level version 45, cooked last of all.
         LongJump, ///< the long jump module (kArsenalLongJump): for someone wearing the suit
+        // Blue Shift's (its maps only: no Half-Life map has them).
+        ArmorVest, ///< a guard's vest: 60 armour, for someone wearing the suit
+        Helmet,    ///< ... and helmet: 40
         Count
     };
     /// The first of those: an actor of one of these is cooked after every

@@ -895,6 +895,12 @@ namespace hldata
         inline bool itemTake(PlayerState &player, std::uint8_t item, std::uint32_t &got,
                              const SkillData &skill = skillData(kSkillMedium))
         {
+            // (An expansion's own first: Blue Shift's armour and batteries.)
+            {
+                bool took = false;
+                if (expansionHooks.itemTake != nullptr && expansionHooks.itemTake(player, item, got, skill, took))
+                    return took;
+            }
             Inventory &inv = player.inv;
             auto add = [](std::int16_t &what, int amount, int most)
             {
@@ -6530,6 +6536,7 @@ namespace hldata
 #include "HlMilitary.hpp"
 #include "HlPeople.hpp"
 #include "HlXen.hpp"
+#include "HlShift.hpp"
 
 namespace hldata
 {
@@ -6542,6 +6549,7 @@ namespace hldata
 #ifndef HL_FAMILIES_APART
         boss::familyRegister(true);
         military::familyRegister(true);
+        shift::familyRegister(true);
 #endif
     }
 } // namespace hldata

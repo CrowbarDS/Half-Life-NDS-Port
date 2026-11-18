@@ -528,6 +528,11 @@ namespace hldata
                     detail::beamBurn(w, player, i, ms);
                 break;
             }
+            case LogicKind::WarpBall:
+                // (Blue Shift's: its family's, HlShift.hpp.)
+                if (expansionHooks.logicTick != nullptr)
+                    expansionHooks.logicTick(w, player, i, ms);
+                break;
             case LogicKind::Spark:
                 if (!state.running || (state.phase -= ms) > 0)
                     break;

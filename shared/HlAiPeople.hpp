@@ -1189,6 +1189,7 @@ namespace hldata
         /// Spawnflag 4: not solid, and nothing hurts it.
         inline bool takeDamage(AiCtx &c, AiDamage &) { return (c.me.flags & kActorSolid) != 0; }
 
+
         inline const AiKind &kind()
         {
             static const AiKind k = []
@@ -1201,6 +1202,12 @@ namespace hldata
                 k.soundMask = 0;
                 k.blood = kBloodRed;
                 k.takeDamage = takeDamage;
+                // (Blue Shift's that turns its head: its family's, HlShift.hpp.)
+                k.runAI = [](AiCtx &c)
+                {
+                    if (expansionHooks.genericRunAI != nullptr)
+                        expansionHooks.genericRunAI(c);
+                };
                 return k;
             }();
             return k;

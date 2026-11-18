@@ -167,7 +167,7 @@ arm9.generate_elf()
 # loader would keep for nothing dropped, the program's ID stamped in.
 FAMILY_WRAPS = ['malloc', 'free', 'calloc', 'realloc', 'memalign', 'aligned_alloc', 'posix_memalign'] + HW_MATH_WRAPS
 families = []
-for family in ('boss', 'military', 'net'):
+for family in ('boss', 'military', 'net', 'shift'):
     lib = Arm9DynamicLibrary(
         name=family,
         main_binary=arm9,

@@ -5,12 +5,13 @@
 #include "HlNetGame.hpp"
 
 // A family of the game (source/game/FamilyApi.hpp), built once for each:
-// HL_FAMILY_BOSS, HL_FAMILY_MILITARY or HL_FAMILY_NET says which (build.py).
+// HL_FAMILY_BOSS, HL_FAMILY_MILITARY, HL_FAMILY_NET or HL_FAMILY_SHIFT says
+// which (build.py).
 // Its code is what the core's headers have of it; all else it calls is the
 // program's, at the addresses the program has it (the link takes the
 // program's ELF first: build.py).
 
-#if defined(HL_FAMILY_BOSS) + defined(HL_FAMILY_MILITARY) + defined(HL_FAMILY_NET) != 1
+#if defined(HL_FAMILY_BOSS) + defined(HL_FAMILY_MILITARY) + defined(HL_FAMILY_NET) + defined(HL_FAMILY_SHIFT) != 1
 #error "build one family at a time"
 #endif
 
@@ -29,6 +30,8 @@ namespace
         hldata::boss::familyRegister(on);
 #elif defined(HL_FAMILY_MILITARY)
         hldata::military::familyRegister(on);
+#elif defined(HL_FAMILY_SHIFT)
+        hldata::shift::familyRegister(on);
 #else
         (void)on;
 #endif

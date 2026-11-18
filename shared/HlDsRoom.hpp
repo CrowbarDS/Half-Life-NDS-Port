@@ -55,7 +55,8 @@ namespace hldata
     /// reckoned from their file (35,544) and the loader's own the same;
     /// rounded up. tools/dsl_family.py prints each as it is built: raise
     /// these when a family grows past them.
-    inline constexpr std::size_t kDsFamilyBytes[kFamilyCount] = {0, 72 * 1024, 62 * 1024, 37 * 1024};
+    /// (Blue Shift's, none: a DS has no Blue Shift map.)
+    inline constexpr std::size_t kDsFamilyBytes[kFamilyCount] = {0, 72 * 1024, 62 * 1024, 37 * 1024, 0};
     /// What the families in `mask` (familyBit) take of the heap.
     inline std::size_t dsFamilyBytes(std::uint8_t mask)
     {
