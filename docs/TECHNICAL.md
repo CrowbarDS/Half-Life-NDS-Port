@@ -505,25 +505,55 @@ Milestone 11, "levels of detail".
   against their definition by `test_dsp` and on the console by
   `tools/hwtest/dspmath/`.
 - Where the code runs from. The DS has 32 KB of memory that is always as
-  fast as the cache at its best (ITCM), and what is in it is chosen by how
-  much of the frame it is: the hull trace -- for everything that traces, not
-  only the player --, the choosing and sending of the world's surfaces, the
-  posing and drawing of the models, a walking monster's step, and the sines
-  and lengths they all use. `HL_HOT` (shared code) and `HL_ITCM` put a
-  function there; `HL_ARM` builds one function of a Thumb file as ARM (the
-  effects, the head-up display and the other things drawn every frame had
-  been Thumb, each product a call). About 28 KB of the 32 are used; what is
-  left is libnds's ITCM heap (`itcm_malloc`), which nothing uses: all that is
-  in ITCM is placed there when the program is linked, where calls are direct
+  fast as the cache at its best (ITCM). What goes there is chosen by what
+  the instruction cache misses, not by time spent: a loop that stays in the
+  8 KB cache costs little from main memory, code that is pushed out and
+  fetched again costs every time. `HLDS_ITCM_OFF=1 ./make.sh` builds the
+  program with nothing of its own in ITCM (but the interrupts' code and the
+  hardware divide); `tools/icache/scenes.sh` plays four scenes with it in a
+  melonDS of its own that models the cache and counts each 32-byte line's
+  misses (`tools/icache/setup.sh`); `tools/icache_rank.py` gives each
+  function its misses for each byte of ITCM it would take, names the game's
+  families' code from where the measuring build says it loaded them (a
+  family is on the heap and cannot be in ITCM), fills the budget best first,
+  and says what share of the misses today's ITCM and the fill keep off main
+  memory. The profiling melonDS is for choosing only: its times are not the
+  console's, and a change is judged by `HLDS_PROFILE` frame times, and on
+  the console.
+  On 2026-11-18 the layout of before kept 15% of the misses off main memory.
+  One round moved in the monsters' thinking that runs every tick on the main
+  thread (`aiTick`, `aiLook`, `aiTargetOf`, `aiKindOf`; none that only the
+  thinking thread runs), the line test (`lineThrough`), `actorPlaceBox`,
+  the sight test of the world's draw (`ballVisible`) and the camera's
+  matrix, and moved out the world's draw list and the frame's draw
+  (`WorldDrawEmit.arm.cpp`, about 30 us a frame by the profiler's count) and
+  `ModelDraw::posed`: 23% of the misses, and in melonDS c1a3a's DS frame
+  from 20.8 to 20.0 ms, c3a1's DSi frame from 8.1 to 7.9. A second round had
+  no room and too little to gain (some 70 us a frame), and the rounds were
+  stopped there. `tools/arm9-report.sh` keeps a list of what must be in
+  ITCM (the traces, the hull check, the posing, a walk's step and tick, the
+  world's walk, the models' draw): those were chosen by frame time on the
+  console, and what of them a misses count would put out (ModelDraw::draw,
+  walkTick, the least missed for their size) waits for that console's
+  frame times. The library's 32-bit divide goes in only if room is left:
+  in the cache it is 2 to 4 times quicker than the divider (`tools/hwtest/
+  divmath/`), so it is never to be moved to the hardware, and it is under 1%
+  of the misses.
+  `HL_HOT` (shared code) and `HL_ITCM` put a function there; a file named
+  `.itcm` is there whole. `HL_ARM` builds one function of a Thumb file as ARM
+  (the effects, the head-up display and the other things drawn every frame
+  had been Thumb, each product a call). The build's budget is 32,384 bytes
+  of the 32 KB (`ITCM_BUDGET`), 384 kept for libnds to grow; what is left is
+  libnds's ITCM heap (`itcm_malloc`), which nothing uses: all that is in
+  ITCM is placed there when the program is linked, where calls are direct
   and the budget is checked by the build. The fast *data* memory (DTCM)
   keeps 1 KB at its top for its own data and heap (`dtcm_malloc`,
   `DTCM_DATA_SIZE` in `build.py`) -- libnds's thread scheduler takes almost
   all of it --; the stack has the 14.4 KB under it and was measured 11 KB
   deep. The guard's pattern is DTCM's first words, where the stack ends.
   Nothing takes from DTCM's heap: DTCM is the stack's.
-- traceShot and pointContents are link-time ITCM (`HL_HOT`), chosen by the
-  console's own sampler: from 3.3-4.1% of a DS's time at c1a3a to about 2%
-  (lineThrough, tried there too, gained nothing and was left out).
+- traceShot and pointContents are in ITCM (`HL_HOT`), chosen by the
+  console's own sampler: from 3.3-4.1% of a DS's time at c1a3a to about 2%.
 - A trace no longer asks every brush of the map whether the move comes near
   it. A map has some hundreds, each a hundred bytes of record: now there is
   a table of twelve bytes a brush, read first (`MoverReach`). At the fight
