@@ -521,6 +521,16 @@ namespace hldata
         default: return {CommonSound::WoodHit1, 3, CommonSound::BustCrate1, 2, false};
         }
     }
+    /// ... and what each of its pieces sounds of landing (the game's
+    /// break flags, and its client's bounce sounds): `count` from `first`,
+    /// none (0) for a ceiling tile's and one of no material's. A
+    /// computer's are metal's.
+    inline void shardSounds(std::uint32_t material, CommonSound &first, int &count)
+    {
+        const BreakSounds sounds = breakSounds(material);
+        first = sounds.orMetal ? CommonSound::DebrisMetal1 : sounds.struck;
+        count = material == 5 || material == 9 ? 0 : (sounds.orMetal ? 2 : sounds.struckCount);
+    }
 
     /// Where each of them is in the game's sound folder.
     inline const char *commonSoundPath(CommonSound sound)

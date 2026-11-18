@@ -580,7 +580,7 @@ namespace hlrt
         // (Sixteenths of a unit. A casing is smaller than a unit.)
         const bool casing = piece.kind == kPieceShell || piece.kind == kPieceShotShell || piece.kind == kPieceCan;
         const int wide = casing ? 6 : piece.half * 16;
-        int high = piece.bounces >= 2 ? wide : fxMulShort(wide, tip < 0 ? -tip : tip); // (both 16-bit)
+        int high = pieceLanded(piece) >= 2 ? wide : fxMulShort(wide, tip < 0 ? -tip : tip); // (both 16-bit)
         if (casing)
             high = wide * 3;
         high = high < 4 ? 4 : high;

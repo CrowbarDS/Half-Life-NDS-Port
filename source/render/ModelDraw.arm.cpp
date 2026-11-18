@@ -1098,7 +1098,7 @@ namespace hlrt
                 casing.pos[k] = piece.pos[k];
             fx sy, cy, sp, cp;
             fxSinCos(piece.spin, sy, cy);
-            fxSinCos(piece.bounces >= 2 ? 0 : static_cast<std::uint16_t>(piece.spin * 3), sp, cp);
+            fxSinCos(pieceLanded(piece) >= 2 ? 0 : static_cast<std::uint16_t>(piece.spin * 3), sp, cp);
             const fx turn[9] = {fxMulShort(cy, cp), -sy, fxMulShort(cy, sp), fxMulShort(sy, cp), cy, fxMulShort(sy, sp), -sp, 0, cp};
             drawActor(casing, actors.models[m], static_cast<unsigned>(m), turn, -3 - m, actors.models[m].levelCount() - 1);
         }

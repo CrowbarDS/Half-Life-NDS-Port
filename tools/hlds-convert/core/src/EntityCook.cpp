@@ -2343,6 +2343,14 @@ namespace hlds
                 }
                 if (spawnflags & 256)
                     record.flags |= kLogicInstant;
+                // How it goes off when it breaks ("explodemagnitude": the
+                // game's ExplosionSetMagnitude), and whether its pieces fly
+                // the way the blow went -- only for "1" (the game's
+                // KeyValue reads "directed" and then sets it back).
+                record.damage = static_cast<std::uint16_t>(
+                    std::clamp(std::lround(numberKey(entity, "explodemagnitude")), 0L, 65535L));
+                if (entity.value("explosion") == "1")
+                    record.flags |= kLogicDirected;
                 // What it leaves when it breaks (an item kept where it is:
                 // below, with the actors).
                 if (const ItemClass *item = spawnObjectOf(entity))
@@ -4189,9 +4197,10 @@ namespace hlds
             // (... and a track train's start, where there is one.)
             if (record.kind == static_cast<std::uint8_t>(LogicKind::TrackTrain))
                 use(CommonSound::TrainStart, CommonSound::TrainStart);
-            // (... and what breaks, by what it is made of: struck, and
-            // breaking. The glass that never breaks is neither; what only
-            // its name breaks is never struck.)
+            // (... and what breaks, by what it is made of: struck, breaking,
+            // and its pieces landing. The glass that never breaks is none
+            // of those; what only its name breaks is never struck, but its
+            // pieces land.)
             const bool breaks = record.kind == static_cast<std::uint8_t>(LogicKind::Breakable) ||
                                 (record.kind == static_cast<std::uint8_t>(LogicKind::Pushable) &&
                                  (record.flags & kLogicBreaks));
@@ -4210,6 +4219,10 @@ namespace hlds
                         useSome(CommonSound::DebrisMetal1, 2);
                 }
                 useSome(sounds.bust, sounds.bustCount);
+                CommonSound landing = CommonSound::Count;
+                int landings = 0;
+                shardSounds(record.extra[1], landing, landings);
+                useSome(landing, landings);
             }
         }
         // The guns' own: those of what the map has to be held, and (`lazy`)

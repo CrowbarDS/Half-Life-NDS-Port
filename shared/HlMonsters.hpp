@@ -721,6 +721,10 @@ namespace hldata
             if (shot.fraction > 0 && shot.mover != static_cast<std::int16_t>(record.brush) &&
                 stopped < reach - fxFromInt(8))
                 continue;
+            // (The blow's way: out from the blast -- what it breaks into
+            // flies that way, if it is one that does.)
+            for (int k = 0; k < 3 && whole > 0; ++k)
+                w.struckFrom[k] = static_cast<fx>((static_cast<std::int64_t>(d[k]) << kFxShift) / whole);
             logicStrike(w, player, i, (damage * (radius - distance)) / radius, kDmgBlast);
         }
     }
@@ -3806,11 +3810,30 @@ namespace hldata
             a.speakMs -= ms;
         // The small things in flight; a casing rings as it lands (brass, or
         // a shotgun's shell: TE_BOUNCE_SHELL and TE_BOUNCE_SHOTSHELL).
-        const int rang = piecesTick(a, *w.world, ms);
+        int shard = -1;
+        fx shardSpeed = 0;
+        const int rang = piecesTick(a, *w.world, ms, &shard, &shardSpeed);
         if ((rang & 1) && w.heard != nullptr)
             w.heard->add(CommonSound::Shell, nullptr, 70, kRadiusSmall);
         if ((rang & 2) && w.heard != nullptr)
             w.heard->add(CommonSound::ShotShell, nullptr, 70, kRadiusSmall);
+        // ... and a shard of something broken, one landing in six (its
+        // client's): of what it was, at 0.8 -- less as it comes down slower
+        // than 450 -- and now and then at 95 to 105.
+        if (shard >= 0 && w.heard != nullptr)
+        {
+            const Piece &piece = a.pieces[shard];
+            CommonSound first = CommonSound::Count;
+            int count = 0;
+            shardSounds(static_cast<std::uint32_t>(pieceMaterial(piece)), first, count);
+            const std::uint32_t roll = static_cast<std::uint32_t>(piece.spin) * 0x9E3779B1u ^ a.seed;
+            const CommonSound sound =
+                static_cast<CommonSound>(static_cast<int>(first) + static_cast<int>((((roll >> 8) & 0xFFu) * count) >> 8));
+            const int speed = fxToInt(shardSpeed);
+            if (count > 0 && detail::commonThere(w, sound))
+                w.heard->add(static_cast<std::uint16_t>(sound), piece.pos, speed >= 450 ? 102 : 102 * speed / 450,
+                             kRadiusLarge, 0, ((roll >> 16) & 3) == 0 ? 95 + static_cast<int>((((roll >> 18) & 0xFFu) * 11) >> 8) : 100);
+        }
         decalsTick(a, ms);
         for (int i = 0; i < w.recordCount; ++i)
         {

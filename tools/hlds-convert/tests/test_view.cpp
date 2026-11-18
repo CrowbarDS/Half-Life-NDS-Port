@@ -368,8 +368,12 @@ namespace
             for (int k = 0; k < 3; ++k)
                 inside = inside && piece.pos[k] >= mins[k] && piece.pos[k] <= maxs[k];
         }
-        check(glass >= 6 && glass <= 16 && flying(kPieceShard) == glass && own && inside,
-              "broken glass throws a dozen or so pieces of itself, see-through, from where it was");
+        bool lasting = true;
+        for (const Piece &piece : a.pieces)
+            lasting = lasting && (piece.kind != kPieceShard || (piece.leftMs >= 2500 && piece.leftMs <= 3500));
+        check(glass == (4 * 96 + 96 * 80 + 80 * 4) / 432 && flying(kPieceShard) == glass && own && inside,
+              "broken glass throws a piece of itself for each 12 by 12 units of its sides, see-through, from where it was");
+        check(lasting, "... each for two and a half seconds and up to one more");
         int lay = 0, soonest = 100000;
         for (int n = 0; n < 60; ++n)
         {
@@ -377,7 +381,7 @@ namespace
             int lying = 0;
             for (const Piece &piece : a.pieces)
             {
-                if (piece.kind == kPieceShard && piece.bounces >= 2 && piece.pos[2] < mins[2])
+                if (piece.kind == kPieceShard && pieceLanded(piece) >= 2 && piece.pos[2] < mins[2])
                 {
                     ++lying;
                     soonest = piece.leftMs < soonest ? piece.leftMs : soonest;
@@ -387,10 +391,12 @@ namespace
         }
         check(lay >= glass / 3, "... which fall, and lie");
         check(soonest <= 500, "what lies is not left lying long");
-        check(flying(kPieceShard) == 0, "... and all of it is gone within two seconds");
-        check(piecesBurst(a, mins, maxs, 2, nullptr, 0) < glass && breakStyle(5).weight < breakStyle(2).weight &&
-                  breakStyle(1).lastMs > breakStyle(0).lastMs && breakStyle(1).lastMs <= 2000,
-              "metal breaks into fewer; ceiling tiles drift; wood lasts longer than glass, and none of it long");
+        for (int n = 0; n < 46; ++n)
+            g.frame();
+        check(flying(kPieceShard) == 0, "... and all of it is gone within three and a half seconds");
+        check(piecesBurst(a, mins, maxs, 2, nullptr, 0) == glass && breakStyle(5).weight < breakStyle(2).weight &&
+                  breakStyle(2).weight == 128,
+              "metal of the same size breaks into as many; the pieces fall at half the rate, ceiling tiles drift");
         // (Kept half as long again, where there is the room for it.)
         {
             const fx still[3] = {0, 0, 0};
@@ -689,6 +695,138 @@ namespace
         check(crackles > 0, "... and its computers crackle");
     }
 
+    /// What breaks, broken, in a room made here: two crates that go off
+    /// ("explodemagnitude"), close enough for the first to set off the
+    /// second; a pane whose pieces fly the way the blow went ("explosion"
+    /// 1 -- and one marked "directed", which the game reads as not); and
+    /// pieces of wood heard landing, one landing in six, one a tick at most.
+    void testBreaks()
+    {
+        const MaterialBook book = parseMaterials("W CRATEWOOD\n");
+        BoxRoom room;
+        for (int k = 0; k < 2; ++k)
+        {
+            room.mins[k] = -512;
+            room.maxs[k] = 512;
+        }
+        auto box = [&](float x0, float y0, float x1, float y1, float z1, const char *keys)
+        {
+            BrushBox b;
+            b.mins[0] = x0;
+            b.mins[1] = y0;
+            b.maxs[0] = x1;
+            b.maxs[1] = y1;
+            b.maxs[2] = z1;
+            b.className = "func_breakable";
+            b.keys = keys;
+            b.textureName = "cratewood";
+            room.brushes.push_back(b);
+        };
+        box(40, -16, 72, 16, 32, "\"material\" \"1\"\n\"health\" \"10\"\n\"explodemagnitude\" \"60\"\n");
+        box(-72, -16, -40, 16, 32, "\"material\" \"1\"\n\"health\" \"10\"\n\"explodemagnitude\" \"60\"\n");
+        box(-400, 300, -396, 364, 64, "\"material\" \"0\"\n\"health\" \"1\"\n\"explosion\" \"1\"\n");
+        box(300, 300, 304, 364, 64, "\"material\" \"0\"\n\"health\" \"1\"\n\"explosion\" \"directed\"\n");
+        auto game = std::make_unique<Game>();
+        game->materials = &book;
+        std::string error;
+        check(game->bsp.parse(buildBoxRoom(room), error), "the room of breakables builds");
+        finish(*game, nullptr);
+        if (!game->ok || game->view.brushCount != 4)
+        {
+            check(false, "... and cooks, with its four");
+            return;
+        }
+        Game &g = *game;
+        auto recordOf = [&](int brush)
+        {
+            for (std::uint32_t i = 0; i < g.view.logicCount; ++i)
+            {
+                if (g.view.logic[i].brush == brush)
+                    return static_cast<int>(i);
+            }
+            return -1;
+        };
+        const int first = recordOf(0), second = recordOf(1), pane = recordOf(2), other = recordOf(3);
+        check(first >= 0 && g.view.logic[first].damage == 60 && g.view.logic[pane].damage == 0 &&
+                  (g.view.logic[pane].flags & kLogicDirected) && !(g.view.logic[other].flags & kLogicDirected),
+              "what goes off and how much; a pane's pieces fly with the blow for \"1\", not for \"directed\"");
+        // The first crate broken: it goes off, and the second with it.
+        g.player.origin[0] = fxFromInt(-300);
+        g.player.origin[1] = fxFromInt(-300);
+        g.player.origin[2] = fxFromInt(36);
+        for (int n = 0; n < 5; ++n)
+            g.frame();
+        g.drain();
+        std::fill(g.timesHeard.begin(), g.timesHeard.end(), 0);
+        logicStrike(g.logic, g.player, first, 20);
+        g.drain();
+        check(g.states[first].dead && g.states[second].dead && g.times(CommonSound::Explode) == 2,
+              "a crate that goes off goes off as it breaks, and sets off the one in its blast");
+        check(g.logic.struckFrom[0] < -kFxOne / 2,
+              "... the second struck from the first's way: its pieces would fly away from it");
+
+        // Pieces thrown along a blow, and not.
+        ActorWorld &a = g.actors;
+        a.pieceLimit = kMaxPieces;
+        const fx mins[3] = {fxFromInt(-200), fxFromInt(-20), fxFromInt(100)};
+        const fx maxs[3] = {fxFromInt(-150), fxFromInt(20), fxFromInt(140)};
+        auto meanX = [&]()
+        {
+            std::int64_t sum = 0;
+            int n = 0;
+            for (const Piece &piece : a.pieces)
+            {
+                if (piece.kind != kPieceShard)
+                    continue;
+                sum += piece.velocity[0];
+                ++n;
+            }
+            return n > 0 ? static_cast<int>(sum / n / kFxOne) : 0;
+        };
+        for (Piece &piece : a.pieces)
+            piece.kind = 0;
+        const fx along[3] = {fxFromInt(200), 0, 0};
+        piecesBurst(a, mins, maxs, 1, nullptr, 0, along);
+        const int directed = meanX();
+        for (Piece &piece : a.pieces)
+            piece.kind = 0;
+        piecesBurst(a, mins, maxs, 1, nullptr, 0);
+        const int random = meanX();
+        check(directed > 140 && directed < 260 && random > -60 && random < 60,
+              "pieces fly along the blow at 200, give or take 100; or only give or take");
+
+        // Landing: wood's sounds, one in six, no more than one a tick.
+        int heard = 0, mostInATick = 0, landings = 0;
+        std::fill(g.timesHeard.begin(), g.timesHeard.end(), 0);
+        for (int round = 0; round < 6; ++round)
+        {
+            for (Piece &piece : a.pieces)
+                piece.kind = 0;
+            piecesBurst(a, mins, maxs, 1, nullptr, 0);
+            for (int n = 0; n < 45; ++n)
+            {
+                int before = 0;
+                for (const Piece &piece : a.pieces)
+                    before += piece.kind == kPieceShard ? pieceLanded(piece) : 0;
+                auto wood = [&]()
+                {
+                    return g.times(CommonSound::WoodHit1) + g.times(CommonSound::WoodHit2) + g.times(CommonSound::WoodHit3);
+                };
+                const int was = wood();
+                g.frame(); // (which empties the queue into timesHeard)
+                int after = 0;
+                for (const Piece &piece : a.pieces)
+                    after += piece.kind == kPieceShard ? pieceLanded(piece) : 0;
+                landings += after > before ? after - before : 0;
+                const int now = wood() - was;
+                heard += now;
+                mostInATick = now > mostInATick ? now : mostInATick;
+            }
+        }
+        std::printf("test_view: pieces of wood: %d landings, %d heard\n", landings, heard);
+        check(heard > 0 && mostInATick <= 1 && heard * 3 <= landings, "pieces of wood are heard landing, now and then, one a tick at most");
+    }
+
 } // namespace
 
 /// Who bleeds what, and what the player's going sounds like.
@@ -785,6 +923,7 @@ int main()
     testDeath();
     testRoomLanding();
     testImpacts();
+    testBreaks();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir != nullptr && dir[0] != '\0')
     {

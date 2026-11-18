@@ -1618,6 +1618,10 @@ namespace hldata
             player.health = 100;
     }
 
+    // (HlEffects.hpp: what goes off when something explosive breaks.)
+    inline void explodeAt(LogicWorld &w, PlayerState &player, const fx *at, int size, bool fireball, bool sound,
+                          bool hurts);
+
     namespace detail
     {
         /// The mover `index` (a door, a train) is held up by the player: its
@@ -1680,6 +1684,7 @@ namespace hldata
         }
 
         inline std::uint32_t logicChance(LogicWorld &w);
+        inline bool isBreakable(const LogicRecord &record);
 
         /// Whether the common sound `sound` is there to be heard: a map
         /// cooked before it was common has not got it, and one with no use
@@ -1795,6 +1800,8 @@ namespace hldata
                 w.achievements->push(AchEventType::Broke, 0);
             if (!breakableBroke(w, index, health))
                 recordSound(w, index, false); // what it is made of, breaking
+            fx middle[3];
+            recordMiddle(w, record, middle);
             if (record.brush != kNoBrush)
             {
                 if (player.groundMover == static_cast<int>(record.brush))
@@ -1806,6 +1813,18 @@ namespace hldata
             }
             breakSpill(w, record);
             logicUseTargets(w, player, index, kUseToggle, depth);
+            // And one with an "explodemagnitude" goes off, last of all, at
+            // its middle (ExplosionCreate). A row of them sets each other
+            // off, each inside the last's blast: four deep at most, the
+            // rest going off without hurting -- the stack is a DS's.
+            if (record.damage > 0 && isBreakable(record))
+            {
+                static int chain = 0;
+                const bool hurts = chain < 4;
+                ++chain;
+                explodeAt(w, player, middle, record.damage, true, true, hurts);
+                --chain;
+            }
         }
 
         inline bool isBreakable(const LogicRecord &record)

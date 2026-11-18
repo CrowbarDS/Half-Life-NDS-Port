@@ -140,10 +140,15 @@ namespace hldata
     /// The small things in flight, for `ms` more milliseconds: they fall,
     /// turn, land (bouncing once, then lying) and are gone when their time
     /// is up. Returns which casings rang on the floor this time: bit 0 a
-    /// brass one (or a can), bit 1 a shotgun's.
-    inline int piecesTick(ActorWorld &a, const MoveWorld &world, int ms)
+    /// brass one (or a can), bit 1 a shotgun's. `shard`: one shard that
+    /// landed this time and is heard landing -- the game's one landing in
+    /// six (by how it is turned, not by a chance drawn) -- or -1; `shardSpeed`
+    /// how fast it came down.
+    inline int piecesTick(ActorWorld &a, const MoveWorld &world, int ms, int *shard = nullptr, fx *shardSpeed = nullptr)
     {
         int rang = 0;
+        if (shard != nullptr)
+            *shard = -1;
         for (Piece &piece : a.pieces)
         {
             if (piece.kind == 0)
@@ -154,12 +159,13 @@ namespace hldata
                 piece.kind = 0;
                 continue;
             }
-            if (piece.bounces >= 2)
+            if (pieceLanded(piece) >= 2)
                 continue; // it lies where it fell
             piece.spin = static_cast<std::uint16_t>(piece.spin + piece.spinRate * ms);
             piece.velocity[2] -= static_cast<fx>((static_cast<std::int64_t>(fxFromInt(800)) * piece.weight * ms) / 256000);
-            // (What drifts does not fall faster than a leaf.)
-            if (piece.weight < 256 && piece.velocity[2] < -fxFromInt(120))
+            // (What drifts -- a ceiling tile's pieces -- does not fall
+            // faster than a leaf.)
+            if (piece.weight < 128 && piece.velocity[2] < -fxFromInt(120))
                 piece.velocity[2] = -fxFromInt(120);
             fx to[3];
             for (int i = 0; i < 3; ++i)
@@ -182,16 +188,23 @@ namespace hldata
             // speed, then it lies. (Which way the thing faces is not asked:
             // what a shard lands on is nearly always a floor.)
             ++piece.bounces;
-            if ((piece.kind == kPieceShell || piece.kind == kPieceCan) && piece.bounces == 1)
+            if ((piece.kind == kPieceShell || piece.kind == kPieceCan) && pieceLanded(piece) == 1)
                 rang |= 1;
-            else if (piece.kind == kPieceShotShell && piece.bounces == 1)
+            else if (piece.kind == kPieceShotShell && pieceLanded(piece) == 1)
                 rang |= 2;
             const fx speed = piece.velocity[2] < 0 ? -piece.velocity[2] : piece.velocity[2];
-            if (piece.bounces >= 2 || speed < fxFromInt(60))
+            if (piece.kind == kPieceShard && shard != nullptr && *shard < 0 && pieceMaterial(piece) >= 0 &&
+                ((piece.spin >> 8) * 6 >> 8) == 0)
+            {
+                *shard = static_cast<int>(&piece - a.pieces);
+                if (shardSpeed != nullptr)
+                    *shardSpeed = speed;
+            }
+            if (pieceLanded(piece) >= 2 || speed < fxFromInt(60))
             {
                 // It lies: and what lies is gone in a third of the time it
                 // had left (a floor of things lying is a floor of polygons).
-                piece.bounces = 2;
+                piece.bounces = static_cast<std::uint8_t>((piece.bounces & ~3) | 2);
                 piece.velocity[0] = piece.velocity[1] = piece.velocity[2] = 0;
                 piece.leftMs = piece.leftMs / 3 < 300 ? (piece.leftMs < 300 ? piece.leftMs : 300) : piece.leftMs / 3;
                 continue;

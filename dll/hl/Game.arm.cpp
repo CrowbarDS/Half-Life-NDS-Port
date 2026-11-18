@@ -1121,7 +1121,8 @@ namespace hlrt
                                                   false, ms, alive && input.second && !manning, alive && !manning ? pick : 0,
                                                   alive && input.reloadPressed && !manning);
             // What has broken: its pieces, each a patch of the thing's
-            // own texture, thrown from where it was.
+            // own texture, thrown from where it was -- along the blow that
+            // broke it, at 200, for one that flies that way.
             for (int n = 0; n < logic.brokeCount; ++n)
             {
                 const LevelView &view = level.view;
@@ -1145,7 +1146,9 @@ namespace hlrt
                     if (texture != kNoTexture)
                         textures[textureCount++] = texture;
                 }
-                piecesBurst(actors, mins, maxs, static_cast<int>(record.extra[1]), textures, textureCount);
+                const fx along[3] = {logic.struckFrom[0] * 200, logic.struckFrom[1] * 200, logic.struckFrom[2] * 200};
+                piecesBurst(actors, mins, maxs, static_cast<int>(record.extra[1]), textures, textureCount,
+                            (record.flags & kLogicDirected) ? along : nullptr);
                 // (The marks that were on it go with it.)
                 for (Decal &decal : actors.decals)
                 {

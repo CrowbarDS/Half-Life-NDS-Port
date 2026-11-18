@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 74;
+    inline constexpr std::uint16_t kLevelVersion = 75;
     /// The oldest level format this build reads. (49: a map's textures are
     /// stored in its archive as they are, never compressed, so that one that
     /// streams is read straight in during play. 50: each texture's record
@@ -123,7 +123,9 @@ namespace hldata
     /// for the map's own; and a texture of flesh, Material::Flesh, which
     /// it hears as concrete. 74: what breaks is heard from the common
     /// sounds, kCommonSoundsBefore74; its own is gone, and a build before
-    /// hears it break in silence.)
+    /// hears it break in silence. 75: a Breakable's "explodemagnitude" and
+    /// "explosion" (its damage, kLogicDirected), which a build before
+    /// leaves alone.)
     inline constexpr std::uint16_t kLevelMinReader = 70;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,
@@ -499,7 +501,9 @@ namespace hldata
         /// Something that breaks: it vanishes and fires its target. extra[0]
         /// is how much damage it takes, extra[1] what it is made of (7 is the
         /// glass that never breaks). It breaks when used by name; when stood
-        /// on, if kLogicPressure; when hit, unless kLogicTriggerOnly.
+        /// on, if kLogicPressure; when hit, unless kLogicTriggerOnly. Its
+        /// `damage`: the explosion it goes off with (its "explodemagnitude":
+        /// 0, none).
         Breakable,
         WallToggle,     ///< used: appears / disappears
         TriggerOnce,    ///< a volume: fires when the player enters, once
@@ -888,6 +892,9 @@ namespace hldata
     inline constexpr std::uint16_t kLogicTouch = 8;     ///< works by being walked into
     inline constexpr std::uint16_t kLogicFireOnce = 16; ///< a relay that removes itself
     inline constexpr std::uint16_t kLogicThread = 32;   ///< a multi_manager that can overlap itself
+    /// (The same bit on a Breakable, or a Pushable that breaks: its pieces
+    /// fly the way the blow that broke it went -- the game's "explosion" 1.)
+    inline constexpr std::uint16_t kLogicDirected = 32;
     /// A rotating door that always opens the same way. Without it, it opens
     /// away from whoever opens it.
     inline constexpr std::uint16_t kLogicOneWay = 64;

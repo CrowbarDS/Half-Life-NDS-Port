@@ -336,6 +336,9 @@ namespace hldata
         std::uint8_t kind = 0;   ///< kPiece*; 0: none
         std::uint8_t half = 2;   ///< units from its middle to its edge
         std::uint8_t alpha = 31; ///< how solid it is drawn (glass is not)
+        /// How many times it has landed (the low two bits: pieceLanded);
+        /// and above them a shard's what it was broken off (a breakable's
+        /// material, and one), for the sound of its landing.
         std::uint8_t bounces = 0;
         std::uint16_t texture = 0xFFFF; ///< kPieceShard: into the level's Textures
         std::uint8_t s = 0, t = 0;      ///< ... and where in it its patch is, in eighths
@@ -347,6 +350,10 @@ namespace hldata
         fx velocity[3] = {0, 0, 0};
         std::int32_t leftMs = 0;
     };
+    /// How many times a piece has landed: 2, it lies.
+    constexpr int pieceLanded(const Piece &piece) { return piece.bounces & 3; }
+    /// What a shard was broken off (a breakable's material), or -1.
+    constexpr int pieceMaterial(const Piece &piece) { return (piece.bounces >> 4) - 1; }
     inline constexpr std::uint8_t kPieceShard = 1;
     inline constexpr std::uint8_t kPieceSpeck = 2; ///< plain, tiny, in `colour`
     inline constexpr std::uint8_t kPieceShell = 3; ///< brass (models/shell.mdl); it rings once as it lands
@@ -354,29 +361,27 @@ namespace hldata
     inline constexpr std::uint8_t kPieceCan = 5;       ///< a soda can out of its machine (plain, in `colour`)
     inline constexpr int kMaxPieces = 64;
 
-    /// What something breaks into, by what it is made of (the game's
-    /// func_breakable materials: 0 glass, 1 wood, 2 metal, 3 flesh, 4 cinder
-    /// block, 5 ceiling tile, 6 computer, 7 the glass that never breaks, 8
-    /// rock): how many pieces for each 4096 square units of its biggest
-    /// face (and no fewer than `least`), how big, how fast they leave, how
-    /// they fall, how solid they look and how long they lie.
+    /// What something breaks into looks like, by what it is made of (the
+    /// game's func_breakable materials: 0 glass, 1 wood, 2 metal, 3 flesh, 4
+    /// cinder block, 5 ceiling tile, 6 computer, 7 the glass that never
+    /// breaks, 8 rock): how big a piece is, how solid it is drawn (glass is
+    /// half see-through, as the game draws it), and how it falls (256 as
+    /// anything; the game's pieces fall at half that, a ceiling tile's
+    /// drift).
     struct BreakStyle
     {
-        std::uint8_t per, least, most, half, alpha;
-        std::int16_t speed, weight;
-        std::int16_t lastMs;
+        std::uint8_t half, alpha;
+        std::int16_t weight;
     };
     inline constexpr BreakStyle breakStyle(int material)
     {
         switch (material)
         {
-        case 0:  return {6, 6, 16, 3, 18, 140, 256, 1200};  // glass: many, light, soon gone
-        case 7:  return {6, 6, 16, 3, 18, 140, 256, 1200};
-        case 1:  return {4, 5, 12, 4, 31, 170, 256, 1800};  // wood
-        case 2:  return {3, 4, 10, 4, 31, 150, 256, 1800};  // metal: few and heavy
-        case 5:  return {4, 4, 10, 4, 31, 60, 110, 1800};   // ceiling tiles drift down
-        case 6:  return {4, 5, 12, 3, 31, 180, 256, 1800};  // a computer
-        default: return {4, 5, 12, 4, 31, 160, 256, 1800};  // cinder block, rock, flesh
+        case 0:
+        case 7:  return {3, 16, 128}; // glass
+        case 5:  return {4, 31, 110}; // ceiling tiles
+        case 6:  return {3, 31, 128}; // a computer
+        default: return {4, 31, 128}; // wood, metal, cinder block, rock, flesh
         }
     }
 
@@ -1463,22 +1468,30 @@ namespace hldata
 
     /// Something made of `material` and as big as the box `mins`..`maxs`
     /// has broken: its pieces, each a patch of one of `textures` (the
-    /// thing's own; none: plain), thrown out from its middle.
+    /// thing's own; none: plain). As the game's (TE_BREAKMODEL, its client's
+    /// R_BreakModel): one for each 12 by 12 units of its three sides
+    /// together, a hundred at most (and no more than there is room for);
+    /// each from anywhere in it, at `along` (the blow's way, for one that
+    /// flies that way; null, none) give or take 100 units a second across
+    /// and up to 100 up; and gone after two and a half seconds and up to one
+    /// more. Returns how many.
     inline int piecesBurst(ActorWorld &a, const fx *mins, const fx *maxs, int material, const std::uint16_t *textures,
-                           int textureCount)
+                           int textureCount, const fx *along = nullptr)
     {
         const BreakStyle style = breakStyle(material);
-        // Its biggest face, in units of 64 by 64.
         const int size[3] = {fxToInt(maxs[0] - mins[0]), fxToInt(maxs[1] - mins[1]), fxToInt(maxs[2] - mins[2])};
-        const int thin = size[0] <= size[1] && size[0] <= size[2] ? 0 : (size[1] <= size[2] ? 1 : 2);
-        const int face = (size[(thin + 1) % 3] * size[(thin + 2) % 3]) / 4096;
-        int count = style.per * face;
-        count = count < style.least ? style.least : (count > style.most ? style.most : count);
+        // (Its sides' areas by 432: a multiply, not a divide, for a constant.)
+        int count = (size[0] * size[1] + size[1] * size[2] + size[2] * size[0]) / 432;
+        const int room = a.pieceLimit < 1 ? 1 : (a.pieceLimit > kMaxPieces ? kMaxPieces : a.pieceLimit);
+        count = count > 100 ? 100 : count;
+        count = count > room ? room : count;
         auto chance = [&a]() -> std::uint32_t
         {
             a.seed = a.seed * 1664525u + 1013904223u;
             return a.seed >> 8;
         };
+        // (-100..100: 201 by a multiply.)
+        auto either = [&chance]() { return static_cast<int>(((chance() & 0xFFFFu) * 201) >> 16) - 100; };
         for (int n = 0; n < count; ++n)
         {
             fx at[3], velocity[3];
@@ -1486,15 +1499,14 @@ namespace hldata
             {
                 const fx span = maxs[k] - mins[k];
                 at[k] = mins[k] + static_cast<fx>((static_cast<std::int64_t>(span) * (chance() & 255)) >> 8);
-                // Out from the middle, and anyhow besides.
-                const fx out = at[k] - (mins[k] + span / 2);
-                velocity[k] = out * 3 + fxFromInt(static_cast<int>(chance() % static_cast<std::uint32_t>(style.speed * 2 + 1)) - style.speed);
+                velocity[k] = (along != nullptr ? along[k] : 0) +
+                              fxFromInt(k == 2 ? static_cast<int>(((chance() & 0xFFFFu) * 101) >> 16) : either());
             }
-            velocity[2] += fxFromInt(style.speed / 2);
-            Piece &piece = pieceAdd(a, kPieceShard, at, velocity, style.lastMs + static_cast<int>(chance() % 400));
+            Piece &piece = pieceAdd(a, kPieceShard, at, velocity, 2500 + static_cast<int>(((chance() & 0xFFFFu) * 1001) >> 16));
             piece.half = static_cast<std::uint8_t>(style.half + chance() % 3);
             piece.alpha = style.alpha;
             piece.weight = style.weight;
+            piece.bounces = static_cast<std::uint8_t>((material + 1) << 4);
             piece.texture = textureCount > 0 ? textures[chance() % static_cast<std::uint32_t>(textureCount)] : 0xFFFF;
             piece.s = static_cast<std::uint8_t>(chance() & 7);
             piece.t = static_cast<std::uint8_t>(chance() & 7);

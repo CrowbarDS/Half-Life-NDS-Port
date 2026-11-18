@@ -1400,11 +1400,17 @@ namespace hlds
                     const bool breaks = record.kind == static_cast<std::uint8_t>(LogicKind::Breakable) ||
                                         (record.kind == static_cast<std::uint8_t>(LogicKind::Pushable) &&
                                          (record.flags & kLogicBreaks));
-                    if (!breaks || record.extra[1] == 7 || (record.flags & kLogicTriggerOnly))
+                    if (!breaks || record.extra[1] == 7)
                         continue;
+                    // (Struck, and its pieces landing.)
                     const BreakSounds sounds = breakSounds(record.extra[1]);
-                    for (int k = 0; k < sounds.struckCount; ++k)
+                    for (int k = 0; k < sounds.struckCount && !(record.flags & kLogicTriggerOnly); ++k)
                         broken[static_cast<std::size_t>(sounds.struck) + k] = true;
+                    CommonSound landing = CommonSound::Count;
+                    int landings = 0;
+                    shardSounds(record.extra[1], landing, landings);
+                    for (int k = 0; k < landings; ++k)
+                        broken[static_cast<std::size_t>(landing) + k] = true;
                 }
                 static constexpr struct
                 {
