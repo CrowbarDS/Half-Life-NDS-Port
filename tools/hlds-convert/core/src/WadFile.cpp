@@ -179,17 +179,27 @@ namespace hlds
     void WadSet::openForMap(const std::filesystem::path &gameDir, std::string_view wadKey,
                             std::vector<std::string> &missing)
     {
+        openForMap(std::vector<std::filesystem::path>{gameDir}, wadKey, missing);
+    }
+
+    void WadSet::openForMap(const std::vector<std::filesystem::path> &folders, std::string_view wadKey,
+                            std::vector<std::string> &missing)
+    {
         wads_.clear();
 
-        // The game folder's files by lower-cased name: the key says
-        // "halflife.wad" where the disc may say "HALFLIFE.WAD".
+        // The game folders' files by lower-cased name: the key says
+        // "halflife.wad" where the disc may say "HALFLIFE.WAD" (Opposing
+        // Force's OPFOR.WAD). The first folder to have one gives it.
         std::unordered_map<std::string, std::filesystem::path> onDisk;
-        std::error_code ec;
-        for (auto it = std::filesystem::directory_iterator(gameDir, ec);
-             !ec && it != std::filesystem::directory_iterator(); it.increment(ec))
+        for (const std::filesystem::path &folder : folders)
         {
-            if (it->is_regular_file(ec))
-                onDisk[lower(it->path().filename().string())] = it->path();
+            std::error_code ec;
+            for (auto it = std::filesystem::directory_iterator(folder, ec);
+                 !ec && it != std::filesystem::directory_iterator(); it.increment(ec))
+            {
+                if (it->is_regular_file(ec))
+                    onDisk.emplace(lower(it->path().filename().string()), it->path());
+            }
         }
 
         for (const std::string &name : wadNamesFromKey(wadKey))

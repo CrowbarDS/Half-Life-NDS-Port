@@ -19,6 +19,7 @@
 #include "hlds/LevelReport.hpp"
 #include "hlds/Portals.hpp"
 #include "hlds/TitlesFile.hpp"
+#include "HlGame.hpp"
 #include "HlManifest.hpp"
 #include "hlds/LightBake.hpp"
 
@@ -26,16 +27,26 @@ namespace hlds
 {
     /// `git describe` when it was built (cmake/Version.cmake).
     extern const char kConverterVersion[];
-    /// The map a new game starts in.
+    /// The map a new game of Half-Life starts in (another game's: HlGame.hpp).
     inline constexpr const char *kDefaultStartMap = "c0a0";
 
     struct ConvertOptions
     {
-        std::filesystem::path gameDir;  ///< the game's "valve" folder
+        /// The game's folder: Half-Life's "valve", or an expansion's beside
+        /// it ("bshift", "gearbox").
+        std::filesystem::path gameDir;
         /// A translation's folder beside it (valve_french): each file it has
         /// is taken in place of the game's -- text, voices, the credits'
         /// letters. Empty: the game as it is (English).
         std::filesystem::path languageDir;
+        /// Which game gameDir is (HlGame.hpp). kGameCount: told by the
+        /// folder's name (gameOfFolder).
+        hldata::GameId game = hldata::kGameCount;
+        /// An expansion's: Half-Life's folder and its translation's, which
+        /// the expansion falls back to for what it has not got of its own,
+        /// as the game itself does. Empty baseDir: "valve" beside gameDir.
+        std::filesystem::path baseDir;
+        std::filesystem::path baseLanguageDir;
         std::filesystem::path cardRoot; ///< the root of the SD card
         /// Where the converter keeps its own files -- levels, textures,
         /// models and sounds one by one, which the card's archives are then
@@ -183,8 +194,15 @@ namespace hlds
         explicit Converter(ConvertOptions options);
 
         /// <card>/_nds/hl_nds/data -- the DS builds the same path
-        /// (Global::dataDir).
+        /// (Global::rootDir). Half-Life's files are there; an expansion's in
+        /// a folder of its own under it (gameDataDir).
         static std::filesystem::path dataDir(const std::filesystem::path &cardRoot);
+        /// The data folder of `game` on the card: dataDir's, or under it.
+        static std::filesystem::path gameDataDir(const std::filesystem::path &cardRoot, hldata::GameId game);
+        /// The game this converter cooks (told by its folder when not said).
+        hldata::GameId game() const { return options_.game; }
+        /// This game's data folder on the card.
+        std::filesystem::path cardDir() const { return gameDataDir(options_.cardRoot, options_.game); }
 
         /// What can be checked before any work is done: the folders exist, the
         /// game folder holds maps, the encoder can be found. Empty when all is
@@ -247,12 +265,30 @@ namespace hlds
     std::string chapterOf(const std::string &map, const std::vector<std::pair<std::string, std::string>> &titled);
     /// Every map in the game's folder that names a chapter's title, and the
     /// title: read out of each map's own entities.
+    /// The game a folder of the player's is: by its name (valve, bshift,
+    /// gearbox); any other (a mod) is taken for Half-Life.
+    hldata::GameId gameOfFolder(const std::filesystem::path &gameDir);
+    /// The game's name as its folder gives it (liblist.gam's `game`: "Blue
+    /// Shift"); empty if it does not.
+    std::string gameTitle(const std::filesystem::path &gameDir);
+    /// Half-Life's folder ("valve", any case) beside `gameDir`; empty if none.
+    std::filesystem::path baseFolder(const std::filesystem::path &gameDir);
+    /// The folders a game's files are looked for in, the first to have one
+    /// giving it: the translation's, the game's own, then (an expansion's)
+    /// Half-Life's translation's and Half-Life's.
+    std::vector<std::filesystem::path> gameFolders(const ConvertOptions &options);
     /// The translations installed beside `gameDir` (Steam's valve_french:
     /// "french"), in order: folders named after it plus "_<language>" with a
     /// titles.txt or a resource/<folder>.txt (valve_hd has neither).
     std::vector<std::string> gameLanguages(const std::filesystem::path &gameDir);
     /// Translation `language`'s folder beside `gameDir`; empty if there is none.
     std::filesystem::path languageFolder(const std::filesystem::path &gameDir, const std::string &language);
+    /// Sets `options`' translation folders for `language` ("english" or
+    /// empty: none): the game's (valve_french) and, for an expansion,
+    /// Half-Life's as well (gearbox_french has nothing of its own; the
+    /// voices it shares with Half-Life are in valve_french). False if
+    /// neither folder has that translation.
+    bool chooseLanguage(ConvertOptions &options, const std::string &language);
 
     std::vector<std::pair<std::string, std::string>> chapterTitles(const std::filesystem::path &gameDir,
                                                                    const TitlesBook *titles);

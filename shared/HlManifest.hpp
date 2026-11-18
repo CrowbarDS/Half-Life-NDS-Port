@@ -25,12 +25,19 @@
 
 #include "HlYas.hpp"
 
+#include "HlGame.hpp"
 #include "HlLevel.hpp"
 
 namespace hldata
 {
     inline constexpr char kManifestMagic[4] = {'H', 'L', 'M', 'F'};
-    inline constexpr std::uint16_t kManifestVersion = 6;
+    inline constexpr std::uint16_t kManifestVersion = 7;
+    /// The oldest still read: 6, before the game was named (Half-Life's).
+    inline constexpr std::uint16_t kManifestMinVersion = 6;
+    inline constexpr bool manifestVersionOk(std::uint16_t version)
+    {
+        return version >= kManifestMinVersion && version <= kManifestVersion;
+    }
 
     /// The groups of maps a console with no card can be sent (air/ on the
     /// card): 0 is none. Each has its base, air/<name>.base.npac, which is
@@ -100,11 +107,20 @@ namespace hldata
         std::vector<ManifestMap> maps;
         /// The size of each AirGroup's base archive (0: there is none).
         std::vector<std::uint32_t> airBaseBytes;
+        /// Which game the maps are (GameId), and its name as the player's
+        /// game folder gives it (liblist.gam's `game`; empty: the table's).
+        std::uint8_t game = kGameHalfLife;
+        std::string title;
+        /// The format it was written in: read before the payload, which it
+        /// decides (version 6 ends before `game`). Not itself written.
+        std::uint16_t format = kManifestVersion;
 
         template <class Ar>
         void serialize(Ar &ar)
         {
             ar &converterVersion &startMap &maps &airBaseBytes;
+            if (format >= 7)
+                ar &game &title;
         }
 
         const ManifestMap *find(const std::string &name) const
@@ -127,7 +143,7 @@ namespace hldata
 
         ManifestHeader header{};
         std::memcpy(header.magic, kManifestMagic, sizeof(header.magic));
-        header.version = kManifestVersion;
+        header.version = manifest.format; // kManifestVersion, unless a test writes an old one
         header.levelVersion = kLevelVersion;
         header.payloadBytes = static_cast<std::uint32_t>(buf.size);
         header.crc32 = crc32(reinterpret_cast<const std::uint8_t *>(buf.data),
@@ -155,7 +171,7 @@ namespace hldata
             return std::string();
         std::memcpy(&header, data, sizeof(header));
         char text[128];
-        if (header.version != kManifestVersion)
+        if (!manifestVersionOk(header.version))
             std::snprintf(text, sizeof(text), "The card's manifest.bin is format %u; this version needs %u.",
                           static_cast<unsigned>(header.version), static_cast<unsigned>(kManifestVersion));
         else if (header.levelVersion < kLevelMinVersion)
@@ -178,7 +194,7 @@ namespace hldata
         std::memcpy(&header, data, sizeof(header));
         if (std::memcmp(header.magic, kManifestMagic, sizeof(header.magic)) != 0)
             return ManifestError::NotAManifest;
-        if (header.version != kManifestVersion ||
+        if (!manifestVersionOk(header.version) ||
             header.levelVersion < kLevelMinVersion || header.levelVersion > kLevelVersion)
             return ManifestError::OtherVersion;
         if (header.payloadBytes != size - sizeof(header) ||
@@ -187,7 +203,11 @@ namespace hldata
 
         yas::mem_istream is(data + sizeof(header), header.payloadBytes);
         yas::binary_iarchive<yas::mem_istream, kYasFlags> ia(is);
+        out.format = header.version;
         ia &out;
+        if (out.game >= kGameCount)
+            return ManifestError::OtherVersion;
+        out.format = kManifestVersion; // as it would be written again
         return ManifestError::Ok;
     }
 } // namespace hldata

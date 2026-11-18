@@ -60,6 +60,11 @@ namespace hlds
         /// cannot be found.
         void openForMap(const std::filesystem::path &gameDir, std::string_view wadKey,
                         std::vector<std::string> &missing);
+        /// The same over several folders, the first that has a WAD giving it:
+        /// an expansion's own (Blue Shift has its own halflife.wad), then
+        /// Half-Life's, as the game itself looks.
+        void openForMap(const std::vector<std::filesystem::path> &folders, std::string_view wadKey,
+                        std::vector<std::string> &missing);
 
         bool contains(std::string_view lowerName) const;
         bool read(std::string_view lowerName, IndexedImage &out, std::string &error) const;

@@ -52,6 +52,12 @@ namespace hlds
 
     Converter::Converter(ConvertOptions options) : options_(std::move(options))
     {
+        if (options_.game >= hldata::kGameCount)
+            options_.game = gameOfFolder(options_.gameDir);
+        if (options_.game != hldata::kGameHalfLife && options_.baseDir.empty())
+            options_.baseDir = baseFolder(options_.gameDir);
+        // (What the shared code asks of the game: its weapons' slots...)
+        hldata::activeGame = options_.game;
         // (What the run may keep busy: the encoders too, not only the maps.)
         setEncodeThreads(options_.jobs > 0 ? static_cast<unsigned>(options_.jobs) : 0u);
     }
@@ -61,24 +67,30 @@ namespace hlds
         return cardRoot / "_nds" / "hl_nds" / "data";
     }
 
+    fs::path Converter::gameDataDir(const fs::path &cardRoot, hldata::GameId game)
+    {
+        const char *own = hldata::gameInfo(game).cardDir;
+        return *own != '\0' ? dataDir(cardRoot) / fs::path(own).parent_path() : dataDir(cardRoot);
+    }
+
     fs::path Converter::stageDir() const
     {
         if (!options_.stageRoot.empty())
-            return dataDir(options_.stageRoot);
+            return gameDataDir(options_.stageRoot, options_.game);
         // (A card root given with a slash at its end has no last name.)
         fs::path card = options_.cardRoot;
         if (!card.has_filename())
             card = card.parent_path();
         fs::path beside = card;
         beside += "-stage";
-        return dataDir(beside);
+        return gameDataDir(beside, options_.game);
     }
 
     void Converter::packInto(MapResult &result) const
     {
         PackReport report;
         std::string why;
-        if (!packMap(stageDir(), dataDir(options_.cardRoot), result.name, options_.compress, report, why))
+        if (!packMap(stageDir(), cardDir(), result.name, options_.compress, report, why))
         {
             result.ok = false;
             result.error = "the map's archive was not made: " + why;
@@ -141,7 +153,7 @@ namespace hlds
         {
             PackReport report;
             std::string why;
-            if (!packAirCommon(stageDir(), dataDir(options_.cardRoot), report, why))
+            if (!packAirCommon(stageDir(), cardDir(), report, why))
                 common_.warnings.push_back("the air common archive was not made: " + why);
         }
         for (int g = 0; g < 3; ++g)
@@ -149,7 +161,7 @@ namespace hlds
             std::sort(groups[g].begin(), groups[g].end());
             AirReport report;
             std::string why;
-            if (!packAir(stageDir(), dataDir(options_.cardRoot), hldata::kAirGroupNames[g + 1], groups[g], g == 0, report,
+            if (!packAir(stageDir(), cardDir(), hldata::kAirGroupNames[g + 1], groups[g], g == 0, report,
                          why))
             {
                 common_.warnings.push_back(std::string("the air archives of ") + hldata::kAirGroupNames[g + 1] +
@@ -164,7 +176,7 @@ namespace hlds
                 std::string failed;
                 // (The demos' maps, groups after the first: sent with all of
                 // their bank.)
-                if (packAirFull(stageDir(), dataDir(options_.cardRoot), map, bytes, memory, failed, g != 0, &bank))
+                if (packAirFull(stageDir(), cardDir(), map, bytes, memory, failed, g != 0, &bank))
                     common_.guest.push_back("  " + map + " at full quality: " + std::to_string(bytes / 1024) + " KB sent, " +
                                             std::to_string(memory / 1024) + " KB in memory" +
                                             (g != 0 ? ", bank " + std::to_string(bank / 1024) + " KB" : std::string()));
@@ -212,7 +224,11 @@ namespace hlds
     {
         std::error_code ec;
         if (options_.gameDir.empty() || !fs::is_directory(options_.gameDir / "maps", ec))
-            return "The game folder has no 'maps' folder. Choose Half-Life's 'valve' folder.";
+            return "The game folder has no 'maps' folder. Choose Half-Life's 'valve' folder, "
+                   "or an expansion's beside it ('bshift', 'gearbox').";
+        if (options_.game != hldata::kGameHalfLife && options_.baseDir.empty())
+            return "Half-Life's 'valve' folder was not found beside the expansion's: it has files the expansion "
+                   "uses.";
         if (listMaps().empty())
             return "The game folder's 'maps' folder holds no .bsp files.";
         if (options_.cardRoot.empty() || !fs::is_directory(options_.cardRoot, ec))
@@ -309,16 +325,40 @@ namespace hlds
         }
 
         /// One of the game's files: the chosen language's, if its folder has
-        /// it (valve_french's voices and text over valve's), else the game's.
+        /// it (valve_french's voices and text over valve's), else the game's;
+        /// for an expansion, then Half-Life's (gameFolders).
         fs::path findGameFile(const ConvertOptions &options, const std::string &relative)
+        {
+            for (const fs::path &folder : gameFolders(options))
+            {
+                fs::path found = findNoCase(folder, relative);
+                if (!found.empty())
+                    return found;
+            }
+            return fs::path();
+        }
+        /// ... the same, of the game's own folders only (its translation's
+        /// and its own): what would be wrong taken from Half-Life's.
+        fs::path findOwnFile(const ConvertOptions &options, const std::string &relative)
         {
             if (!options.languageDir.empty())
             {
-                const fs::path translated = findNoCase(options.languageDir, relative);
-                if (!translated.empty())
-                    return translated;
+                fs::path found = findNoCase(options.languageDir, relative);
+                if (!found.empty())
+                    return found;
             }
             return findNoCase(options.gameDir, relative);
+        }
+        /// The first of the game's folders with all six sides of sky `name`;
+        /// empty if none has.
+        fs::path skyFolder(const ConvertOptions &options, const std::string &name)
+        {
+            for (const fs::path &folder : gameFolders(options))
+            {
+                if (skyExists(folder, name))
+                    return folder;
+            }
+            return fs::path();
         }
     } // namespace
 
@@ -346,7 +386,7 @@ namespace hlds
         result.stoodIn = standInEntities(entities);
         std::vector<std::string> missingWads;
         WadSet wads;
-        wads.openForMap(options_.gameDir, entities.empty() ? "" : entities[0].value("wad"),
+        wads.openForMap(gameFolders(options_), entities.empty() ? "" : entities[0].value("wad"),
                         missingWads);
 
         // The texture plan comes first: it decides which faces are drawn at
@@ -378,10 +418,10 @@ namespace hlds
             // A sky the game folder has not got: the game draws its default
             // one instead (c2a2a's 'day', c2a3c's 'dawn').
             if (!skyName.empty() && skyName != "desert" &&
-                (skyName.size() > 12 || !skyExists(options_.gameDir, skyName)) &&
-                skyExists(options_.gameDir, "desert"))
+                (skyName.size() > 12 || skyFolder(options_, skyName).empty()) &&
+                !skyFolder(options_, "desert").empty())
                 skyName = "desert";
-            if (!skyName.empty() && (skyName.size() > 12 || !skyExists(options_.gameDir, skyName)))
+            if (!skyName.empty() && (skyName.size() > 12 || skyFolder(options_, skyName).empty()))
             {
                 result.warnings.push_back("its sky '" + skyName + "' was not found: drawn without one");
                 skyName.clear();
@@ -479,8 +519,11 @@ namespace hlds
             // in on: the game's maps are named in the order they are played
             // (c2a2b2 the satchel and the tripmine, c2a3 the crossbow, c2a4e
             // the snark).
+            // (An expansion's maps are not Half-Life's order: each may have
+            // any of them.)
+            const bool halfLife = options_.game == hldata::kGameHalfLife;
             const bool campaign = map.size() >= 4 && map[0] == 'c' && map[2] == 'a';
-            auto from = [&](const char *first) { return campaign && map >= first; };
+            auto from = [&](const char *first) { return !halfLife || (campaign && map >= first); };
             const Held kLater[] = {
                 {"v_crossbow", from("c2a3"),
                  {"idle1", "idle2", "fidget1", "fidget2", "fire1", "fire3", "reload", "draw1"}},
@@ -602,31 +645,19 @@ namespace hlds
         auto cookOne = [&](const ModelNeed &need, int skinTexels, ModelOut &out, bool quiet,
                            const ModelLean &lean = ModelLean())
         {
-            // The map names the file in whatever case its author typed.
-            fs::path file = options_.gameDir;
-            bool found = true;
-            std::string rest = need.file;
-            for (char &c : rest)
-                c = c == '\\' ? '/' : c;
-            for (std::size_t at = 0; at <= rest.size() && found;)
+            // The map names the file in whatever case its author typed. An
+            // expansion's own model (its hands, its scientists) before
+            // Half-Life's of the same name.
+            fs::path file;
+            for (const fs::path &folder : gameFolders(options_))
             {
-                const std::size_t slash = std::min(rest.find('/', at), rest.size());
-                const std::string part = rest.substr(at, slash - at);
-                at = slash + 1;
-                if (part.empty())
-                    continue;
-                found = false;
-                std::error_code ec;
-                for (const auto &entry : fs::directory_iterator(file, ec))
-                {
-                    if (lower(entry.path().filename().string()) == part)
-                    {
-                        file = entry.path();
-                        found = true;
-                        break;
-                    }
-                }
+                if (folder == options_.languageDir || folder == options_.baseLanguageDir)
+                    continue; // (translations have no models)
+                file = findNoCase(folder, need.file);
+                if (!file.empty())
+                    break;
             }
+            const bool found = !file.empty();
             MdlFile mdl;
             std::string why;
             if (!found || need.name.size() + 1 >= sizeof(hldata::ModelRef::name) || !mdl.load(file, why))
@@ -849,9 +880,11 @@ namespace hlds
         // the two slots of the weapon in hand (held at kLazySkinTexels
         // there, the lighter cook) set by first. What does not fit is made
         // smaller for it (guestTexturePlan; the guest's level, Pack).
-        bool airMap = result.name.rfind("t0a0", 0) == 0 || result.name.rfind("hldemo", 0) == 0;
+        // (Only Half-Life's: an expansion is not sent, DSi only as it is.)
+        const bool sendable = hldata::gameInfo(options_.game).multiplayer;
+        bool airMap = sendable && (result.name.rfind("t0a0", 0) == 0 || result.name.rfind("hldemo", 0) == 0);
         for (const Entity &entity : entities)
-            airMap = airMap || entity.className() == "info_player_deathmatch";
+            airMap = airMap || (sendable && entity.className() == "info_player_deathmatch");
         TexturePlan guestPlan;
         if (airMap)
         {
@@ -1488,7 +1521,7 @@ namespace hlds
             ++result.musicTracks;
             char cardName[16];
             hldata::musicFileName(track, cardName, sizeof(cardName));
-            const fs::path file = dataDir(options_.cardRoot) / "music" / cardName;
+            const fs::path file = cardDir() / "music" / cardName;
             // The game's track N is the media file cdTrackFile names. Made
             // from it, it is not made again -- what it was made from is kept
             // in the stage beside it (a card's tracks made before were each
@@ -1505,7 +1538,7 @@ namespace hlds
                 if (readFile(from, said, was) && std::string(said.begin(), said.end()) == source)
                     continue;
             }
-            const fs::path mp3 = findNoCase(options_.gameDir / "media", source);
+            const fs::path mp3 = findGameFile(options_, "media/" + std::string(source));
             std::vector<std::uint8_t> packed;
             WavData music;
             std::vector<std::int16_t> left, right;
@@ -1662,7 +1695,7 @@ namespace hlds
                              cookTextures(bsp, wads, guestPlan, encoder, stageDir() / "tex", guestReport,
                                           result.error)) &&
                             (skyName.empty() ||
-                             cookSky(options_.gameDir, skyName, encoder,
+                             cookSky(skyFolder(options_, skyName), skyName, encoder,
                                      stageDir() / "tex", result.error));
             // The models' skins: one for each size a model's skin is made
             // in (a map crowded with models has them smaller), shared by
@@ -2068,7 +2101,7 @@ namespace hlds
             // on a PC), then what spraypaint.wad has that it has not.
             std::vector<NamedPicture> logos;
             std::set<std::string> named;
-            const fs::path folder = findNoCase(options_.gameDir, "logos");
+            const fs::path folder = findGameFile(options_, "logos");
             std::vector<fs::path> files;
             std::error_code ec;
             for (auto it = fs::directory_iterator(folder, ec); !folder.empty() && !ec && it != fs::directory_iterator();
@@ -2195,7 +2228,17 @@ namespace hlds
             }
             cookPerson("models/player/gordon/gordon.mdl", {"look_idle"}, 64 * 64, stageDir() / "gst" / "lobby.hmd",
                        stageDir() / "gst" / "lobby.htx");
-            if (menuBackground(find, background, why) &&
+            // (An expansion's picture is its own: Half-Life's wide one -- its
+            // HD layout and the tiles it names -- is not, and an expansion
+            // without a layout of its own takes Half-Life's plain one, whose
+            // tiles it has, as the game does.)
+            const auto findMenu = [&](const std::string &relative)
+            {
+                if (options_.game != hldata::kGameHalfLife && lower(relative) == "resource/hd_backgroundlayout.txt")
+                    return findOwnFile(options_, relative);
+                return find(relative);
+            };
+            if (menuBackground(findMenu, background, why) &&
                 texture(background, TextureFormat::Tex4x4, 1024, 0, hldata::kMenuFile))
                 result.menu = true;
             else
@@ -2205,7 +2248,11 @@ namespace hlds
         {
             std::vector<std::uint8_t> bytes;
             AviFile avi;
-            const fs::path file = findGameFile(options_, "media/logo.avi");
+            // (Another game's animated title is not this one's: an expansion
+            // without its own has none.)
+            const fs::path file = hldata::gameInfo(options_.game).ownLogoOnly
+                                      ? findOwnFile(options_, "media/logo.avi")
+                                      : findGameFile(options_, "media/logo.avi");
             if (!file.empty() && readFile(file, bytes, why) && avi.load(bytes, why) &&
                 put(ui / hldata::kLogoFile, logoFile(avi.frames, avi.frameMicros)))
                 result.logo = true;
@@ -2216,7 +2263,7 @@ namespace hlds
         {
             std::vector<std::uint8_t> bytes;
             const fs::path file = findGameFile(options_, "media/valve.avi");
-            const fs::path out = dataDir(options_.cardRoot) / hldata::kIntroFile;
+            const fs::path out = cardDir() / hldata::kIntroFile;
             if (!file.empty() && readFile(file, bytes, why))
             {
                 const std::uint32_t source =
@@ -2335,7 +2382,7 @@ namespace hlds
                         }
                         char name[16];
                         hldata::musicFileName(hldata::kIntroTrack, name, sizeof(name));
-                        const fs::path music = dataDir(options_.cardRoot) / "music";
+                        const fs::path music = cardDir() / "music";
                         fs::create_directories(music, ec);
                         ok = writeFileAtomic(music / name, encodeMusicStereo(mono, mono, avi.sampleRate), why);
                     }
@@ -2376,7 +2423,7 @@ namespace hlds
         {
             PackReport report;
             std::string why;
-            if (!packCommon(stageDir(), dataDir(options_.cardRoot), options_.compress, report, why))
+            if (!packCommon(stageDir(), cardDir(), options_.compress, report, why))
                 common_.warnings.push_back("the common archive was not made: " + why);
         }
         // Process several maps at once. (Fewer in a 32-bit program: a big
@@ -2432,12 +2479,13 @@ namespace hlds
         {
             PackReport report;
             std::string why;
-            if (!packCommon(stageDir(), dataDir(options_.cardRoot), options_.compress, report, why))
+            if (!packCommon(stageDir(), cardDir(), options_.compress, report, why))
                 common_.warnings.push_back("the common archive was not made: " + why);
         }
 
         say("Packing the maps for Download Play");
-        packAirGroups();
+        if (hldata::gameInfo(options_.game).multiplayer)
+            packAirGroups();
         say("Writing the list of maps");
         if (!writeManifest(error))
             return failed + 1;
@@ -2449,7 +2497,7 @@ namespace hlds
         int failed = 0;
         PackReport commonReport;
         std::string why;
-        if (!packCommon(stageDir(), dataDir(options_.cardRoot), options_.compress, commonReport, why))
+        if (!packCommon(stageDir(), cardDir(), options_.compress, commonReport, why))
             common_.warnings.push_back("the common archive was not made: " + why);
         std::vector<std::string> names;
         std::error_code ec;
@@ -2471,7 +2519,8 @@ namespace hlds
             if (done)
                 done(result);
         }
-        packAirGroups();
+        if (hldata::gameInfo(options_.game).multiplayer)
+            packAirGroups();
         if (!writeManifest(error))
             return failed + 1;
         return failed;
@@ -2485,8 +2534,8 @@ namespace hlds
         // reached. Each level's own header is the source.
         hldata::Manifest manifest;
         manifest.converterVersion = kConverterVersion;
-        const fs::path dir = dataDir(options_.cardRoot);
-        std::string previousStart;
+        const fs::path dir = cardDir();
+        std::string previousStart, previousTitle;
         {
             std::vector<std::uint8_t> old;
             std::string ignored;
@@ -2494,7 +2543,10 @@ namespace hlds
             if (readFile(dir / "manifest.bin", old, ignored) &&
                 hldata::readManifest(old.data(), old.size(), previous) ==
                     hldata::ManifestError::Ok)
+            {
                 previousStart = previous.startMap;
+                previousTitle = previous.title;
+            }
         }
 
         std::error_code ec;
@@ -2568,10 +2620,17 @@ namespace hlds
                     static_cast<std::uint32_t>(fs::file_size(base, missing));
         }
 
+        // Which game, by the name its folder gives it (liblist.gam's).
+        manifest.game = options_.game;
+        // (Packed again with no game folder: the name it had.)
+        manifest.title = gameTitle(options_.gameDir);
+        if (manifest.title.empty())
+            manifest.title = previousTitle;
+
         // The start map: what was asked for, else what it was, else the
         // game's first map, else whatever there is.
         for (const std::string &candidate :
-             {lower(options_.startMap), previousStart, std::string(kDefaultStartMap)})
+             {lower(options_.startMap), previousStart, std::string(hldata::gameInfo(options_.game).startMap)})
         {
             if (!candidate.empty() && manifest.find(candidate) != nullptr)
             {
@@ -2631,6 +2690,58 @@ namespace hlds
         return map.rfind("c0a0", 0) == 0 ? "C0A0TITLE" : std::string();
     }
 
+    hldata::GameId gameOfFolder(const std::filesystem::path &gameDir)
+    {
+        const fs::path dir = gameDir.has_filename() ? gameDir : gameDir.parent_path();
+        const hldata::GameId game = hldata::gameFromFolder(dir.filename().string().c_str());
+        return game < hldata::kGameCount ? game : hldata::kGameHalfLife;
+    }
+
+    std::filesystem::path baseFolder(const std::filesystem::path &gameDir)
+    {
+        const fs::path dir = gameDir.has_filename() ? gameDir : gameDir.parent_path();
+        return findNoCase(dir.parent_path(), "valve");
+    }
+
+    std::string gameTitle(const std::filesystem::path &gameDir)
+    {
+        std::vector<std::uint8_t> bytes;
+        std::string ignored;
+        const fs::path file = findNoCase(gameDir, "liblist.gam");
+        if (file.empty() || !readFile(file, bytes, ignored))
+            return std::string();
+        const std::string text(bytes.begin(), bytes.end());
+        // Lines of `key "value"`: the one whose key is game.
+        for (std::size_t at = 0; at < text.size();)
+        {
+            std::size_t end = text.find('\n', at);
+            if (end == std::string::npos)
+                end = text.size();
+            const std::string line = text.substr(at, end - at);
+            at = end + 1;
+            std::size_t k = line.find_first_not_of(" \t");
+            if (k == std::string::npos || lower(line.substr(k, 4)) != "game" ||
+                (line.size() > k + 4 && line[k + 4] != ' ' && line[k + 4] != '\t' && line[k + 4] != '"'))
+                continue;
+            const std::size_t open = line.find('"', k + 4);
+            const std::size_t close = open == std::string::npos ? open : line.find('"', open + 1);
+            if (close != std::string::npos)
+                return line.substr(open + 1, close - open - 1);
+        }
+        return std::string();
+    }
+
+    std::vector<std::filesystem::path> gameFolders(const ConvertOptions &options)
+    {
+        std::vector<fs::path> out;
+        for (const fs::path *folder : {&options.languageDir, &options.gameDir, &options.baseLanguageDir, &options.baseDir})
+        {
+            if (!folder->empty() && std::find(out.begin(), out.end(), *folder) == out.end())
+                out.push_back(*folder);
+        }
+        return out;
+    }
+
     std::vector<std::string> gameLanguages(const std::filesystem::path &gameDir)
     {
         std::vector<std::string> out;
@@ -2666,6 +2777,22 @@ namespace hlds
         return fs::path();
     }
 
+    bool chooseLanguage(ConvertOptions &options, const std::string &language)
+    {
+        options.languageDir.clear();
+        options.baseLanguageDir.clear();
+        if (language.empty() || lower(language) == "english")
+            return true;
+        options.languageDir = languageFolder(options.gameDir, language);
+        if (gameOfFolder(options.gameDir) != hldata::kGameHalfLife)
+        {
+            const fs::path base = options.baseDir.empty() ? baseFolder(options.gameDir) : options.baseDir;
+            if (!base.empty())
+                options.baseLanguageDir = languageFolder(base, language);
+        }
+        return !options.languageDir.empty() || !options.baseLanguageDir.empty();
+    }
+
     std::vector<std::pair<std::string, std::string>> chapterTitles(const std::filesystem::path &gameDir,
                                                                    const TitlesBook *titles)
     {
@@ -2684,12 +2811,22 @@ namespace hlds
             std::string why;
             if (!readFile(entry.path(), bytes, why) || bytes.size() < 12)
                 continue;
-            std::uint32_t at = 0, length = 0;
-            std::memcpy(&at, bytes.data() + 4, 4);
-            std::memcpy(&length, bytes.data() + 8, 4);
-            if (at > bytes.size() || length > bytes.size() - at)
+            // (Blue Shift's maps have their first two lumps the other way
+            // round: the entities are the one that starts with a brace.)
+            if (bytes.size() < 20)
                 continue;
-            const std::string text(bytes.begin() + at, bytes.begin() + at + length);
+            std::string text;
+            for (int lump = 0; lump < 2 && text.empty(); ++lump)
+            {
+                std::uint32_t at = 0, length = 0;
+                std::memcpy(&at, bytes.data() + 4 + 8 * lump, 4);
+                std::memcpy(&length, bytes.data() + 8 + 8 * lump, 4);
+                if (at > bytes.size() || length > bytes.size() - at || length == 0 || bytes[at] != '{')
+                    continue;
+                text.assign(bytes.begin() + at, bytes.begin() + at + length);
+            }
+            if (text.empty())
+                continue;
             const std::size_t end = text.find("}");
             const std::string world = text.substr(0, end);
             const std::size_t key = world.find("\"chaptertitle\"");

@@ -49,6 +49,10 @@ namespace
                      "      --valve also checks that every texture can be found.\n"
                      "  hlds-convert cook-map <game folder> <map name> -o <card root> [options]\n"
                      "  hlds-convert cook-all <game folder> -o <card root> [options]\n"
+                     "      The game folder is Half-Life's (valve) or an expansion's beside it\n"
+                     "      (bshift, gearbox: DSi only), which takes what it has not got of\n"
+                     "      its own from valve, as the game does. An expansion goes to a folder\n"
+                     "      of its own on the card, data/bshift/ or data/gearbox/.\n"
                      "      Cook one map, or every map, and put it on the card under\n"
                      "      <card root>/_nds/hl_nds/data/: one archive a map in maps/, one for\n"
                      "      what every map shares, the music and the manifest. The console's\n"
@@ -97,7 +101,9 @@ namespace
                      "      Only the console's program, made for that console, at the card's\n"
                      "      root: for a card whose game is converted already.\n"
                      "  hlds-convert pack -o <card root> [--stage <folder>] [--no-compress]\n"
-                     "      Make the card's archives again from the stage, cooking nothing.\n"
+                     "                   [--game valve|bshift|gearbox]\n"
+                     "      Make the card's archives again from the stage, cooking nothing\n"
+                     "      (Half-Life's, unless --game names an expansion).\n"
                      "  hlds-convert verify <level.hlm | map.npac> [--brushes]\n"
                      "      Open a cooked level with the DS's own reader, decode every\n"
                      "      surface, and print what it costs.\n");
@@ -534,8 +540,7 @@ namespace
             c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         if (!language.empty() && language != "english")
         {
-            options.languageDir = languageFolder(options.gameDir, language);
-            if (options.languageDir.empty())
+            if (!chooseLanguage(options, language))
             {
                 std::string found;
                 for (const std::string &one : gameLanguages(options.gameDir))
@@ -544,10 +549,17 @@ namespace
                              options.gameDir.string().c_str(), found.c_str());
                 return 1;
             }
-            std::printf("language: %s, from %s\n", language.c_str(), options.languageDir.string().c_str());
+            for (const std::filesystem::path *dir : {&options.languageDir, &options.baseLanguageDir})
+            {
+                if (!dir->empty())
+                    std::printf("language: %s, from %s\n", language.c_str(), dir->string().c_str());
+            }
         }
 
         Converter converter(options);
+        if (converter.game() != hldata::kGameHalfLife)
+            std::printf("game: %s, over Half-Life's files from %s\n", hldata::gameInfo(converter.game()).heading,
+                        (options.baseDir.empty() ? baseFolder(options.gameDir) : options.baseDir).string().c_str());
         const std::string problem = converter.preflight();
         if (!problem.empty())
         {
@@ -621,11 +633,19 @@ namespace
                 options.compress = false;
             else if (args[i] == "--start" && i + 1 < args.size())
                 options.startMap = args[++i];
+            else if (args[i] == "--game" && i + 1 < args.size())
+            {
+                options.game = hldata::gameFromFolder(args[++i].c_str());
+                if (options.game >= hldata::kGameCount)
+                    return usage();
+            }
             else
                 return usage();
         }
         if (options.cardRoot.empty())
             return usage();
+        if (options.game >= hldata::kGameCount)
+            options.game = hldata::kGameHalfLife;
         chooseStage(options);
         Converter converter(options);
         std::string error;

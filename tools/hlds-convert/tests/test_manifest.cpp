@@ -54,6 +54,34 @@ int main()
     check(back.maps[0].dsFits && !back.maps[1].dsFits, "whether a DS has the room for each");
     check(back.find("c1a0") == &back.maps[1] && back.find("nope") == nullptr, "find");
 
+    check(back.game == kGameHalfLife && back.title.empty(), "a manifest that names no game is Half-Life's");
+
+    // The game it is, and a manifest from before games had names (6).
+    {
+        Manifest shift = manifest;
+        shift.game = kGameBlueShift;
+        shift.title = "Blue Shift";
+        const auto shiftBytes = writeManifest(shift);
+        Manifest shiftBack;
+        check(readManifest(shiftBytes.data(), shiftBytes.size(), shiftBack) == ManifestError::Ok &&
+                  shiftBack.game == kGameBlueShift && shiftBack.title == "Blue Shift",
+              "the game and its name come back");
+        Manifest old = shift;
+        old.format = 6;
+        const auto oldBytes = writeManifest(old);
+        Manifest oldBack;
+        check(readManifest(oldBytes.data(), oldBytes.size(), oldBack) == ManifestError::Ok &&
+                  oldBack.game == kGameHalfLife && oldBack.title.empty() && oldBack.maps.size() == 2 &&
+                  oldBack.format == kManifestVersion,
+              "a format 6 manifest still reads, as Half-Life's");
+        check(manifestRefusal(oldBytes.data(), oldBytes.size()).empty(), "... and is not refused");
+        Manifest unknown = manifest;
+        unknown.game = kGameCount;
+        const auto unknownBytes = writeManifest(unknown);
+        check(readManifest(unknownBytes.data(), unknownBytes.size(), oldBack) == ManifestError::OtherVersion,
+              "a game this build does not know is refused");
+    }
+
     check(readManifest(bytes.data(), 5, back) == ManifestError::NotAManifest, "a stub");
     auto bad = bytes;
     bad[0] = 'X';

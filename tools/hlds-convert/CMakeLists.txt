@@ -239,7 +239,8 @@ if(HLDS_BUILD_TESTS)
             test_round39
             test_revisit
             test_skill
-            test_achievements)
+            test_achievements
+            test_games)
         add_executable(${test_name} tests/${test_name}.cpp)
         target_compile_options(${test_name} PRIVATE ${HLDS_TEST_OPTIMISE})
         target_link_libraries(${test_name} PRIVATE hlds_convert_core)
