@@ -455,7 +455,7 @@ namespace hlds
             std::vector<char> kept(view.soundCount + 1, 0);
             hldata::soundsKept(view.logic, view.logicCount, view.logicSounds, view.logicSoundCount,
                                view.soundCount, reinterpret_cast<bool *>(kept.data()), view.modelSounds,
-                               view.modelSoundCount);
+                               view.modelSoundCount, nullptr, hldata::commonsOf(view.header->version));
             std::vector<char> talk;
             talkWords(view, talk);
             for (int pass = 0; pass < 2; ++pass)
@@ -741,12 +741,16 @@ namespace hlds
                 held.insert("v_satchel_radio");
             // Sounds: what a match plays there.
             std::vector<char> kept(view.soundCount + 1, 0);
+            const int commons = hldata::commonsOf(view.header->version);
             hldata::soundsKept(view.logic, view.logicCount, view.logicSounds, view.logicSoundCount, view.soundCount,
-                               reinterpret_cast<bool *>(kept.data()), view.modelSounds, view.modelSoundCount);
+                               reinterpret_cast<bool *>(kept.data()), view.modelSounds, view.modelSoundCount, nullptr,
+                               static_cast<std::uint32_t>(commons));
+            // (Of the common ones only: in a map cooked before the latest
+            // were common, those numbers are its own sounds.)
             auto drop = [&](hldata::CommonSound first, hldata::CommonSound last)
             {
-                for (int i = static_cast<int>(first); i <= static_cast<int>(last) && i < static_cast<int>(view.soundCount);
-                     ++i)
+                for (int i = static_cast<int>(first);
+                     i <= static_cast<int>(last) && i < static_cast<int>(view.soundCount) && i < commons; ++i)
                     kept[static_cast<std::size_t>(i)] = 0;
             };
             for (const hldata::GunSounds &gun : hldata::kGunSounds)
@@ -982,7 +986,8 @@ namespace hlds
             match = match || view.entities[e].classId == static_cast<std::uint16_t>(hldata::EntityClass::InfoPlayerDeathmatch);
         std::vector<char> kept(view.soundCount + 1, 0);
         hldata::soundsKept(view.logic, view.logicCount, view.logicSounds, view.logicSoundCount, view.soundCount,
-                           reinterpret_cast<bool *>(kept.data()), view.modelSounds, view.modelSoundCount, view.sounds);
+                           reinterpret_cast<bool *>(kept.data()), view.modelSounds, view.modelSoundCount, view.sounds,
+                           hldata::commonsOf(view.header->version));
         std::vector<char> talk;
         talkWords(view, talk);
         std::vector<char> gunOnly(view.soundCount + 1, 0);

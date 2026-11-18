@@ -589,11 +589,15 @@ namespace hldata
     inline void soundsKept(const LogicRecord *logic, std::uint32_t logicCount,
                            const LogicSound *logicSounds, std::uint32_t logicSoundCount,
                            std::uint32_t soundCount, bool *kept, const ModelSound *modelSounds = nullptr,
-                           std::uint32_t modelSoundCount = 0, const SoundRef *sounds = nullptr)
+                           std::uint32_t modelSoundCount = 0, const SoundRef *sounds = nullptr,
+                           std::uint32_t commons = static_cast<std::uint32_t>(CommonSound::Count))
     {
         for (std::uint32_t i = 0; i < soundCount; ++i)
             kept[i] = false;
-        for (std::uint32_t i = 0; i < soundCount && i < static_cast<std::uint32_t>(CommonSound::Count); ++i)
+        // (`commons`: how many of the map's sounds are the common ones --
+        // commonsOf its version. In a map cooked before the latest were
+        // common, what comes after its own common ones is its own.)
+        for (std::uint32_t i = 0; i < soundCount && i < commons; ++i)
             kept[i] = true;
         for (std::uint32_t i = 0; i < logicCount; ++i)
         {

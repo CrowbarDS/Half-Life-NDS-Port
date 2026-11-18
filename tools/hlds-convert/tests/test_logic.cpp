@@ -230,6 +230,23 @@ namespace
         for (int n = 0; n < 6; ++n)
             allKept = allKept && own[n] < g.view.soundCount && kept[own[n]];
         check(allKept, "... all kept in memory, as what a logic record plays is");
+        // A map cooked before the latest common sounds: what comes after its
+        // own common ones is its own, kept only if something plays it.
+        {
+            const std::uint32_t commons = kCommonSoundsBefore73;
+            std::unique_ptr<bool[]> older(new bool[g.view.soundCount + 1]);
+            soundsKept(g.view.logic, g.view.logicCount, g.view.logicSounds, g.view.logicSoundCount, g.view.soundCount,
+                       older.get(), nullptr, 0, nullptr, commons);
+            bool asOwn = older[0] && older[commons - 1];
+            for (std::uint32_t i = commons; i < static_cast<std::uint32_t>(CommonSound::Count) && i < g.view.soundCount; ++i)
+            {
+                bool played = false;
+                for (int n = 0; n < 6; ++n)
+                    played = played || own[n] == i;
+                asOwn = asOwn && (older[i] == played);
+            }
+            check(asOwn, "an older map's sounds past its common ones are its own: kept only if played");
+        }
 
         std::vector<LogicSound> sounds(g.view.logicCount,
                                        LogicSound{kNoSound, kNoSound, kNoSound, kNoSound, kNoSound, kNoSound});

@@ -233,7 +233,8 @@ namespace hlrt
         const int count = count_;
         aheadNext_ = 0;
         soundsKept(view.logic, view.logicCount, view.logicSounds, view.logicSoundCount,
-                   view.soundCount, kept, view.modelSounds, view.modelSoundCount, view.sounds);
+                   view.soundCount, kept, view.modelSounds, view.modelSoundCount, view.sounds,
+                   commonsOf(view.header->version));
         for (int i = 0; lazy_ != nullptr && i < count; ++i)
             lazy_[i] = soundLazy(view.sounds[i]) && view.sounds[i].name[0] != '\0' ? 1 : 0;
         for (int k = 0; k < kLazyClips; ++k)
@@ -293,8 +294,8 @@ namespace hlrt
         const int laterTo = static_cast<int>(commonsOf(view.header->version));
         bool *const own = kept + view.soundCount + 1;
         soundsKept(view.logic, view.logicCount, view.logicSounds, view.logicSoundCount, view.soundCount, own,
-                   nullptr, 0, view.sounds);
-        for (std::uint32_t i = 0; i < view.soundCount && i < static_cast<std::uint32_t>(CommonSound::Count); ++i)
+                   nullptr, 0, view.sounds, static_cast<std::uint32_t>(laterTo));
+        for (std::uint32_t i = 0; i < view.soundCount && i < static_cast<std::uint32_t>(laterTo); ++i)
             own[i] = false;
         for (int pass = 0; pass < 3; ++pass)
         for (int i = 0; i < count; ++i)
