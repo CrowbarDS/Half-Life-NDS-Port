@@ -11,7 +11,8 @@
 # Then, for a scene (its first snapshot after the map was up, s.0, to its
 # last):
 #
-#   tools/icache_rank.py <its elf> <the current elf> <out>/<scene>/s.0 <out>/<scene>/s.<last>
+#   tools/icache_rank.py <its elf> <the current elf> <out>/<scene>/s.0 <out>/<scene>/s.<last> \
+#       --families=<out>/<scene>/families.txt
 #
 # The emulator's JIT must be off (build/emu's configurations have it off), or
 # the code it runs never passes the counters.
@@ -26,9 +27,18 @@ FIGHT="key Up 3; hold z; sleep 1.5; release z; key Left 1; key Up 3; sleep 12; h
 while IFS='|' read -r tag mode map spot extra; do
     mkdir -p "$OUT/$tag"
     python3 -I tools/emu/setstart.py "$D/manifest.bin" "$map" >/dev/null || exit 1
+    rm -f "$D/perf.txt"
     HLDS_ICACHE_OUT="$OUT/$tag/s" EMU_ROM="$ROM" EMU_START="$spot" timeout 500 tools/emu/play.sh "$mode" \
         "ready 150; sleep 1; $extra" > "$OUT/$tag/play.log" 2>&1
-    echo "$tag: $(ls "$OUT/$tag" | grep -c '^s\.') snapshots"
+    # Where the game's families were loaded (the measuring build says so
+    # in perf.txt), for the ranking to name their code: the emulator writes
+    # the card back a while after it has quit.
+    for _ in $(seq 60); do
+        [ -s "$D/perf.txt" ] && break
+        sleep 1
+    done
+    grep "^family: " "$D/perf.txt" > "$OUT/$tag/families.txt" 2>/dev/null
+    echo "$tag: $(ls "$OUT/$tag" | grep -c '^s\.') snapshots, $(wc -l < "$OUT/$tag/families.txt") families"
 done <<LIST
 c1a3a-ds|ds|c1a3a|632 -2528 -60 31 -1 0 0 0 1 2|key Up 1.5; sleep 45
 c3a1-dsi|dsi|c3a1|832 880 692 277 -1 0 0 0 1 2|$FIGHT
