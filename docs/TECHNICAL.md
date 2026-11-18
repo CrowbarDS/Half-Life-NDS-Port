@@ -1752,7 +1752,11 @@ from the archive into where it goes, found in the archive's index with no
 file opened (`NEA_NpacMemberRead`). Maps from before level format 49
 compressed them; maps from before format 50 do not say their textures'
 palette sizes. Both are refused: the console says so before anything is
-loaded, and asks for the converter to be run again.
+loaded, and asks for the converter to be run again. So are maps from before
+format 76, which named every common sound in full, 48 bytes each: a level
+now has each common sound as its rate alone, two bytes, and the console
+makes its name again from its path (`soundCardName`, the converter's own
+way of naming) -- some 13 KB less of a DS's heap, every map.
 The map being played is mounted with its archive's index -- its files,
 their names and how each is packed, 6 to 31 KB -- in a fixed buffer of 32 KB
 (`shared/HlArchive.hpp`), not on the heap: one map after another goes into

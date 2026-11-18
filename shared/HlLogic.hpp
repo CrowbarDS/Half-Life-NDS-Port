@@ -1693,7 +1693,7 @@ namespace hldata
         {
             const std::uint16_t i = static_cast<std::uint16_t>(sound);
             return w.heard != nullptr && i < w.heard->commons &&
-                   (w.level == nullptr || (i < w.level->soundCount && w.level->sounds[i].name[0] != '\0'));
+                   (w.level == nullptr || w.level->soundThere(i));
         }
 
         /// Where something with a brush is heard from: its middle as it is

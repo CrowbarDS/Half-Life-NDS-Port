@@ -478,7 +478,7 @@ namespace
         if (!game->ok || game->view.brushCount != 1)
             return;
         Game &g = *game;
-        auto named = [&](CommonSound c) { return g.view.sounds[static_cast<int>(c)].name[0] != '\0'; };
+        auto named = [&](CommonSound c) { return g.view.soundThere(static_cast<int>(c)); };
         check(named(CommonSound::Spark5) && named(CommonSound::Spark6) && named(CommonSound::Ricochet5) &&
                   named(CommonSound::WoodHit1) && !named(CommonSound::BulletFlesh2) && !named(CommonSound::Metal1),
               "a map of computers keeps their sparks; no flesh, no metal");
@@ -612,11 +612,11 @@ namespace
         auto other = std::make_unique<Game>();
         check(other->bsp.parse(buildBoxRoom(plain), error), "a plain room builds");
         finish(*other, nullptr);
-        check(other->ok && other->view.sounds[static_cast<int>(CommonSound::Spark5)].name[0] == '\0' &&
-                  other->view.sounds[static_cast<int>(CommonSound::Ricochet3)].name[0] != '\0',
+        check(other->ok && !other->view.soundThere(static_cast<int>(CommonSound::Spark5)) &&
+                  other->view.soundThere(static_cast<int>(CommonSound::Ricochet3)),
               "... and keeps its whines, not a computer's sparks");
-        check(other->ok && other->view.sounds[static_cast<int>(CommonSound::BustCrate1)].name[0] == '\0' &&
-                  other->view.sounds[static_cast<int>(CommonSound::BustGlass1)].name[0] == '\0',
+        check(other->ok && !other->view.soundThere(static_cast<int>(CommonSound::BustCrate1)) &&
+                  !other->view.soundThere(static_cast<int>(CommonSound::BustGlass1)),
               "... nor anything's breaking, with nothing to break");
     }
 

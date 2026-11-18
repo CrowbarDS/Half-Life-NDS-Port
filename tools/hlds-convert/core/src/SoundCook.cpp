@@ -292,23 +292,11 @@ namespace hlds
 
     std::string soundCardName(const std::string &gamePath, int rate, bool loops)
     {
-        std::string name = gamePath;
-        if (name.size() > 4 && name.substr(name.size() - 4) == ".wav")
-            name.resize(name.size() - 4);
-        for (char &c : name)
-        {
-            const bool plain = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-';
-            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            if (!plain && !(c >= 'a' && c <= 'z'))
-                c = '_';
-        }
-        // A name the level's record cannot hold keeps its end, which is the
-        // part that tells sounds apart.
-        const std::string tail = "." + std::to_string(rate / 1000) + (loops ? "l" : "k");
-        const std::size_t most = sizeof(SoundRef::name) - 1 - tail.size();
-        if (name.size() > most)
-            name = name.substr(name.size() - most);
-        return name + tail;
+        // (The console's own way, which makes the common sounds' names
+        // again from their paths: the two must agree.)
+        char name[sizeof(SoundRef::name)];
+        hldata::soundCardName(gamePath.c_str(), rate / 1000, loops, name);
+        return name;
     }
 
     const Sentence *SentenceBook::find(const std::string &name) const

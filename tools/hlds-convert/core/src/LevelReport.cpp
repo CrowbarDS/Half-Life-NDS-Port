@@ -50,6 +50,7 @@ namespace hlds
         case Section::ModelSounds:   return "model sounds";
         case Section::NodeMarks:     return "node marks";
         case Section::NodeSpans:     return "node spans";
+        case Section::CommonSounds:  return "common sounds";
         case Section::Count:         break;
         }
         return "?";

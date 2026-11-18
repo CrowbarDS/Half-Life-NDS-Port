@@ -118,7 +118,7 @@ namespace
         int beep = -1;
         for (std::uint32_t i = 0; i < g.view.soundCount; ++i)
         {
-            if (std::string(g.view.sounds[i].name).find("blip2") != std::string::npos)
+            if (std::string(g.view.sound(i).name).find("blip2") != std::string::npos)
                 beep = static_cast<int>(i);
         }
         check(beep >= 0 && g.timesHeard[static_cast<std::size_t>(beep)] == 1, "... and beeps, once");
@@ -245,7 +245,7 @@ namespace
             int n = 0;
             for (std::uint32_t i = 0; i < g.view.soundCount; ++i)
             {
-                if (std::string(g.view.sounds[i].name).find(name) != std::string::npos)
+                if (std::string(g.view.sound(i).name).find(name) != std::string::npos)
                     n += g.timesHeard[i];
             }
             return n;

@@ -18,6 +18,7 @@
 #include <cstring>
 
 #include "HlLevel.hpp"
+#include "HlSound.hpp"
 
 namespace hldata
 {
@@ -82,7 +83,10 @@ namespace hldata
         const ActorRecord *actors = nullptr;
         const PathNode *pathNodes = nullptr;
         const PathLink *pathLinks = nullptr;
-        const SoundRef *sounds = nullptr;
+        /// The sounds: the common ones (CommonSounds), then the map's own
+        /// (Sounds). Each, whole, by sound(); soundCount of them in all.
+        const CommonSoundRef *commonSounds = nullptr;
+        const SoundRef *ownSounds = nullptr;
         const SpriteRef *sprites = nullptr;
         const LogicSound *logicSounds = nullptr;
         const SentenceRecord *sentences = nullptr;
@@ -124,11 +128,51 @@ namespace hldata
         std::uint32_t pathNodeCount = 0;
         std::uint32_t pathLinkCount = 0;
         std::uint32_t soundCount = 0;
+        std::uint32_t commonSoundCount = 0;
+        std::uint32_t ownSoundCount = 0;
         std::uint32_t logicSoundCount = 0;
         std::uint32_t sentenceCount = 0;
         std::uint32_t sentenceWordCount = 0;
         std::uint32_t roomCount = 0;
         std::uint32_t spriteCount = 0;
+
+        /// Whether the map has sound `i` (one it has not kept has no name).
+        bool soundThere(std::uint32_t i) const
+        {
+            return i < commonSoundCount ? (commonSounds[i].rate & ~kCommonSoundLoops) != 0
+                                        : i - commonSoundCount < ownSoundCount && ownSounds[i - commonSoundCount].name[0] != '\0';
+        }
+        /// ... and whether it is read when first played (soundLazy).
+        bool soundLazyAt(std::uint32_t i) const
+        {
+            const std::uint8_t twin = i < commonSoundCount ? commonSounds[i].twin
+                                      : i - commonSoundCount < ownSoundCount ? ownSounds[i - commonSoundCount].twin
+                                                                             : 0;
+            return (twin & kSoundLazy) != 0;
+        }
+        /// Sound `i` (common or the map's own), whole: a common one's name
+        /// made from its path (soundCardName). One the map has not kept, or
+        /// past the last, has no name.
+        SoundRef sound(std::uint32_t i) const
+        {
+            SoundRef ref{};
+            if (i < commonSoundCount)
+            {
+                const CommonSoundRef &common = commonSounds[i];
+                const int rate = common.rate & ~kCommonSoundLoops;
+                if (rate != 0)
+                {
+                    soundCardName(commonSoundPath(static_cast<CommonSound>(i)), rate,
+                                  (common.rate & kCommonSoundLoops) != 0, ref.name);
+                    ref.twin = common.twin;
+                }
+            }
+            else if (i - commonSoundCount < ownSoundCount)
+            {
+                ref = ownSounds[i - commonSoundCount];
+            }
+            return ref;
+        }
 
         /// Validate `data` and point this view into it. On any failure the view
         /// is left empty. `checkCrc` exists so a caller that has just computed
@@ -237,7 +281,9 @@ namespace hldata
         actors = section<ActorRecord>(data, dir, Section::Actors, actorCount);
         pathNodes = section<PathNode>(data, dir, Section::PathNodes, pathNodeCount);
         pathLinks = section<PathLink>(data, dir, Section::PathNext, pathLinkCount);
-        sounds = section<SoundRef>(data, dir, Section::Sounds, soundCount);
+        commonSounds = section<CommonSoundRef>(data, dir, Section::CommonSounds, commonSoundCount);
+        ownSounds = section<SoundRef>(data, dir, Section::Sounds, ownSoundCount);
+        soundCount = commonSoundCount + ownSoundCount;
         logicSounds = section<LogicSound>(data, dir, Section::LogicSounds, logicSoundCount);
         sentences = section<SentenceRecord>(data, dir, Section::Sentences, sentenceCount);
         sentenceWords = section<SentenceWord>(data, dir, Section::SentenceWords, sentenceWordCount);
@@ -451,11 +497,19 @@ namespace hldata
         }
         // Sounds: a name becomes a file name on the card, so it must end;
         // and everything that points into the list must point inside it.
-        if (soundCount > 0x7FFF || (logicSoundCount != 0 && logicSoundCount != logicCount))
+        // (The common ones are all there are of them, each at a rate a
+        // name holds.)
+        if (soundCount > 0x7FFF || (logicSoundCount != 0 && logicSoundCount != logicCount) ||
+            commonSoundCount != static_cast<std::uint32_t>(CommonSound::Count))
             return LevelError::BadIndex;
-        for (std::uint32_t i = 0; i < soundCount; ++i)
+        for (std::uint32_t i = 0; i < ownSoundCount; ++i)
         {
-            if (sounds[i].name[sizeof(sounds[i].name) - 1] != '\0')
+            if (ownSounds[i].name[sizeof(ownSounds[i].name) - 1] != '\0')
+                return LevelError::BadIndex;
+        }
+        for (std::uint32_t i = 0; i < commonSoundCount; ++i)
+        {
+            if ((commonSounds[i].rate & ~kCommonSoundLoops) > 99)
                 return LevelError::BadIndex;
         }
         for (std::uint32_t i = 0; i < logicSoundCount; ++i)

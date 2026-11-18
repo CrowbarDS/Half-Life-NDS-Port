@@ -232,7 +232,7 @@ namespace
         if (mad.size() == 1 && cure.size() == 1)
         {
             auto wordOf = [&](std::uint16_t line, int n) { return v.sentenceWords[v.sentences[line].firstWord + n]; };
-            auto name = [&](std::uint16_t line, int n) { return std::string(v.sounds[wordOf(line, n).sound].name); };
+            auto name = [&](std::uint16_t line, int n) { return std::string(v.sound(wordOf(line, n).sound).name); };
             auto card = [](const char *path) { return soundCardName(path, kSoundRate, false); };
             check(v.sentences[mad[0]].wordCount == 4 && name(mad[0], 0) == card("barney/four.wav") &&
                       name(mad[0], 1) == card("barney/five.wav") && name(mad[0], 2) == card("barney/_comma.wav") &&

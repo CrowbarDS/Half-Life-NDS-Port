@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 75;
+    inline constexpr std::uint16_t kLevelVersion = 76;
     /// The oldest level format this build reads. (49: a map's textures are
     /// stored in its archive as they are, never compressed, so that one that
     /// streams is read straight in during play. 50: each texture's record
@@ -61,8 +61,10 @@ namespace hldata
     /// converter before are refused, to be converted again. 70: a track
     /// node's record is longer, its name and its branch: the same. 71: a
     /// track change's flags and waitMs say what kind it is, where it starts
-    /// and how fast it goes: without them the tram's lift would not move.)
-    inline constexpr std::uint16_t kLevelMinVersion = 71;
+    /// and how fast it goes: without them the tram's lift would not move.
+    /// 76: the common sounds are CommonSoundRefs of their own, and Sounds
+    /// is the map's own only.)
+    inline constexpr std::uint16_t kLevelMinVersion = 76;
     /// The oldest build that can read what it writes. (32: what the people
     /// say, after the soldiers' table in Section::Speech, which a build
     /// before would refuse; 33: the round 3 monsters, kinds a build before
@@ -125,8 +127,9 @@ namespace hldata
     /// sounds, kCommonSoundsBefore74; its own is gone, and a build before
     /// hears it break in silence. 75: a Breakable's "explodemagnitude" and
     /// "explosion" (its damage, kLogicDirected), which a build before
-    /// leaves alone.)
-    inline constexpr std::uint16_t kLevelMinReader = 70;
+    /// leaves alone. 76: the common sounds without their names, which a
+    /// build before cannot read.)
+    inline constexpr std::uint16_t kLevelMinReader = 76;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,
     /// 28 -> 29 a func_train's global name (extra[3], 0 before: read as
@@ -204,7 +207,9 @@ namespace hldata
         Actors,     ///< ActorRecord: the people and props that are models
         PathNodes,  ///< PathNode: where something that walks can stand (info_node)
         PathNext,   ///< PathLink: the ways on from each node, grouped per node
-        Sounds,     ///< SoundRef: the sounds the map plays (HlSound.hpp); the common ones first
+        /// SoundRef: the map's own sounds, numbered after the common ones
+        /// (CommonSounds; LevelView::sound has them all).
+        Sounds,
         LogicSounds, ///< LogicSound, parallel to Logic: what each record sounds like
         Sentences,  ///< SentenceRecord: the spoken lines the map has
         SentenceWords, ///< SentenceWord: grouped per sentence
@@ -221,6 +226,10 @@ namespace hldata
         /// the game draws whenever the node is gone through.
         NodeMarks,
         NodeSpans, ///< NodeSpan, parallel to Nodes: each node's run of NodeMarks
+        /// CommonSoundRef, one for each of the common sounds (HlSound.hpp's
+        /// CommonSound): how each is cooked, if the map keeps it. Its name
+        /// is its path's: not in the file.
+        CommonSounds,
         Count
     };
     inline constexpr int kSectionCount = static_cast<int>(Section::Count);
@@ -1502,6 +1511,18 @@ namespace hldata
         std::uint8_t twin;
     };
     static_assert(sizeof(SoundRef) == 48);
+    /// One of the common sounds as a map has it: `rate`, the thousands of
+    /// samples a second it is cooked at (0: the map has not kept it), with
+    /// kCommonSoundLoops if it loops; `twin` as SoundRef's. Its name on the
+    /// card is made from those and its path (soundCardName): 2 bytes, not a
+    /// SoundRef's 48 -- some 13 KB a map, of a DS's heap.
+    struct CommonSoundRef
+    {
+        std::uint8_t rate;
+        std::uint8_t twin;
+    };
+    static_assert(sizeof(CommonSoundRef) == 2);
+    inline constexpr std::uint8_t kCommonSoundLoops = 0x80;
     /// In `twin`: a sound of a weapon the map was not cooked with
     /// (kModelRefLazy) -- not loaded with the map nor in its archive, but
     /// read out of the common one when it is first played.
@@ -1856,6 +1877,7 @@ namespace hldata
         case Section::ModelSounds: return sizeof(ModelSound);
         case Section::NodeMarks:  return 2;
         case Section::NodeSpans:  return sizeof(NodeSpan);
+        case Section::CommonSounds: return sizeof(CommonSoundRef);
         default:                  return 0;
         }
     }

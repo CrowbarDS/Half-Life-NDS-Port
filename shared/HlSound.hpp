@@ -635,6 +635,40 @@ namespace hldata
         return kPaths[static_cast<int>(sound)];
     }
 
+    /// What a sound is called on the card: from its path in the game's
+    /// sound folder ("weapons/ric1.wav"), its rate in thousands of samples a
+    /// second and whether it loops -- "weapons_ric1.11k". In lower case,
+    /// and what is not a letter, a digit, '_' or '-' made '_'; one too long
+    /// for a SoundRef keeps its end, the part that tells sounds apart. `out`
+    /// holds sizeof(SoundRef::name). (The converter names what it cooks so,
+    /// and the console the common ones, which a level does not name.)
+    inline void soundCardName(const char *gamePath, int rateK, bool loops, char *out)
+    {
+        char tail[8];
+        int t = 0;
+        tail[t++] = '.';
+        if (rateK >= 10)
+            tail[t++] = static_cast<char>('0' + (rateK / 10) % 10);
+        tail[t++] = static_cast<char>('0' + rateK % 10);
+        tail[t++] = loops ? 'l' : 'k';
+        std::size_t length = std::strlen(gamePath);
+        if (length > 4 && std::strcmp(gamePath + length - 4, ".wav") == 0)
+            length -= 4;
+        const std::size_t most = sizeof(SoundRef::name) - 1 - static_cast<std::size_t>(t);
+        const std::size_t from = length > most ? length - most : 0;
+        std::size_t n = 0;
+        for (std::size_t i = from; i < length; ++i)
+        {
+            char c = gamePath[i];
+            c = c >= 'A' && c <= 'Z' ? static_cast<char>(c + 32) : c;
+            const bool plain = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-';
+            out[n++] = plain ? c : '_';
+        }
+        for (int k = 0; k < t; ++k)
+            out[n++] = tail[k];
+        out[n] = '\0';
+    }
+
     /// Whether it is cooked to go round (where its file says, if it says):
     /// then it is only ever played with kSoundLoopOn and kSoundLoopOff. The
     /// egon's hum, for as long as it fires.

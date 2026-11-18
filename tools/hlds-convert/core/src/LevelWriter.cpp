@@ -26,6 +26,40 @@ namespace hlds
 
     bool writeLevel(const CookedLevel &level, std::vector<std::uint8_t> &out, std::string &error)
     {
+        // The sounds: the common ones by their rate alone (their names are
+        // made again from their paths), the map's own whole. A common one
+        // not called what its path and rate make is the converter's mistake.
+        const std::size_t commonCount = static_cast<std::size_t>(CommonSound::Count);
+        std::vector<CommonSoundRef> commonSounds(commonCount, CommonSoundRef{0, 0});
+        std::vector<SoundRef> ownSounds;
+        for (std::size_t i = 0; i < level.sounds.size(); ++i)
+        {
+            const SoundRef &ref = level.sounds[i];
+            if (i >= commonCount)
+            {
+                ownSounds.push_back(ref);
+                continue;
+            }
+            if (ref.name[0] == '\0')
+                continue;
+            const char *dot = std::strrchr(ref.name, '.');
+            int rate = 0;
+            const char *at = dot != nullptr ? dot + 1 : ref.name;
+            while (*at >= '0' && *at <= '9')
+                rate = rate * 10 + (*at++ - '0');
+            const bool loops = *at == 'l';
+            char made[sizeof(SoundRef::name)];
+            if (dot != nullptr && rate > 0 && rate <= 99)
+                soundCardName(commonSoundPath(static_cast<CommonSound>(i)), rate, loops, made);
+            if (dot == nullptr || rate <= 0 || rate > 99 || std::strcmp(made, ref.name) != 0)
+            {
+                error = std::string("common sound ") + std::to_string(i) + " is cooked as \"" + ref.name +
+                        "\", not as its path names it";
+                return false;
+            }
+            commonSounds[i] = CommonSoundRef{static_cast<std::uint8_t>(rate | (loops ? kCommonSoundLoops : 0)), ref.twin};
+        }
+
         // Indexed by Section: the order here IS the enum's order.
         const Blob blobs[kSectionCount] = {
             blobOf(level.planes),
@@ -57,7 +91,7 @@ namespace hlds
             blobOf(level.actors),
             blobOf(level.pathNodes),
             blobOf(level.pathLinks),
-            blobOf(level.sounds),
+            blobOf(ownSounds),
             blobOf(level.logicSounds),
             blobOf(level.sentences),
             blobOf(level.sentenceWords),
@@ -68,6 +102,7 @@ namespace hlds
             blobOf(level.modelSounds),
             blobOf(level.nodeMarks),
             blobOf(level.nodeSpans),
+            blobOf(commonSounds),
         };
 
         SectionDir dir[kSectionCount];

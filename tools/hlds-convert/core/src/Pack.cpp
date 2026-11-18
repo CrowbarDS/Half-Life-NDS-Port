@@ -462,7 +462,7 @@ namespace hlds
             {
                 for (std::uint32_t i = 0; i < view.soundCount; ++i)
                 {
-                    const hldata::SoundRef &ref = view.sounds[i];
+                    const hldata::SoundRef ref = view.sound(i);
                     if (ref.name[0] == '\0' || (kept[i] != 0) != (pass == 0) || hldata::soundLazy(ref))
                         continue;
                     // (What the people say is in the common archive.)
@@ -785,8 +785,8 @@ namespace hlds
             std::set<std::string> sounds;
             for (std::uint32_t i = 0; i < view.soundCount; ++i)
             {
-                if (kept[i] != 0 && view.sounds[i].name[0] != '\0' && !hldata::soundLazy(view.sounds[i]))
-                    sounds.insert(std::string("snd/") + view.sounds[i].name + ".hsn");
+                if (kept[i] != 0 && view.soundThere(i) && !view.soundLazyAt(i))
+                    sounds.insert(std::string("snd/") + view.sound(i).name + ".hsn");
             }
             // The models and skins of the first six it has not.
             std::set<std::string> gone;
@@ -809,14 +809,14 @@ namespace hlds
             std::set<std::string> listed;
             for (std::uint32_t i = 0; i < view.soundCount; ++i)
             {
-                const std::string path = std::string("snd/") + view.sounds[i].name + ".hsn";
+                const std::string path = std::string("snd/") + view.sound(i).name + ".hsn";
                 if (sounds.count(path) == 0 || !listed.insert(path).second)
                     continue;
                 NpacMember member;
                 std::string ignored;
                 member.path = path;
                 member.mayCompress = false;
-                if (readFile(stage / "snd" / (std::string(view.sounds[i].name) + ".hsn"), member.data, ignored))
+                if (readFile(stage / "snd" / (std::string(view.sound(i).name) + ".hsn"), member.data, ignored))
                     kept_.push_back(std::move(member));
             }
             packing.members = std::move(kept_);
@@ -986,8 +986,11 @@ namespace hlds
             match = match || view.entities[e].classId == static_cast<std::uint16_t>(hldata::EntityClass::InfoPlayerDeathmatch);
         std::vector<char> kept(view.soundCount + 1, 0);
         hldata::soundsKept(view.logic, view.logicCount, view.logicSounds, view.logicSoundCount, view.soundCount,
-                           reinterpret_cast<bool *>(kept.data()), view.modelSounds, view.modelSoundCount, view.sounds,
+                           reinterpret_cast<bool *>(kept.data()), view.modelSounds, view.modelSoundCount, nullptr,
                            hldata::commonsOf(view.header->version));
+        // (Not a weapon's the map has not: read when it is first played.)
+        for (std::uint32_t i = 0; i < view.soundCount; ++i)
+            kept[i] = kept[i] != 0 && !view.soundLazyAt(i);
         std::vector<char> talk;
         talkWords(view, talk);
         std::vector<char> gunOnly(view.soundCount + 1, 0);
@@ -1005,7 +1008,7 @@ namespace hlds
         {
             for (std::uint32_t i = 0; i < view.soundCount; ++i)
             {
-                const hldata::SoundRef &ref = view.sounds[i];
+                const hldata::SoundRef ref = view.sound(i);
                 if (ref.name[0] == '\0' || (kept[i] != 0) != (pass == 0) || (match && talk[i] != 0))
                     continue;
                 // (A demo's: all of them, the bank being sent whole, where they
@@ -1321,10 +1324,10 @@ namespace hlds
                 talkWords(view, talk);
                 for (std::uint32_t i = 0; i < view.soundCount; ++i)
                 {
-                    if (talk[i] != 0 && view.sounds[i].name[0] != '\0')
-                        words.insert(view.sounds[i].name);
-                    if (hldata::soundLazy(view.sounds[i]) && view.sounds[i].name[0] != '\0')
-                        weaponSounds.insert(view.sounds[i].name);
+                    if (talk[i] != 0 && view.soundThere(i))
+                        words.insert(view.sound(i).name);
+                    if (view.soundLazyAt(i) && view.soundThere(i))
+                        weaponSounds.insert(view.sound(i).name);
                 }
                 for (std::uint32_t i = 0; i < view.modelRefCount; ++i)
                 {

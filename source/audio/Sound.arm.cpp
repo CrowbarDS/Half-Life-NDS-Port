@@ -233,10 +233,13 @@ namespace hlrt
         const int count = count_;
         aheadNext_ = 0;
         soundsKept(view.logic, view.logicCount, view.logicSounds, view.logicSoundCount,
-                   view.soundCount, kept, view.modelSounds, view.modelSoundCount, view.sounds,
+                   view.soundCount, kept, view.modelSounds, view.modelSoundCount, nullptr,
                    commonsOf(view.header->version));
+        // (Not a weapon's the map has not: read when it is first played.)
+        for (std::uint32_t i = 0; i < view.soundCount; ++i)
+            kept[i] = kept[i] && !view.soundLazyAt(i);
         for (int i = 0; lazy_ != nullptr && i < count; ++i)
-            lazy_[i] = soundLazy(view.sounds[i]) && view.sounds[i].name[0] != '\0' ? 1 : 0;
+            lazy_[i] = view.soundLazyAt(i) && view.soundThere(i) ? 1 : 0;
         for (int k = 0; k < kLazyClips; ++k)
             lazyClip_[k] = -1;
 #ifdef HLDS_CHILD
@@ -247,7 +250,7 @@ namespace hlrt
         {
             for (int i = 0; i < count; ++i)
             {
-                if (kept[i] != (pass == 0) || view.sounds[i].name[0] == '\0')
+                if (kept[i] != (pass == 0) || !view.soundThere(i))
                     continue;
                 // (The later weapons' sounds, read when first played on a card,
                 // cannot be here: the map's stream is over by then. Those the
@@ -255,7 +258,7 @@ namespace hlrt
                 // rest go without.)
                 if (lazy_ != nullptr && lazy_[i] && !global.twlChild)
                 {
-                    if (borrowClip(view.sounds[i].name, clips_[i]))
+                    if (borrowClip(view.sound(i).name, clips_[i]))
                     {
                         lazy_[i] = 0;
                         ++loaded_;
@@ -264,8 +267,8 @@ namespace hlrt
                 }
                 // (At full quality, in DSi mode: the better copy, if it is next.)
                 char twin[sizeof(SoundRef)];
-                if ((global.twlChild && soundTwinName(view.sounds[i], twin, sizeof(twin)) && readClip(twin, clips_[i])) ||
-                    borrowClip(view.sounds[i].name, clips_[i]) || readClip(view.sounds[i].name, clips_[i]))
+                if ((global.twlChild && soundTwinName(view.sound(i), twin, sizeof(twin)) && readClip(twin, clips_[i])) ||
+                    borrowClip(view.sound(i).name, clips_[i]) || readClip(view.sound(i).name, clips_[i]))
                 {
                     if (lazy_ != nullptr)
                         lazy_[i] = 0;
@@ -294,7 +297,9 @@ namespace hlrt
         const int laterTo = static_cast<int>(commonsOf(view.header->version));
         bool *const own = kept + view.soundCount + 1;
         soundsKept(view.logic, view.logicCount, view.logicSounds, view.logicSoundCount, view.soundCount, own,
-                   nullptr, 0, view.sounds, static_cast<std::uint32_t>(laterTo));
+                   nullptr, 0, nullptr, static_cast<std::uint32_t>(laterTo));
+        for (std::uint32_t i = 0; i < view.soundCount; ++i)
+            own[i] = own[i] && !view.soundLazyAt(i);
         for (std::uint32_t i = 0; i < view.soundCount && i < static_cast<std::uint32_t>(laterTo); ++i)
             own[i] = false;
         for (int pass = 0; pass < 3; ++pass)
@@ -302,7 +307,7 @@ namespace hlrt
         {
             const bool later = i >= laterFrom && i < laterTo;
             const int of = later ? 2 : (own[i] ? 0 : 1);
-            if (of != pass || !kept[i] || view.sounds[i].name[0] == '\0')
+            if (of != pass || !kept[i] || !view.soundThere(i))
                 continue;
             ++stats_.kept;
             const std::size_t headroom = global.heapHeadroom();
@@ -311,9 +316,9 @@ namespace hlrt
             // (A DSi has the memory for the better copy, where there is one.)
             char twin[sizeof(SoundRef)];
             bool tooBig = false;
-            if ((global.isDSi && soundTwinName(view.sounds[i], twin, sizeof(twin)) &&
+            if ((global.isDSi && soundTwinName(view.sound(i), twin, sizeof(twin)) &&
                  readClip(twin, clips_[i], room)) ||
-                readClip(view.sounds[i].name, clips_[i], room, &tooBig))
+                readClip(view.sound(i).name, clips_[i], room, &tooBig))
             {
                 ++loaded_;
                 ++stats_.loaded;
@@ -357,9 +362,9 @@ namespace hlrt
         pakCount_ = count;
         for (int i = 0; i < count; ++i)
         {
-            if (view.sounds[i].name[0] == '\0' || (i < count_ && clips_[i].data != nullptr))
+            if (!view.soundThere(i) || (i < count_ && clips_[i].data != nullptr))
                 continue;
-            const std::string inArchive = std::string("snd/") + view.sounds[i].name + ".hsn";
+            const std::string inArchive = std::string("snd/") + view.sound(i).name + ".hsn";
             std::FILE *file = std::fopen(global.mapPath(inArchive).c_str(), "rb");
             if (file == nullptr)
                 file = std::fopen(global.commonPath(inArchive).c_str(), "rb");
@@ -404,7 +409,7 @@ namespace hlrt
     bool Sound::readLate(int index, Clip &clip)
     {
         if (pak_ == nullptr || index < 0 || index >= pakCount_ || pak_[index] == nullptr)
-            return readClip(level.view.sounds[index].name, clip);
+            return readClip(level.view.sound(index).name, clip);
         clip = Clip();
         SoundHeader header;
         std::memcpy(&header, pak_[index], sizeof(header));
@@ -755,7 +760,7 @@ namespace hlrt
         {
             if (lazy_[aheadNext_] == 0)
                 continue;
-            const std::string path = std::string("snd/") + level.view.sounds[aheadNext_].name + ".hsn";
+            const std::string path = std::string("snd/") + level.view.sound(aheadNext_).name + ".hsn";
             if (air::has(path.c_str()))
                 continue;
             if (netGame.fetchFile(path.c_str()))
@@ -778,7 +783,7 @@ namespace hlrt
             {
                 if (lazy_[i] == 0 || clips_[i].data != nullptr)
                     continue;
-                const std::string path = std::string("snd/") + level.view.sounds[i].name + ".hsn";
+                const std::string path = std::string("snd/") + level.view.sound(i).name + ".hsn";
                 if (!air::has(path.c_str()))
                     netGame.fetchFile(path.c_str(), true);
             }
@@ -795,8 +800,8 @@ namespace hlrt
         // In DSi mode there is room: what has come stays, for the map.
         if (global.twlChild)
         {
-            if (clips_[sound].data == nullptr && !readClip(level.view.sounds[sound].name, clips_[sound]))
-                netGame.fetchFile((std::string("snd/") + level.view.sounds[sound].name + ".hsn").c_str(), true);
+            if (clips_[sound].data == nullptr && !readClip(level.view.sound(sound).name, clips_[sound]))
+                netGame.fetchFile((std::string("snd/") + level.view.sound(sound).name + ".hsn").c_str(), true);
             return;
         }
         const std::uint32_t now = Global::vblanks();
@@ -1026,7 +1031,7 @@ namespace hlrt
         const int other = speech.cur ^ 1;
         releaseWord(speech, other);
         speech.ahead = -1;
-        if (index >= static_cast<int>(level.view.soundCount) || level.view.sounds[index].name[0] == '\0' ||
+        if (index >= static_cast<int>(level.view.soundCount) || !level.view.soundThere(index) ||
             (index < count_ && clips_[index].data != nullptr))
             return;
         if (!lateRoom(index))
@@ -1058,7 +1063,7 @@ namespace hlrt
             return;
         const SentenceWord &word = level.view.sentenceWords[speech.words[speech.at]];
         const std::uint16_t index = word.sound;
-        if (index >= level.view.soundCount || level.view.sounds[index].name[0] == '\0' ||
+        if (index >= level.view.soundCount || !level.view.soundThere(index) ||
             (word.end != 0 && word.end < 100))
             return;
         const bool borrowed = index < count_ && clips_[index].data != nullptr;
@@ -1178,7 +1183,7 @@ namespace hlrt
                 // How this word is said: the game's marks on it.
                 const SentenceWord &word = level.view.sentenceWords[speech.words[speech.at++]];
                 const std::uint16_t index = word.sound;
-                if (index >= level.view.soundCount || level.view.sounds[index].name[0] == '\0')
+                if (index >= level.view.soundCount || !level.view.soundThere(index))
                     continue;
                 const int pitch = (speech.pitch * (word.pitch != 0 ? word.pitch : 100)) / 100;
                 const int loud = (speech.volume * word.volume) / 100;

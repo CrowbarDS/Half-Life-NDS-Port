@@ -470,7 +470,7 @@ namespace hldata
                 auto there = [&](CommonSound c)
                 {
                     const std::uint16_t i = static_cast<std::uint16_t>(c);
-                    return i < w.heard->commons && i < w.level->soundCount && w.level->sounds[i].name[0] != '\0';
+                    return i < w.heard->commons && w.level->soundThere(i);
                 };
                 const CommonSound heard = there(sound) ? sound : instead;
                 if (!there(heard))

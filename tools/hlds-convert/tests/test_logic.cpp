@@ -408,7 +408,7 @@ namespace
                                                                                                     : started;
         check(started == 51, "a track train set off is heard starting, at its volume");
         auto named = [&](CommonSound c)
-        { return static_cast<std::uint32_t>(c) < g.view.soundCount && g.view.sounds[static_cast<int>(c)].name[0] != 0; };
+        { return static_cast<std::uint32_t>(c) < g.view.soundCount && g.view.soundThere(static_cast<int>(c)); };
         check(named(CommonSound::TrainStart) && !named(CommonSound::Swim1) && !named(CommonSound::Debris1),
               "the room has its train's start, and no swimming nor debris it has no use for");
     }

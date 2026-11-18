@@ -235,8 +235,8 @@ namespace
         hlds::talkWords(view, talk);
         for (std::uint32_t i = 0; i < view.soundCount; ++i)
         {
-            const std::string name = view.sounds[i].name;
-            if (soundLazy(view.sounds[i]) && !name.empty())
+            const std::string name = view.sound(i).name;
+            if (view.soundLazyAt(i) && !name.empty())
             {
                 ++lazySounds;
                 lazyApart = lazyApart && !has("snd/" + name + ".hsn") && inCommon("snd/" + name + ".hsn");

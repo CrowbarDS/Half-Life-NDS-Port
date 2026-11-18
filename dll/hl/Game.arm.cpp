@@ -1293,7 +1293,7 @@ namespace hlrt
                 }
                 // (A map cooked without that step has the plain one.)
                 if (static_cast<std::uint32_t>(first) >= level.view.soundCount ||
-                    level.view.sounds[static_cast<int>(first)].name[0] == '\0')
+                    !level.view.soundThere(static_cast<int>(first)))
                     first = CommonSound::Step1;
             }
             for (int n = steps.count; n > 0; --n)

@@ -459,7 +459,7 @@ namespace
                             continue;
                         for (std::uint32_t i = 0; i < guest.soundCount; ++i)
                         {
-                            if (member.path == std::string("snd/") + guest.sounds[i].name + ".hsn")
+                            if (member.path == std::string("snd/") + guest.sound(i).name + ".hsn")
                             {
                                 ordered = ordered && i >= last;
                                 last = i;

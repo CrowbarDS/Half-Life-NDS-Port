@@ -17,6 +17,7 @@
 #include "TestBspBuilder.hpp"
 #include "hlds/LevelReport.hpp"
 #include "hlds/LevelWriter.hpp"
+#include "hlds/SoundCook.hpp"
 
 using namespace hlds;
 using namespace hldata;
@@ -170,9 +171,9 @@ namespace
         bad[4] = static_cast<std::uint8_t>(kLevelMinVersion - 1);
         bad[5] = 0;
         check(view.open(bad.data(), size) == LevelError::BadVersion, "a version older than this build reads");
-        bad[4] = 70; // before a track change said what kind it is and how fast it goes
-        check(kLevelMinVersion == 71 && view.open(bad.data(), size) == LevelError::BadVersion && view.header == nullptr,
-              "a map of format 70 is refused, and nothing of it is read");
+        bad[4] = 75; // before the common sounds were stored without their names
+        check(kLevelMinVersion == 76 && view.open(bad.data(), size) == LevelError::BadVersion && view.header == nullptr,
+              "a map of format 75 is refused, and nothing of it is read");
         bad = good;
         bad[38] = static_cast<std::uint8_t>(kLevelVersion + 1); // minReader
         bad[39] = 0;
@@ -459,11 +460,57 @@ namespace
         check(dsKeyCacheBytes(40 * 1024, 60 * 1024) == 60 * 1024, "never more than all of them");
         check(dsKeyCacheBytes(30, 10) == 32, "never less than the largest clip, in words");
     }
+    /// The sounds: the common ones by their rate alone, their names made
+    /// again from their paths, the same as the converter cooks them; the
+    /// map's own whole.
+    void testSounds()
+    {
+        CookedLevel level = smallLevel();
+        const int commons = static_cast<int>(CommonSound::Count);
+        level.sounds.assign(commons + 2, SoundRef{});
+        for (int i = 0; i < commons; ++i)
+        {
+            if (i % 5 == 4)
+                continue; // (one the map has not kept)
+            const int rate = i % 3 == 0 ? 5512 : (i % 3 == 1 ? 11025 : 22050);
+            const std::string name =
+                soundCardName(commonSoundPath(static_cast<CommonSound>(i)), rate, i % 7 == 0);
+            std::strncpy(level.sounds[i].name, name.c_str(), sizeof(level.sounds[i].name) - 1);
+            level.sounds[i].twin = static_cast<std::uint8_t>(i % 11 == 0 ? 22 : (i % 13 == 0 ? kSoundLazy : 0));
+        }
+        std::strcpy(level.sounds[commons].name, "ambience_drips.11l");
+        std::strcpy(level.sounds[commons + 1].name, "doors_doormove1.11k");
+        level.sounds[commons + 1].twin = 22;
+        std::vector<std::uint8_t> bytes;
+        std::string error;
+        check(writeLevel(level, bytes, error), "a level with its sounds writes");
+        LevelView view;
+        check(view.open(bytes.data(), static_cast<std::uint32_t>(bytes.size())) == LevelError::Ok, "... and opens");
+        bool same = view.soundCount == static_cast<std::uint32_t>(commons + 2) &&
+                    view.commonSoundCount == static_cast<std::uint32_t>(commons) && view.ownSoundCount == 2;
+        for (int i = 0; same && i < commons + 2; ++i)
+        {
+            const SoundRef ref = view.sound(static_cast<std::uint32_t>(i));
+            same = std::strcmp(ref.name, level.sounds[i].name) == 0 && ref.twin == level.sounds[i].twin &&
+                   view.soundThere(static_cast<std::uint32_t>(i)) == (level.sounds[i].name[0] != '\0') &&
+                   view.soundLazyAt(static_cast<std::uint32_t>(i)) == soundLazy(level.sounds[i]);
+        }
+        check(same, "every sound reads back as it was cooked: a common one's name made again from its path");
+        const SectionDir *dir = reinterpret_cast<const SectionDir *>(bytes.data() + sizeof(LevelHeader));
+        check(dir[static_cast<int>(Section::CommonSounds)].size == static_cast<std::uint32_t>(commons) * 2 &&
+                  dir[static_cast<int>(Section::Sounds)].size == 2 * sizeof(SoundRef),
+              "two bytes a common sound, a whole record for the map's own");
+        // A common one cooked under some other name is the converter's mistake.
+        std::strcpy(level.sounds[0].name, "player_pl_step9.11k");
+        check(!writeLevel(level, bytes, error), "a common sound not named as its path names it is refused");
+    }
+
 } // namespace
 
 int main()
 {
     testRoundTrip();
+    testSounds();
     testFileFaults();
     testIndexFaults();
     testCrc();
