@@ -67,14 +67,15 @@ namespace hlrt
         void openHand();
         /// The games on the card (a bit each, 1 << GameId): CHANGE GAME is
         /// offered when there is more than one.
+#ifndef HLDS_CHILD
         void setGames(std::uint8_t present);
         /// ... and whether there is more than one.
         bool severalGames() const;
-        /// CHOOSE GAME: the games on the card, the one played `last` first
-        /// (and A for it). Left with Action::ChooseGame.
+        /// CHOOSE GAME (a DSi's): the games on the card, the one played
+        /// `last` first (and A for it). Left with Action::ChooseGame.
         void openGames(int last);
-        bool onGames() const { return page_ == Page::Game; }
         int chosenGame() const { return chosenGame_; }
+#endif
         void openLobby();
         /// The games near, to choose one: where a console out of a game lands
         /// if it has nowhere else (one sent the game), and says why.
@@ -330,8 +331,11 @@ namespace hlrt
         unsigned netSignature() const;
         bool big() const;
         int active_ = -1; ///< the row the stylus went down on, or -1
+#ifndef HLDS_CHILD
         int chosenGame_ = 0; ///< CHOOSE GAME's choice (a GameId)
         int lastGame_ = 0;   ///< ... and the one played last, A's
+        bool gamesKey();     ///< its A, each frame: true if it chose
+#endif
         bool touching_ = false;
         int lastX_ = 0, lastY_ = 0;
         void draw();

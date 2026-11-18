@@ -15,8 +15,10 @@ namespace hlrt::SaveGame
     /// The list of saves: read once (what a write left half-way is put
     /// right then), and kept up as saves are made.
     const hldata::SaveIndex &index();
+#ifndef HLDS_CHILD
     /// Another game chosen: its saves are in another folder, listed afresh.
     void forget();
+#endif
     /// Read the save in `slot` (a kSlot*), if there is one and it is whole.
     bool read(hldata::SaveData &out, int slot);
     /// Write it. False if the card would not take it: the save that was

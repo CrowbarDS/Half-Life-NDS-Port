@@ -20,12 +20,7 @@
 
 #include <nds/ndstypes.h>
 
-#ifndef HLDS_CHILD
-/// DSi-only code (a DS has none of this), and never folded into a caller
-/// that is not: the compiler pays no heed to where a function it inlines
-/// was to go.
-#define HL_TWL_CODE TWL_CODE __attribute__((noinline))
-#endif
+#include "Global.hpp" // (HL_TWL_CODE)
 
 namespace hlrt
 {

@@ -193,7 +193,7 @@ namespace hlrt::SaveGame
         /// The saves' folder on the card.
         struct FatCard : hldata::SaveCard
         {
-            std::string path(const char *name) const { return global.savesDir() + name; }
+            std::string path(const char *name) const { return global.gameSavesDir() + name; }
 
             /// The last call the card refused, and what it said (errno):
             /// for a save that failed to say why.
@@ -236,13 +236,13 @@ namespace hlrt::SaveGame
             /// usually is): the saves', or a folder in it (run/).
             void makeFolder(const char *name) const
             {
-                std::string dir = global.savesDir();
+                std::string dir = global.gameSavesDir();
                 if (!dir.empty() && dir.back() == '/')
                     dir.pop_back();
                 mkdir(dir.c_str(), 0777);
                 const char *slash = std::strrchr(name, '/');
                 if (slash != nullptr)
-                    mkdir((global.savesDir() + std::string(name, slash)).c_str(), 0777);
+                    mkdir((global.gameSavesDir() + std::string(name, slash)).c_str(), 0777);
             }
             bool append(const char *name, const std::uint8_t *bytes, std::size_t size, bool first) override
             {
@@ -344,7 +344,7 @@ namespace hlrt::SaveGame
             {
                 close();
                 names.clear();
-                std::string dir = global.savesDir();
+                std::string dir = global.gameSavesDir();
                 if (!dir.empty() && dir.back() == '/')
                     dir.pop_back();
                 DIR *folder = opendir(dir.c_str());
@@ -508,7 +508,8 @@ namespace hlrt::SaveGame
         return run;
     }
 
-    void forget()
+#ifndef HLDS_CHILD
+    HL_TWL_CODE void forget()
     {
         // (Both read whole when next asked for: runIndexRead starts afresh.)
         finish();
@@ -516,6 +517,7 @@ namespace hlrt::SaveGame
         listed = false;
         runKnown = false;
     }
+#endif
 
     const hldata::SaveIndex &index()
     {

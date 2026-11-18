@@ -9,6 +9,26 @@
 
 namespace hlrt
 {
+    namespace
+    {
+#ifndef HLDS_CHILD
+        /// Another game's accent (a DSi's: hldata::uiColourOfGame) over
+        /// Half-Life's in palette bank `bank`, from entry `from` on.
+        HL_TWL_CODE void otherAccents(int bank, int from)
+        {
+            for (int i = from; i < 16; ++i)
+                BG_PALETTE_SUB[bank * 16 + i] = hldata::uiColourOfGame(i);
+        }
+        /// ... if the game is another than Half-Life, and the page is not
+        /// the one that chooses it.
+        inline void accents(int bank, int from = 0)
+        {
+            if (hldata::activeGame != hldata::kGameHalfLife && !hldata::uiNeutral)
+                otherAccents(bank, from);
+        }
+#endif
+    } // namespace
+
     TouchCanvas touchCanvas;
 
     namespace
@@ -86,6 +106,10 @@ namespace hlrt
     {
         for (int i = 0; i < 16; ++i)
             BG_PALETTE_SUB[bank * 16 + i] = sixteen != nullptr ? sixteen[i] : hldata::uiColour(i);
+#ifndef HLDS_CHILD
+        if (sixteen == nullptr)
+            accents(bank);
+#endif
         auto *map = reinterpret_cast<std::uint16_t *>(0x06208000);
         for (int cy = y; cy < y + h; ++cy)
         {
@@ -119,6 +143,9 @@ namespace hlrt
         REG_BG0VOFS_SUB = 0;
         for (int i = 0; i < 16; ++i)
             BG_PALETTE_SUB[i] = hldata::uiColour(i);
+#ifndef HLDS_CHILD
+        accents(0);
+#endif
         canvas_.tiles = reinterpret_cast<std::uint32_t *>(reinterpret_cast<std::uint8_t *>(BG_TILE_RAM_SUB(0)) +
                                                           kFirstTile * 32);
         screen_ = canvas_.tiles;
@@ -134,11 +161,13 @@ namespace hlrt
         loadFonts();
     }
 
-    void TouchCanvas::recolour()
+#ifndef HLDS_CHILD
+    HL_TWL_CODE void TouchCanvas::recolour()
     {
         for (int i = 0; i < 16; ++i)
-            BG_PALETTE_SUB[i] = hldata::uiColour(i);
+            BG_PALETTE_SUB[i] = hldata::uiColourOfGame(i);
     }
+#endif
 
     void TouchCanvas::tint(int x, int y, int w, int h, const std::uint16_t *three, int bank)
     {
@@ -148,6 +177,9 @@ namespace hlrt
         {
             for (int i = 0; i < 16; ++i)
                 BG_PALETTE_SUB[bank * 16 + i] = i >= 1 && i <= 3 ? three[i - 1] : hldata::uiColour(i);
+#ifndef HLDS_CHILD
+            accents(bank, 4);
+#endif
         }
         std::uint16_t *map = pageDepth_ > 0 ? mapCopy : BG_MAP_RAM_SUB(0);
         for (int cy = y; cy < y + h && cy < 24; ++cy)

@@ -209,7 +209,7 @@ namespace hlrt::netrelay
                 return;
             iniRead = true;
             static TWL_DATA const char kRead[] = "rb";
-            std::FILE *file = std::fopen(global.rootPath(kIniName).c_str(), kRead);
+            std::FILE *file = std::fopen(global.dataPath(kIniName).c_str(), kRead);
             if (file == nullptr)
                 return;
             char text[512];

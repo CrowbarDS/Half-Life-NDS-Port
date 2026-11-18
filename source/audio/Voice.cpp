@@ -158,7 +158,7 @@ namespace hlrt::voice
                 return;
             heardWritten = true;
             wavWrite("heard.wav", heardSamples, heardCount, 1, heardRate);
-            if (std::FILE *f = std::fopen(global.rootPath("heard.txt").c_str(), "w"))
+            if (std::FILE *f = std::fopen(global.dataPath("heard.txt").c_str(), "w"))
             {
                 std::fprintf(f, "brought down %lu, dropped %lu\n", static_cast<unsigned long>(heardCapped),
                              static_cast<unsigned long>(heardDropped));

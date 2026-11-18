@@ -25,9 +25,11 @@ namespace hlrt
         void create();
         /// The video mode was changed under it: the next create() starts over.
         void reset() { created_ = false; }
-        /// The colours set again (hldata::uiColour): another game chosen, or
-        /// the page that chooses one shown (hldata::uiNeutral).
+#ifndef HLDS_CHILD
+        /// The colours set again (hldata::uiColourOfGame): another game
+        /// chosen, or the page that chooses one shown (hldata::uiNeutral).
         void recolour();
+#endif
 
         hldata::Canvas &canvas() { return canvas_; }
         /// Drawn off the screen, into `tiles` (laid out as the screen's 768),

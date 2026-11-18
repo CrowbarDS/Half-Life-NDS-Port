@@ -112,8 +112,9 @@ namespace hlds::install
         {
             // (An expansion's, in its folder: its saves and achievements.)
             std::string relative = path;
-            for (const hldata::GameInfo &game : hldata::kGames)
+            for (int g = 0; g < hldata::kGameCount; ++g)
             {
+                const hldata::GameInfo &game = hldata::gameInfo(static_cast<hldata::GameId>(g));
                 const std::string folder = game.cardDir;
                 if (!folder.empty() && relative.rfind(folder, 0) == 0)
                     relative = relative.substr(folder.size());
@@ -228,7 +229,7 @@ namespace hlds::install
         {
             for (int g = 1; g < hldata::kGameCount; ++g)
             {
-                const hldata::GameInfo &info = hldata::kGames[g];
+                const hldata::GameInfo &info = hldata::gameInfo(static_cast<hldata::GameId>(g));
                 const fs::path beside = findNoCase(game.valve.parent_path(), info.steamDir);
                 const fs::path theirs = beside.empty() ? fs::path() : findNoCase(beside, "maps");
                 if (!theirs.empty() && !findNoCase(theirs, std::string(info.startMap) + ".bsp").empty() &&
@@ -385,8 +386,9 @@ namespace hlds::install
         // Of ours, on the card, and no longer in what is being installed:
         // of each game being installed, in its own folder (Half-Life's own
         // folders only, not an expansion's under it).
-        for (const hldata::GameInfo &game : hldata::kGames)
+        for (int g = 0; g < hldata::kGameCount; ++g)
         {
+            const hldata::GameInfo &game = hldata::gameInfo(static_cast<hldata::GameId>(g));
             const std::string own = game.cardDir;
             if (!own.empty() && !fs::is_directory(data / own, ec))
             {

@@ -90,14 +90,14 @@ bool Achievements::off() const
 {
     // (Not in a game between consoles, from its lobby to its end: none are
     // earned there, and none are shown over it. Nor in a game they are not
-    // of: an expansion.)
-    return hlrt::netGame.on() || !hldata::activeGameInfo().achievements;
+    // of: an expansion -- they are Half-Life: Legacy's.)
+    return hlrt::netGame.on() || hldata::activeGame != hldata::kGameHalfLife;
 }
 
-void Achievements::reload()
+HL_TWL_CODE void Achievements::reload()
 {
     tracker = hldata::AchievementTracker();
-    if (hldata::activeGameInfo().achievements)
+    if (hldata::activeGame == hldata::kGameHalfLife)
         load();
 }
 

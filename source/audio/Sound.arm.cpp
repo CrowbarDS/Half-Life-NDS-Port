@@ -1718,7 +1718,7 @@ namespace hlrt
         // into the ring as they are.
         char name[16];
         musicFileName(track, name, sizeof(name));
-        const std::string path = global.dataPath("music/") + name;
+        const std::string path = global.gamePath("music/") + name;
         std::FILE *file = std::fopen(path.c_str(), "rb");
         if (file == nullptr)
             return;
@@ -1847,7 +1847,7 @@ namespace hlrt
         if (extended_ && dspAudio.failed())
         {
             // (Said in the log, so that it is known to have happened.)
-            if (std::FILE *log = perfLogging() ? std::fopen(global.rootPath("perf.txt").c_str(), "a") : nullptr)
+            if (std::FILE *log = perfLogging() ? std::fopen(global.dataPath("perf.txt").c_str(), "a") : nullptr)
             {
                 std::fprintf(log, "dsp given up: ran short %lu times, %s\n", static_cast<unsigned long>(dspAudio.dry()),
                              dspAudio.up() ? "answering" : "not answering");

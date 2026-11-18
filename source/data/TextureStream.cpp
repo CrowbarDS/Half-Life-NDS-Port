@@ -695,7 +695,7 @@ namespace hlrt
         report("map loaded");
         if (paletteGuesses != 0 && perfLogging())
         {
-            if (std::FILE *log = std::fopen(global.rootPath("perf.txt").c_str(), "a"))
+            if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
             {
                 std::fprintf(log, "tex palettes: %d streamed textures with no believable size in the level, "
                                   "given the most a texture of theirs may have\n",
@@ -1088,7 +1088,7 @@ namespace hlrt
                 f.longest = frames;
                 f.longestBlanks = blanks;
             }
-            if (frames >= 30 && (log = std::fopen(global.rootPath("perf.txt").c_str(), "a")) != nullptr)
+            if (frames >= 30 && (log = std::fopen(global.dataPath("perf.txt").c_str(), "a")) != nullptr)
                 std::fprintf(log, "tex flat: from frame %lu, %lu frames (%lu blanks), at most %d in view\n",
                              static_cast<unsigned long>(frameNo - frames), static_cast<unsigned long>(frames),
                              static_cast<unsigned long>(blanks), flatMost);
@@ -1100,7 +1100,7 @@ namespace hlrt
                                    guard::reserveState().letGoPlay != reserveWritten))
         {
             if (log == nullptr)
-                log = std::fopen(global.rootPath("perf.txt").c_str(), "a");
+                log = std::fopen(global.dataPath("perf.txt").c_str(), "a");
             const FlatSpells &f = flatSpells;
             NEAAllocPoolStats nodes;
             NEA_AllocGetPoolStats(&nodes);
@@ -1156,7 +1156,7 @@ namespace hlrt
     void TextureStream::report(const char *why)
     {
 #ifdef HLDS_PROFILE
-        std::FILE *log = std::fopen(global.rootPath("perf.txt").c_str(), "a");
+        std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a");
         if (log == nullptr)
             return;
         const StreamStats st = stats();

@@ -344,7 +344,7 @@ void Global::InitVideo()
     mountCommon();
 #ifndef HLDS_CHILD
     if (!mapMounted_.empty() && !NEA_NpacIsMounted("map") && mountMapArchive(mapArchive(mapMounted_)) == 0)
-        noteSeek("map", mapArchive(mapMounted_), mapSeek, rootPath("perf.txt"));
+        noteSeek("map", mapArchive(mapMounted_), mapSeek, dataPath("perf.txt"));
 #endif
 }
 
@@ -359,7 +359,7 @@ bool Global::mountMap(const std::string &name)
 #else
     if (!hasData || mountMapArchive(mapArchive(name)) != 0)
         return false;
-    noteSeek("map", mapArchive(name), mapSeek, rootPath("perf.txt"));
+    noteSeek("map", mapArchive(name), mapSeek, dataPath("perf.txt"));
 #endif
     mapMounted_ = name;
     return true;
@@ -381,31 +381,42 @@ void Global::mountCommon()
 #ifndef HLDS_CHILD
     // (A card with no common archive is a game without its own letters and
     // pictures, which is said where each is missed, not here.)
-    if (hasData && !NEA_NpacIsMounted("common") && NEA_NpacMount("common", (dataDir() + "common.npac").c_str()) == 0)
-        noteSeek("common", "common.npac", commonSeek, rootPath("perf.txt"));
+    if (hasData && !NEA_NpacIsMounted("common") && NEA_NpacMount("common", (gameDir() + "common.npac").c_str()) == 0)
+        noteSeek("common", "common.npac", commonSeek, dataPath("perf.txt"));
 #endif
 }
 
-void Global::remountCommon()
-{
 #ifndef HLDS_CHILD
+HL_TWL_CODE void Global::remountCommon()
+{
     if (NEA_NpacIsMounted("common"))
         NEA_NpacUnmount("common");
     mountCommon();
+}
 #endif
+
+#ifndef HLDS_CHILD
+#endif
+
+#ifndef HLDS_CHILD
+HL_TWL_CODE std::string Global::otherSavesDir() const
+{
+    return otherGameDir() + "saves/";
 }
 
-std::uint8_t Global::scanGames() const
+HL_TWL_CODE std::string Global::otherGameDir() const
 {
-#ifdef HLDS_CHILD
-    return 1u << hldata::kGameHalfLife;
-#else
+    return dataDir() + hldata::activeGameInfo().cardDir;
+}
+
+HL_TWL_CODE std::uint8_t Global::scanGames() const
+{
     std::uint8_t present = 0;
     if (!hasFat)
         return present;
     for (int g = 0; g < hldata::kGameCount; ++g)
     {
-        const std::string path = rootDir() + hldata::kGames[g].cardDir + "manifest.bin";
+        const std::string path = dataDir() + hldata::gameInfo(static_cast<hldata::GameId>(g)).cardDir + "manifest.bin";
         std::FILE *file = std::fopen(path.c_str(), "rb");
         if (file == nullptr)
             continue;
@@ -416,8 +427,8 @@ std::uint8_t Global::scanGames() const
         std::fclose(file);
     }
     return present;
-#endif
 }
+#endif
 
 std::size_t Global::heapHeadroom() const
 {
@@ -453,7 +464,7 @@ Global::DataStatus Global::ReadManifest(std::string &startMap, std::vector<hldat
     if (!hasFat)
         return DataStatus::NoCard;
 
-    std::FILE *file = std::fopen(dataPath("manifest.bin").c_str(), "rb");
+    std::FILE *file = std::fopen(gamePath("manifest.bin").c_str(), "rb");
     if (file == nullptr)
         return DataStatus::NoData;
     std::fseek(file, 0, SEEK_END);

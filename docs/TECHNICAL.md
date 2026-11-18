@@ -1516,10 +1516,13 @@ in `data/`. The stage has a folder for each game too, so that two games'
 files of the same name (each has its own `v_9mmhandgun.mdl`: its own hands)
 never take each other's place.
 
-**On the console**, with more than one game on the card, CHOOSE GAME comes
-before the intro; the game last played is listed first (and A chooses it),
-and kept in the settings. On a DS the expansions are there but greyed. The
-title of a card of several games has CHANGE GAME, which lets go of what was
+**On the console**, a DSi with more than one game on the card shows CHOOSE
+GAME before the intro; the game last played is listed first (and A chooses
+it), and kept in the settings. A DS plays Half-Life alone, as it always did,
+and is asked nothing: all that chooses and changes the game, and the
+expansions' part of the game table, is in the DSi's own memory (the
+program's .twl section, `HL_TWL_CODE`), which a DS never loads. The title of
+a card of several games has CHANGE GAME, which lets go of what was
 read of the game's common archive -- the display's pictures, the weapons',
 the title -- mounts the other's and reads its manifest and saves. An
 expansion has no matches between consoles, no demos and no achievements

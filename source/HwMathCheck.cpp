@@ -95,7 +95,7 @@ namespace hlrt
             if (hldata::isqrt64(v) != slowRoot(v))
             {
                 if (wrongRoot < 4)
-                    if (std::FILE *log = std::fopen(global.rootPath("perf.txt").c_str(), "a"))
+                    if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
                     {
                         const std::uint64_t value = v;
                         std::fprintf(log, "hwmath: root of %08lx%08lx: %lu, slow %lu\n",
@@ -107,7 +107,7 @@ namespace hlrt
                 ++wrongRoot;
             }
         }
-        if (std::FILE *log = std::fopen(global.rootPath("perf.txt").c_str(), "a"))
+        if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
         {
             std::fprintf(log, "hwmath: of %d each, differ from the slow way: %d signed divides, %d unsigned, "
                               "%d unsigned with the top bit set, %d roots\n",

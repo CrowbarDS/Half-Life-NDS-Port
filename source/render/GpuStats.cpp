@@ -98,7 +98,7 @@ namespace hlrt
     {
         if (!global.hasFat || map_.frames == 0)
             return false;
-        std::FILE *file = std::fopen(global.rootPath("perf.txt").c_str(), "a");
+        std::FILE *file = std::fopen(global.dataPath("perf.txt").c_str(), "a");
         if (file == nullptr)
             return false;
         std::fprintf(file,

@@ -120,7 +120,14 @@ namespace hldata
         {
             ar &converterVersion &startMap &maps &airBaseBytes;
             if (format >= 7)
-                ar &game &title;
+            {
+                ar &game;
+#ifndef __NDS__
+                // (The game's name, for the converter and its window: the
+                // console has no use for it, and reads no further.)
+                ar &title;
+#endif
+            }
         }
 
         const ManifestMap *find(const std::string &name) const

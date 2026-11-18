@@ -208,7 +208,7 @@ namespace hlrt::families
             // family's code lies, for tools/icache_rank.py to name what of
             // the heap's lines is its -- by its GetFamilyAPI, whose place in
             // the family's own ELF says the rest.)
-            if (std::FILE *log = std::fopen(global.rootPath("perf.txt").c_str(), "a"))
+            if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
             {
                 static const char *const kName[hldata::kFamilyCount] = {"", "boss", "military", "net"};
                 std::fprintf(log, "family: %s %08lx\n", kName[f], static_cast<unsigned long>(reinterpret_cast<std::uintptr_t>(api)));

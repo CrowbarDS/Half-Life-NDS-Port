@@ -33,25 +33,32 @@ namespace hldata
     /// page that chooses the game, which is none of theirs.
     inline bool uiNeutral = false;
 
-    /// Each as the DS has colours: five bits of red, green and blue. The
-    /// accent (kUiOrange's three) and a button pressed are the game's
-    /// (HlGame.hpp): Half-Life's orange, Blue Shift's blue, Opposing Force's
-    /// green.
-    inline std::uint16_t uiColour(int index)
+    /// Each as the DS has colours: five bits of red, green and blue.
+    /// (Half-Life's: an expansion's accent is uiColourOfGame's.)
+    inline constexpr std::uint16_t uiColour(int index)
     {
-        const GameInfo &game = gameInfo(uiNeutral ? kGameHalfLife : activeGame);
-        index &= 15;
-        if (index >= kUiOrange && index < kUiOrange + 3)
-            return game.accent[index - kUiOrange];
-        if (index == kUiPanelDown)
-            return game.pressed;
-        static constexpr std::uint16_t kColours[16] = {
+        constexpr std::uint16_t kColours[16] = {
             // (r | g << 5 | b << 10)
             2 | 2 << 5 | 3 << 10,    5 | 5 << 5 | 7 << 10,    12 | 8 << 5 | 2 << 10,   14 | 13 << 5 | 12 << 10,
             0,                       10 | 10 << 5 | 10 << 10, 20 | 20 << 5 | 20 << 10, 31 | 31 << 5 | 31 << 10,
             10 | 5 << 5 | 0 << 10,   20 | 11 << 5 | 0 << 10,  31 | 20 << 5 | 2 << 10,  5 | 5 << 5 | 6 << 10,
             9 | 9 << 5 | 10 << 10,   15 | 15 << 5 | 16 << 10, 31 | 4 << 5 | 3 << 10,   3 | 3 << 5 | 4 << 10};
-        return kColours[index];
+        return kColours[index & 15];
+    }
+
+    /// The same as the palette is written with: the accent (kUiOrange's
+    /// three) and a button pressed the game's (HlGame.hpp) -- Blue Shift's
+    /// blue, Opposing Force's green; Half-Life's orange, and on the page
+    /// that chooses the game (uiNeutral).
+    inline std::uint16_t uiColourOfGame(int index)
+    {
+        index &= 15;
+        if (activeGame == kGameHalfLife || uiNeutral)
+            return uiColour(index);
+        const GameInfo &game = gameInfo(activeGame);
+        if (index >= kUiOrange && index < kUiOrange + 3)
+            return game.accent[index - kUiOrange];
+        return index == kUiPanelDown ? game.pressed : uiColour(index);
     }
 
     /// What each of a glyph's three levels is drawn in.

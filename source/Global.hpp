@@ -21,11 +21,22 @@
 #include "HlGame.hpp"
 #include "HlNetMaps.hpp"
 
+#ifndef HLDS_CHILD
+/// DSi-only code (a DS has none of this), and never folded into a caller
+/// that is not: the compiler pays no heed to where a function it inlines
+/// was to go.
+#ifndef HL_TWL_CODE
+#define HL_TWL_CODE TWL_CODE __attribute__((noinline))
+#endif
+#endif
+
 class Global
 {
 public:
     const char *fatDevice = nullptr;   ///< libfat default drive, e.g. "fat:" / "sd:"
     std::string fatDeviceCPP;          ///< same as a std::string, for path building
+
+
     bool hasFat = false;               ///< FAT init succeeded and a drive is mounted
     /// There is the game's data to read: on the card, or (a console that was
     /// sent the game, HLDS_CHILD) received, on the "air:" drive
@@ -91,17 +102,23 @@ public:
     // music, which is played off the card as it goes.
     //
     // Half-Life's files are in that folder itself, as they always were; an
-    // expansion's in a folder of its own under it (HlGame.hpp: cardDir).
-    // What is the console's, not a game's -- the settings, perf.txt, the
-    // relay's server.ini -- is in the root folder.
+    // expansion's in a folder of its own under it (HlGame.hpp: cardDir):
+    // gameDir. What is the console's or Half-Life's alone -- the settings,
+    // perf.txt, the relay's server.ini, the achievements, a match's maps --
+    // is in dataDir, as it always was.
 #ifdef HLDS_CHILD
     // (Sent the game: what it was sent is laid out as on a card.)
-    std::string rootDir() const { return "air:/"; }
     std::string dataDir() const { return "air:/"; }
+    std::string gameDir() const { return "air:/"; }
 #else
-    std::string rootDir() const { return fatDeviceCPP + "_nds/hl_nds/data/"; }
-    /// The folder of the game being played (hldata::activeGame).
-    std::string dataDir() const { return rootDir() + hldata::activeGameInfo().cardDir; }
+    std::string dataDir() const { return fatDeviceCPP + "_nds/hl_nds/data/"; }
+    /// The folder of the game being played (hldata::activeGame): dataDir
+    /// for Half-Life, or (a DSi's) an expansion's under it.
+    std::string gameDir() const
+    {
+        return hldata::activeGame == hldata::kGameHalfLife ? dataDir() : otherGameDir();
+    }
+    std::string otherGameDir() const;
 #endif
     /// A map's archive: maps/<name>.npac -- or, a map a host sent for a
     /// match (net/MapShare.hpp), the file it was put in.
@@ -111,7 +128,7 @@ public:
         if (!mapFileName_.empty() && name == mapFileName_)
             return mapFile_;
 #endif
-        return dataDir() + "maps/" + name + ".npac";
+        return gameDir() + "maps/" + name + ".npac";
     }
 #ifndef HLDS_CHILD
     /// The map `name` is to be read from `path`; clearMapFile: none is.
@@ -142,9 +159,23 @@ public:
     std::string texDir() const { return mapPath("tex/"); }
     /// Written by the game, never by the converter.
     std::string savesDir() const { return dataDir() + "saves/"; }
+    /// The saves of the game being played (gameDir's): the saves' own code
+    /// (game/SaveGame.cpp). (A match's maps' pictures are Half-Life's:
+    /// savesDir.)
+    std::string gameSavesDir() const
+    {
+#ifndef HLDS_CHILD
+        if (hldata::activeGame != hldata::kGameHalfLife)
+            return otherSavesDir();
+#endif
+        return savesDir();
+    }
+#ifndef HLDS_CHILD
+    std::string otherSavesDir() const; ///< (a DSi's)
+#endif
     std::string dataPath(const std::string &rel) const { return dataDir() + rel; }
-    /// The console's own files, whichever game is played.
-    std::string rootPath(const std::string &rel) const { return rootDir() + rel; }
+    /// A file of the game being played (gameDir): its manifest, its music.
+    std::string gamePath(const std::string &rel) const { return gameDir() + rel; }
 
     /// Put a map's archive in the place of whichever is mounted. False if
     /// it is not on the card (and then none is).
@@ -153,12 +184,17 @@ public:
     /// The common archive, if it is not mounted already. (The 3D engine
     /// lets go of every archive when it is brought up again: InitVideo.)
     void mountCommon();
+#ifndef HLDS_CHILD
     /// Another game chosen (hldata::activeGame set): its common archive in
-    /// place of the last one's.
+    /// place of the last one's. (A DSi's.)
     void remountCommon();
+#endif
+#ifndef HLDS_CHILD
     /// The games the card holds, a bit each (1 << GameId): those with a
-    /// manifest in their folder. Only the files' first bytes are read.
+    /// manifest in their folder. Only the files' first bytes are read. (A
+    /// DSi's: HL_TWL_CODE. A DS plays Half-Life alone, and asks nothing.)
     std::uint8_t scanGames() const;
+#endif
 #ifndef HLDS_CHILD
     /// How the map's and the common archive's files seek, as each was last
     /// mounted (NEA_NpacSeekInfo): one in more pieces on the card than the

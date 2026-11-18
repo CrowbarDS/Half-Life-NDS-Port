@@ -202,11 +202,15 @@ namespace hlrt
                                   {Kind::Button, kMultiplayer, "MULTIPLAYER"},
                                   {Kind::Button, kOptions, "OPTIONS"},
                                   {Kind::Button, kAchievementsOpen, "ACHIEVEMENTS"},
+#ifndef HLDS_CHILD
                                   {Kind::Button, kChangeGame, "CHANGE GAME"},
+#endif
                                   {Kind::Button, kQuit, "QUIT"}};
-        // CHOOSE GAME: each game on the card (a DS's, Half-Life alone: the
-        // others greyed). The one last played first.
+#ifndef HLDS_CHILD
+        // CHOOSE GAME (a DSi's): each game on the card, the one last played
+        // first.
         Row gameRows[hldata::kGameCount];
+#endif
         // A game between consoles (source/net/NetGame.hpp).
         const Row kMultiRows[] = {{Kind::Button, kNetHost, "HOST"},
                                   {Kind::Button, kNetJoin, "JOIN"},
@@ -314,22 +318,27 @@ namespace hlrt
         // ... whether there is a save to go on with, and somewhere to quit to.
         bool saveThere = false;
         bool quitThere = false;
-        // ... the games on it (a bit each, 1 << GameId).
+#ifndef HLDS_CHILD
+        // ... the games on it (a bit each, 1 << GameId): a DS's, Half-Life
+        // alone.
         std::uint8_t gamesThere = 1u << hldata::kGameHalfLife;
         bool severalGames() { return (gamesThere & (gamesThere - 1)) != 0; }
+#endif
 
         /// A row that is not shown at all: one that depends on what is not
         /// on the card (rule: nothing is offered that is not there).
         bool hiddenRow(Id id)
         {
-            const GameInfo &game = activeGameInfo();
+#ifndef HLDS_CHILD
+            if (id == kChangeGame)
+                return !severalGames();
             if (id >= kChooseHalfLife && id <= kChooseOpFor)
                 return ((gamesThere >> (id - kChooseHalfLife)) & 1) == 0;
             // (An expansion is played alone: Half-Life's matches, its demos
             // and its achievements are Half-Life's.)
-            if ((id == kMultiplayer && !game.multiplayer) || (id == kAchievementsOpen && !game.achievements) ||
-                (id == kChangeGame && (childConsole || !severalGames())))
+            if (activeGame != kGameHalfLife && (id == kMultiplayer || id == kAchievementsOpen))
                 return true;
+#endif
             return (id == kGameTraining && !onCard[1]) || (id == kGameUplink && !onCard[2]) ||
                    (id == kContinue && !saveThere) || (id == kQuit && !quitThere) || (id == kEndMatch && (!netGame.isHost() || netGame.match().over)) ||
                    // (CHAT: not in a demo, and not on a console sent the game.)
@@ -341,6 +350,34 @@ namespace hlrt
         }
 
         const Row *tableOf(int page, int &count);
+
+#ifdef HLDS_CHILD
+        inline const char *gameHeading() { return "HALF-LIFE"; }
+        inline const char *gameTrain() { return "t0a0"; }
+        inline const char *gameUplink() { return "hldemo1"; }
+#else
+        HL_TWL_CODE const char *otherHeading() { return activeGameInfo().heading; }
+        HL_TWL_CODE const char *otherTrain() { return activeGameInfo().trainMap; }
+        /// The game's heading, training's first map and Uplink's (none:
+        /// empty): Half-Life's, or (a DSi's) another's.
+        const char *gameHeading() { return activeGame == kGameHalfLife ? "HALF-LIFE" : otherHeading(); }
+        const char *gameTrain() { return activeGame == kGameHalfLife ? "t0a0" : otherTrain(); }
+        const char *gameUplink() { return activeGame == kGameHalfLife ? "hldemo1" : ""; }
+
+        /// An expansion's names for the rows that name the game (a DSi's).
+        HL_TWL_CODE void gameLabels(Row *rows, int count)
+        {
+            static char play[32];
+            std::snprintf(play, sizeof(play), "PLAY %s", activeGameInfo().heading);
+            for (int i = 0; i < count; ++i)
+            {
+                if (rows[i].id == kPlayGame)
+                    rows[i].label = play;
+                else if (rows[i].id == kGameTraining)
+                    rows[i].label = activeGameInfo().trainName;
+            }
+        }
+#endif
 
         /// A page's rows as they are shown: its table less what is hidden.
         const Row *rowsOf(int page, int &count)
@@ -354,16 +391,11 @@ namespace hlrt
                 if (!hiddenRow(table[i].id))
                     shown[count++] = table[i];
             }
-            // (The game's own names for its rows: PLAY BLUE SHIFT, BOOT CAMP.)
-            static char play[32];
-            std::snprintf(play, sizeof(play), "PLAY %s", activeGameInfo().heading);
-            for (int i = 0; i < count; ++i)
-            {
-                if (shown[i].id == kPlayGame)
-                    shown[i].label = play;
-                else if (shown[i].id == kGameTraining)
-                    shown[i].label = activeGameInfo().trainName;
-            }
+#ifndef HLDS_CHILD
+            // (An expansion's own names for its rows: PLAY BLUE SHIFT, BOOT CAMP.)
+            if (activeGame != kGameHalfLife)
+                gameLabels(shown, count);
+#endif
             return shown;
         }
 
@@ -390,7 +422,9 @@ namespace hlrt
             case 11: count = static_cast<int>(sizeof(kNetPauseRows) / sizeof(kNetPauseRows[0])); return kNetPauseRows;
             case 14: count = static_cast<int>(sizeof(kSkillRows) / sizeof(kSkillRows[0])); return kSkillRows;
             case 16: count = static_cast<int>(sizeof(kNewGameRows) / sizeof(kNewGameRows[0])); return kNewGameRows;
+#ifndef HLDS_CHILD
             case 27: count = hldata::kGameCount; return gameRows;
+#endif
             default: return kMain;
             }
         }
@@ -420,10 +454,11 @@ namespace hlrt
         draw();
     }
 
-    void Menu::setGames(std::uint8_t present) { gamesThere = present; }
+#ifndef HLDS_CHILD
+    HL_TWL_CODE void Menu::setGames(std::uint8_t present) { gamesThere = present; }
     bool Menu::severalGames() const { return hlrt::severalGames(); }
 
-    void Menu::openGames(int last)
+    HL_TWL_CODE void Menu::openGames(int last)
     {
         open(false);
         title_ = true;
@@ -433,7 +468,8 @@ namespace hlrt
         int n = 0;
         auto put = [&](int g)
         {
-            gameRows[n++] = Row{Kind::Button, static_cast<Id>(kChooseHalfLife + g), hldata::kGames[g].heading};
+            gameRows[n++] = Row{Kind::Button, static_cast<Id>(kChooseHalfLife + g),
+                                hldata::gameInfo(static_cast<hldata::GameId>(g)).heading};
         };
         if (last >= 0 && last < hldata::kGameCount)
             put(last);
@@ -447,6 +483,19 @@ namespace hlrt
         touchCanvas.recolour();
         draw();
     }
+
+    /// CHOOSE GAME, each frame: A for the one played last.
+    HL_TWL_CODE bool Menu::gamesKey()
+    {
+        if (!(keysDown() & KEY_A) || lastGame_ < 0 || lastGame_ >= hldata::kGameCount ||
+            ((gamesThere >> lastGame_) & 1) == 0)
+            return false;
+        sound.ui(kUiSoundPress);
+        chosenGame_ = lastGame_;
+        hldata::uiNeutral = false;
+        return true;
+    }
+#endif
 
     void Menu::openHand()
     {
@@ -480,12 +529,11 @@ namespace hlrt
     /// only if its first map is on the card.
     void Menu::probeCard()
     {
-        const GameInfo &game = activeGameInfo();
-        const char *const kFirst[3] = {nullptr, game.trainMap, game.uplinkMap};
+        const char *const kFirst[3] = {nullptr, gameTrain(), gameUplink()};
         for (int i = 1; i < 3; ++i)
         {
             hldata::LevelHeader header{};
-            gameThere_[i] = kFirst[i] != nullptr && Level::peekHeader(kFirst[i], header);
+            gameThere_[i] = kFirst[i][0] != '\0' && Level::peekHeader(kFirst[i], header);
             onCard[i] = gameThere_[i];
         }
         saveThere = saves_ != nullptr && saveMostRecent(*saves_) >= 0;
@@ -656,7 +704,7 @@ namespace hlrt
             drawTextCentred(canvas, title, 128, page_ == Page::Confirm ? 14 : 8,
                             page_ == Page::Main || page_ == Page::NetPause
                                 ? "PAUSED"
-                                : (page_ == Page::Title       ? activeGameInfo().heading
+                                : (page_ == Page::Title       ? gameHeading()
                                    : page_ == Page::Game        ? "CHOOSE GAME"
                                    : page_ == Page::Multiplayer ? "MULTIPLAYER"
                                    : page_ == Page::Difficulty  ? "DIFFICULTY"
@@ -3998,10 +4046,6 @@ namespace hlrt
             return netGame.maps().empty() ? "No multiplayer map on the card" : nullptr;
         case kPlayGame:
             return gameThere_[0] ? nullptr : "The game is not on the card";
-        case kChooseShift:
-        case kChooseOpFor:
-            return hldata::kGames[id - kChooseHalfLife].dsiOnly && !isDSiMode() ? "DSi only: a DS has not the memory"
-                                                                              : nullptr;
         case kGameTraining:
             return gameThere_[1] ? nullptr : "The Hazard Course is not on the card";
         case kGameUplink:
@@ -4109,6 +4153,7 @@ namespace hlrt
         case kSave:    return Action::Save;
         case kCommand: return Action::Command;
         case kQuit:    return Action::Quit;
+#ifndef HLDS_CHILD
         case kChangeGame: return Action::ChangeGame;
         case kChooseHalfLife:
         case kChooseShift:
@@ -4116,6 +4161,7 @@ namespace hlrt
             chosenGame_ = item.id - kChooseHalfLife;
             hldata::uiNeutral = false;
             return Action::ChooseGame;
+#endif
         case kNewGame:
             // (From the title there is nothing to lose: straight to which
             // game. No save is touched either way: a new game only begins.)
@@ -4137,8 +4183,7 @@ namespace hlrt
                 drawRow(row, false);
                 break;
             }
-            const GameInfo &game = activeGameInfo();
-            const char *const kMaps[3] = {"", game.trainMap, game.uplinkMap != nullptr ? game.uplinkMap : ""};
+            const char *const kMaps[3] = {"", gameTrain(), gameUplink()};
             map_ = kMaps[which];
             // (The Training Room is the same at any difficulty.)
             if (item.id == kGameTraining)
@@ -4357,15 +4402,11 @@ namespace hlrt
 
     Menu::Action Menu::frame()
     {
-        // CHOOSE GAME: A for the one played last (if it can be played here).
-        if (page_ == Page::Game && (keysDown() & KEY_A) && lastGame_ >= 0 && lastGame_ < hldata::kGameCount &&
-            ((gamesThere >> lastGame_) & 1) != 0 && whyDead(kChooseHalfLife + lastGame_) == nullptr)
-        {
-            sound.ui(kUiSoundPress);
-            chosenGame_ = lastGame_;
-            hldata::uiNeutral = false;
+#ifndef HLDS_CHILD
+        // CHOOSE GAME (a DSi's): A for the one played last.
+        if (page_ == Page::Game && gamesKey())
             return Action::ChooseGame;
-        }
+#endif
         // (Nothing has come of it: the lobby after all.)
         if (nextHeld_ && (!netGame.on() || Global::vblanks() - nextHeldAt_ > 10 * 60))
         {

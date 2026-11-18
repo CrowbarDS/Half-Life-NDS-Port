@@ -64,7 +64,7 @@ namespace hlrt
 
         // A development aid: "x y z yaw" in debug_start.txt, in whole units
         // and degrees, starts there instead (tools/emu/play.sh writes it).
-        if (std::FILE *file = std::fopen(global.rootPath("debug_start.txt").c_str(), "r"))
+        if (std::FILE *file = std::fopen(global.dataPath("debug_start.txt").c_str(), "r"))
         {
             int x, y, z, yaw, track = -1, die = 0, models = 0, weapon = 0, god = 0;
             if (std::fscanf(file, "%d %d %d %d %d %d %d %d %d", &x, &y, &z, &yaw, &track, &die, &models, &weapon,

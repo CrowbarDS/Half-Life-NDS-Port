@@ -81,21 +81,21 @@ int main()
               gameFromFolder("GEARBOX") == kGameOpFor && gameFromFolder("cstrike") == kGameCount &&
               gameFromFolder("valve_french") == kGameCount,
           "a game is told by its folder's name, in any case");
-    check(std::strcmp(kGames[kGameHalfLife].cardDir, "") == 0, "Half-Life's card folder is data/ itself, as it was");
-    check(!kGames[kGameHalfLife].dsiOnly && kGames[kGameBlueShift].dsiOnly && kGames[kGameOpFor].dsiOnly,
+    check(std::strcmp(gameInfo(kGameHalfLife).cardDir, "") == 0, "Half-Life's card folder is data/ itself, as it was");
+    check(!gameInfo(kGameHalfLife).dsiOnly && gameInfo(kGameBlueShift).dsiOnly && gameInfo(kGameOpFor).dsiOnly,
           "the expansions are a DSi's only");
-    check(kGames[kGameHalfLife].weaponSlots == 5 && kGames[kGameBlueShift].weaponSlots == 5 &&
-              kGames[kGameOpFor].weaponSlots == 7,
+    check(gameInfo(kGameHalfLife).weaponSlots == 5 && gameInfo(kGameBlueShift).weaponSlots == 5 &&
+              gameInfo(kGameOpFor).weaponSlots == 7,
           "Opposing Force has seven slots of weapons, the others five");
-    check(kGames[kGameHalfLife].achievements && !kGames[kGameBlueShift].achievements &&
-              !kGames[kGameOpFor].achievements && kGames[kGameHalfLife].multiplayer &&
-              !kGames[kGameBlueShift].multiplayer && !kGames[kGameOpFor].multiplayer,
+    check(gameInfo(kGameHalfLife).achievements && !gameInfo(kGameBlueShift).achievements &&
+              !gameInfo(kGameOpFor).achievements && gameInfo(kGameHalfLife).multiplayer &&
+              !gameInfo(kGameBlueShift).multiplayer && !gameInfo(kGameOpFor).multiplayer,
           "achievements and matches are Half-Life's");
 
     // Half-Life's colours are what they were before there were games: the
     // display's (HudDraw) and the menus' (uiColour).
-    check(kGames[kGameHalfLife].hud == (31 | 20 << 5 | 2 << 10) && kGames[kGameHalfLife].hudDim == (14 | 9 << 5 | 1 << 10) &&
-              kGames[kGameHalfLife].hud640 == (31 | 20 << 5),
+    check(gameInfo(kGameHalfLife).hud == (31 | 20 << 5 | 2 << 10) && gameInfo(kGameHalfLife).hudDim == (14 | 9 << 5 | 1 << 10) &&
+              gameInfo(kGameHalfLife).hud640 == (31 | 20 << 5),
           "Half-Life's display is orange as it was");
     {
         static constexpr std::uint16_t kBefore[16] = {
@@ -106,18 +106,20 @@ int main()
         activeGame = kGameHalfLife;
         bool same = true;
         for (int i = 0; i < 16; ++i)
-            same = same && uiColour(i) == kBefore[i];
+            same = same && uiColour(i) == kBefore[i] && uiColourOfGame(i) == kBefore[i];
         check(same, "Half-Life's menus are in the colours they were");
         activeGame = kGameBlueShift;
-        check(uiColour(kUiOrange + 2) == kGames[kGameBlueShift].accent[2] && uiColour(kUiWhite + 2) == kBefore[kUiWhite + 2],
+        check(uiColourOfGame(kUiOrange + 2) == gameInfo(kGameBlueShift).accent[2] &&
+                  uiColourOfGame(kUiWhite + 2) == kBefore[kUiWhite + 2] && uiColour(kUiOrange + 2) == kBefore[kUiOrange + 2],
               "Blue Shift's accent is its own; the rest is the same");
         uiNeutral = true;
-        check(uiColour(kUiOrange + 2) == kBefore[kUiOrange + 2], "... and CHOOSE GAME's is no game's (Half-Life's)");
+        check(uiColourOfGame(kUiOrange + 2) == kBefore[kUiOrange + 2], "... and CHOOSE GAME's is no game's (Half-Life's)");
         uiNeutral = false;
         activeGame = kGameHalfLife;
         // (Each accent brighter step by step: the three levels of a letter.)
-        for (const GameInfo &game : kGames)
+        for (int g = 0; g < kGameCount; ++g)
         {
+            const GameInfo &game = gameInfo(static_cast<GameId>(g));
             auto sum = [](std::uint16_t c) { return (c & 31) + (c >> 5 & 31) + (c >> 10 & 31); };
             check(sum(game.accent[0]) < sum(game.accent[1]) && sum(game.accent[1]) < sum(game.accent[2]),
                   "each game's accent goes from faint to full");
