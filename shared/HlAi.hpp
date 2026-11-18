@@ -657,7 +657,7 @@ namespace hldata
     inline bool aiFamiliesLinked = false;
     // (Out of line, these: asked from every look at a kind, they would
     // otherwise be copied into each.)
-    [[gnu::noinline]] inline void aiFamiliesReady()
+    [[gnu::noinline]] HL_HOT void aiFamiliesReady()
     {
         if (!aiFamiliesLinked)
         {
@@ -666,7 +666,7 @@ namespace hldata
         }
     }
     /// A kind of a family's: its table, if the family is there.
-    [[gnu::noinline]] inline const AiKind *aiFamilyKindOf(std::uint8_t kind)
+    [[gnu::noinline]] HL_HOT const AiKind *aiFamilyKindOf(std::uint8_t kind)
     {
         aiFamiliesReady();
         const AiKindFn f = kind < static_cast<int>(ActorKind::Count) ? aiFamilyKind[kind] : nullptr;

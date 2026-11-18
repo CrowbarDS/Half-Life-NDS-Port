@@ -55,7 +55,7 @@ elf, tools = sys.argv[1], sys.argv[2]
 
 # Code the ITCM may hold before the build is told to think again. (The link
 # fails by itself at 32768.)
-ITCM_BUDGET = 32000  # (2026-11-16: with the game core linked in, its shot traces too)
+ITCM_BUDGET = 32384  # (2026-11-18: the instruction cache profiler, round 1; 384 B kept for libnds to grow)
 
 # The helpers. "soft" ones are the library routines; the others are ours,
 # on the divider and the square-root unit (source/HwMath.s).

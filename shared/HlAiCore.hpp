@@ -66,7 +66,7 @@ namespace hldata
 
     inline bool aiAlive(const ActorWorld &a, int index);
 
-    inline bool aiTargetOf(LogicWorld &w, const PlayerState &player, std::int16_t id, AiTarget &t)
+    HL_HOT bool aiTargetOf(LogicWorld &w, const PlayerState &player, std::int16_t id, AiTarget &t)
     {
         t = AiTarget();
         t.id = id;
@@ -586,7 +586,7 @@ namespace hldata
     /// Look: what it can see of what it has feelings about, within
     /// `distance` (m_flDistLook), sets SEE_* (and remembers what it saw for
     /// BestVisibleEnemy).
-    inline void aiLook(AiCtx &c, int distance)
+    HL_HOT void aiLook(AiCtx &c, int distance)
     {
         aiClear(c, kCondSeeHate | kCondSeeDislike | kCondSeeEnemy | kCondSeeFear | kCondSeeNemesis | kCondSeeClient);
         c.m.seenCount = 0;
@@ -3750,7 +3750,7 @@ namespace hldata
     }
 
     /// One frame of a monster that thinks this way.
-    inline void aiTick(LogicWorld &w, PlayerState &player, int index, int ms)
+    HL_HOT void aiTick(LogicWorld &w, PlayerState &player, int index, int ms)
     {
         ActorWorld &a = *w.actors;
         AiMonster *m = aiOf(a, index);

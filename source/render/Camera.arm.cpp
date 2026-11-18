@@ -1,4 +1,5 @@
 #include "render/Camera.hpp"
+#include "Hot.hpp"
 
 #include "Global.hpp"
 #include "Guard.hpp"
@@ -207,7 +208,7 @@ namespace hlrt
                          (hldata::drawDistanceFor(settings.graphics.drawDistance, mapFarUnits) << 12);
     }
 
-    void Camera::apply() const
+    HL_ITCM void Camera::apply() const
     {
         glMatrixMode(GL_MODELVIEW);
         glLoadMatrix4x3(&view);

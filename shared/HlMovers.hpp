@@ -571,7 +571,7 @@ namespace hldata
         /// the line last crossed, twice its number, plus one if it was
         /// crossed from behind (-1: none, it began in the solid).
         /// (Not in ITCM: measured there, it gained nothing -- 2026-11-16.)
-        inline bool lineThrough(const MoveWorld &world, std::int32_t num, std::int32_t f1,
+        HL_HOT bool lineThrough(const MoveWorld &world, std::int32_t num, std::int32_t f1,
                                 std::int32_t f2, const fx *from, const fx *to, std::int32_t &hit,
                                 int depth, int crossed = -1, int *wall = nullptr)
         {

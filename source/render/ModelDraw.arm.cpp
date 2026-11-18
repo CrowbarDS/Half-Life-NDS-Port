@@ -202,7 +202,7 @@ namespace hlrt
             slot.id = -2;
     }
 
-    HL_ITCM const BoneMatrix *ModelDraw::posed(const ActorState &actor, const ModelView &model,
+    const BoneMatrix *ModelDraw::posed(const ActorState &actor, const ModelView &model,
                                        unsigned modelIndex, int id)
     {
         // Needed for proper 60fps blending between animations

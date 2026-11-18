@@ -850,7 +850,7 @@ namespace hldata
     }
 
     /// The box the player cannot walk into, kept where the actor is.
-    inline void actorPlaceBox(const ActorWorld &a, int index)
+    HL_HOT void actorPlaceBox(const ActorWorld &a, int index)
     {
         if (a.boxes == nullptr)
             return;
@@ -1177,7 +1177,7 @@ namespace hldata
     // (In the game library, the engine's own, in ITCM: game/GameApi.hpp.)
     std::uint32_t actorAdvance(const ActorWorld &a, ActorState &actor, int ms);
 #else
-    HL_HOT std::uint32_t actorAdvance(const ActorWorld &a, ActorState &actor, int ms)
+    inline std::uint32_t actorAdvance(const ActorWorld &a, ActorState &actor, int ms)
     {
         const std::uint32_t before = actor.frame;
         const ModelView *model = actorModel(a, actor);

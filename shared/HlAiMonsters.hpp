@@ -2033,7 +2033,7 @@ namespace hldata
     inline const AiKind *aiAlienKindOf(std::uint8_t kind); // (HlAliens.hpp)
 
     // (Out of line: looked at from everywhere, and copied into each.)
-    [[gnu::noinline]] inline const AiKind *aiKindOf(std::uint8_t kind)
+    [[gnu::noinline]] HL_HOT const AiKind *aiKindOf(std::uint8_t kind)
     {
         switch (static_cast<ActorKind>(kind))
         {

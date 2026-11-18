@@ -1,4 +1,5 @@
 #include "render/WorldDraw.hpp"
+#include "Hot.hpp"
 #include "HlBrushPlan.hpp"
 #include "HlDsp.hpp"
 #include "HlPolygonIds.hpp"
@@ -751,7 +752,7 @@ namespace hlrt
         sway();
     }
 
-    bool WorldDraw::ballVisible(const std::int16_t *centre, int radius, bool anyDistance) const
+    HL_ITCM bool WorldDraw::ballVisible(const std::int16_t *centre, int radius, bool anyDistance) const
     {
         if (!level.loaded() || leafFrame_ == nullptr)
             return false;
