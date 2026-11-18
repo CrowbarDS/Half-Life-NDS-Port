@@ -4370,7 +4370,7 @@ namespace hldata
             if (met != nullptr)
                 *met = kMetThing;
             // Glass that takes it and stands (the marks are the
-            // brush's: they go with it). Glass that will break is
+            // brush's: they go with it; and so with the rest, below). Glass that will break is
             // cracked where it was hit -- one crack to a pane, moved
             // by the next hit. Glass that never breaks is not: a
             // shot leaves its small mark on it, a blow nothing but
@@ -4390,6 +4390,31 @@ namespace hldata
                     decalAdd(*w.actors, static_cast<std::uint8_t>(kDecalShot + detail::chance(*w.actors) % kDecalShots),
                              local, normal, 4, kMarkCrack, shot.mover);
                 specksAdd(*w.actors, at, normal, 2, static_cast<std::uint16_t>(24 | 26 << 5 | 27 << 10), 60);
+            }
+            else if (found && on == shot.mover && !w.states[taker].dead && w.brushStates != nullptr &&
+                     detail::isBreakable(w.records[taker]))
+            {
+                // Anything else that breaks takes the marks a wall takes
+                // (the game's DamageDecal), and they go with it: drawn as
+                // it is, a round's hole or a blow's dent; drawn see-through,
+                // the small mark of the glass that never breaks; drawn with
+                // holes in it (a grate), none.
+                const RenderClass drawn = w.brushes != nullptr ? static_cast<RenderClass>(w.brushes[shot.mover].renderClass)
+                                                               : RenderClass::Opaque;
+                fx local[3];
+                for (int k = 0; k < 3; ++k)
+                    local[k] = at[k] - w.brushStates[shot.mover].pos[k];
+                if (drawn == RenderClass::Opaque && bullet)
+                    decalAdd(*w.actors, static_cast<std::uint8_t>(kDecalShot + detail::chance(*w.actors) % kDecalShots),
+                             local, normal, 8, kMarkShot, shot.mover);
+                else if (drawn == RenderClass::Opaque && (type & kDmgClub))
+                {
+                    decalAdd(*w.actors, kDecalDent, local, normal, 8, kMarkShot, shot.mover);
+                    specksAdd(*w.actors, at, normal, 2, static_cast<std::uint16_t>(13 | 13 << 5 | 13 << 10), 60);
+                }
+                else if ((drawn == RenderClass::Blend || drawn == RenderClass::Colour) && (bullet || (type & kDmgClub)))
+                    decalAdd(*w.actors, static_cast<std::uint8_t>(kDecalShot + detail::chance(*w.actors) % kDecalShots),
+                             local, normal, 4, kMarkCrack, shot.mover);
             }
             // (Its sound and its sparks, if it still stands there to be hit.)
             if (bullet && found && on == shot.mover)

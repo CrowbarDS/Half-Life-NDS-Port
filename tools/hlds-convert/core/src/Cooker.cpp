@@ -1392,6 +1392,20 @@ namespace hlds
                 std::uint32_t made = 0;
                 for (const TextureRef &texture : level.textures)
                     made |= 1u << static_cast<int>(textureMaterial(texture.flags));
+                // (... nor of what nothing that breaks is made of: wood and
+                // glass struck are those sounds too.)
+                std::vector<bool> broken(static_cast<std::size_t>(CommonSound::Count), false);
+                for (const LogicRecord &record : level.logic)
+                {
+                    const bool breaks = record.kind == static_cast<std::uint8_t>(LogicKind::Breakable) ||
+                                        (record.kind == static_cast<std::uint8_t>(LogicKind::Pushable) &&
+                                         (record.flags & kLogicBreaks));
+                    if (!breaks || record.extra[1] == 7 || (record.flags & kLogicTriggerOnly))
+                        continue;
+                    const BreakSounds sounds = breakSounds(record.extra[1]);
+                    for (int k = 0; k < sounds.struckCount; ++k)
+                        broken[static_cast<std::size_t>(sounds.struck) + k] = true;
+                }
                 static constexpr struct
                 {
                     Material material;
@@ -1416,7 +1430,7 @@ namespace hlds
                     for (int k = 0; k < step.count; ++k)
                     {
                         const std::size_t index = static_cast<std::size_t>(step.first) + k;
-                        if (index < logic.sounds.size())
+                        if (index < logic.sounds.size() && !broken[index])
                             logic.sounds[index].clear();
                     }
                 }

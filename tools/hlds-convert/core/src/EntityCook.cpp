@@ -3468,15 +3468,6 @@ namespace hlds
                 if (!(spawnflags & 2))
                     sound.unlocked = soundIndex("plats/train_use1.wav", false);
             }
-            else if (cls == "func_breakable" || cls == "func_pushable")
-            {
-                static const char *const kBreaks[] = {
-                    "debris/bustglass1.wav",  "debris/bustcrate1.wav",    "debris/bustmetal1.wav",
-                    "debris/bustflesh1.wav",  "debris/bustconcrete1.wav", "debris/bustceiling.wav",
-                    "debris/bustmetal2.wav",  "debris/bustglass2.wav",    "debris/bustconcrete2.wav"};
-                const int material = std::clamp(static_cast<int>(numberKey(entity, "material")), 0, 8);
-                sound.move = soundIndex(kBreaks[material], false);
-            }
             else if (cls == "func_healthcharger" || cls == "func_recharge")
             {
                 // A wall charger's: as it starts, as it goes on (round and
@@ -4198,6 +4189,28 @@ namespace hlds
             // (... and a track train's start, where there is one.)
             if (record.kind == static_cast<std::uint8_t>(LogicKind::TrackTrain))
                 use(CommonSound::TrainStart, CommonSound::TrainStart);
+            // (... and what breaks, by what it is made of: struck, and
+            // breaking. The glass that never breaks is neither; what only
+            // its name breaks is never struck.)
+            const bool breaks = record.kind == static_cast<std::uint8_t>(LogicKind::Breakable) ||
+                                (record.kind == static_cast<std::uint8_t>(LogicKind::Pushable) &&
+                                 (record.flags & kLogicBreaks));
+            if (breaks && record.extra[1] != 7)
+            {
+                const BreakSounds sounds = breakSounds(record.extra[1]);
+                auto useSome = [&](CommonSound first, int count)
+                {
+                    if (count > 0)
+                        use(first, static_cast<CommonSound>(static_cast<int>(first) + count - 1));
+                };
+                if (!(record.flags & kLogicTriggerOnly))
+                {
+                    useSome(sounds.struck, sounds.struckCount);
+                    if (sounds.orMetal)
+                        useSome(CommonSound::DebrisMetal1, 2);
+                }
+                useSome(sounds.bust, sounds.bustCount);
+            }
         }
         // The guns' own: those of what the map has to be held, and (`lazy`)
         // of what it has not -- a weapon given by a cheat, whose model and

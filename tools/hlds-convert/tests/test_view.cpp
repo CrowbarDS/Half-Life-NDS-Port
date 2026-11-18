@@ -432,8 +432,9 @@ namespace
         const MaterialBook book = parseMaterials("P TESTWALL\nW CRATEWOOD\n");
         check(materialOfLetter('F') == Material::Flesh && materialOfLetter('Y') == Material::Glass,
               "the game's letters, and a mod's flesh");
-        check(commonsOf(72) == kCommonSoundsBefore73 && commonsOf(73) == static_cast<std::uint16_t>(CommonSound::Count),
-              "a map of version 72 has the common sounds before the new whines");
+        check(commonsOf(72) == kCommonSoundsBefore73 && commonsOf(73) == kCommonSoundsBefore74 &&
+                  commonsOf(74) == static_cast<std::uint16_t>(CommonSound::Count),
+              "a map of version 72 has the common sounds before the new whines; of 73, before what breaks");
         // The table: each of a material's sounds can be drawn, and only those.
         {
             const MaterialHit &grate = materialHit(Material::Grate);
@@ -475,6 +476,9 @@ namespace
         check(named(CommonSound::Spark5) && named(CommonSound::Spark6) && named(CommonSound::Ricochet5) &&
                   named(CommonSound::WoodHit1) && !named(CommonSound::BulletFlesh2) && !named(CommonSound::Metal1),
               "a map of computers keeps their sparks; no flesh, no metal");
+        check(named(CommonSound::BustCrate1) && named(CommonSound::BustCrate2) && !named(CommonSound::BustGlass1) &&
+                  !named(CommonSound::DebrisMetal1) && !named(CommonSound::BustCeiling),
+              "... and a wooden crate's breaking, not glass's nor metal's");
         // What it is made of: the world's wall, and the crate's top.
         const fx wall[3] = {fxFromInt(-128), fxFromInt(10), fxFromInt(70)}, east[3] = {kFxOne, 0, 0};
         const fx top[3] = {fxFromInt(56), 0, fxFromInt(32)}, up[3] = {0, 0, kFxOne};
@@ -555,6 +559,34 @@ namespace
             loudest = std::max(loudest, g.loudestHeard[static_cast<int>(CommonSound::WoodHit1) + k]);
         check(hits(CommonSound::WoodHit1, 3) == 8 && loudest == 114 * 2 / 3,
               "a round on the crate sounds of wood, quieter: it breaks");
+        // Shot, and struck with the crowbar: a hole and a dent on the crate,
+        // which go with it; and it is heard, wood struck.
+        {
+            auto onCrate = [&](std::uint8_t picture)
+            {
+                int n = 0;
+                for (const Decal &decal : g.actors.decals)
+                    n += decal.active && decal.brush == 0 && decal.picture == picture;
+                return n;
+            };
+            int holes = 0;
+            for (int k = 0; k < kDecalShots; ++k)
+                holes += onCrate(static_cast<std::uint8_t>(kDecalShot + k));
+            const int dents = onCrate(kDecalDent);
+            std::fill(g.timesHeard.begin(), g.timesHeard.end(), 0);
+            const fx above[3] = {top[0], top[1] + fxFromInt(4), top[2] + fxFromInt(40)}, down[3] = {0, 0, -kFxOne};
+            fireLine(g.logic, g.player, above, down, 64, 8, true);
+            g.drain();
+            int after = 0;
+            for (int k = 0; k < kDecalShots; ++k)
+                after += onCrate(static_cast<std::uint8_t>(kDecalShot + k));
+            check(after == holes + 1, "a round leaves its hole on the crate, and it is the crate's");
+            check(hits(CommonSound::WoodHit1, 3) >= 1, "... and the crate is heard struck: wood");
+            const fx near[3] = {top[0] - fxFromInt(6), top[1], top[2] + fxFromInt(20)};
+            fireLine(g.logic, g.player, near, down, 32, 8, false, false, nullptr, -1, nullptr, kDmgClub);
+            g.drain();
+            check(onCrate(kDecalDent) == dents + 1, "a blow of the crowbar leaves its dent on it");
+        }
         // A map cooked before: no new whine, no crackle.
         g.heard.commons = kCommonSoundsBefore73;
         std::fill(g.timesHeard.begin(), g.timesHeard.end(), 0);
@@ -577,6 +609,9 @@ namespace
         check(other->ok && other->view.sounds[static_cast<int>(CommonSound::Spark5)].name[0] == '\0' &&
                   other->view.sounds[static_cast<int>(CommonSound::Ricochet3)].name[0] != '\0',
               "... and keeps its whines, not a computer's sparks");
+        check(other->ok && other->view.sounds[static_cast<int>(CommonSound::BustCrate1)].name[0] == '\0' &&
+                  other->view.sounds[static_cast<int>(CommonSound::BustGlass1)].name[0] == '\0',
+              "... nor anything's breaking, with nothing to break");
     }
 
     /// ... and on a real map, with the game's own list of what its

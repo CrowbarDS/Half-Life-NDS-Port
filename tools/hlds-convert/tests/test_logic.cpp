@@ -1874,17 +1874,59 @@ namespace
         const BrushState &crateState = g.brushStates[g.view.logic[crate].brush];
         const BrushState &lamp = g.brushOfModel(5);
         const bool lampWas = lamp.active;
+        // What is heard of it: struck, a sound of what it is made of (glass:
+        // the game's for one given none); broken, one of its two.
+        SoundQueue heard;
+        g.logic.heard = &heard;
+        auto only = [&](CommonSound first, int count)
+        {
+            return heard.count == 1 && heard.events[0].sound >= static_cast<std::uint16_t>(first) &&
+                   heard.events[0].sound < static_cast<std::uint16_t>(first) + count;
+        };
         logicStrike(g.logic, g.player, crate, 20);
         check(crateState.active, "one blow of twenty does not break forty");
+        check(only(CommonSound::GlassHit1, 3) && heard.events[0].volume >= 95 &&
+                  (heard.events[0].pitch == 100 || (heard.events[0].pitch >= 95 && heard.events[0].pitch <= 129)),
+              "... and is heard: glass struck, at 0.75 to 1");
+        heard.count = 0;
         logicStrike(g.logic, g.player, crate, 20);
         check(!crateState.active && g.states[crate].dead && lamp.active != lampWas,
               "the second does, and its target is fired");
+        check(only(CommonSound::BustGlass1, 2) && heard.events[0].volume >= 108 &&
+                  heard.events[0].pitch >= 95 && heard.events[0].pitch <= 124 &&
+                  !(heard.events[0].pitch > 97 && heard.events[0].pitch < 103 && heard.events[0].pitch != 100),
+              "... heard breaking, not struck: one of glass's two, at 95 to 124");
+        // Over and over: the pitches as the game's.
+        {
+            int own = 0, other = 0, bad = 0;
+            for (int n = 0; n < 300; ++n)
+            {
+                heard.count = 0;
+                hldata::detail::breakableStruck(g.logic, plank);
+                if (heard.count != 1)
+                    continue;
+                const int pitch = heard.events[0].pitch;
+                own += pitch == 100;
+                other += pitch != 100;
+                bad += pitch != 100 && (pitch < 95 || pitch > 129);
+            }
+            check(own > 150 && own < 250 && other > 50 && bad == 0, "struck: two times in three at its own pitch");
+        }
 
         const BrushState &paneState = g.brushStates[g.view.logic[pane].brush];
+        heard.count = 0;
         logicStrike(g.logic, g.player, pane, 1000);
-        check(paneState.active, "what only its name breaks takes any blow");
+        check(paneState.active && heard.count == 0, "what only its name breaks takes any blow, and is not heard");
         logicFire(g.logic, g.player, g.view.logic[pane].name, -1, kUseToggle, 0);
         check(!paneState.active, "and breaks when its name is fired");
+        check(only(CommonSound::BustGlass1, 2), "... and is heard breaking");
+        // A map cooked before those sounds were common breaks with its own.
+        heard.count = 0;
+        heard.commons = kCommonSoundsBefore74;
+        check(!hldata::detail::breakableBroke(g.logic, plank, 0) && heard.count == 0,
+              "a map cooked before: its own sound, not the common ones it has not got");
+        heard.commons = static_cast<std::uint16_t>(CommonSound::Count);
+        g.logic.heard = nullptr;
 
         // Onto the plank: it holds for its delay, then goes, and the player
         // with it.

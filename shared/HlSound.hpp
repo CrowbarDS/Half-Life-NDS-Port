@@ -365,6 +365,32 @@ namespace hldata
         BulletFlesh2,
         Spark5,
         Spark6,
+        // ... and what breaks, by what it is made of: metal and flesh and
+        // concrete struck (glass and wood struck are WoodHit, GlassHit), and
+        // each one breaking, two ways (a ceiling tile one) (from version 74:
+        // kCommonSoundsBefore74).
+        DebrisMetal1,
+        DebrisMetal3,
+        DebrisFlesh1,
+        DebrisFlesh2,
+        DebrisFlesh3,
+        DebrisFlesh5,
+        DebrisFlesh6,
+        DebrisFlesh7,
+        DebrisConcrete1,
+        DebrisConcrete2,
+        DebrisConcrete3,
+        BustGlass1,
+        BustGlass2,
+        BustCrate1,
+        BustCrate2,
+        BustMetal1,
+        BustMetal2,
+        BustFlesh1,
+        BustFlesh2,
+        BustConcrete1,
+        BustConcrete2,
+        BustCeiling,
         Count
     };
     /// How many of these a map of level version 29 or before has.
@@ -442,6 +468,7 @@ namespace hldata
     inline constexpr std::uint16_t kCommonSoundsBefore54 = static_cast<std::uint16_t>(CommonSound::Swim1);
     inline constexpr std::uint16_t kCommonSoundsBefore55 = static_cast<std::uint16_t>(CommonSound::AirTank);
     inline constexpr std::uint16_t kCommonSoundsBefore73 = static_cast<std::uint16_t>(CommonSound::Ricochet3);
+    inline constexpr std::uint16_t kCommonSoundsBefore74 = static_cast<std::uint16_t>(CommonSound::DebrisMetal1);
     /// How many of them a map of level version `version` has (its sounds
     /// after those are its own).
     inline constexpr std::uint16_t commonsOf(std::uint16_t version)
@@ -457,9 +484,43 @@ namespace hldata
                : version < 54 ? kCommonSoundsBefore54
                : version < 55 ? kCommonSoundsBefore55
                : version < 73 ? kCommonSoundsBefore73
+               : version < 74 ? kCommonSoundsBefore74
                               : static_cast<std::uint16_t>(CommonSound::Count);
     }
     inline constexpr std::uint16_t kNoSound = 0xFFFF;
+
+    /// What something that breaks sounds of, by what it is made of (a
+    /// func_breakable's "material": 0 glass, 1 wood, 2 metal, 3 flesh, 4
+    /// cinder block, 5 ceiling tile, 6 computer, 7 the glass that never
+    /// breaks, 8 rock, 9 none): struck, one of `struckCount` from `struck`;
+    /// broken, one of `bustCount` from `bust`. A computer struck sounds of
+    /// glass, or (half the time) of metal: `orMetal`. (The game's
+    /// CBreakable::DamageSound and Die: wood is what one of no material
+    /// sounds of struck, and it breaks without a sound.)
+    struct BreakSounds
+    {
+        CommonSound struck = CommonSound::Count;
+        std::uint8_t struckCount = 0;
+        CommonSound bust = CommonSound::Count;
+        std::uint8_t bustCount = 0;
+        bool orMetal = false;
+    };
+    inline BreakSounds breakSounds(std::uint32_t material)
+    {
+        switch (material)
+        {
+        case 0:
+        case 7: return {CommonSound::GlassHit1, 3, CommonSound::BustGlass1, 2, false};
+        case 2: return {CommonSound::DebrisMetal1, 2, CommonSound::BustMetal1, 2, false};
+        case 3: return {CommonSound::DebrisFlesh1, 6, CommonSound::BustFlesh1, 2, false};
+        case 4:
+        case 8: return {CommonSound::DebrisConcrete1, 3, CommonSound::BustConcrete1, 2, false};
+        case 5: return {CommonSound::Count, 0, CommonSound::BustCeiling, 1, false};
+        case 6: return {CommonSound::GlassHit1, 3, CommonSound::BustMetal1, 2, true};
+        case 9: return {CommonSound::WoodHit1, 3, CommonSound::Count, 0, false};
+        default: return {CommonSound::WoodHit1, 3, CommonSound::BustCrate1, 2, false};
+        }
+    }
 
     /// Where each of them is in the game's sound folder.
     inline const char *commonSoundPath(CommonSound sound)
@@ -551,7 +612,15 @@ namespace hldata
             "player/pl_swim4.wav",      "plats/ttrain_start1.wav", "weapons/debris1.wav",
             "weapons/debris2.wav",      "weapons/debris3.wav",     "doors/aliendoor3.wav",
             "weapons/ric2.wav",         "weapons/ric3.wav",        "weapons/ric5.wav",
-            "weapons/bullet_hit2.wav",  "buttons/spark5.wav",      "buttons/spark6.wav"};
+            "weapons/bullet_hit2.wav",  "buttons/spark5.wav",      "buttons/spark6.wav",
+            "debris/metal1.wav",        "debris/metal3.wav",       "debris/flesh1.wav",
+            "debris/flesh2.wav",        "debris/flesh3.wav",       "debris/flesh5.wav",
+            "debris/flesh6.wav",        "debris/flesh7.wav",       "debris/concrete1.wav",
+            "debris/concrete2.wav",     "debris/concrete3.wav",    "debris/bustglass1.wav",
+            "debris/bustglass2.wav",    "debris/bustcrate1.wav",   "debris/bustcrate2.wav",
+            "debris/bustmetal1.wav",    "debris/bustmetal2.wav",   "debris/bustflesh1.wav",
+            "debris/bustflesh2.wav",    "debris/bustconcrete1.wav", "debris/bustconcrete2.wav",
+            "debris/bustceiling.wav"};
         static_assert(sizeof(kPaths) / sizeof(kPaths[0]) == static_cast<std::size_t>(CommonSound::Count));
         return kPaths[static_cast<int>(sound)];
     }

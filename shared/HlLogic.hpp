@@ -1679,21 +1679,122 @@ namespace hldata
             }
         }
 
+        inline std::uint32_t logicChance(LogicWorld &w);
+
+        /// Whether the common sound `sound` is there to be heard: a map
+        /// cooked before it was common has not got it, and one with no use
+        /// for it has not kept it.
+        inline bool commonThere(const LogicWorld &w, CommonSound sound)
+        {
+            const std::uint16_t i = static_cast<std::uint16_t>(sound);
+            return w.heard != nullptr && i < w.heard->commons &&
+                   (w.level == nullptr || (i < w.level->soundCount && w.level->sounds[i].name[0] != '\0'));
+        }
+
+        /// Where something with a brush is heard from: its middle as it is
+        /// now. (Else where it is.)
+        inline void recordMiddle(const LogicWorld &w, const LogicRecord &record, fx *at)
+        {
+            for (int a = 0; a < 3; ++a)
+                at[a] = record.move[a];
+            if (record.brush != kNoBrush)
+            {
+                const MoverHull &hull = w.movers[record.brush];
+                for (int a = 0; a < 3; ++a)
+                    at[a] = (hull.mins[a] + hull.maxs[a]) / 2;
+            }
+        }
+
+        /// What breaks, struck and left standing, is heard (the game's
+        /// CBreakable::DamageSound): a sound of what it is made of, at 0.75
+        /// to 1, at its own pitch two times in three and else at 95 to 129.
+        inline void breakableStruck(LogicWorld &w, int index)
+        {
+            const BreakSounds sounds = breakSounds(w.records[index].extra[1]);
+            if (sounds.struckCount == 0 || w.heard == nullptr)
+                return;
+            const std::uint32_t r = logicChance(w), p = logicChance(w);
+            CommonSound first = sounds.struck;
+            int count = sounds.struckCount;
+            if (sounds.orMetal && (r & 1))
+            {
+                first = CommonSound::DebrisMetal1;
+                count = 2;
+            }
+            // (Of `count` by a multiply, not a divide.)
+            const CommonSound sound =
+                static_cast<CommonSound>(static_cast<int>(first) + static_cast<int>((((r >> 1) & 0xFFu) * count) >> 8));
+            if (!commonThere(w, sound))
+                return;
+            const int pitch = ((p & 0xFFFFu) * 3 >> 16) != 0 ? 100 : 95 + static_cast<int>((((p >> 16) & 0xFFu) * 35) >> 8);
+            fx at[3];
+            recordMiddle(w, w.records[index], at);
+            w.heard->add(static_cast<std::uint16_t>(sound), at, 95 + static_cast<int>((((r >> 9) & 0xFFu) * 33) >> 8),
+                         kRadiusLarge, 0, pitch);
+        }
+
+        /// ... and breaking (the game's CBreakable::Die): one of its two
+        /// sounds, at 95 to 124 (the middle of that is its own pitch), and
+        /// the louder the harder the blow that broke it -- `health` what it
+        /// had left, below nothing by as much as that blow was more than
+        /// enough. False for a map cooked before these sounds were common:
+        /// its own one is heard instead.
+        inline bool breakableBroke(LogicWorld &w, int index, std::int32_t health)
+        {
+            if (w.heard == nullptr)
+                return true;
+            if (static_cast<std::uint16_t>(CommonSound::BustCeiling) >= w.heard->commons)
+                return false;
+            const BreakSounds sounds = breakSounds(w.records[index].extra[1]);
+            if (sounds.bustCount == 0)
+                return true; // (one of no material breaks without a sound)
+            const std::uint32_t r = logicChance(w);
+            CommonSound sound =
+                static_cast<CommonSound>(static_cast<int>(sounds.bust) + (sounds.bustCount > 1 ? static_cast<int>(r & 1) : 0));
+            // (A map with room for only the first of the two has that one.)
+            if (!commonThere(w, sound))
+                sound = sounds.bust;
+            if (!commonThere(w, sound))
+                return true;
+            int pitch = 95 + static_cast<int>((((r >> 1) & 0xFFu) * 30) >> 8);
+            if (pitch > 97 && pitch < 103)
+                pitch = 100;
+            // 0.85..1, and a hundredth more for each point of health past
+            // nothing (or still left, for what is broken by its name).
+            const std::int32_t past = health < 0 ? -health : health;
+            const int volume = 108 + static_cast<int>((((r >> 9) & 0xFFu) * 20) >> 8) +
+                               (past > 100 ? 127 : static_cast<int>(past * 127 / 100));
+            fx at[3];
+            recordMiddle(w, w.records[index], at);
+            w.heard->add(static_cast<std::uint16_t>(sound), at, volume > 127 ? 127 : volume, kRadiusLarge, 0, pitch);
+            return true;
+        }
+
         /// It breaks: gone from the map, whoever stood on it left in the air,
-        /// what it had in it let out, and its targets fired.
-        inline void breakIt(LogicWorld &w, PlayerState &player, int index, int depth)
+        /// what it had in it let out, and its targets fired. `health`: what
+        /// it had left (below nothing by as much as the blow that broke it
+        /// was more than enough); left out, what it had not taken yet.
+        inline void breakIt(LogicWorld &w, PlayerState &player, int index, int depth,
+                            std::int32_t health = 0x7FFFFFFF)
         {
             const LogicRecord &record = w.records[index];
             LogicState &state = w.states[index];
             if (state.dead)
                 return;
+            if (health == 0x7FFFFFFF)
+            {
+                const std::int32_t taken =
+                    record.kind == static_cast<std::uint8_t>(LogicKind::Pushable) ? state.timer : state.phase;
+                health = static_cast<std::int32_t>(record.extra[0]) - (taken > 0 ? taken : 0);
+            }
             state.dead = true;
             state.timer = -1;
             if (w.brokeCount < 4)
                 w.broke[w.brokeCount++] = static_cast<std::uint16_t>(index);
             if (w.achievements != nullptr)
                 w.achievements->push(AchEventType::Broke, 0);
-            recordSound(w, index, false); // what it is made of, breaking
+            if (!breakableBroke(w, index, health))
+                recordSound(w, index, false); // what it is made of, breaking
             if (record.brush != kNoBrush)
             {
                 if (player.groundMover == static_cast<int>(record.brush))
@@ -1967,8 +2068,14 @@ namespace hldata
         taken += damage;
         if (taken >= static_cast<std::int32_t>(record.extra[0]))
         {
+            const std::int32_t health = static_cast<std::int32_t>(record.extra[0]) - taken;
             taken = -1;
-            detail::breakIt(w, player, index, 0);
+            detail::breakIt(w, player, index, 0, health);
+        }
+        else
+        {
+            // (Struck, and still standing: heard.)
+            detail::breakableStruck(w, index);
         }
     }
 
@@ -5510,7 +5617,7 @@ namespace hldata
                     if (blow >= static_cast<std::int32_t>(record.extra[0]) - state.phase)
                     {
                         logicHurt(player, blow / 4, 0, kDmgSlash);
-                        detail::breakIt(w, player, i, 0);
+                        detail::breakIt(w, player, i, 0, static_cast<std::int32_t>(record.extra[0]) - state.phase - blow);
                     }
                 }
             }
