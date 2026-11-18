@@ -397,6 +397,149 @@ namespace hldata
             return a.seed >> 8;
         }
 
+        /// What the wall at `at` that faces `normal` (Q12) is made of: of the
+        /// world (`mover` -1), or of a brush entity, by the texture it is
+        /// drawn with there.
+        inline Material surfaceMaterial(const LogicWorld &w, const fx *at, const fx *normal, int mover)
+        {
+            if (w.level == nullptr)
+                return Material::Concrete;
+            if (mover < 0)
+                return wallMaterial(*w.level, at, normal);
+            if (w.world == nullptr || mover >= w.world->moverCount)
+                return Material::Concrete;
+            // (Its surfaces are where it was built, turned as it was built:
+            // the point and the way it faces go there.)
+            const MoverHull &hull = w.world->movers[mover];
+            const fx out[3] = {at[0] + normal[0], at[1] + normal[1], at[2] + normal[2]};
+            fx local[3], ahead[3], facing[3];
+            toMoverSpace(hull, at, local);
+            toMoverSpace(hull, out, ahead);
+            for (int k = 0; k < 3; ++k)
+                facing[k] = ahead[k] - local[k];
+            const Material made = brushMaterial(*w.level, mover, local, facing);
+            // (None of its faces there: it is met a little in front of a
+            // wall -- its collision is bigger than what is drawn.)
+            return made != Material::Count ? made : wallMaterial(*w.level, at, normal);
+        }
+
+        /// A round has landed at `at`, on a wall that faces `normal` (Q12),
+        /// and has left its mark (markShot): on the world (`mover` -1) or
+        /// on a brush entity. What the game makes of it besides
+        /// (TEXTURETYPE_PlaySound, and the client's impact): the sound of
+        /// what the wall is made of, pitch 96..111, quieter on something
+        /// that breaks -- but not for a shotgun's pellet of the player's
+        /// (`pellet`), which the game's client leaves out; half the time
+        /// the whine of it glancing off, one of five; two sparks off it and
+        /// a little more dust (more on a DSi); and off a computer, half the
+        /// time, a shower of sparks and its crackle. The sounds of no more
+        /// than two impacts a tick (kMaxImpactSounds). Its chances come from
+        /// where it landed, not from the actors' own: how a round sounds
+        /// changes nothing a monster does.
+        inline void bulletImpact(LogicWorld &w, const fx *at, const fx *normal, int mover, bool pellet)
+        {
+            if (w.actors == nullptr)
+                return;
+            ActorWorld &a = *w.actors;
+            // (Where, mixed with the actors' stream as it is now: read, not
+            // drawn from.)
+            std::uint32_t roll = a.seed;
+            for (int k = 0; k < 3; ++k)
+                roll = (roll ^ static_cast<std::uint32_t>(at[k])) * 0x9E3779B1u;
+            roll ^= roll >> 15;
+            auto next = [&roll]()
+            {
+                roll = roll * 1664525u + 1013904223u;
+                return roll >> 8;
+            };
+            // What it is made of; and whether it is something that breaks.
+            const Material made = surfaceMaterial(w, at, normal, mover);
+            const int taker = mover >= 0 ? blowTaker(w, mover) : -1;
+            const bool breaks = taker >= 0 && isBreakable(w.records[taker]);
+            const bool computer = made == Material::Computer || (breaks && w.records[taker].extra[1] == 6); // (matComputer)
+            const fx off[3] = {at[0] + normal[0], at[1] + normal[1], at[2] + normal[2]};
+            // (One the map was cooked without -- an older map, or one with
+            // no room for it -- is not there to be heard: `instead` is.)
+            // (The first of its sounds is marked: what is counted is impacts.)
+            const bool room = w.heard != nullptr && w.heard->impactRoom();
+            std::uint8_t mark = kSoundImpact;
+            auto play = [&](CommonSound sound, CommonSound instead, int volume, int pitch)
+            {
+                if (!room)
+                    return;
+                auto there = [&](CommonSound c)
+                {
+                    const std::uint16_t i = static_cast<std::uint16_t>(c);
+                    return i < w.heard->commons && i < w.level->soundCount && w.level->sounds[i].name[0] != '\0';
+                };
+                const CommonSound heard = there(sound) ? sound : instead;
+                if (!there(heard))
+                    return;
+                w.heard->add(static_cast<std::uint16_t>(heard), at, volume, kRadiusLarge, mark, pitch);
+                mark = 0;
+            };
+            if (w.level != nullptr)
+            {
+                const MaterialHit &hit = materialHit(made);
+                std::uint32_t r = next();
+                if (!pellet)
+                    play(static_cast<CommonSound>(materialHitSound(hit, r)), hit.first,
+                         breaks ? hit.loud * 2 / 3 : hit.loud, 96 + static_cast<int>((r >> 16) & 15));
+                r = next();
+                if (r & 1)
+                {
+                    static constexpr CommonSound kWhines[5] = {CommonSound::Ricochet1, CommonSound::Ricochet3,
+                                                               CommonSound::Ricochet4, CommonSound::Ricochet2,
+                                                               CommonSound::Ricochet5};
+                    play(kWhines[(((r >> 4) & 0xFFFFu) * 5) >> 16],
+                         (r >> 2) & 1 ? CommonSound::Ricochet1 : CommonSound::Ricochet2, 127, 100);
+                }
+            }
+            // Two sparks thrown off it, short and quick; and a little more
+            // dust than the mark's own (the game throws a dozen).
+            for (int n = 0; n < 2; ++n)
+            {
+                fx to[3];
+                for (int k = 0; k < 3; ++k)
+                    to[k] = off[k] + normal[k] * 6 + fxFromInt(static_cast<int>((next() >> 12) & 7) - 3);
+                effectAdd(a, kEffectTracer, off, to, 0, 40 + static_cast<int>((next() >> 12) & 31));
+            }
+            specksAdd(a, at, normal, a.pieceLimit >= kMaxPieces ? 5 : 1,
+                      static_cast<std::uint16_t>(15 | 15 << 5 | 14 << 10), 90, &roll);
+            if (computer && (next() & 1))
+            {
+                // A computer's shower of sparks (UTIL_Sparks), and its
+                // crackle at 0.7..1.0.
+                Effect &spark = effectAdd(a, kEffectSprite, off, nullptr, 14, 150);
+                spark.sprite = static_cast<std::uint16_t>(CommonSprite::Glow);
+                spark.colour = 0x3BFF; // a yellow white, as env_spark's
+                for (int n = 0; n < 3; ++n)
+                {
+                    fx to[3];
+                    for (int k = 0; k < 3; ++k)
+                        to[k] = off[k] + normal[k] * 10 + fxFromInt(static_cast<int>((next() >> 12) & 15) - 7);
+                    to[2] -= fxFromInt(4);
+                    effectAdd(a, kEffectTracer, off, to, 0, 80 + static_cast<int>((next() >> 12) & 63));
+                }
+                const std::uint32_t r = next();
+                if (w.level != nullptr)
+                    play(r & 1 ? CommonSound::Spark5 : CommonSound::Spark6, r & 1 ? CommonSound::Spark6 : CommonSound::Spark5,
+                         89 + static_cast<int>((r >> 8) & 31) + static_cast<int>((r >> 13) & 7), 100);
+            }
+        }
+
+        /// A monster's round has missed whoever it was for: what it lands on
+        /// beyond, along the line from `start` to `end`, has its mark and
+        /// the rest (bulletImpact).
+        inline void bulletLands(LogicWorld &w, const fx *start, const fx *end)
+        {
+            fx at[3], normal[3];
+            int on = -1;
+            if (w.actors != nullptr && w.world != nullptr &&
+                markShot(*w.actors, *w.world, start, end, false, at, normal, &on))
+                bulletImpact(w, at, normal, on, false);
+        }
+
         inline fx playerFeet(const PlayerState &player)
         {
             return player.origin[2] - (player.ducked ? kCrouchedFeet : kStandingFeet);
@@ -2607,7 +2750,7 @@ namespace hldata
             effectAdd(a, kEffectMuzzle, eye, nullptr, 0, 50);
             // (What misses marks the wall behind.)
             if (reach == shot.fraction && shot.fraction < kFractionOne)
-                markShot(a, *w.world, eye, end, false);
+                detail::bulletLands(w, eye, end);
         }
 
         inline void turretDeploy(LogicWorld &w, PlayerState &player, ActorState &actor, bool alarmed)
@@ -4143,10 +4286,10 @@ namespace hldata
 
     /// What a shot along `dir` (Q12, unit) from `eye` lands on within
     /// `range` units, and hurts: a monster, or something that breaks. True
-    /// if it hurt anything.
+    /// if it hurt anything. `pellet`: one of a shotgun's (bulletImpact).
     inline bool fireLine(LogicWorld &w, PlayerState &player, const fx *eye, const fx *dir, int range,
                          int damage, bool bullet, bool mark = true, int *met = nullptr, int from = -1,
-                         fx *reached = nullptr, std::uint32_t type = kDmgGeneric)
+                         fx *reached = nullptr, std::uint32_t type = kDmgGeneric, bool pellet = false)
     {
         if (type == kDmgGeneric && bullet)
             type = kDmgBullet;
@@ -4234,8 +4377,9 @@ namespace hldata
             // dust.
             const std::uint32_t made = w.records[taker].extra[1];
             fx at[3], normal[3];
-            if (w.actors != nullptr && !w.states[taker].dead && (made == 0 || made == 7) &&
-                w.brushStates != nullptr && traceShotWall(*w.world, eye, end, at, normal))
+            int on = -1;
+            const bool found = w.actors != nullptr && traceShotWall(*w.world, eye, end, at, normal, &on);
+            if (found && !w.states[taker].dead && (made == 0 || made == 7) && w.brushStates != nullptr)
             {
                 fx local[3];
                 for (int k = 0; k < 3; ++k)
@@ -4247,21 +4391,20 @@ namespace hldata
                              local, normal, 4, kMarkCrack, shot.mover);
                 specksAdd(*w.actors, at, normal, 2, static_cast<std::uint16_t>(24 | 26 << 5 | 27 << 10), 60);
             }
+            // (Its sound and its sparks, if it still stands there to be hit.)
+            if (bullet && found && on == shot.mover)
+                detail::bulletImpact(w, at, normal, on, pellet);
             return true;
         }
         // On the world, or on something that does not break: its mark, its
-        // dust, and now and then the whine of it glancing off.
+        // dust, the sound of what it is made of, and its sparks.
         if (met != nullptr && shot.fraction < kFractionOne)
             *met = kMetWall;
-        if (mark && w.actors != nullptr && shot.fraction < kFractionOne && markShot(*w.actors, *w.world, eye, end, !bullet) &&
-            bullet && w.heard != nullptr && detail::chance(*w.actors) % 3 == 0)
-        {
-            fx at[3];
-            for (int i = 0; i < 3; ++i)
-                at[i] = eye[i] + static_cast<fx>((static_cast<std::int64_t>(end[i] - eye[i]) * shot.fraction) >> kFractionShift);
-            w.heard->add(detail::chance(*w.actors) & 1 ? CommonSound::Ricochet1 : CommonSound::Ricochet2, at, 127,
-                         kRadiusLarge);
-        }
+        fx at[3], normal[3];
+        int on = -1;
+        if (mark && w.actors != nullptr && shot.fraction < kFractionOne &&
+            markShot(*w.actors, *w.world, eye, end, !bullet, at, normal, &on) && bullet)
+            detail::bulletImpact(w, at, normal, on, pellet);
         return false;
     }
 
@@ -5007,36 +5150,20 @@ namespace hldata
             // material has its own sound, as loud as the game has it, and
             // lets the crowbar's own ring more or less.
             fx at[3] = {end[0], end[1], end[2]}, normal[3] = {0, 0, 0};
-            const bool found = traceShotWall(*w.world, eye, probe, at, normal);
-            Material made = Material::Concrete;
-            if (found && w.level != nullptr && met == kMetWall)
-                made = wallMaterial(*w.level, at, normal);
-            static constexpr struct
-            {
-                CommonSound first;
-                std::uint8_t count;
-                std::uint8_t step; ///< (the grate's two are its first and its fourth)
-                std::uint8_t loud; ///< of 127: the material's own sound
-                std::uint8_t ring; ///< of 127: the crowbar's
-            } kStruck[static_cast<int>(Material::Count)] = {
-                {CommonSound::Step1, 2, 1, 114, 76},     // concrete
-                {CommonSound::Metal1, 2, 1, 114, 38},    // metal
-                {CommonSound::Dirt1, 3, 1, 114, 13},     // dirt
-                {CommonSound::Duct1, 1, 1, 64, 38},      // vent
-                {CommonSound::Grate1, 2, 3, 114, 64},    // grate
-                {CommonSound::Tile1, 4, 1, 102, 25},     // tile
-                {CommonSound::Slosh1, 4, 1, 114, 0},     // slosh
-                {CommonSound::WoodHit1, 3, 1, 114, 25},  // wood
-                {CommonSound::GlassHit1, 3, 1, 102, 25}, // computer
-                {CommonSound::GlassHit1, 3, 1, 102, 25}, // glass
-            };
-            const auto &struck = kStruck[static_cast<int>(made)];
+            int on = -1;
+            const bool found = traceShotWall(*w.world, eye, probe, at, normal, &on);
+            // (The world's by its texture there; a brush entity's -- a
+            // door, a crate -- by its own.)
+            const Material made = found ? detail::surfaceMaterial(w, at, normal, on) : Material::Concrete;
+            const MaterialHit &struck = materialHit(made);
             std::uint32_t roll = w.actors != nullptr ? chance(*w.actors) : 0;
-            // (On something that breaks, both are quieter.)
-            const int loud = breaks ? struck.loud * 2 / 3 : struck.loud;
-            const int ring = breaks ? struck.ring / 2 : struck.ring;
-            w.heard->add(static_cast<std::uint16_t>(static_cast<int>(struck.first) + static_cast<int>(roll % struck.count) * struck.step),
-                         at, loud, kRadiusLarge, 0, 96 + static_cast<int>((roll >> 8) & 15));
+            // (On something that breaks, both are quieter. Flesh has
+            // neither: the game's crowbar makes no sound on it.)
+            const bool flesh = made == Material::Flesh;
+            const int loud = flesh ? 0 : (breaks ? struck.loud * 2 / 3 : struck.loud);
+            const int ring = flesh ? 0 : (breaks ? struck.ring / 2 : struck.ring);
+            if (loud > 0)
+                w.heard->add(materialHitSound(struck, roll), at, loud, kRadiusLarge, 0, 96 + static_cast<int>((roll >> 8) & 15));
             if (ring > 0)
                 w.heard->add((roll >> 16) & 1 ? CommonSound::CrowbarHit : CommonSound::CrowbarHit2, nullptr, ring, 0);
             if (ring > 0 && w.heard->count > 0)
@@ -6165,7 +6292,9 @@ namespace hldata
                     for (int i = 0; i < 3; ++i)
                         dir[i] = aimed[i] + ((right[i] * x + up[i] * y) >> kFxShift);
                 }
-                hit = fireLine(w, player, eye, dir, gun.range, gun.damage, true) || hit;
+                hit = fireLine(w, player, eye, dir, gun.range, gun.damage, true, true, nullptr, -1, nullptr, kDmgGeneric,
+                               pellets > 1) ||
+                      hit;
             }
             // (What the wait ran over by comes off the next: a gun that
             // fires ten times a second does, whatever the length of a tick.)

@@ -21,6 +21,7 @@
 #include "hlds/Cooker.hpp"
 #include "hlds/EntityCook.hpp"
 #include "hlds/EntityParser.hpp"
+#include "hlds/Materials.hpp"
 #include "hlds/MdlFile.hpp"
 #include "hlds/ModelCook.hpp"
 
@@ -48,6 +49,9 @@ namespace hldstest
         /// Models to cook as if they had been, with no file behind them: what
         /// the level keeps for a scientist is there without a scientist's model.
         std::vector<std::string> pretendModels;
+        /// What its textures are made of (the game's sound/materials.txt),
+        /// if the test gives a list: else all concrete.
+        const MaterialBook *materials = nullptr;
         std::vector<ModelView> modelViews;
         std::vector<ActorState> actorStates;
         std::vector<SolidBox> actorBoxes;
@@ -225,6 +229,7 @@ namespace hldstest
         CookReport report;
         CookOptions cookOptions;
         cookModels(g, modelsFrom, cookOptions);
+        cookOptions.materials = g.materials;
         cookOptions.models.insert(cookOptions.models.end(), g.pretendModels.begin(), g.pretendModels.end());
         // What the map's people say, if the game's list is there to be read.
         // (Once for each folder: a made-up game's must not stand for the real

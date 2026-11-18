@@ -706,7 +706,7 @@ namespace hldata
             if (hit == kAiNone)
             {
                 const fx far[3] = {gun[0] + aim[0] * 1024, gun[1] + aim[1] * 1024, gun[2] + aim[2] * 1024};
-                markShot(c.a, *c.w.world, gun, far, false);
+                detail::bulletLands(c.w, gun, far);
             }
             else
             {

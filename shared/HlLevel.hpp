@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 72;
+    inline constexpr std::uint16_t kLevelVersion = 73;
     /// The oldest level format this build reads. (49: a map's textures are
     /// stored in its archive as they are, never compressed, so that one that
     /// streams is read straight in during play. 50: each texture's record
@@ -118,7 +118,10 @@ namespace hldata
     /// that flickers by itself, which a build of 68 takes as none.) 70: a
     /// track node's record is longer (its name and its branch), which a
     /// build before cannot read. (72: the families the map needs, in the
-    /// header's `families`, which a build before leaves alone.)
+    /// header's `families`, which a build before leaves alone. 73: six more
+    /// common sounds, kCommonSoundsBefore73, which a build before takes
+    /// for the map's own; and a texture of flesh, Material::Flesh, which
+    /// it hears as concrete.)
     inline constexpr std::uint16_t kLevelMinReader = 70;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,

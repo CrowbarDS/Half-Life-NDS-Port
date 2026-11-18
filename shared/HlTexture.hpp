@@ -71,6 +71,7 @@ namespace hldata
         Wood,     ///< (these three sound as concrete underfoot, as in the game)
         Computer,
         Glass,
+        Flesh,    ///< (none in the game's own list: a mod's)
         Count
     };
     inline Material textureMaterial(std::uint32_t flags)
@@ -92,6 +93,7 @@ namespace hldata
         case 'W': return Material::Wood;
         case 'P': return Material::Computer;
         case 'Y': return Material::Glass;
+        case 'F': return Material::Flesh;
         default:  return Material::Concrete;
         }
     }

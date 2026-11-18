@@ -153,7 +153,7 @@ namespace hldata
         GruntPain2,
         GruntDie1,
         GruntDie2,
-        Ricochet1, ///< a shot glancing off a wall, two ways
+        Ricochet1, ///< a shot glancing off a wall (and Ricochet3..5)
         Ricochet2,
         FallPain,  ///< landing too hard
         Shell,     ///< a spent casing on the floor
@@ -356,6 +356,15 @@ namespace hldata
         Debris3,
         // ... and an air tank giving its air (from version 55: kCommonSoundsBefore55).
         AirTank,
+        // ... and the rest of a round's glancing whines, its other sound in
+        // what bleeds, and a computer's sparks (from version 73:
+        // kCommonSoundsBefore73).
+        Ricochet3,
+        Ricochet4,
+        Ricochet5,
+        BulletFlesh2,
+        Spark5,
+        Spark6,
         Count
     };
     /// How many of these a map of level version 29 or before has.
@@ -432,6 +441,7 @@ namespace hldata
     inline constexpr std::uint16_t kCommonSoundsBefore43 = static_cast<std::uint16_t>(CommonSound::BodyDrop3);
     inline constexpr std::uint16_t kCommonSoundsBefore54 = static_cast<std::uint16_t>(CommonSound::Swim1);
     inline constexpr std::uint16_t kCommonSoundsBefore55 = static_cast<std::uint16_t>(CommonSound::AirTank);
+    inline constexpr std::uint16_t kCommonSoundsBefore73 = static_cast<std::uint16_t>(CommonSound::Ricochet3);
     /// How many of them a map of level version `version` has (its sounds
     /// after those are its own).
     inline constexpr std::uint16_t commonsOf(std::uint16_t version)
@@ -446,6 +456,7 @@ namespace hldata
                : version < 43 ? kCommonSoundsBefore43
                : version < 54 ? kCommonSoundsBefore54
                : version < 55 ? kCommonSoundsBefore55
+               : version < 73 ? kCommonSoundsBefore73
                               : static_cast<std::uint16_t>(CommonSound::Count);
     }
     inline constexpr std::uint16_t kNoSound = 0xFFFF;
@@ -538,7 +549,9 @@ namespace hldata
             "weapons/sshell1.wav",      "common/bodydrop3.wav",    "common/bodydrop4.wav",
             "player/pl_swim1.wav",      "player/pl_swim2.wav",     "player/pl_swim3.wav",
             "player/pl_swim4.wav",      "plats/ttrain_start1.wav", "weapons/debris1.wav",
-            "weapons/debris2.wav",      "weapons/debris3.wav",     "doors/aliendoor3.wav"};
+            "weapons/debris2.wav",      "weapons/debris3.wav",     "doors/aliendoor3.wav",
+            "weapons/ric2.wav",         "weapons/ric3.wav",        "weapons/ric5.wav",
+            "weapons/bullet_hit2.wav",  "buttons/spark5.wav",      "buttons/spark6.wav"};
         static_assert(sizeof(kPaths) / sizeof(kPaths[0]) == static_cast<std::size_t>(CommonSound::Count));
         return kPaths[static_cast<int>(sound)];
     }
@@ -653,6 +666,11 @@ namespace hldata
     /// sound is one that does) until kSoundLoopOff is heard with its tag.
     inline constexpr std::uint8_t kSoundLoopOn = 4;
     inline constexpr std::uint8_t kSoundLoopOff = 8; ///< `sound` is not looked at
+    /// The first sound of where a round lands (HlMonsters.hpp's
+    /// bulletImpact): the sounds of no more than kMaxImpactSounds of those
+    /// are heard a tick.
+    inline constexpr std::uint8_t kSoundImpact = 16;
+    inline constexpr int kMaxImpactSounds = 2;
     /// A loop's tag is its logic record's; one an actor makes as it goes
     /// (an osprey's rotors) is this and the actor's number. Heard again while
     /// it goes round, a loop is moved to where it is now, not started again.
@@ -749,5 +767,14 @@ namespace hldata
             return false;
         }
         bool heard(CommonSound sound) const { return heard(static_cast<std::uint16_t>(sound)); }
+        /// Whether the sounds of another impact can be heard this tick
+        /// (kSoundImpact).
+        bool impactRoom() const
+        {
+            int impacts = 0;
+            for (int i = 0; i < count; ++i)
+                impacts += (events[i].flags & kSoundImpact) ? 1 : 0;
+            return impacts < kMaxImpactSounds;
+        }
     };
 } // namespace hldata

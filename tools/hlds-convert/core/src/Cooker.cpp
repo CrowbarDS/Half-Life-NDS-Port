@@ -1386,7 +1386,8 @@ namespace hlds
             // cooks the files may change that (a map short of room has some
             // at half the rate, and the name says so).
             // The steps of what the map has no floor of are not carried:
-            // a map of concrete and metal has no use for the sound of dirt.
+            // a map of concrete and metal has no use for the sound of dirt
+            // (nor of a computer's sparks).
             {
                 std::uint32_t made = 0;
                 for (const TextureRef &texture : level.textures)
@@ -1403,7 +1404,11 @@ namespace hlds
                               {Material::Grate, Material::Grate, CommonSound::Grate1, 4},
                               {Material::Tile, Material::Tile, CommonSound::Tile1, 4},
                               {Material::Wood, Material::Wood, CommonSound::WoodHit1, 3},
-                              {Material::Glass, Material::Computer, CommonSound::GlassHit1, 3}};
+                              {Material::Glass, Material::Computer, CommonSound::GlassHit1, 3},
+                              // (... and a computer's sparks when shot, and a
+                              // round in a wall of flesh -- a mod's.)
+                              {Material::Computer, Material::Computer, CommonSound::Spark5, 2},
+                              {Material::Flesh, Material::Flesh, CommonSound::BulletFlesh2, 1}};
                 for (const auto &step : kSteps)
                 {
                     if (made & ((1u << static_cast<int>(step.material)) | (1u << static_cast<int>(step.also))))

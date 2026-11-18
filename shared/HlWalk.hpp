@@ -37,21 +37,24 @@ namespace hldata
     inline constexpr std::uint16_t kMarkCrack = 26 | 28 << 5 | 29 << 10; ///< glass, cracked: pale
 
     /// Specks off the wall at `at`, which faces `normal`: `count` of them,
-    /// thrown off it and falling, in `colour`.
-    inline void specksAdd(ActorWorld &a, const fx *at, const fx *normal, int count, std::uint16_t colour, int speed = 90)
+    /// thrown off it and falling, in `colour`. Their chances from `seed`
+    /// if given, else the actors' own.
+    inline void specksAdd(ActorWorld &a, const fx *at, const fx *normal, int count, std::uint16_t colour, int speed = 90,
+                          std::uint32_t *seed = nullptr)
     {
+        std::uint32_t &roll = seed != nullptr ? *seed : a.seed;
         for (int n = 0; n < count; ++n)
         {
             fx from[3], velocity[3];
             for (int k = 0; k < 3; ++k)
             {
-                a.seed = a.seed * 1664525u + 1013904223u;
-                const int stray = static_cast<int>((a.seed >> 10) % static_cast<std::uint32_t>(speed + 1)) - speed / 2;
+                roll = roll * 1664525u + 1013904223u;
+                const int stray = static_cast<int>((roll >> 10) % static_cast<std::uint32_t>(speed + 1)) - speed / 2;
                 from[k] = at[k] + normal[k]; // (a unit clear of the wall)
                 velocity[k] = normal[k] * (speed / 2) + fxFromInt(stray);
             }
             velocity[2] += fxFromInt(speed / 3);
-            Piece &speck = pieceAdd(a, kPieceSpeck, from, velocity, 180 + static_cast<int>((a.seed >> 9) % 120));
+            Piece &speck = pieceAdd(a, kPieceSpeck, from, velocity, 180 + static_cast<int>((roll >> 9) % 120));
             speck.half = 1;
             speck.colour = colour;
         }
@@ -59,12 +62,20 @@ namespace hldata
 
     /// A shot (or, with `blow`, a swing) has landed on the world at the end
     /// of the line from `start` towards `end`: its hole and its dust. False
-    /// if the line lands on nothing that takes a mark.
-    inline bool markShot(ActorWorld &a, const MoveWorld &world, const fx *start, const fx *end, bool blow)
+    /// if the line lands on nothing that takes a mark. Where, if asked:
+    /// `atOut`, `normalOut` and the brush entity it is on, `mover` (-1 the
+    /// world).
+    inline bool markShot(ActorWorld &a, const MoveWorld &world, const fx *start, const fx *end, bool blow,
+                         fx *atOut = nullptr, fx *normalOut = nullptr, int *mover = nullptr)
     {
         fx at[3], normal[3];
-        if (!traceShotWall(world, start, end, at, normal))
+        if (!traceShotWall(world, start, end, at, normal, mover))
             return false;
+        for (int k = 0; atOut != nullptr && k < 3; ++k)
+        {
+            atOut[k] = at[k];
+            normalOut[k] = normal[k];
+        }
         if (blow)
         {
             decalAdd(a, kDecalDent, at, normal, 8, kMarkShot);

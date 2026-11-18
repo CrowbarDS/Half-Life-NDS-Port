@@ -1,10 +1,13 @@
 // What moves the view and what being hurt shows (shared/HlView.hpp): the
 // kick that dies away, the bob and the lean of a walk, the cost and the jolt
 // of a fall, the marks of a blow, the camera's fall at death; a fall in a room
-// made here. With HLDS_VALVE_DIR set, a real fall in a real map.
+// made here, and where rounds land in another. With HLDS_VALVE_DIR set, a
+// real fall in a real map, and rounds on its faces.
 
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
+#include <iterator>
 #include <memory>
 #include <string>
 
@@ -418,6 +421,239 @@ namespace
             rang |= piecesTick(a, g.move, 33);
         check(rang == 2 && flying(kPieceShotShell) == 0, "a shotgun's shell rings as a shotgun's");
     }
+    /// Where a round lands, in a room of computers with a wooden crate:
+    /// the sound of what it lands on, by the texture there -- the world's,
+    /// or the brush entity's own -- quieter on what breaks; half the time a
+    /// whine; a computer's sparks half the time; a shotgun's pellet with
+    /// no sound of the wall; two impacts heard a tick at most; and a map
+    /// cooked before those sounds were common has the first two whines.
+    void testImpacts()
+    {
+        const MaterialBook book = parseMaterials("P TESTWALL\nW CRATEWOOD\n");
+        check(materialOfLetter('F') == Material::Flesh && materialOfLetter('Y') == Material::Glass,
+              "the game's letters, and a mod's flesh");
+        check(commonsOf(72) == kCommonSoundsBefore73 && commonsOf(73) == static_cast<std::uint16_t>(CommonSound::Count),
+              "a map of version 72 has the common sounds before the new whines");
+        // The table: each of a material's sounds can be drawn, and only those.
+        {
+            const MaterialHit &grate = materialHit(Material::Grate);
+            bool seen[4] = {};
+            for (std::uint32_t roll = 0; roll < 0x10000; roll += 97)
+            {
+                const int k = materialHitSound(grate, roll) - static_cast<int>(CommonSound::Grate1);
+                if (k >= 0 && k < 4)
+                    seen[k] = true;
+            }
+            check(seen[0] && !seen[1] && !seen[2] && seen[3], "a grate's two sounds are its first and its fourth");
+            const MaterialHit &flesh = materialHit(Material::Flesh);
+            check(materialHitSound(flesh, 0) == static_cast<std::uint16_t>(CommonSound::BulletFlesh) &&
+                      materialHitSound(flesh, 0xFFFF) == static_cast<std::uint16_t>(CommonSound::BulletFlesh2) &&
+                      flesh.loud == 127,
+                  "flesh is one of the two bullet hits, at full");
+        }
+        BoxRoom room;
+        BrushBox crate;
+        crate.mins[0] = 40;
+        crate.mins[1] = -16;
+        crate.maxs[0] = 72;
+        crate.maxs[1] = 16;
+        crate.maxs[2] = 32;
+        crate.className = "func_breakable";
+        crate.keys = "\"material\" \"1\"\n\"health\" \"200\"\n";
+        crate.textureName = "cratewood";
+        room.brushes.push_back(crate);
+        auto game = std::make_unique<Game>();
+        game->materials = &book;
+        std::string error;
+        check(game->bsp.parse(buildBoxRoom(room), error), "the room of computers builds");
+        finish(*game, nullptr);
+        check(game->ok && game->view.brushCount == 1, "... and cooks, with its crate");
+        if (!game->ok || game->view.brushCount != 1)
+            return;
+        Game &g = *game;
+        auto named = [&](CommonSound c) { return g.view.sounds[static_cast<int>(c)].name[0] != '\0'; };
+        check(named(CommonSound::Spark5) && named(CommonSound::Spark6) && named(CommonSound::Ricochet5) &&
+                  named(CommonSound::WoodHit1) && !named(CommonSound::BulletFlesh2) && !named(CommonSound::Metal1),
+              "a map of computers keeps their sparks; no flesh, no metal");
+        // What it is made of: the world's wall, and the crate's top.
+        const fx wall[3] = {fxFromInt(-128), fxFromInt(10), fxFromInt(70)}, east[3] = {kFxOne, 0, 0};
+        const fx top[3] = {fxFromInt(56), 0, fxFromInt(32)}, up[3] = {0, 0, kFxOne};
+        check(wallMaterial(g.view, wall, east) == Material::Computer, "the wall is a computer, by its texture");
+        check(brushMaterial(g.view, 0, top, up) == Material::Wood &&
+                  hldata::detail::surfaceMaterial(g.logic, top, up, 0) == Material::Wood &&
+                  hldata::detail::surfaceMaterial(g.logic, top, up, -1) != Material::Wood,
+              "the crate is wood, by its own texture: not the world's under it");
+
+        auto hits = [&](CommonSound first, int count)
+        {
+            int n = 0;
+            for (int k = 0; k < count; ++k)
+                n += g.times(static_cast<CommonSound>(static_cast<int>(first) + k));
+            return n;
+        };
+        auto whines = [&]()
+        {
+            return hits(CommonSound::Ricochet1, 2) + hits(CommonSound::Ricochet3, 3);
+        };
+        g.drain();
+        std::fill(g.timesHeard.begin(), g.timesHeard.end(), 0);
+        std::fill(g.loudestHeard.begin(), g.loudestHeard.end(), 0);
+        // One round a tick on the wall, each a little apart.
+        const int effectsBefore = [&]()
+        {
+            int n = 0;
+            for (const Effect &e : g.actors.effects)
+                n += e.kind != 0;
+            return n;
+        }();
+        for (int n = 0; n < 64; ++n)
+        {
+            const fx at[3] = {wall[0], wall[1] + fxFromInt(n), wall[2] + fxFromInt(n % 7)};
+            hldata::detail::bulletImpact(g.logic, at, east, -1, false);
+            g.drain();
+        }
+        int effectsAfter = 0;
+        for (const Effect &e : g.actors.effects)
+            effectsAfter += e.kind != 0;
+        const int sparks = hits(CommonSound::Spark5, 2);
+        std::printf("test_view: 64 rounds on a computer: %d glass, %d whines (%d of the new three), %d sparks\n",
+                    hits(CommonSound::GlassHit1, 3), whines(), hits(CommonSound::Ricochet3, 3), sparks);
+        check(hits(CommonSound::GlassHit1, 3) == 64 && g.loudestHeard[static_cast<int>(CommonSound::GlassHit1)] <= 102,
+              "every round on a computer sounds of it, at 0.8");
+        check(whines() >= 16 && whines() <= 48 && hits(CommonSound::Ricochet3, 3) > 0, "about half of them whine, of five");
+        check(sparks >= 12 && sparks <= 52, "about half of them spark, and crackle");
+        check(effectsAfter > effectsBefore, "and sparks are seen");
+        // A shotgun's pellets: no sound of the wall.
+        std::fill(g.timesHeard.begin(), g.timesHeard.end(), 0);
+        for (int n = 0; n < 16; ++n)
+        {
+            const fx at[3] = {wall[0], wall[1] - fxFromInt(n), wall[2]};
+            hldata::detail::bulletImpact(g.logic, at, east, -1, true);
+            g.drain();
+        }
+        check(hits(CommonSound::GlassHit1, 3) == 0 && whines() > 0, "a shotgun's pellets whine, but the wall is not heard");
+        // Five in one tick: two of them heard.
+        std::fill(g.timesHeard.begin(), g.timesHeard.end(), 0);
+        for (int n = 0; n < 5; ++n)
+        {
+            const fx at[3] = {wall[0], wall[1] + fxFromInt(3 * n), wall[2]};
+            hldata::detail::bulletImpact(g.logic, at, east, -1, false);
+        }
+        g.drain();
+        check(hits(CommonSound::GlassHit1, 3) == kMaxImpactSounds, "five rounds in a tick: two are heard");
+        // On the crate: wood, two thirds as loud, since it breaks.
+        std::fill(g.timesHeard.begin(), g.timesHeard.end(), 0);
+        std::fill(g.loudestHeard.begin(), g.loudestHeard.end(), 0);
+        for (int n = 0; n < 8; ++n)
+        {
+            const fx at[3] = {top[0] + fxFromInt(n), top[1], top[2]};
+            hldata::detail::bulletImpact(g.logic, at, up, 0, false);
+            g.drain();
+        }
+        int loudest = 0;
+        for (int k = 0; k < 3; ++k)
+            loudest = std::max(loudest, g.loudestHeard[static_cast<int>(CommonSound::WoodHit1) + k]);
+        check(hits(CommonSound::WoodHit1, 3) == 8 && loudest == 114 * 2 / 3,
+              "a round on the crate sounds of wood, quieter: it breaks");
+        // A map cooked before: no new whine, no crackle.
+        g.heard.commons = kCommonSoundsBefore73;
+        std::fill(g.timesHeard.begin(), g.timesHeard.end(), 0);
+        for (int n = 0; n < 32; ++n)
+        {
+            const fx at[3] = {wall[0], wall[1] + fxFromInt(n), wall[2] - fxFromInt(n % 5)};
+            hldata::detail::bulletImpact(g.logic, at, east, -1, false);
+            g.drain();
+        }
+        check(hits(CommonSound::Ricochet3, 3) == 0 && hits(CommonSound::Spark5, 2) == 0 &&
+                  hits(CommonSound::Ricochet1, 2) > 0,
+              "an older map whines with its own two, and has no crackle");
+        g.heard.commons = static_cast<std::uint16_t>(CommonSound::Count);
+
+        // A room with no computer has no use for their sparks.
+        BoxRoom plain;
+        auto other = std::make_unique<Game>();
+        check(other->bsp.parse(buildBoxRoom(plain), error), "a plain room builds");
+        finish(*other, nullptr);
+        check(other->ok && other->view.sounds[static_cast<int>(CommonSound::Spark5)].name[0] == '\0' &&
+                  other->view.sounds[static_cast<int>(CommonSound::Ricochet3)].name[0] != '\0',
+              "... and keeps its whines, not a computer's sparks");
+    }
+
+    /// ... and on a real map, with the game's own list of what its
+    /// textures are made of: a round fired at a face of metal, a vent, a
+    /// grate, tiles or a computer sounds of it, and computers crackle.
+    /// (Glass, in the game's maps, is mostly behind something else that
+    /// stops a round first -- a brush that is not drawn, a clip -- and
+    /// sounds of that, as in the game.)
+    void testImpactsOnMap(const char *dir)
+    {
+        auto game = std::make_unique<Game>();
+        std::string error;
+        if (!game->bsp.load(std::string(dir) + "/maps/c1a0.bsp", error))
+        {
+            check(false, "c1a0 loads");
+            return;
+        }
+        std::ifstream file(std::string(dir) + "/sound/materials.txt", std::ios::binary);
+        const MaterialBook book =
+            parseMaterials(std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>()));
+        game->materials = &book;
+        finish(*game, nullptr, dir);
+        if (!game->ok)
+            return;
+        Game &g = *game;
+        for (int n = 0; n < 10; ++n)
+            g.frame();
+        g.drain();
+        // Each face of those, its first six that a round reaches: fired at
+        // its middle from 32 units in front of it.
+        int tried[static_cast<int>(Material::Count)] = {}, right[static_cast<int>(Material::Count)] = {};
+        int crackles = 0;
+        for (std::uint32_t i = 0; i < g.view.surfaceCount; ++i)
+        {
+            const Surface &surface = g.view.surfaces[i];
+            if (surface.texture >= g.view.textureCount)
+                continue;
+            const Material made = textureMaterial(g.view.textures[surface.texture].flags);
+            const int m = static_cast<int>(made);
+            if (made == Material::Concrete || made == Material::Glass || tried[m] >= 6)
+                continue;
+            const Plane &plane = g.view.planes[surface.planeRef & kSurfacePlaneMask];
+            const int side = (surface.planeRef & kSurfacePlaneBack) ? -1 : 1;
+            fx out[3], from[3], along[3];
+            for (int k = 0; k < 3; ++k)
+            {
+                out[k] = side * (plane.normal[k] >> 18);
+                from[k] = fxFromInt(surface.center[k]) + out[k] * 32;
+                along[k] = -out[k];
+            }
+            std::fill(g.timesHeard.begin(), g.timesHeard.end(), 0);
+            fireLine(g.logic, g.player, from, along, 64, 8, true);
+            g.drain();
+            int heard = 0;
+            for (int c = 0; c < static_cast<int>(CommonSound::Count); ++c)
+                heard += g.timesHeard[c];
+            if (heard == 0)
+                continue; // (a face no round reaches)
+            const MaterialHit &hit = materialHit(made);
+            int its = 0;
+            for (int k = 0; k < hit.count; ++k)
+                its += g.timesHeard[static_cast<int>(hit.first) + k * hit.step];
+            ++tried[m];
+            right[m] += its > 0;
+            crackles += g.times(CommonSound::Spark5) + g.times(CommonSound::Spark6);
+        }
+        std::printf("test_view: rounds on c1a0's faces, heard as theirs: metal %d/%d, vent %d/%d, grate %d/%d, tile "
+                    "%d/%d, computer %d/%d; %d crackles\n",
+                    right[1], tried[1], right[3], tried[3], right[4], tried[4], right[5], tried[5], right[8], tried[8],
+                    crackles);
+        bool all = true;
+        for (const Material made : {Material::Metal, Material::Vent, Material::Grate, Material::Tile, Material::Computer})
+            all = all && tried[static_cast<int>(made)] > 0 && right[static_cast<int>(made)] == tried[static_cast<int>(made)];
+        check(all, "a round on c1a0's metal, vents, grates, tiles and computers sounds of each");
+        check(crackles > 0, "... and its computers crackle");
+    }
+
 } // namespace
 
 /// Who bleeds what, and what the player's going sounds like.
@@ -513,11 +749,13 @@ int main()
     testHurt();
     testDeath();
     testRoomLanding();
+    testImpacts();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir != nullptr && dir[0] != '\0')
     {
         testLanding(dir);
         testMarks(dir);
+        testImpactsOnMap(dir);
     }
     else
         std::printf("test_view: HLDS_VALVE_DIR not set, no real fall\n");

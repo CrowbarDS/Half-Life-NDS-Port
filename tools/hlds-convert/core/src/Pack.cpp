@@ -775,6 +775,9 @@ namespace hlds
             if (held.count("v_grenade") == 0 && held.count("v_9mmar") == 0 && held.count("v_satchel") == 0 &&
                 held.count("v_tripmine") == 0 && held.count("v_rpg") == 0)
                 drop(hldata::CommonSound::Debris1, hldata::CommonSound::Debris3);
+            // (A round's other whines and a computer's sparks: not for a
+            // guest, whose room is tight; it has the first two whines.)
+            drop(hldata::CommonSound::Ricochet3, hldata::CommonSound::Spark6);
             std::set<std::string> sounds;
             for (std::uint32_t i = 0; i < view.soundCount; ++i)
             {

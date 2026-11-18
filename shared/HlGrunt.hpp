@@ -743,7 +743,7 @@ namespace hldata
                 if (hit == kAiNone)
                 {
                     const fx far[3] = {gun[0] + aim[0] * 2048, gun[1] + aim[1] * 2048, gun[2] + aim[2] * 2048};
-                    markShot(c.a, *c.w.world, gun, far, false);
+                    detail::bulletLands(c.w, gun, far);
                     continue;
                 }
                 // Where it lands on what it hits (a head is three times:

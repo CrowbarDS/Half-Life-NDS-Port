@@ -759,12 +759,16 @@ namespace hldata
     /// stopped it, or nothing that says which way it faces.
     /// (A brush is met as its clip hull, a hand's breadth out from what is
     /// drawn: `at` is brought back onto the face, for one that is square to
-    /// the axes -- as doors are.)
-    inline bool traceShotWall(const MoveWorld &world, const fx *start, const fx *end, fx *at, fx *normal)
+    /// the axes -- as doors are.) `metMover`: the brush entity that stopped it,
+    /// or -1 for the world (or for one it only passed within a hull's
+    /// breadth of, as traceShot does not count it).
+    inline bool traceShotWall(const MoveWorld &world, const fx *start, const fx *end, fx *at, fx *normal,
+                              int *metMover = nullptr)
     {
         std::int32_t fraction = kFractionOne;
         int wall = -1;
         bool found = false;
+        int on = -1;
         if (world.nodes != nullptr &&
             !detail::lineThrough(world, world.headNode, 0, kFractionOne, start, end, fraction, 0, -1, &wall) &&
             wall >= 0)
@@ -792,6 +796,19 @@ namespace hldata
             if (t.startSolid || t.allSolid || !t.hit || t.fraction >= fraction)
                 continue;
             fraction = t.fraction;
+            // (Which it is: one whose own box the line goes into, as
+            // traceShot has it. One met only by its hull's breadth is in
+            // front of what was hit.)
+            on = -1;
+            if (metMover != nullptr && world.brushes != nullptr && world.models != nullptr)
+            {
+                const Model &model = world.models[world.brushes[m].model];
+                const fx mins[3] = {fxFromInt(model.mins[0]), fxFromInt(model.mins[1]), fxFromInt(model.mins[2])};
+                const fx maxs[3] = {fxFromInt(model.maxs[0]), fxFromInt(model.maxs[1]), fxFromInt(model.maxs[2])};
+                on = detail::lineIntoBox(a, b, mins, maxs) >= 0 ? m : -1;
+            }
+            else if (metMover != nullptr)
+                on = m;
             back = 0;
             for (int i = 0; i < 3; ++i)
             {
@@ -803,6 +820,8 @@ namespace hldata
         }
         if (!found || fraction >= kFractionOne)
             return false;
+        if (metMover != nullptr)
+            *metMover = on;
         for (int i = 0; i < 3; ++i)
         {
             at[i] = start[i] + static_cast<fx>((static_cast<std::int64_t>(end[i] - start[i]) * fraction) >>

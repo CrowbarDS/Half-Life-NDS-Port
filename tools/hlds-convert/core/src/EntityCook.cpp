@@ -4168,6 +4168,10 @@ namespace hlds
         };
         use(CommonSound::Step1, CommonSound::Explode);
         use(CommonSound::Ricochet1, CommonSound::BulletFlesh);
+        // (... and the other three whines, a round in a wall of flesh, and
+        // a computer's sparks -- the last two go again where the map has no
+        // such wall: Cooker.cpp.)
+        use(CommonSound::Ricochet3, CommonSound::Spark6);
         // (Water and coming down hard are everywhere; rungs where there is
         // a ladder.)
         use(CommonSound::Wade1, CommonSound::JumpLand);
