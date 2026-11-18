@@ -139,6 +139,8 @@ arm9 = Arm9Binary(
         # (A heap trace's: operator new says whose its block is.)
         (['-Wl,--wrap=_Znwj', '-Wl,--wrap=_Znaj'] if trace else []) +
         ['-Wl,--undefined=calloc'] +
+        # (A release's mark, for tools/arm9-report.sh: source/Guard.arm.cpp.)
+        ['-Wl,--undefined=hlReleaseBuild'] +
         # printf and scanf without floats or 64-bit numbers (picolibc's
         # integer level): nothing in the program formats or reads either,
         # and the full ones cost every console about 6 KB of heap.

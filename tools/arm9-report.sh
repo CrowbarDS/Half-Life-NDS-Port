@@ -221,15 +221,18 @@ summary = ("%s.dsl: %d bytes; the game: %d ARM functions, %d Thumb; helper calls
 failed = []
 # The program has grown since kDsMapHeap was measured (shared/HlDsRoom.hpp):
 # each byte of it a byte less of a map'"'"'s heap, out of the margin kept
-# there. (Code and static data only: room.sh measures the rest.)
+# there. (Code and static data only: room.sh measures the rest.) Only a
+# release is held to it (its hlReleaseBuild, source/Guard.arm.cpp): a build
+# that profiles, measures or debugs is bigger by what it does.
 if kind_of_elf == "main" and "__end__" in marks:
     room = open(os.path.join(os.environ["ROOT"], "shared", "HlDsRoom.hpp")).read()
     heap = re.search(r"kDsMapHeap = (\d+) - (\d+) \* 1024;", room)
     end = re.search(r"kDsMapHeapProgramEnd = (0x[0-9a-fA-F]+);", room)
+    release = any(name == "hlReleaseBuild" for at, size, kind, name in all_symbols)
     if heap and end:
         margin = int(heap.group(2)) * 1024 - (marks["__end__"] - int(end.group(1), 16))
-        summary += "; map heap margin %d KB" % (margin // 1024)
-        if margin < 16 * 1024:
+        summary += "; map heap margin %d KB%s" % (margin // 1024, "" if release else " (not a release: not held to it)")
+        if margin < 16 * 1024 and release:
             failed.append("the program has grown %d bytes since kDsMapHeap was measured: %d KB of its margin left, "
                           "under 16 (tools/emu/room.sh ds, then shared/HlDsRoom.hpp)"
                           % (marks["__end__"] - int(end.group(1), 16), margin // 1024))

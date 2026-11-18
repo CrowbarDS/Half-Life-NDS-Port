@@ -10,6 +10,15 @@
 #include <nds.h>
 #include <nds/cpu_asm.h>
 
+// A release build says so, for tools/arm9-report.sh --check: only a release
+// is held to kDsMapHeap's margin (shared/HlDsRoom.hpp). A build that
+// profiles, measures, debugs or dumps is bigger by what it does, and only
+// says its margin.
+#if !defined(HLDS_PROFILE) && !defined(HLDS_ITCM_OFF) && !defined(HLDS_DEBUG_BUILD) && !defined(HLDS_BOX_TEST) && \
+    !defined(HLDS_VOICE_DUMP)
+extern "C" __attribute__((used)) const char hlReleaseBuild = 1; // (kept by build.py's --undefined)
+#endif
+
 // (The linker sends every call of the program's -- and, by GameDll's
 // resolver, the game library's -- to malloc and the rest here, to the
 // __wrap_ functions: build.py's --wrap. __real_ ones are the allocator's.)
