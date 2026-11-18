@@ -1318,6 +1318,10 @@ namespace hldata
     /// word: met before the disaster (the game's SF_MONSTER_PREDISASTER):
     /// he will not follow.
     inline constexpr std::uint32_t kPersonPreDisaster = 1;
+    /// ... and Blue Shift's Dr. Rosenberg (a scientist of his own,
+    /// monster_rosenberg): twice the health, and not to be provoked. (His
+    /// voice is the converter's: in his map, the scientists' lines are his.)
+    inline constexpr std::uint32_t kPersonRosenberg = 2;
     /// A monster_generic, in bits 1..3 of the same word (from level version
     /// 48): how it is drawn (the map's rendermode and renderamt). 0 solid;
     /// 1..6 see-through, that many sevenths of it there; kActorLookHologram

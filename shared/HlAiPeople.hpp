@@ -513,10 +513,11 @@ namespace hldata
         }
 
         /// TakeDamage: the player who hurts him (by his own hand, not a
-        /// blast's) provokes him, and he follows no more.
+        /// blast's) provokes him, and he follows no more. (Not Rosenberg:
+        /// Blue Shift's game never has him turn on the player.)
         inline bool takeDamage(AiCtx &c, AiDamage &d)
         {
-            if (d.attacker == kAiPlayer && !(d.type & kDmgBlast))
+            if (d.attacker == kAiPlayer && !(d.type & kDmgBlast) && !(c.me.item & kPersonRosenberg))
             {
                 aiRemember(c, kMemoryProvoked);
                 talk::stopFollowing(c, true);

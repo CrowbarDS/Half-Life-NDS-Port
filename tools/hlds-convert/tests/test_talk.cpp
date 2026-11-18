@@ -186,12 +186,15 @@ namespace
         table(*game, "c1a2a");
     }
 
-    std::unique_ptr<Game> cookRoom(const std::vector<std::string> &people, const char *from)
+    std::unique_ptr<Game> cookRoom(const std::vector<std::string> &people, const char *from,
+                                   const std::string &entities = std::string())
     {
         auto game = std::make_unique<Game>();
         std::string error;
         game->pretendModels = people;
-        if (!game->bsp.parse(buildBoxRoom(), error))
+        BoxRoom room;
+        room.extraEntities = entities;
+        if (!game->bsp.parse(buildBoxRoom(room), error))
             return nullptr;
         finish(*game, nullptr, from);
         return game->ok ? std::move(game) : nullptr;
@@ -240,6 +243,52 @@ namespace
                   "a line's words are its sounds, its folder once for all, a comma a pause");
             check(v.sentences[cure[0]].wordCount == 2 && wordOf(cure[0], 0).pitch == 110 && wordOf(cure[0], 1).pitch == 0,
                   "... and a word's marks are its own");
+        }
+
+        // Blue Shift's Rosenberg: a scientist who speaks as himself (RO_) --
+        // in a map where he is the only scientist, the scientists' lines are
+        // his; where there are others, theirs.
+        {
+            FakeGame shift("shift", sentences + "RO_HELLO0 rosenberg/hello\nRO_IDLE0 rosenberg/idle\n", "");
+            const std::string rosenberg = "{\n\"classname\" \"monster_rosenberg\"\n\"origin\" \"0 0 36\"\n}\n";
+            std::unique_ptr<Game> with =
+                cookRoom({"scientist"}, shift.dir.c_str(),
+                         rosenberg + "{\n\"classname\" \"monster_generic\"\n\"model\" \"models/scientist.mdl\"\n"
+                                     "\"spawnflags\" \"8\"\n\"origin\" \"40 0 36\"\n}\n");
+            check(with != nullptr, "a room with Rosenberg cooks");
+            if (with != nullptr)
+            {
+                int rose = -1;
+                for (int i = 0; i < with->actors.count; ++i)
+                {
+                    if (with->actors.states[i].kind == static_cast<std::uint8_t>(ActorKind::Scientist) &&
+                        (with->actors.states[i].item & kPersonRosenberg))
+                        rose = i;
+                }
+                check(rose >= 0 && (with->actors.states[rose].item & kPersonRosenberg),
+                      "... as a scientist who is Rosenberg");
+                const auto hello = linesOf(*with, kVoiceScientist, kTalkHello);
+                const auto idle = linesOf(*with, kVoiceScientist, kTalkIdle);
+                auto saysWord = [&](std::uint16_t line, const char *path)
+                {
+                    const LevelView &v = with->view;
+                    return v.sentences[line].wordCount >= 1 &&
+                           std::string(v.sound(v.sentenceWords[v.sentences[line].firstWord].sound).name) ==
+                               soundCardName(path, kSoundRate, false);
+                };
+                check(hello.size() == 1 && idle.size() == 1 && saysWord(hello[0], "rosenberg/hello.wav") &&
+                          saysWord(idle[0], "rosenberg/idle.wav"),
+                      "... whose lines are the scientists', where he is the only one");
+            }
+            std::unique_ptr<Game> others =
+                cookRoom({"scientist"}, shift.dir.c_str(),
+                         rosenberg + "{\n\"classname\" \"monster_scientist\"\n\"origin\" \"40 0 36\"\n}\n");
+            check(others != nullptr && linesOf(*others, kVoiceScientist, kTalkHello).size() == kTalkLines,
+                  "... and the scientists' own where there are others");
+            if (with != nullptr && others != nullptr)
+                check(with->view.header->version == others->view.header->version &&
+                          with->view.speechCount - (1 + 1) == static_cast<std::uint32_t>(kTalkTableAt + kTalkHeading),
+                      "(the same table as every map: no voice more)");
         }
 
         // Only those of the voices the map has.

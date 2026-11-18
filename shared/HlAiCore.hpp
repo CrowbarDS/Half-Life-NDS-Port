@@ -2988,7 +2988,11 @@ namespace hldata
     {
         c.m.capability = c.kind.capability;
         // (As much as its kind has at the game's difficulty.)
-        const int health = skillHealth(skillOf(c.w), c.me.kind, c.kind.health);
+        // (Rosenberg has twice a scientist's.)
+        const int health = skillHealth(skillOf(c.w), c.me.kind, c.kind.health) *
+                           (c.me.kind == static_cast<std::uint8_t>(ActorKind::Scientist) && (c.me.item & kPersonRosenberg)
+                                ? 2
+                                : 1);
         c.m.maxHealth = health;
         c.m.idealState = kStateIdle;
         c.m.idealActivity = kActIdle;

@@ -65,7 +65,7 @@ namespace hlds
                 "worldspawn", "info_player_start", "info_player_deathmatch", "light", "light_spot", "light_environment",
                 "func_wall", "func_illusionary", "func_ladder", "infodecal", "info_null",
                 "info_target", "path_corner", "info_landmark", "path_track",
-                "info_teleport_destination", "monster_scientist", "monster_barney", "monster_gman",
+                "info_teleport_destination", "monster_scientist", "monster_barney", "monster_gman", "monster_rosenberg",
                 "monster_sitting_scientist", "monster_scientist_dead", "monster_barney_dead",
                 "monster_miniturret", "monster_sentry", "monster_turret",
                 "monster_generic", "monster_furniture", "cycler", "monster_headcrab",
@@ -524,7 +524,7 @@ namespace hlds
                 info = {true, ActorKind::Pose, "models/hgrunt.mdl", {clip}, clip};
                 info.solid = false;
             }
-            else if (cls == "monster_scientist")
+            else if (cls == "monster_scientist" || cls == "monster_rosenberg")
             {
                 // (What his schedules ask for, by what each clip is for:
                 // standing, going, going scared, flinching, crouching in
@@ -672,7 +672,7 @@ namespace hlds
         /// actor's name, as the kind of actor it means; -1 if it is not one.
         int kindOfClass(const std::string &cls)
         {
-            if (cls == "monster_scientist")
+            if (cls == "monster_scientist" || cls == "monster_rosenberg")
                 return static_cast<int>(ActorKind::Scientist);
             if (cls == "monster_barney")
                 return static_cast<int>(ActorKind::Guard);
@@ -3810,6 +3810,9 @@ namespace hlds
                 // One of the people before the disaster: will not follow.
                 if (spawnflags & 256)
                     actor.item |= kPersonPreDisaster;
+                // Blue Shift's Rosenberg: a scientist with a voice of his own.
+                if (lowered(entity.className()) == "monster_rosenberg")
+                    actor.item |= kPersonRosenberg;
                 // How a monster_generic is drawn: see-through (the game's
                 // render modes 2 and 5), or as its hologram (renderfx 16).
                 const int mode = static_cast<int>(numberKey(entity, "rendermode"));
@@ -4393,6 +4396,30 @@ namespace hlds
             std::find(models.begin(), models.end(), "scientist") != models.end(),
             std::find(models.begin(), models.end(), "barney") != models.end()};
         const bool talk = voices[kVoiceScientist] || voices[kVoiceBarney];
+        // Blue Shift's Rosenberg speaks as himself (RO_), a scientist who
+        // has his own lines: in a map where he is the only scientist (his
+        // one map, ba_yard5a), the scientists' lines are his -- the console
+        // knows nothing of it.
+        bool rosenbergOnly = false;
+        for (const Entity &entity : entities)
+        {
+            const std::string cls = lowered(entity.className());
+            if (cls == "monster_rosenberg")
+                rosenbergOnly = true;
+            else if (cls == "monster_scientist" || cls == "monster_sitting_scientist")
+            {
+                rosenbergOnly = false;
+                break;
+            }
+        }
+        auto groupOf = [&](int voice, int slot) -> const char *
+        {
+            static const char *const kRosenberg[kTalkSlots] = {
+                "RO_ANSWER", "RO_QUESTION", "RO_IDLE",   "RO_STARE",  "RO_OK",     "RO_WAIT",   "RO_STOP",   "RO_SCARED",
+                "RO_HELLO",  "RO_PHELLO",   "RO_PIDLE",  "RO_PQUEST", "!RO_CUREA", "!RO_CUREB", "!RO_CUREC", "RO_SMELL",
+                "RO_WOUND",  "RO_MORTAL",   "RO_POK",    "RO_SCREAM", "RO_HEAL",   "RO_FEAR",   "RO_PLFEAR"};
+            return rosenbergOnly && voice == kVoiceScientist ? kRosenberg[slot] : talkGroupName(voice, slot);
+        };
         // What soldiers call out: the first few of each of the game's lists.
         if (soldiers || talk)
             out.speech.assign(kSpeechGroups * kSpeechLines, 0xFFFF);
@@ -4407,7 +4434,7 @@ namespace hlds
                 {
                     const int g = voice * kTalkSlots + slot;
                     heading[g * 2] = static_cast<std::uint16_t>(lines.size());
-                    const char *group = talkGroupName(voice, slot);
+                    const char *group = groupOf(voice, slot);
                     if (!voices[voice] || group == nullptr)
                         continue;
                     if (group[0] == '!')
