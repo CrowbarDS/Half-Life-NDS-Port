@@ -12,6 +12,7 @@
 
 #include "HlUi.hpp"
 #include "TestBspBuilder.hpp"
+#include "hlds/SoundCook.hpp"
 #include "hlds/AtomicWrite.hpp"
 #include "hlds/NpacWriter.hpp"
 #include "hlds/Pack.hpp"
@@ -139,6 +140,31 @@ namespace
         }
         check(font, "... with the font in it, whole");
         check(!temporary, "... and none of what a run cut short left");
+        // The common sounds' stems: stored, a record each, from which the
+        // console makes the same names the converter cooks.
+        bool stems = false;
+        for (const NpacMember &member : members)
+        {
+            if (member.path != hldata::kCommonStemsFile)
+                continue;
+            hldata::CommonStemsHeader header{};
+            const int count = static_cast<int>(hldata::CommonSound::Count);
+            stems = member.method == kNpacStored && member.data.size() == sizeof(header) + std::size_t(count) * 32;
+            if (stems)
+                std::memcpy(&header, member.data.data(), sizeof(header));
+            stems = stems && std::memcmp(header.magic, hldata::kCommonStemsMagic, 4) == 0 && header.count == count &&
+                    header.recordBytes == hldata::kCommonStemBytes;
+            for (int c = 0; stems && c < count; ++c)
+            {
+                const char *stem = reinterpret_cast<const char *>(member.data.data() + sizeof(header) + std::size_t(c) * 32);
+                char made[48], cooked[48];
+                hldata::soundCardNameOfStem(stem, 11, c % 2 == 0, made);
+                hldata::soundCardName(hldata::commonSoundPath(static_cast<hldata::CommonSound>(c)), 11, c % 2 == 0, cooked);
+                stems = std::strcmp(made, cooked) == 0 && std::strcmp(cooked, hlds::soundCardName(hldata::commonSoundPath(
+                                                                       static_cast<hldata::CommonSound>(c)), 11025, c % 2 == 0).c_str()) == 0;
+            }
+        }
+        check(stems, "... and the common sounds' stems, stored, naming each as the converter does");
 
         // A font spoilt on the disk since: the archive is not made.
         std::vector<std::uint8_t> spoilt = cookedFont();

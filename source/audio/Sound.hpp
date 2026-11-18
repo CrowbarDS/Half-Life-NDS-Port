@@ -262,6 +262,21 @@ namespace hlrt
         void keepInPak();
         /// Sound `index` of the map into `clip`: from the Pak, or the card.
         bool readLate(int index, Clip &clip);
+        /// Sound `index`'s record, whole (LevelView::sound): a common one's
+        /// name made from its stem in the common archive's
+        /// kCommonStemsFile, not from a table in the program -- a DS has
+        /// not the room for that. While a map's sounds are read, through a
+        /// window of the file kept open (stemsOpen); else a record at a
+        /// time. (A Download Play child, which has no card, has the table.)
+        hldata::SoundRef refOf(int index);
+        bool stemOf(int index, char *stem);
+        void stemsOpen();
+        void stemsClose();
+        static constexpr int kStemWindow = 10;
+        std::FILE *stemsFile_ = nullptr;
+        int stemsFirst_ = -1;
+        int stemsHave_ = 0;
+        char stems_[kStemWindow][hldata::kCommonStemBytes] = {};
         /// Whether the heap has room to read sound `index` while playing.
         bool lateRoom(int index) const;
         public:

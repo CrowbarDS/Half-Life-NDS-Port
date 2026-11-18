@@ -639,10 +639,32 @@ namespace hldata
     /// sound folder ("weapons/ric1.wav"), its rate in thousands of samples a
     /// second and whether it loops -- "weapons_ric1.11k". In lower case,
     /// and what is not a letter, a digit, '_' or '-' made '_'; one too long
-    /// for a SoundRef keeps its end, the part that tells sounds apart. `out`
-    /// holds sizeof(SoundRef::name). (The converter names what it cooks so,
-    /// and the console the common ones, which a level does not name.)
-    inline void soundCardName(const char *gamePath, int rateK, bool loops, char *out)
+    /// for a SoundRef keeps its end, the part that tells sounds apart. (The
+    /// converter names what it cooks so; the console the common sounds,
+    /// which a level does not name, from their stems: kCommonStemsFile.)
+    ///
+    /// Its stem first: the path so, without ".wav" or the rate. `out`
+    /// holds `size`; false if it is too long for it.
+    inline bool soundCardStem(const char *gamePath, char *out, std::size_t size)
+    {
+        std::size_t length = std::strlen(gamePath);
+        if (length > 4 && std::strcmp(gamePath + length - 4, ".wav") == 0)
+            length -= 4;
+        if (length + 1 > size)
+            return false;
+        for (std::size_t i = 0; i < length; ++i)
+        {
+            char c = gamePath[i];
+            c = c >= 'A' && c <= 'Z' ? static_cast<char>(c + 32) : c;
+            const bool plain = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-';
+            out[i] = plain ? c : '_';
+        }
+        out[length] = '\0';
+        return true;
+    }
+    /// ... and the name of a stem at a rate. `out` holds
+    /// sizeof(SoundRef::name).
+    inline void soundCardNameOfStem(const char *stem, int rateK, bool loops, char *out)
     {
         char tail[8];
         int t = 0;
@@ -651,23 +673,42 @@ namespace hldata
             tail[t++] = static_cast<char>('0' + (rateK / 10) % 10);
         tail[t++] = static_cast<char>('0' + rateK % 10);
         tail[t++] = loops ? 'l' : 'k';
-        std::size_t length = std::strlen(gamePath);
-        if (length > 4 && std::strcmp(gamePath + length - 4, ".wav") == 0)
-            length -= 4;
+        const std::size_t length = std::strlen(stem);
         const std::size_t most = sizeof(SoundRef::name) - 1 - static_cast<std::size_t>(t);
         const std::size_t from = length > most ? length - most : 0;
         std::size_t n = 0;
         for (std::size_t i = from; i < length; ++i)
-        {
-            char c = gamePath[i];
-            c = c >= 'A' && c <= 'Z' ? static_cast<char>(c + 32) : c;
-            const bool plain = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-';
-            out[n++] = plain ? c : '_';
-        }
+            out[n++] = stem[i];
         for (int k = 0; k < t; ++k)
             out[n++] = tail[k];
         out[n] = '\0';
     }
+    inline void soundCardName(const char *gamePath, int rateK, bool loops, char *out)
+    {
+        char stem[256];
+        if (!soundCardStem(gamePath, stem, sizeof(stem)))
+            stem[0] = '\0';
+        soundCardNameOfStem(stem, rateK, loops, out);
+    }
+
+    /// The common sounds' stems, on the card (the common archive's): so a
+    /// DS need not carry a table of their paths in its program. A
+    /// CommonStemsHeader, then `count` records of `recordBytes`, each a
+    /// stem (soundCardStem), in CommonSound's order. Stored, not
+    /// compressed: one record is read at a time.
+    inline constexpr char kCommonStemsFile[] = "snd/commons.hcs";
+    inline constexpr char kCommonStemsMagic[4] = {'H', 'C', 'S', 'N'};
+    inline constexpr std::uint16_t kCommonStemsVersion = 1;
+    inline constexpr std::uint16_t kCommonStemBytes = 32;
+    struct CommonStemsHeader
+    {
+        char magic[4];
+        std::uint16_t version;
+        std::uint16_t count;
+        std::uint16_t recordBytes;
+        std::uint16_t pad;
+    };
+    static_assert(sizeof(CommonStemsHeader) == 12);
 
     /// Whether it is cooked to go round (where its file says, if it says):
     /// then it is only ever played with kSoundLoopOn and kSoundLoopOff. The

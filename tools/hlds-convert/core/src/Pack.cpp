@@ -1293,6 +1293,33 @@ namespace hlds
             }
             packing.add(file, "ui/" + file.filename().string(), true);
         }
+        // The common sounds' stems, for the console to name them by (a level
+        // has them by their rate alone): stored, read a record at a time.
+        {
+            NpacMember stems;
+            stems.path = hldata::kCommonStemsFile;
+            stems.mayCompress = false;
+            hldata::CommonStemsHeader header{};
+            std::memcpy(header.magic, hldata::kCommonStemsMagic, 4);
+            header.version = hldata::kCommonStemsVersion;
+            header.count = static_cast<std::uint16_t>(hldata::CommonSound::Count);
+            header.recordBytes = hldata::kCommonStemBytes;
+            stems.data.resize(sizeof(header) + std::size_t(header.count) * header.recordBytes, 0);
+            std::memcpy(stems.data.data(), &header, sizeof(header));
+            for (int c = 0; c < header.count; ++c)
+            {
+                char *at = reinterpret_cast<char *>(stems.data.data() + sizeof(header) + std::size_t(c) * header.recordBytes);
+                if (!hldata::soundCardStem(hldata::commonSoundPath(static_cast<hldata::CommonSound>(c)), at,
+                                           hldata::kCommonStemBytes))
+                {
+                    error = std::string("the common sound ") + hldata::commonSoundPath(static_cast<hldata::CommonSound>(c)) +
+                            " has a name too long for its record";
+                    return false;
+                }
+            }
+            packing.named.insert(stems.path);
+            packing.members.push_back(std::move(stems));
+        }
         for (const char *name : hldata::kUiSoundFiles)
             packing.add(stage / "snd" / (std::string(name) + ".hsn"), std::string("snd/") + name + ".hsn",
                         false, false);

@@ -293,6 +293,8 @@ namespace hlrt
         // the later weapons'. Left with too little (a DS, a big map), it does
         // without the last rather than without its memory, and what was not
         // read is read when first played, if there is room then.
+        // (The common sounds' names, read through a window as they come.)
+        stemsOpen();
         const int laterFrom = static_cast<int>(kCommonSoundsBefore30);
         const int laterTo = static_cast<int>(commonsOf(view.header->version));
         bool *const own = kept + view.soundCount + 1;
@@ -316,9 +318,10 @@ namespace hlrt
             // (A DSi has the memory for the better copy, where there is one.)
             char twin[sizeof(SoundRef)];
             bool tooBig = false;
-            if ((global.isDSi && soundTwinName(view.sound(i), twin, sizeof(twin)) &&
+            const SoundRef ref = refOf(i);
+            if ((global.isDSi && soundTwinName(ref, twin, sizeof(twin)) &&
                  readClip(twin, clips_[i], room)) ||
-                readClip(view.sound(i).name, clips_[i], room, &tooBig))
+                readClip(ref.name, clips_[i], room, &tooBig))
             {
                 ++loaded_;
                 ++stats_.loaded;
@@ -337,6 +340,7 @@ namespace hlrt
         }
         std::free(kept);
         keepInPak();
+        stemsClose();
         lastVblank_ = Global::vblanks();
         resumeMusic();
     }
@@ -364,7 +368,7 @@ namespace hlrt
         {
             if (!view.soundThere(i) || (i < count_ && clips_[i].data != nullptr))
                 continue;
-            const std::string inArchive = std::string("snd/") + view.sound(i).name + ".hsn";
+            const std::string inArchive = std::string("snd/") + refOf(i).name + ".hsn";
             std::FILE *file = std::fopen(global.mapPath(inArchive).c_str(), "rb");
             if (file == nullptr)
                 file = std::fopen(global.commonPath(inArchive).c_str(), "rb");
@@ -406,10 +410,87 @@ namespace hlrt
         }
     }
 
+    void Sound::stemsOpen()
+    {
+#ifndef HLDS_CHILD
+        stemsClose();
+        stemsFile_ = std::fopen(global.commonPath(kCommonStemsFile).c_str(), "rb");
+        CommonStemsHeader header;
+        if (stemsFile_ != nullptr &&
+            (std::fread(&header, sizeof(header), 1, stemsFile_) != 1 || std::memcmp(header.magic, kCommonStemsMagic, 4) != 0 ||
+             header.version != kCommonStemsVersion || header.count != static_cast<std::uint16_t>(CommonSound::Count) ||
+             header.recordBytes != kCommonStemBytes))
+            stemsClose(); // (a common archive of another converter: its sounds go unnamed)
+#endif
+    }
+
+    void Sound::stemsClose()
+    {
+        if (stemsFile_ != nullptr)
+            std::fclose(stemsFile_);
+        stemsFile_ = nullptr;
+        stemsFirst_ = -1;
+        stemsHave_ = 0;
+    }
+
+    bool Sound::stemOf(int index, char *stem)
+    {
+        // (Open, a window of records -- a map's sounds are asked for in
+        // order; not, the one record, the file opened for it.)
+        const bool once = stemsFile_ == nullptr;
+        if (once)
+        {
+            stemsOpen();
+            if (stemsFile_ == nullptr)
+                return false;
+        }
+        if (index < stemsFirst_ || index >= stemsFirst_ + stemsHave_)
+        {
+            const int want = once ? 1 : kStemWindow;
+            stemsHave_ = 0;
+            if (std::fseek(stemsFile_, static_cast<long>(sizeof(CommonStemsHeader) + std::size_t(index) * kCommonStemBytes),
+                           SEEK_SET) == 0)
+                stemsHave_ = static_cast<int>(std::fread(stems_, kCommonStemBytes, static_cast<std::size_t>(want), stemsFile_));
+            stemsFirst_ = index;
+        }
+        const bool ok = index >= stemsFirst_ && index < stemsFirst_ + stemsHave_;
+        if (ok)
+        {
+            std::memcpy(stem, stems_[index - stemsFirst_], kCommonStemBytes);
+            stem[kCommonStemBytes - 1] = '\0';
+        }
+        if (once)
+            stemsClose();
+        return ok;
+    }
+
+    SoundRef Sound::refOf(int index)
+    {
+        const LevelView &view = level.view;
+#ifdef HLDS_CHILD
+        return view.sound(static_cast<std::uint32_t>(index));
+#else
+        SoundRef ref{};
+        if (index < 0 || static_cast<std::uint32_t>(index) >= view.soundCount)
+            return ref;
+        const std::uint32_t i = static_cast<std::uint32_t>(index);
+        if (i >= view.commonSoundCount)
+            return view.ownSounds[i - view.commonSoundCount];
+        const CommonSoundRef &common = view.commonSounds[i];
+        const int rate = common.rate & ~kCommonSoundLoops;
+        char stem[kCommonStemBytes];
+        if (rate == 0 || !stemOf(index, stem))
+            return ref;
+        soundCardNameOfStem(stem, rate, (common.rate & kCommonSoundLoops) != 0, ref.name);
+        ref.twin = common.twin;
+        return ref;
+#endif
+    }
+
     bool Sound::readLate(int index, Clip &clip)
     {
         if (pak_ == nullptr || index < 0 || index >= pakCount_ || pak_[index] == nullptr)
-            return readClip(level.view.sound(index).name, clip);
+            return readClip(refOf(index).name, clip);
         clip = Clip();
         SoundHeader header;
         std::memcpy(&header, pak_[index], sizeof(header));
@@ -800,8 +881,9 @@ namespace hlrt
         // In DSi mode there is room: what has come stays, for the map.
         if (global.twlChild)
         {
-            if (clips_[sound].data == nullptr && !readClip(level.view.sound(sound).name, clips_[sound]))
-                netGame.fetchFile((std::string("snd/") + level.view.sound(sound).name + ".hsn").c_str(), true);
+            const SoundRef ref = refOf(sound);
+            if (clips_[sound].data == nullptr && !readClip(ref.name, clips_[sound]))
+                netGame.fetchFile((std::string("snd/") + ref.name + ".hsn").c_str(), true);
             return;
         }
         const std::uint32_t now = Global::vblanks();
