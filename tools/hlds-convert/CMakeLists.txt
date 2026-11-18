@@ -116,7 +116,8 @@ endif()
 # ---------------------------------------------------------------------------
 # The installer's decisions: no Qt either, and tested with the rest.
 add_library(hlds_install STATIC install/Install.cpp install/RomHeader.cpp)
-target_include_directories(hlds_install PUBLIC install)
+target_include_directories(hlds_install PUBLIC install
+    PRIVATE "${REPO_ROOT}/shared") # (HlGame.hpp: which games, in which folders)
 target_compile_features(hlds_install PUBLIC cxx_std_20)
 
 # The console's program, built into the converter: a release's converter is

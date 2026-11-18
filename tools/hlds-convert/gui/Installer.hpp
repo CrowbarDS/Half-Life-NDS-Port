@@ -69,6 +69,7 @@ private:
     void showStep(int id);
 
     QString game_, card_, ptexconv_, why_;
+    QStringList expansions_; ///< the expansions' folders ticked (ReadyPage)
     QString language_; ///< a translation beside the game (french); empty: English
     QStringList limit_;
     QString cache_;

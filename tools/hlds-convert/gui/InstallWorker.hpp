@@ -26,6 +26,7 @@ public:
         bool textures = true;
         int threads = 0;  ///< threads the conversion keeps busy (ConvertOptions::jobs); 0: all
         QString language; ///< a translation beside the game (french); empty: the game's own
+        QStringList expansions; ///< folders of the expansions to install too (bshift, gearbox): DSi only
     };
 
     explicit InstallWorker(Job job, QObject *parent = nullptr) : QThread(parent), job_(std::move(job)) {}
@@ -45,6 +46,8 @@ protected:
 
 private:
     bool convert(QString &why);
+    /// One game's maps (`game`: its folder) into the card's cache.
+    bool convertGame(const QString &game, const QStringList &maps, QString &why);
     bool copy(QString &why);
 
     Job job_;

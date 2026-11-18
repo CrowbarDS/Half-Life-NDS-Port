@@ -38,6 +38,10 @@ namespace hlds::install
         bool hazardCourse = false;
         bool uplink = false;
         int maps = 0;
+        /// The expansions beside it (Blue Shift's "bshift", Opposing
+        /// Force's "gearbox"), each with its first map and its training's:
+        /// played on a DSi only.
+        std::vector<std::filesystem::path> expansions;
     };
     /// What is at `folder`: the valve folder itself, the game's folder above it
     /// ("Half-Life"), or something else. Names are compared without case.
@@ -60,6 +64,9 @@ namespace hlds::install
     /// Which part a map's name makes it: the campaign's are all c<n>a..., and
     /// what is left of the game's folder is for matches.
     Part partOfMap(const std::string &name);
+    /// An expansion's maps that are installed: its campaign and its training
+    /// (Opposing Force's matches, op4*, are not played yet).
+    bool expansionMap(const std::string &name);
 
     /// How much a set of `maps` comes to on the card, near enough to warn by.
     std::uint64_t spaceFor(int maps);

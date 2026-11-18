@@ -475,6 +475,14 @@ public:
         layout->addWidget(summary_);
         problem_ = wrapped();
         layout->addWidget(problem_);
+        // The expansions beside the game, if there are: each its own choice.
+        for (int g = 1; g < hldata::kGameCount; ++g)
+        {
+            expansions_[g] = new QCheckBox;
+            expansions_[g]->setVisible(false);
+            layout->addWidget(expansions_[g]);
+            connect(expansions_[g], &QCheckBox::toggled, this, &ReadyPage::update);
+        }
         layout->addStretch();
         auto *more = new QToolButton;
         more->setText(QStringLiteral("Advanced"));
@@ -555,6 +563,34 @@ public:
             parts_[part]->setVisible(counts[part] > 0);
             parts_[part]->setChecked(counts[part] > 0);
         }
+        // (Each expansion found beside the game: offered, ticked.)
+        for (int g = 1; g < hldata::kGameCount; ++g)
+        {
+            expansionFolder_[g].clear();
+            expansionMaps_[g] = 0;
+            expansions_[g]->setVisible(false);
+        }
+        for (const std::filesystem::path &folder : checkGame(owner_->game_.toStdWString()).expansions)
+        {
+            const hldata::GameId g = hlds::gameOfFolder(folder);
+            if (g == hldata::kGameHalfLife)
+                continue;
+            hlds::ConvertOptions look;
+            look.gameDir = folder;
+            int maps = 0;
+            for (const std::string &map : hlds::Converter(look).listMaps())
+                maps += hlds::install::expansionMap(map) ? 1 : 0;
+            hldata::activeGame = hldata::kGameHalfLife; // (as the look left it)
+            expansionFolder_[g] = fromPath(folder);
+            expansionMaps_[g] = maps;
+            const QString name = QString::fromLatin1(hldata::gameInfo(g).heading).toLower();
+            expansions_[g]->setText(QStringLiteral("Also %1, DSi only (about %2)")
+                                        .arg(name.left(1).toUpper() + name.mid(1).replace(QStringLiteral(" f"), QStringLiteral(" F"))
+                                                 .replace(QStringLiteral(" s"), QStringLiteral(" S")),
+                                             sizeText(spaceFor(maps))));
+            expansions_[g]->setVisible(true);
+            expansions_[g]->setChecked(true);
+        }
         update();
     }
     bool isComplete() const override { return problem_->text().isEmpty() && !chosen().isEmpty(); }
@@ -574,7 +610,17 @@ private:
     void update()
     {
         owner_->textures_ = textures_->isChecked();
-        const std::uint64_t needed = spaceFor(static_cast<int>(chosen().size()));
+        std::uint64_t needed = spaceFor(static_cast<int>(chosen().size()));
+        owner_->expansions_.clear();
+        for (int g = 1; g < hldata::kGameCount; ++g)
+        {
+            if (expansions_[g] != nullptr && expansions_[g]->isVisible() && expansions_[g]->isChecked() &&
+                !expansionFolder_[g].isEmpty())
+            {
+                owner_->expansions_ << expansionFolder_[g];
+                needed += spaceFor(expansionMaps_[g]);
+            }
+        }
         const Volume card = detect::volumeOf(owner_->card_);
         // What is on the card of ours is replaced, not added to.
         std::uint64_t ours = 0;
@@ -630,6 +676,9 @@ private:
     QLabel *summary_ = nullptr, *problem_ = nullptr, *encoder_ = nullptr;
     QWidget *advanced_ = nullptr;
     QCheckBox *parts_[4] = {};
+    QCheckBox *expansions_[hldata::kGameCount] = {};
+    QString expansionFolder_[hldata::kGameCount];
+    int expansionMaps_[hldata::kGameCount] = {};
     QCheckBox *textures_ = nullptr;
     QSpinBox *threads_ = nullptr;
     QPushButton *encoderBrowse_ = nullptr;
@@ -879,6 +928,7 @@ void Installer::start()
     job.textures = textures_;
     job.threads = threads_;
     job.language = language_;
+    job.expansions = expansions_;
     worker_ = new InstallWorker(std::move(job), this);
     connect(worker_, &InstallWorker::step, this, [page](int step) { page->showLines(step - 1); });
     connect(worker_, &InstallWorker::progress, this, [page](int permille, const QString &now) { page->setProgress(permille, now); });

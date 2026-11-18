@@ -76,23 +76,53 @@ void InstallWorker::run()
 
 bool InstallWorker::convert(QString &why)
 {
+    failed_ = 0;
+    if (!convertGame(job_.game, job_.maps, why))
+        return false;
+    // The expansions ticked: every map of each (but Opposing Force's
+    // matches, not played yet), into the folder of its own on the card.
+    for (const QString &expansion : job_.expansions)
+    {
+        hlds::ConvertOptions look;
+        look.gameDir = toPath(expansion);
+        QStringList all;
+        for (const std::string &map : hlds::Converter(look).listMaps())
+        {
+            if (hlds::install::expansionMap(map))
+                all << QString::fromStdString(map);
+        }
+        emit logLine(QStringLiteral("%1: %2 maps").arg(expansion).arg(all.size()));
+        if (!convertGame(expansion, all, why))
+            return false;
+    }
+    // (The last conversion said which game the shared code asks after:
+    // Half-Life's again, for what comes next.)
+    hldata::activeGame = hldata::kGameHalfLife;
+    return true;
+}
+
+bool InstallWorker::convertGame(const QString &game, const QStringList &maps, QString &why)
+{
     QDir().mkpath(job_.cache);
     const QString cardCache = job_.cache + QStringLiteral("/card");
     const QString stage = job_.cache + QStringLiteral("/stage");
-    const QString stamps = job_.cache + QStringLiteral("/stamps");
+    // (An expansion's in a folder of its own, as on the card: HlGame.hpp.)
+    const hldata::GameId id = hlds::gameOfFolder(toPath(game));
+    const QString own = QString::fromLatin1(hldata::gameInfo(id).cardDir);
+    const QString stamps = job_.cache + QStringLiteral("/stamps") +
+                           (own.isEmpty() ? QString() : QLatin1Char('/') + QString::fromLatin1(hldata::gameInfo(id).steamDir));
     QDir().mkpath(cardCache);
     QDir().mkpath(stamps);
 
     hlds::ConvertOptions options;
-    options.gameDir = toPath(job_.game);
+    options.gameDir = toPath(game);
     options.cardRoot = toPath(cardCache);
     options.stageRoot = toPath(stage);
     options.textures = job_.textures;
     options.jobs = job_.threads;
     if (!job_.language.isEmpty())
     {
-        options.languageDir = hlds::languageFolder(options.gameDir, job_.language.toStdString());
-        if (options.languageDir.empty())
+        if (!hlds::chooseLanguage(options, job_.language.toStdString()))
         {
             why = QStringLiteral("The %1 translation is no longer beside the game.").arg(job_.language);
             return false;
@@ -113,15 +143,15 @@ bool InstallWorker::convert(QString &why)
     // What was wanted before and is not now goes, or it would be listed.
     const auto forget = [&](const QString &map)
     {
-        const QString data = cardCache + QStringLiteral("/_nds/hl_nds/data/");
+        const QString data = cardCache + QStringLiteral("/_nds/hl_nds/data/") + own;
         QFile::remove(data + QStringLiteral("maps/") + map + QStringLiteral(".npac"));
         QDir air(data + QStringLiteral("air"));
         for (const QString &file : air.entryList({map + QStringLiteral(".*")}, QDir::Files))
             air.remove(file);
-        QFile::remove(stage + QStringLiteral("/_nds/hl_nds/data/maps/") + map + QStringLiteral(".hlm"));
+        QFile::remove(stage + QStringLiteral("/_nds/hl_nds/data/") + own + QStringLiteral("maps/") + map + QStringLiteral(".hlm"));
         QFile::remove(stamps + QLatin1Char('/') + map);
     };
-    const std::set<QString> wanted(job_.maps.begin(), job_.maps.end());
+    const std::set<QString> wanted(maps.begin(), maps.end());
     for (const QString &stamp : QDir(stamps).entryList(QDir::Files))
     {
         if (!wanted.count(stamp))
@@ -131,24 +161,24 @@ bool InstallWorker::convert(QString &why)
     // Those still good from a past run, and those to do.
     std::vector<std::string> names;
     QStringList todo;
-    for (const QString &map : job_.maps)
+    for (const QString &map : maps)
     {
         QFile stamp(stamps + QLatin1Char('/') + map);
-        const QString now = stampOf(bspOf(job_.game, map), job_.textures, job_.language);
+        const QString now = stampOf(bspOf(game, map), job_.textures, job_.language);
         if (stamp.open(QIODevice::ReadOnly) && QString::fromUtf8(stamp.readAll()) == now)
             continue;
         names.push_back(map.toStdString());
         todo << map;
     }
     const int total = static_cast<int>(names.size());
-    const bool someKept = total < job_.maps.size();
-    emit logLine(QStringLiteral("%1 maps to convert, %2 still good from last time").arg(total).arg(job_.maps.size() - total));
+    const bool someKept = total < maps.size();
+    emit logLine(QStringLiteral("%1 maps to convert, %2 still good from last time").arg(total).arg(maps.size() - total));
 
     std::string error;
     if (total > 0)
     {
         std::atomic<int> done{0};
-        failed_ = converter.cookMaps(
+        failed_ += converter.cookMaps(
             names, [this](std::size_t, const std::string &name)
             { emit logLine(QStringLiteral("Converting %1").arg(QString::fromStdString(name))); },
             [&](const hlds::MapResult &r)
@@ -167,7 +197,7 @@ bool InstallWorker::convert(QString &why)
                 {
                     QFile stamp(stamps + QLatin1Char('/') + name);
                     if (stamp.open(QIODevice::WriteOnly))
-                        stamp.write(stampOf(bspOf(job_.game, name), job_.textures, job_.language).toUtf8());
+                        stamp.write(stampOf(bspOf(game, name), job_.textures, job_.language).toUtf8());
                 }
                 const int now = ++done;
                 emit progress(kConvertShare * now / total, QStringLiteral("Converted %1 of %2 maps").arg(now).arg(total));

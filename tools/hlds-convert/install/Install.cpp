@@ -1,5 +1,6 @@
 #include "Install.hpp"
 #include "BundledRom.hpp"
+#include "HlGame.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -107,8 +108,16 @@ namespace hlds::install
 
         /// What the player made, and the converter never does. (server.ini:
         /// where the relay for online play is, written by the player.)
-        bool playersOwn(const std::string &relative)
+        bool playersOwn(const std::string &path)
         {
+            // (An expansion's, in its folder: its saves and achievements.)
+            std::string relative = path;
+            for (const hldata::GameInfo &game : hldata::kGames)
+            {
+                const std::string folder = game.cardDir;
+                if (!folder.empty() && relative.rfind(folder, 0) == 0)
+                    relative = relative.substr(folder.size());
+            }
             return relative == "settings.dat" || relative == "achievements.dat" || relative == "perf.txt" ||
                    relative == "server.ini" ||
                    relative.rfind("saves", 0) == 0 || relative.rfind("debug_", 0) == 0;
@@ -213,6 +222,20 @@ namespace hlds::install
         else if (!isHalfLife)
             game.why = "This folder has Half-Life's maps, but not the rest of the game.";
         game.ok = game.why.empty();
+        // The expansions beside it: each a folder named as the game has it,
+        // with its first map and its training's.
+        if (game.ok)
+        {
+            for (int g = 1; g < hldata::kGameCount; ++g)
+            {
+                const hldata::GameInfo &info = hldata::kGames[g];
+                const fs::path beside = findNoCase(game.valve.parent_path(), info.steamDir);
+                const fs::path theirs = beside.empty() ? fs::path() : findNoCase(beside, "maps");
+                if (!theirs.empty() && !findNoCase(theirs, std::string(info.startMap) + ".bsp").empty() &&
+                    !findNoCase(theirs, std::string(info.trainMap) + ".bsp").empty())
+                    game.expansions.push_back(beside);
+            }
+        }
         return game;
     }
 
@@ -267,6 +290,11 @@ namespace hlds::install
             return Part::Uplink;
         const bool campaign = name.size() >= 3 && name[0] == 'c' && std::isdigit(static_cast<unsigned char>(name[1])) && name[2] == 'a';
         return campaign ? Part::Campaign : Part::Multiplayer;
+    }
+
+    bool expansionMap(const std::string &name)
+    {
+        return name.rfind("op4", 0) != 0;
     }
 
     std::uint64_t spaceFor(int maps)
@@ -354,18 +382,30 @@ namespace hlds::install
             plan.bytes += item.bytes;
             plan.copy.push_back(std::move(item));
         }
-        // Of ours, on the card, and no longer in what is being installed.
-        for (const char *folder : {"maps", "air", "music"})
+        // Of ours, on the card, and no longer in what is being installed:
+        // of each game being installed, in its own folder (Half-Life's own
+        // folders only, not an expansion's under it).
+        for (const hldata::GameInfo &game : hldata::kGames)
         {
-            for (auto it = fs::recursive_directory_iterator(target / folder, ec); !ec && it != fs::recursive_directory_iterator(); it.increment(ec))
+            const std::string own = game.cardDir;
+            if (!own.empty() && !fs::is_directory(data / own, ec))
             {
-                if (!it->is_regular_file(ec))
-                    continue;
-                const std::string relative = fs::relative(it->path(), target, ec).generic_string();
-                if (std::find(wanted.begin(), wanted.end(), relative) == wanted.end())
-                    plan.remove.push_back(it->path());
+                ec.clear();
+                continue;
             }
-            ec.clear();
+            for (const char *folder : {"maps", "air", "music"})
+            {
+                for (auto it = fs::recursive_directory_iterator(target / own / folder, ec);
+                     !ec && it != fs::recursive_directory_iterator(); it.increment(ec))
+                {
+                    if (!it->is_regular_file(ec))
+                        continue;
+                    const std::string relative = fs::relative(it->path(), target, ec).generic_string();
+                    if (std::find(wanted.begin(), wanted.end(), relative) == wanted.end())
+                        plan.remove.push_back(it->path());
+                }
+                ec.clear();
+            }
         }
         return plan;
     }
