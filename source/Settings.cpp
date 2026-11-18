@@ -23,7 +23,7 @@ void Settings::load()
 #ifndef HLDS_SETTINGS_IN_MEMORY
     if (!global.hasFat)
         return;
-    std::FILE *file = std::fopen(global.dataPath("settings.dat").c_str(), "rb");
+    std::FILE *file = std::fopen(global.rootPath("settings.dat").c_str(), "rb");
     if (file == nullptr)
         return;
     std::uint8_t bytes[hldata::kSettingsMostBytes];
@@ -84,6 +84,7 @@ void Settings::load()
 #ifndef HLDS_CHILD
         hostIdleMinutes = data.hostIdleMinutes;
         vibration = data.vibration;
+        lastGame = data.lastGame;
 #endif
         maxPlayers = data.maxPlayers;
         allowGuests = data.allowGuests != 0;
@@ -237,6 +238,7 @@ bool Settings::save() const
 #ifndef HLDS_CHILD
     data.hostIdleMinutes = hostIdleMinutes;
     data.vibration = vibration;
+    data.lastGame = lastGame;
 #endif
     data.maxPlayers = maxPlayers;
     data.allowGuests = allowGuests ? 1 : 0;
@@ -249,7 +251,7 @@ bool Settings::save() const
         data.rotation[i] = rotation[i];
     const std::vector<std::uint8_t> bytes = hldata::writeSettings(data);
 
-    std::FILE *file = std::fopen(global.dataPath("settings.dat").c_str(), "wb");
+    std::FILE *file = std::fopen(global.rootPath("settings.dat").c_str(), "wb");
     if (file == nullptr)
         return false;
     const bool ok = std::fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size();

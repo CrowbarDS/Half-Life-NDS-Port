@@ -38,6 +38,9 @@ namespace hlrt
         /// (and again each time it is: forget() first).
         void load();
         void forget();
+        /// Another game chosen: what load() read of the last one's common
+        /// archive let go of, and its colours with it (load() again after).
+        void forgetGame();
 
         /// What to show. `suit`: the player has one (without it, nothing).
         /// `weapon` is a kWeapon*; `extra` what it has besides, or -1.

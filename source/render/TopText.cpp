@@ -166,6 +166,12 @@ namespace hlrt
         }
     }
 
+    void TopText::forgetTitle()
+    {
+        titleTried = false;
+        title = IconsView();
+    }
+
     HL_ARM void TopText::drawLogo(Slot &slot, int index)
     {
         loadTitle();

@@ -123,6 +123,8 @@ namespace hlrt
         /// The weapons' pictures, read now rather than when first drawn (a
         /// console sent the game has them only while it starts up).
         void loadIcons();
+        /// Another game chosen: its weapons' pictures read again when next wanted.
+        void forgetIcons() { iconsTried_ = false; }
 
     private:
         enum class VotePage

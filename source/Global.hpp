@@ -18,6 +18,7 @@
 
 #include "global_header.hpp"
 
+#include "HlGame.hpp"
 #include "HlNetMaps.hpp"
 
 class Global
@@ -88,11 +89,19 @@ public:
     // file on a card is slow; a map used to be two hundred of them. Loose
     // beside the archives: what the game writes (saves, settings) and the
     // music, which is played off the card as it goes.
+    //
+    // Half-Life's files are in that folder itself, as they always were; an
+    // expansion's in a folder of its own under it (HlGame.hpp: cardDir).
+    // What is the console's, not a game's -- the settings, perf.txt, the
+    // relay's server.ini -- is in the root folder.
 #ifdef HLDS_CHILD
     // (Sent the game: what it was sent is laid out as on a card.)
+    std::string rootDir() const { return "air:/"; }
     std::string dataDir() const { return "air:/"; }
 #else
-    std::string dataDir() const { return fatDeviceCPP + "_nds/hl_nds/data/"; }
+    std::string rootDir() const { return fatDeviceCPP + "_nds/hl_nds/data/"; }
+    /// The folder of the game being played (hldata::activeGame).
+    std::string dataDir() const { return rootDir() + hldata::activeGameInfo().cardDir; }
 #endif
     /// A map's archive: maps/<name>.npac -- or, a map a host sent for a
     /// match (net/MapShare.hpp), the file it was put in.
@@ -134,6 +143,8 @@ public:
     /// Written by the game, never by the converter.
     std::string savesDir() const { return dataDir() + "saves/"; }
     std::string dataPath(const std::string &rel) const { return dataDir() + rel; }
+    /// The console's own files, whichever game is played.
+    std::string rootPath(const std::string &rel) const { return rootDir() + rel; }
 
     /// Put a map's archive in the place of whichever is mounted. False if
     /// it is not on the card (and then none is).
@@ -142,6 +153,12 @@ public:
     /// The common archive, if it is not mounted already. (The 3D engine
     /// lets go of every archive when it is brought up again: InitVideo.)
     void mountCommon();
+    /// Another game chosen (hldata::activeGame set): its common archive in
+    /// place of the last one's.
+    void remountCommon();
+    /// The games the card holds, a bit each (1 << GameId): those with a
+    /// manifest in their folder. Only the files' first bytes are read.
+    std::uint8_t scanGames() const;
 #ifndef HLDS_CHILD
     /// How the map's and the common archive's files seek, as each was last
     /// mounted (NEA_NpacSeekInfo): one in more pieces on the card than the

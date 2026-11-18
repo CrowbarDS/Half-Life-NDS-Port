@@ -45,6 +45,8 @@ namespace hlrt
             DemoRestart,  ///< ... from its start, its progress let go of
             StopDemo,   ///< the host's: no more of the demo being served
             SendDemo,   ///< the host's: all out for a moment, to give the game to more
+            ChangeGame, ///< the title's CHANGE GAME: the games on the card offered (openGames)
+            ChooseGame, ///< one chosen there: chosenGame()
         };
 
         /// Whether QUIT is offered: there is somewhere to go back to (the
@@ -63,6 +65,16 @@ namespace hlrt
         /// is in (a match over: back to it).
         /// A console sent the game, as it comes: which hand it is played with.
         void openHand();
+        /// The games on the card (a bit each, 1 << GameId): CHANGE GAME is
+        /// offered when there is more than one.
+        void setGames(std::uint8_t present);
+        /// ... and whether there is more than one.
+        bool severalGames() const;
+        /// CHOOSE GAME: the games on the card, the one played `last` first
+        /// (and A for it). Left with Action::ChooseGame.
+        void openGames(int last);
+        bool onGames() const { return page_ == Page::Game; }
+        int chosenGame() const { return chosenGame_; }
         void openLobby();
         /// The games near, to choose one: where a console out of a game lands
         /// if it has nowhere else (one sent the game), and says why.
@@ -141,6 +153,7 @@ namespace hlrt
             NetOnline = 24,   ///< ONLINE: host or join a game through the relay
             NetConnecting = 25, ///< ... going online first: how far it has got, and CANCEL
             NetChat = 26,     ///< CHAT: a line typed for everyone in the game (the match goes on)
+            Game = 27,        ///< CHOOSE GAME: which of the games on the card
         };
 
         // A sheet: a page of its own, drawn and touched apart from the rows
@@ -317,6 +330,8 @@ namespace hlrt
         unsigned netSignature() const;
         bool big() const;
         int active_ = -1; ///< the row the stylus went down on, or -1
+        int chosenGame_ = 0; ///< CHOOSE GAME's choice (a GameId)
+        int lastGame_ = 0;   ///< ... and the one played last, A's
         bool touching_ = false;
         int lastX_ = 0, lastY_ = 0;
         void draw();

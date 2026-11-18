@@ -151,7 +151,7 @@ namespace hlrt::DebugLog::Perf
         const std::uint32_t *top = reinterpret_cast<const std::uint32_t *>(__sp_usr);
         while (low < top && *low == kStackPaint)
             ++low;
-        if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
+        if (std::FILE *log = std::fopen(global.rootPath("perf.txt").c_str(), "a"))
         {
             std::fprintf(log, "time: %s %s %d frames, stack %d, divides %lu, roots %lu", map,
                          global.isDSi ? "DSi" : "DS", framesIn, static_cast<int>((top - low) * 4),

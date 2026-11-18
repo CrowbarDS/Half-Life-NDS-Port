@@ -2,6 +2,7 @@
 
 #include "HlRumble.hpp"
 #include "HlCharacters.hpp"
+#include "HlGame.hpp"
 
 // The player's settings: <card>/_nds/hl_nds/data/settings.dat
 //
@@ -203,6 +204,9 @@ namespace hldata
         /// while and no longer does: kept in the file, so that version 29 is
         /// one format, and not used.
         std::uint8_t gyroSpeed = 0;
+        /// The game last chosen (HlGame.hpp's GameId; version 30): offered
+        /// first when the card holds more than one.
+        std::uint8_t lastGame = 0;
 
         /// What a file of version 8 held: all but the controls.
         template <class Ar>
@@ -268,9 +272,19 @@ namespace hldata
             ar &hostIdleMinutes;
             ar &vibration;
             ar &gyroSpeed;
+            ar &lastGame;
 #endif
         }
 #ifndef HLDS_CHILD
+        /// ... and of version 29: no game chosen (read as Half-Life).
+        template <class Ar>
+        void serializeTwentyNine(Ar &ar)
+        {
+            serializeTwentySix(ar);
+            ar &hostIdleMinutes;
+            ar &vibration;
+            ar &gyroSpeed;
+        }
         /// ... and of version 28: no gyroscope (read as off, the default).
         template <class Ar>
         void serializeTwentyEight(Ar &ar)
@@ -403,8 +417,9 @@ namespace hldata
     inline constexpr std::uint8_t kQualityStandard = 0, kQualityHigh = 1, kQualityChoices = 2;
 
     inline constexpr char kSettingsMagic[4] = {'H', 'L', 'S', 'T'};
-    inline constexpr std::uint16_t kSettingsVersion = 29;
-    /// The versions before, which are still read: 28 had no gyroscope's
+    inline constexpr std::uint16_t kSettingsVersion = 30;
+    /// The versions before, which are still read: 29 had no game chosen
+    /// (read as Half-Life); 28 had no gyroscope's
     /// byte (29's, no longer used); 27 had no vibration (read
     /// as light, the default); 26 never sent idle players
     /// away (read as never); 25 had no TALK, nor
@@ -421,6 +436,7 @@ namespace hldata
     /// 11 had no achievements' pop-ups to turn off; 10 had no autoaim; 9 had
     /// the layouts but no aim speed, custom buttons or stylus pressure; 8 no
     /// controls to choose.
+    inline constexpr std::uint16_t kSettingsVersionTwentyNine = 29;
     inline constexpr std::uint16_t kSettingsVersionTwentyEight = 28;
     inline constexpr std::uint16_t kSettingsVersionTwentySeven = 27;
     inline constexpr std::uint16_t kSettingsVersionTwentySix = 26;
@@ -530,6 +546,8 @@ namespace hldata
             data.serializeTwentySeven(ar);
         else if (version == kSettingsVersionTwentyEight)
             data.serializeTwentyEight(ar);
+        else if (version == kSettingsVersionTwentyNine)
+            data.serializeTwentyNine(ar);
 #endif
         else
             ar &data;
@@ -545,6 +563,7 @@ namespace hldata
     inline constexpr std::uint16_t kSettingsPayload[] = {
         17,  20,  52,  53,  54,  57,  100, 168, 169, 170, 174, // 8 to 18
         175, 176, 178, 179, 180, 188, 189, 192, 193, 194, 195, // 19 to 29
+        196,                                                   // 30
     };
     static_assert(sizeof(kSettingsPayload) / sizeof(kSettingsPayload[0]) ==
                       kSettingsVersion - kSettingsVersionBefore + 1,
@@ -580,7 +599,8 @@ namespace hldata
             return false;
         std::memcpy(&header, bytes, sizeof(header));
         if (std::memcmp(header.magic, kSettingsMagic, sizeof(header.magic)) != 0 ||
-            (header.version != kSettingsVersion && header.version != kSettingsVersionTwentyEight &&
+            (header.version != kSettingsVersion && header.version != kSettingsVersionTwentyNine &&
+             header.version != kSettingsVersionTwentyEight &&
              header.version != kSettingsVersionTwentySeven &&
              header.version != kSettingsVersionTwentySix &&
              header.version != kSettingsVersionTwentyFive &&
@@ -612,6 +632,9 @@ namespace hldata
         if (header.version == kSettingsVersionBefore)
             read.controlScheme = kControlsClassic;
         serializeSettings(header.version, read, ia);
+        // (A game this build does not know: the first is offered.)
+        if (read.lastGame >= kGameCount)
+            read.lastGame = kGameHalfLife;
         // (Autoaim was on until asked off: off now until asked for, once.)
         if (header.version < kSettingsVersionSeventeen)
             read.autoaim = 0;

@@ -1218,6 +1218,40 @@ namespace
                   "a file too short for its version is refused");
         }
 
+        // The game last chosen (version 30), and a file from before (29):
+        // Half-Life's.
+        {
+            SettingsData chose;
+            chose.lastGame = kGameOpFor;
+            std::vector<std::uint8_t> written = writeSettings(chose);
+            SettingsData back;
+            check(readSettings(written.data(), written.size(), back) && back.lastGame == kGameOpFor,
+                  "the game last chosen is kept");
+            chose.lastGame = kGameCount;
+            written = writeSettings(chose);
+            check(readSettings(written.data(), written.size(), back) && back.lastGame == kGameHalfLife,
+                  "... and one this build does not know is read as Half-Life, the rest kept");
+            constexpr std::size_t flags = yas::mem | yas::binary | yas::no_header;
+            SettingsData old;
+            old.lastGame = kGameBlueShift; // (not in a version 29 file)
+            yas::mem_ostream os;
+            yas::binary_oarchive<yas::mem_ostream, flags> oa(os);
+            serializeSettings(kSettingsVersionTwentyNine, old, oa);
+            const auto buf = os.get_intrusive_buffer();
+            SettingsHeader header{};
+            std::memcpy(header.magic, kSettingsMagic, sizeof(header.magic));
+            header.version = kSettingsVersionTwentyNine;
+            header.payloadBytes = static_cast<std::uint16_t>(buf.size);
+            header.crc32 = crc32(reinterpret_cast<const std::uint8_t *>(buf.data), static_cast<std::uint32_t>(buf.size));
+            std::vector<std::uint8_t> file(sizeof(header) + buf.size);
+            std::memcpy(file.data(), &header, sizeof(header));
+            std::memcpy(file.data() + sizeof(header), buf.data, buf.size);
+            back = SettingsData();
+            back.lastGame = kGameOpFor;
+            check(readSettings(file.data(), file.size(), back) && back.lastGame == kGameHalfLife,
+                  "a version 29 file is read, with Half-Life as the game chosen");
+        }
+
         // Each version's length, written down for the console, is the
         // length its writer makes -- every version a file is read in.
         for (int v = kSettingsVersionBefore; v <= kSettingsVersion; ++v)

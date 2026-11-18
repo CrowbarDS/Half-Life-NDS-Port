@@ -17,6 +17,9 @@ public:
 
     /// Read achievements.dat. Absent or unreadable: none earned yet.
     void load();
+    /// Another game chosen: its own, if it has any (Half-Life: Legacy's are
+    /// Half-Life's; the expansions have none).
+    void reload();
     /// Write achievements.dat. False if the card cannot be written.
     bool save();
     /// Write it if anything has been counted since it was last written.

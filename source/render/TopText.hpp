@@ -54,6 +54,8 @@ namespace hlrt
         /// The game's title (ui/title.hic), read now rather than when first
         /// shown (a console sent the game has it only while it starts up).
         void loadTitle();
+        /// Another game chosen: its title read again when next wanted.
+        void forgetTitle();
 
     private:
         static constexpr int kSlots = 2;

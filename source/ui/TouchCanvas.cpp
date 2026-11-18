@@ -134,6 +134,12 @@ namespace hlrt
         loadFonts();
     }
 
+    void TouchCanvas::recolour()
+    {
+        for (int i = 0; i < 16; ++i)
+            BG_PALETTE_SUB[i] = hldata::uiColour(i);
+    }
+
     void TouchCanvas::tint(int x, int y, int w, int h, const std::uint16_t *three, int bank)
     {
         // (Another sixteen colours: the first, three of them changed.)

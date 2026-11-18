@@ -113,9 +113,12 @@ namespace hlrt
             corner(x + w, y, from.x + from.w, from.y);
         }
 
-        constexpr std::uint16_t kOrange = RGB15(31, 20, 2);
+        // The display's colour is the game's (HlGame.hpp): Half-Life's
+        // orange, Blue Shift's blue, Opposing Force's green -- and its dim
+        // half, for a lamp switched off.
+        std::uint16_t hudOrange() { return hldata::activeGameInfo().hud; }
         constexpr std::uint16_t kRed = RGB15(31, 3, 2);
-        constexpr std::uint16_t kDim = RGB15(14, 9, 1);
+        std::uint16_t hudDim() { return hldata::activeGameInfo().hudDim; }
 
         // ------------------------------------------------- the display in 2D
 
@@ -322,9 +325,10 @@ namespace hlrt
             for (int k = hudFieldFirst(value); k < 3; ++k)
                 put(hudDs(x640 + k * kHud640DigitStep), hud640Digit(digit[k]));
         }
-        /// The game's colours: its yellowish (255, 160, 0), the red of low
-        /// health (250, 0, 0) and of an empty lamp (255, 16, 16).
-        constexpr std::uint16_t kYellowish = RGB15(31, 20, 0);
+        /// The game's colours: its yellowish (255, 160, 0; the game's own,
+        /// HlGame.hpp), the red of low health (250, 0, 0) and of an empty
+        /// lamp (255, 16, 16).
+        std::uint16_t hudYellowish() { return hldata::activeGameInfo().hud640; }
         constexpr std::uint16_t kPainRed = RGB15(31, 0, 0);
         constexpr std::uint16_t kRedish = RGB15(31, 2, 2);
         /// A mark of where a hurt came from shows from 0.4 of its full
@@ -520,6 +524,18 @@ namespace hlrt
         }
     }
 
+    void HudDraw::forgetGame()
+    {
+        if (decalMaterial_ != nullptr)
+            NEA_MaterialDelete(static_cast<NEA_Material *>(decalMaterial_));
+        if (decalPalette_ != nullptr)
+            NEA_PaletteDelete(static_cast<NEA_Palette *>(decalPalette_));
+        decalMaterial_ = decalPalette_ = nullptr;
+        atlas_ = false;
+        train_ = false;
+        sheetMade = false;
+    }
+
     void HudDraw::forget()
     {
         // (NEA has let go of them itself, with everything else.)
@@ -617,10 +633,10 @@ namespace hlrt
             fillSheet(0, 0, 256, 128, 0);
             fillSheet(0, 64, 64, 64, 1);
             blit((32 - kHudCrosshair.w) / 2, 32 + (32 - kHudCrosshair.h) / 2, kHudCrosshair);
-            ramp(kBankHud, 1, kOrange);
+            ramp(kBankHud, 1, hudOrange());
             ramp(kBankHud, 8, kRed);
             ramp(kBankWhite, 1, 0x7FFF);
-            ramp(kBankDim, 1, kDim);
+            ramp(kBankDim, 1, hudDim());
             ramp(kBankRed, 1, kRed);
             shownHealth = shownArmor = shownWeapon = shownClip = shownSpare = shownLamp = -1;
             shownExtra = -2;
@@ -812,10 +828,10 @@ namespace hlrt
             for (int k = 0; k < HudHurts::kKinds; ++k)
                 blit(hurtCell(k), hurtRow(k), hud640Hurt(k));
             blit(kCrosshairCell[0] + 3, kCrosshairCell[1] + 3, kHud640Crosshair);
-            ramp(kBankHud, 1, kYellowish);
+            ramp(kBankHud, 1, hudYellowish());
             ramp(kBankHud, 8, kPainRed);
             ramp(kBankWhite, 1, 0x7FFF);
-            ramp(kBankDim, 1, kDim);
+            ramp(kBankDim, 1, hudDim());
             ramp(kBankRed, 1, kRedish);
             shownHealth = shownArmor = shownWeapon = shownClip = shownSpare = shownLamp = -1;
             shownExtra = -2;
@@ -833,7 +849,7 @@ namespace hlrt
             for (int k = 0; k < 12; ++k)
                 sprite(18 + k, (k % 4) * 64, (k / 4) * 64, 0, 3, 0, 64, kBankFlash);
         }
-        const std::uint16_t painIn = health_ > 25 ? kYellowish : kPainRed;
+        const std::uint16_t painIn = health_ > 25 ? hudYellowish() : kPainRed;
         for (int n = 0; n < 4; ++n)
         {
             if (pain_[n] < kPainShows)
@@ -846,7 +862,7 @@ namespace hlrt
         // The kinds of hurt, pulsing (which also wants no suit).
         if (hurts.any())
         {
-            ramp(hurtColour, kYellowish, hurtPulse);
+            ramp(hurtColour, hudYellowish(), hurtPulse);
             for (int k = 0; k < HudHurts::kKinds; ++k)
             {
                 if (hurts.stacked[k] >= 0)

@@ -508,6 +508,15 @@ namespace hlrt::SaveGame
         return run;
     }
 
+    void forget()
+    {
+        // (Both read whole when next asked for: runIndexRead starts afresh.)
+        finish();
+        list.clear();
+        listed = false;
+        runKnown = false;
+    }
+
     const hldata::SaveIndex &index()
     {
         need();

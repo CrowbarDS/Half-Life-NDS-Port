@@ -30,6 +30,7 @@ void Achievements::cheatsSwitched(bool) {}
 bool Achievements::held() const { return true; }
 void Achievements::started() {}
 bool Achievements::off() const { return true; }
+void Achievements::reload() {}
 #else
 namespace
 {
@@ -88,8 +89,16 @@ void Achievements::flush()
 bool Achievements::off() const
 {
     // (Not in a game between consoles, from its lobby to its end: none are
-    // earned there, and none are shown over it.)
-    return hlrt::netGame.on();
+    // earned there, and none are shown over it. Nor in a game they are not
+    // of: an expansion.)
+    return hlrt::netGame.on() || !hldata::activeGameInfo().achievements;
+}
+
+void Achievements::reload()
+{
+    tracker = hldata::AchievementTracker();
+    if (hldata::activeGameInfo().achievements)
+        load();
 }
 
 void Achievements::attach(const std::string &map)
@@ -190,7 +199,7 @@ void Achievements::cheated()
 
 void Achievements::started()
 {
-    if (held())
+    if (held() || off())
         return;
     tracker.unlock(hldata::kAchInit);
     flush();

@@ -69,7 +69,7 @@ namespace
     /// The heap trace (Guard.hpp), to data/heaptrace.txt.
     template <class Write> void traceWrite(Write write)
     {
-        if (std::FILE *out = std::fopen(global.dataPath("heaptrace.txt").c_str(), "a"))
+        if (std::FILE *out = std::fopen(global.rootPath("heaptrace.txt").c_str(), "a"))
         {
             write(out);
             std::fclose(out);
@@ -342,7 +342,7 @@ namespace
         // With the DSi's DSP in use, how it got on over that map.
         if (hlrt::sound.extended())
         {
-            if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
+            if (std::FILE *log = std::fopen(global.rootPath("perf.txt").c_str(), "a"))
             {
                 std::fprintf(log, "dsp: ran short %lu\n", static_cast<unsigned long>(hlrt::dspAudio.dry()));
                 std::fclose(log);
@@ -385,7 +385,7 @@ namespace
         const hlrt::Sound::LoadStats &snd = hlrt::sound.loadStats();
         // (Before the file is opened: opening it may itself take the room.)
         const hlrt::guard::ReserveState reserve = hlrt::guard::reserveState();
-        std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a");
+        std::FILE *log = std::fopen(global.rootPath("perf.txt").c_str(), "a");
         if (log == nullptr)
             return;
         // (How the map's archive seeks: in many pieces on the card, slowly.)
@@ -446,7 +446,7 @@ namespace
     /// play's own measure starts again.)
     void measureReopen(const char *map)
     {
-        std::FILE *flag = std::fopen(global.dataPath("debug_reopen.txt").c_str(), "r");
+        std::FILE *flag = std::fopen(global.rootPath("debug_reopen.txt").c_str(), "r");
         if (flag == nullptr)
             return;
         std::fclose(flag);
@@ -463,7 +463,7 @@ namespace
         hlrt::guard::markPlay();
         NEA_NpacSeek seek{};
         NEA_NpacSeekInfo("map", &seek);
-        if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
+        if (std::FILE *log = std::fopen(global.rootPath("perf.txt").c_str(), "a"))
         {
             std::fprintf(log, "reopen: %s read %s; live %lu before, %lu after, at most %lu more; fast seek %s, "
                               "opened again %lu time(s)\n",
@@ -488,7 +488,7 @@ namespace
         const hlrt::guard::ReserveState reserve = hlrt::guard::reserveState();
         const std::uint32_t rise = hlrt::guard::playRise();
         const std::uint32_t live = hlrt::guard::liveBytes();
-        std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a");
+        std::FILE *log = std::fopen(global.rootPath("perf.txt").c_str(), "a");
         if (log == nullptr)
             return;
         std::fprintf(log, "play: %s rise %lu, live %lu, top %lu, largest hole %lu; reserve %s (%lu, last %lu bytes); "
@@ -529,7 +529,7 @@ namespace
         }
         void write(const char *map)
         {
-            std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a");
+            std::FILE *log = std::fopen(global.rootPath("perf.txt").c_str(), "a");
             if (log == nullptr)
                 return;
             std::uint32_t total = 0;
@@ -683,7 +683,7 @@ namespace
         const char *why = hlrt::SaveGame::whyFailed();
         std::snprintf(notSaved, sizeof(notSaved), "card refused: %s", why);
         say("COULD NOT SAVE", notSaved);
-        if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
+        if (std::FILE *log = std::fopen(global.rootPath("perf.txt").c_str(), "a"))
         {
             const struct mallinfo info = mallinfo();
             std::fprintf(log, "save failed: %s slot %d, %s, heap %lu\n", currentMap.c_str(), slot, why,
@@ -980,7 +980,7 @@ namespace
         // (How the maps left are kept: stored as left, laid as come back to.)
         if (changing)
         {
-            if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
+            if (std::FILE *log = std::fopen(global.rootPath("perf.txt").c_str(), "a"))
             {
                 std::fprintf(log, "kept: %s %s; %s %s (%d kept)\n", left.c_str(), stored ? "stored" : "not stored",
                              name.c_str(), laid > 0 ? "laid back" : (laid < 0 ? "spoilt" : "fresh"),
@@ -1096,7 +1096,7 @@ namespace
         }
         if (debugWalking && debugGoLoads == 3)
         {
-            if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
+            if (std::FILE *log = std::fopen(global.rootPath("perf.txt").c_str(), "a"))
             {
                 std::fprintf(log, "go: LOOP in %s, %d loads\n", name.c_str(), debugGoLoads);
                 std::fclose(log);
@@ -1849,7 +1849,7 @@ namespace
         debugGoSeconds = -1;
         if (debugGoNext < 0)
             return;
-        std::FILE *file = std::fopen(global.dataPath("debug_start.txt").c_str(), "r");
+        std::FILE *file = std::fopen(global.rootPath("debug_start.txt").c_str(), "r");
         if (file == nullptr)
             return;
         if (std::fseek(file, debugGoNext, SEEK_SET) != 0 ||
@@ -1873,7 +1873,7 @@ namespace
         }
         if (way < 0)
         {
-            if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
+            if (std::FILE *log = std::fopen(global.rootPath("perf.txt").c_str(), "a"))
             {
                 std::fprintf(log, "go: %s has no way to %s\n", currentMap.c_str(), debugGoMap);
                 std::fclose(log);
@@ -1925,7 +1925,7 @@ namespace
     /// where that says, save or no save.
     bool debugStart()
     {
-        std::FILE *file = std::fopen(global.dataPath("debug_start.txt").c_str(), "r");
+        std::FILE *file = std::fopen(global.rootPath("debug_start.txt").c_str(), "r");
         if (file == nullptr)
             return false;
         // (The readout is on: whoever starts this way wants to see it.)
@@ -1991,6 +1991,23 @@ int main(int argc, char *argv[])
     // maps more than eight are almost never in sight together anyway.
     hlrt::modelDraw.setLimit(isDSiMode() ? 12 : 8);
 
+    // (The console's own, whichever game: first, for the game last played.)
+    settings.load();
+    // The games on the card (HlGame.hpp): Half-Life, and the expansions,
+    // each in a folder of its own. The one played last is started with, if
+    // it is there and can be played here (a DS: Half-Life only); else the
+    // first that can.
+    const std::uint8_t gamesOnCard = global.scanGames();
+    hlrt::menu.setGames(gamesOnCard);
+    {
+        auto playable = [&](int g)
+        { return ((gamesOnCard >> g) & 1) != 0 && (isDSiMode() || !hldata::kGames[g].dsiOnly); };
+        int first = settings.lastGame;
+        for (int g = 0; !playable(first) && g < hldata::kGameCount; ++g)
+            first = g;
+        hldata::activeGame = static_cast<hldata::GameId>(playable(first) ? first : hldata::kGameHalfLife);
+    }
+
     // The manifest says what the converter put on the card and which map to start in.
     std::string startMap;
     std::vector<hldata::NetMapInfo> multiplayerMaps;
@@ -1998,8 +2015,7 @@ int main(int argc, char *argv[])
     const Global::DataStatus status = global.ReadManifest(startMap, &multiplayerMaps, &dataWhy, &global.dataVersion);
     hlrt::netGame.setMaps(multiplayerMaps);
 
-    settings.load();
-    achievements.load();
+    achievements.reload();
     achievements.started();
     const bool debugging = debugStart();
 
@@ -2011,7 +2027,15 @@ int main(int argc, char *argv[])
     guestArrive(true);
 #endif
 
-    if (status != Global::DataStatus::Ok)
+    // (A card of several games: the one started with not playable is no
+    // reason not to offer the others -- CHOOSE GAME first, then its data
+    // judged. A card of one, or a test start: judged now.)
+#ifndef HLDS_CHILD
+    const bool judgeLater = !debugging && hlrt::menu.severalGames();
+#else
+    const bool judgeLater = false;
+#endif
+    if (status != Global::DataStatus::Ok && !judgeLater)
     {
         // (What did not match, if it is known, before what to do about it.)
         // (Without a card, what the console was like: which way it was
@@ -2046,6 +2070,66 @@ int main(int argc, char *argv[])
     // (QUIT only where there is somewhere to go back to: the loader said
     // where the game was started from.)
     hlrt::menu.setQuittable(argc > 0 && argv[0] != nullptr && argv[0][0] != '\0');
+#ifndef HLDS_CHILD
+    // Another game of the card's in place of this one, from the title (no
+    // map loaded): its common archive, its manifest, its saves and what was
+    // read of the last one's -- the display's pictures, the weapons', the
+    // title -- read again.
+    auto switchGame = [&](hldata::GameId game)
+    {
+        hlrt::hudDraw.forgetGame();
+        hlrt::bottomScreen.forgetIcons();
+        hlrt::topText.forgetTitle();
+        hldata::activeGame = game;
+        global.remountCommon();
+        startMap.clear();
+        multiplayerMaps.clear();
+        dataWhy.clear();
+        const Global::DataStatus now = global.ReadManifest(startMap, &multiplayerMaps, &dataWhy, &global.dataVersion);
+        if (now != Global::DataStatus::Ok)
+        {
+            const std::string advice = (dataWhy.empty() ? std::string() : dataWhy + " ") + Global::DataStatusHint(now);
+            haltWith("Cannot start:", Global::DataStatusTitle(now), advice.c_str());
+        }
+        hlrt::netGame.setMaps(multiplayerMaps);
+        achievements.reload();
+        achievements.started();
+        hlrt::hudDraw.load();
+        hlrt::SaveGame::forget();
+        hlrt::menu.setSaves(&hlrt::SaveGame::index());
+        hlrt::touchCanvas.recolour();
+    };
+    // CHOOSE GAME: the games on the card, until one is chosen; it is the
+    // one played from now on (and the one offered first next time). True
+    // if it is another than the one there was.
+    auto chooseGame = [&]() -> bool
+    {
+        hlrt::menu.openGames(settings.lastGame);
+        while (true)
+        {
+            swiWaitForVBlank();
+            hlrt::input.poll(false);
+            hlrt::sound.frame();
+            if (hlrt::menu.frame() == hlrt::Menu::Action::ChooseGame)
+                break;
+        }
+        const auto chosen = static_cast<hldata::GameId>(hlrt::menu.chosenGame());
+        if (settings.lastGame != chosen)
+        {
+            settings.lastGame = chosen;
+            settings.save();
+        }
+        const bool other = chosen != hldata::activeGame;
+        if (other)
+            switchGame(chosen);
+        // (The page gone: nothing of it under the intro.)
+        hlrt::touchCanvas.pageOff();
+        hlrt::touchCanvas.canvas().clear();
+        hlrt::touchCanvas.pageOn();
+        hlrt::touchCanvas.recolour();
+        return other;
+    };
+#endif
     // The title: go on with the last save, load another, begin -- or a game
     // between consoles, which begins when its host says on which map. True
     // if it loaded something; false for a new game.
@@ -2344,6 +2428,18 @@ int main(int argc, char *argv[])
                 settings.save();
                 return false;
             }
+#ifndef HLDS_CHILD
+            else if (item == Menu::Action::ChangeGame)
+            {
+                // (The title's pictures let go of first: another game's in
+                // their place, and its intro, if it is another.)
+                leaving();
+                if (chooseGame())
+                    hlrt::hudDraw.playIntro();
+                back();
+                hlrt::menu.openTitle();
+            }
+#endif
             else if (item == Menu::Action::Quit)
             {
                 // Back to whatever started the game (TWiLight Menu++, the
@@ -2436,6 +2532,12 @@ int main(int argc, char *argv[])
     // At every start, as the game has it: the Valve intro (a button or the
     // stylus skips it). Not for a card set up to start somewhere for a test,
     // which goes straight there.
+#ifndef HLDS_CHILD
+    // More than one game on the card: which, before its intro (its data
+    // read again if it was the one started with and that did not read).
+    if (judgeLater && !chooseGame() && status != Global::DataStatus::Ok)
+        switchGame(hldata::activeGame);
+#endif
     if (!debugging)
         hlrt::hudDraw.playIntro();
     if (debugging)
@@ -2446,7 +2548,7 @@ int main(int argc, char *argv[])
 #ifdef HLDS_PROFILE
     // (A build that measures also checks the hardware's arithmetic.)
     // (... and says how long the console took to get to the first map.)
-    if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
+    if (std::FILE *log = std::fopen(global.rootPath("perf.txt").c_str(), "a"))
     {
         std::fprintf(log, "boot: the first map was up %lu blanks after the start\n",
                      static_cast<unsigned long>(Global::vblanks()));
@@ -2775,7 +2877,7 @@ int main(int argc, char *argv[])
                     (hlrt::player.noclip || hlrt::player.view.deadMs >= hldata::kDeathWaitMs))
                 {
 #ifdef HLDS_PROFILE
-                    if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
+                    if (std::FILE *log = std::fopen(global.rootPath("perf.txt").c_str(), "a"))
                     {
                         std::fprintf(log, "died: health %d at %d %d %d, %lu blanks in\n",
                                      static_cast<int>(hlrt::player.state.health),

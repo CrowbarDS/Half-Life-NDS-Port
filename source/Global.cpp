@@ -344,7 +344,7 @@ void Global::InitVideo()
     mountCommon();
 #ifndef HLDS_CHILD
     if (!mapMounted_.empty() && !NEA_NpacIsMounted("map") && mountMapArchive(mapArchive(mapMounted_)) == 0)
-        noteSeek("map", mapArchive(mapMounted_), mapSeek, dataPath("perf.txt"));
+        noteSeek("map", mapArchive(mapMounted_), mapSeek, rootPath("perf.txt"));
 #endif
 }
 
@@ -359,7 +359,7 @@ bool Global::mountMap(const std::string &name)
 #else
     if (!hasData || mountMapArchive(mapArchive(name)) != 0)
         return false;
-    noteSeek("map", mapArchive(name), mapSeek, dataPath("perf.txt"));
+    noteSeek("map", mapArchive(name), mapSeek, rootPath("perf.txt"));
 #endif
     mapMounted_ = name;
     return true;
@@ -382,7 +382,40 @@ void Global::mountCommon()
     // (A card with no common archive is a game without its own letters and
     // pictures, which is said where each is missed, not here.)
     if (hasData && !NEA_NpacIsMounted("common") && NEA_NpacMount("common", (dataDir() + "common.npac").c_str()) == 0)
-        noteSeek("common", "common.npac", commonSeek, dataPath("perf.txt"));
+        noteSeek("common", "common.npac", commonSeek, rootPath("perf.txt"));
+#endif
+}
+
+void Global::remountCommon()
+{
+#ifndef HLDS_CHILD
+    if (NEA_NpacIsMounted("common"))
+        NEA_NpacUnmount("common");
+    mountCommon();
+#endif
+}
+
+std::uint8_t Global::scanGames() const
+{
+#ifdef HLDS_CHILD
+    return 1u << hldata::kGameHalfLife;
+#else
+    std::uint8_t present = 0;
+    if (!hasFat)
+        return present;
+    for (int g = 0; g < hldata::kGameCount; ++g)
+    {
+        const std::string path = rootDir() + hldata::kGames[g].cardDir + "manifest.bin";
+        std::FILE *file = std::fopen(path.c_str(), "rb");
+        if (file == nullptr)
+            continue;
+        char magic[4] = {};
+        if (std::fread(magic, 1, sizeof(magic), file) == sizeof(magic) &&
+            std::memcmp(magic, hldata::kManifestMagic, sizeof(magic)) == 0)
+            present |= static_cast<std::uint8_t>(1u << g);
+        std::fclose(file);
+    }
+    return present;
 #endif
 }
 
@@ -454,7 +487,8 @@ Global::DataStatus Global::ReadManifest(std::string &startMap, std::vector<hldat
     default:
         return DataStatus::Damaged;
     }
-    if (manifest.startMap.empty() || manifest.find(manifest.startMap) == nullptr)
+    // (Another game's maps in this game's folder: not to be played as this one.)
+    if (manifest.startMap.empty() || manifest.find(manifest.startMap) == nullptr || manifest.game != hldata::activeGame)
         return DataStatus::Damaged;
     startMap = manifest.startMap;
     if (madeBy != nullptr)

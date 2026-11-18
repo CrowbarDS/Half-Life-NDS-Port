@@ -1490,6 +1490,42 @@ The answer goes to the ARM9 once, on `FIFO_USER_02`. The screen setting's
 all this is `tools/hwtest/rtcom`. The wide TwlBg's window has not yet been
 read on hardware; the 384 comes from TWPatch's source.
 
+## Blue Shift and Opposing Force
+
+A card may hold Half-Life's two expansions beside it: a DSi's only, since
+a DS's heap has room for Half-Life's maps and no more, and the expansions
+bring code of their own (`shared/HlGame.hpp` lists the three games: their
+folders, their first maps, their colours).
+
+**The converter** is given the expansion's own folder (`bshift`,
+`gearbox`) and reads it as the game does: a file the expansion has is its
+own, one it has not is Half-Life's from `valve` beside it (and a
+translation's before either: `gameFolders`). The WADs a map names are found
+the same way, so Blue Shift's own `halflife.wad` is the one its maps get.
+Its maps are only its own, never Half-Life's. An expansion's title has
+no animated logo but its own, and its menu picture is its own: Half-Life's
+wide one is not taken from `valve` for it.
+
+**On the card** Half-Life's files are in `data/` as they always were;
+an expansion's are in a folder of its own under it, `data/bshift/` or
+`data/gearbox/`, laid out the same way: its own `common.npac`, maps,
+music, intro, saves and manifest. The manifest says which game it is
+(format 7; a format 6 manifest is Half-Life's). What is the console's
+rather than a game's -- the settings, `perf.txt`, `server.ini` -- stays
+in `data/`. The stage has a folder for each game too, so that two games'
+files of the same name (each has its own `v_9mmhandgun.mdl`: its own hands)
+never take each other's place.
+
+**On the console**, with more than one game on the card, CHOOSE GAME comes
+before the intro; the game last played is listed first (and A chooses it),
+and kept in the settings. On a DS the expansions are there but greyed. The
+title of a card of several games has CHANGE GAME, which lets go of what was
+read of the game's common archive -- the display's pictures, the weapons',
+the title -- mounts the other's and reads its manifest and saves. An
+expansion has no matches between consoles, no demos and no achievements
+(Half-Life: Legacy's are Half-Life's), and its display and menus are in its
+own colour: Blue Shift's blue, Opposing Force's green.
+
 ## Not yet
 
 A roach measures the one light that changes most over its floor --

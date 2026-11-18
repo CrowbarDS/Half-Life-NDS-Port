@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <fstream>
 
+#include "HlFont.hpp"
 #include "HlGame.hpp"
 #include "HlManifest.hpp"
 #include "TestBspBuilder.hpp"
@@ -90,6 +91,38 @@ int main()
               !kGames[kGameOpFor].achievements && kGames[kGameHalfLife].multiplayer &&
               !kGames[kGameBlueShift].multiplayer && !kGames[kGameOpFor].multiplayer,
           "achievements and matches are Half-Life's");
+
+    // Half-Life's colours are what they were before there were games: the
+    // display's (HudDraw) and the menus' (uiColour).
+    check(kGames[kGameHalfLife].hud == (31 | 20 << 5 | 2 << 10) && kGames[kGameHalfLife].hudDim == (14 | 9 << 5 | 1 << 10) &&
+              kGames[kGameHalfLife].hud640 == (31 | 20 << 5),
+          "Half-Life's display is orange as it was");
+    {
+        static constexpr std::uint16_t kBefore[16] = {
+            2 | 2 << 5 | 3 << 10,    5 | 5 << 5 | 7 << 10,    12 | 8 << 5 | 2 << 10,   14 | 13 << 5 | 12 << 10,
+            0,                       10 | 10 << 5 | 10 << 10, 20 | 20 << 5 | 20 << 10, 31 | 31 << 5 | 31 << 10,
+            10 | 5 << 5 | 0 << 10,   20 | 11 << 5 | 0 << 10,  31 | 20 << 5 | 2 << 10,  5 | 5 << 5 | 6 << 10,
+            9 | 9 << 5 | 10 << 10,   15 | 15 << 5 | 16 << 10, 31 | 4 << 5 | 3 << 10,   3 | 3 << 5 | 4 << 10};
+        activeGame = kGameHalfLife;
+        bool same = true;
+        for (int i = 0; i < 16; ++i)
+            same = same && uiColour(i) == kBefore[i];
+        check(same, "Half-Life's menus are in the colours they were");
+        activeGame = kGameBlueShift;
+        check(uiColour(kUiOrange + 2) == kGames[kGameBlueShift].accent[2] && uiColour(kUiWhite + 2) == kBefore[kUiWhite + 2],
+              "Blue Shift's accent is its own; the rest is the same");
+        uiNeutral = true;
+        check(uiColour(kUiOrange + 2) == kBefore[kUiOrange + 2], "... and CHOOSE GAME's is no game's (Half-Life's)");
+        uiNeutral = false;
+        activeGame = kGameHalfLife;
+        // (Each accent brighter step by step: the three levels of a letter.)
+        for (const GameInfo &game : kGames)
+        {
+            auto sum = [](std::uint16_t c) { return (c & 31) + (c >> 5 & 31) + (c >> 10 & 31); };
+            check(sum(game.accent[0]) < sum(game.accent[1]) && sum(game.accent[1]) < sum(game.accent[2]),
+                  "each game's accent goes from faint to full");
+        }
+    }
 
     // The folders an expansion is read from, and its WADs.
     const fs::path root = fs::temp_directory_path() / "hlds_test_games";
