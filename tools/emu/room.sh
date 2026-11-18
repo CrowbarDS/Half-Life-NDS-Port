@@ -27,6 +27,15 @@
 #                      QUIT TO MAIN MENU, and of YES)
 #   ROOM_OUT=<dir>     default build/logs/room/<time>
 #   ROOM_WAIT=<s>      the most to wait for melonDS to write the card back (90)
+#   ROOM_STAGE=<dir>   the stage's maps folder (default sdroot-stage's): the
+#                      maps' .ent for their start spots and .dsneed below
+#
+# At the end (tools/emu/room_margin.py): the least heap free before a map
+# against kDsMapHeap -- what is left of its margin, and a warning under
+# 16 KB -- and the single-player maps within 4 KB of the 128 KB floor for
+# their sounds with that heap. This is the real measure (the build's check
+# sees only the program's size): run it before every release and in every
+# full DS sweep.
 #
 # --walk: each argument a walk of maps by their own ways between them
 # (tools/emu/campaign_walk.py), in one run of the emulator: started at the
@@ -46,7 +55,7 @@ D=sdroot/_nds/hl_nds/data
 STAMP=$(date +%Y%m%d-%H%M)
 OUT="${ROOM_OUT:-build/logs/room/$STAMP}"
 BAK="build/emu/cardbak/$STAMP-room"
-STAGE=sdroot-stage/_nds/hl_nds/data/maps
+STAGE="${ROOM_STAGE:-sdroot-stage/_nds/hl_nds/data/maps}"
 SPOTS="${ROOM_SPOTS:-build/logs/item4/campaign-specs.txt}"
 PLAY="${ROOM_PLAY:-40}"
 WALK="${ROOM_WALK:-key Left 4; sleep 3; key Right 2; sleep 3; key Up 3; sleep 3; key Left 2}"
@@ -134,6 +143,7 @@ if [ "${1:-}" = "--walk" ]; then
             echo "  walk $n STOPPED: $reached of ${#maps[@]} maps loaded" | tee -a "$OUT/table.txt"
         fi
     done
+    python3 -I tools/emu/room_margin.py "$OUT" "$STAGE" | tee -a "$OUT/table.txt"
     echo "table: $OUT/table.txt"
     exit 0
 fi
@@ -159,4 +169,5 @@ for map in "$@"; do
     python3 -I tools/emu/room_rows.py "$OUT/$map.txt" >> "$OUT/table.txt"
     tail -1 "$OUT/table.txt"
 done
+python3 -I tools/emu/room_margin.py "$OUT" "$STAGE" | tee -a "$OUT/table.txt"
 echo "table: $OUT/table.txt"

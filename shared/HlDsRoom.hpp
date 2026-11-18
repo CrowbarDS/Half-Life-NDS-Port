@@ -39,6 +39,16 @@ namespace hldata
     /// 2,110,768 with the whole game a library). Measure again
     /// (tools/emu/room.sh ds) whenever the program grows.
     inline constexpr std::size_t kDsMapHeap = 2339520 - 32 * 1024;
+    /// Where the program ended (its __end__, where the heap begins) when
+    /// kDsMapHeap was measured. Each byte the program has grown since is a
+    /// byte less of that heap: tools/arm9-report.sh --check fails when what
+    /// is left of the margin above (32 KB, less that growth) is under 16 KB.
+    /// That sees only code and static data, not what is taken of the heap
+    /// at start-up (NEA's node reserve, the HUD's atlas, the families): the
+    /// heap measured is the reference -- tools/emu/room.sh ds, before every
+    /// release and in every full DS sweep, says the real margin, and which
+    /// maps are within 4 KB of the 128 KB floor for their sounds.
+    inline constexpr std::uint32_t kDsMapHeapProgramEnd = 0x02191db0;
     /// What each family takes of the heap loaded (GameFamily's order):
     /// measured in melonDS's DS mode on 2026-11-16, 70,764 and 60,724 bytes
     /// for the bosses and the soldiers (perf.txt's room line), the rules

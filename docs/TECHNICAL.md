@@ -1060,6 +1060,14 @@ Milestone 11, "levels of detail".
   check the reckoning against, tools/emu/room.sh tabulates it, a map at a
   time from a start or along a walk of maps by their own ways
   (`--walk`, `tools/emu/campaign_walk.py`, debug_start.txt's `go` lines).
+  `kDsMapHeap` is the heap measured less a 32 KB margin, and the program's
+  end then (`kDsMapHeapProgramEnd`) is beside it: `tools/arm9-report.sh
+  --check` fails a build whose program has grown into all but 16 KB of that
+  margin. That sees only code and static data, not what is taken of the
+  heap at start-up, so room.sh's measure is the reference -- before every
+  release and in every full DS sweep -- and ends with what is left of the
+  margin and the single-player maps within 4 KB of the 128 KB floor
+  (`tools/emu/room_margin.py`).
 - Saves on a DS. Arrival, quick and manual saves stream the map's state to
   the card as they are written. The game's own save in play (a
   `trigger_autosave`) is written a step at a time, holding the whole save

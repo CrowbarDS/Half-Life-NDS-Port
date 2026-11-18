@@ -21,8 +21,9 @@
 #
 # usage: tools/arm9-report.sh [--check] [--summary] [arm9.elf]
 #   --check    fail if a function of the hot list below calls a helper it
-#              should not, the ITCM is over its budget, or the library
-#              breaks one of its rules
+#              should not, the ITCM is over its budget, the library breaks
+#              one of its rules, or the program has grown past what
+#              kDsMapHeap's margin allows (shared/HlDsRoom.hpp)
 #   --summary  the totals only (make.sh prints this)
 #
 # It reads the ELF and changes nothing.
@@ -45,7 +46,7 @@ FAMILIES="boss military net"
 # (KIND=dsl). (-r: in a family a branch to the program is a relocation, not
 # an address.)
 report() {
-"$BIN/arm-none-eabi-objdump" -dr -C "$3" | MODE="$1" KIND="$2" python3 -c '
+"$BIN/arm-none-eabi-objdump" -dr -C "$3" | MODE="$1" KIND="$2" ROOT="$ROOT" python3 -c '
 import os, re, subprocess, sys
 
 mode = os.environ["MODE"]
@@ -136,7 +137,7 @@ marks = {}
 for line in run(tools + "/arm-none-eabi-readelf", "-sW", elf).splitlines():
     part = line.split()
     if len(part) >= 8 and part[3] == "NOTYPE" and part[7] in (
-            "__dtcm_start", "__sp_usr", "__sbss_end", "__dtcm_data_top", "__itcm_start", "__itcm_end"):
+            "__dtcm_start", "__sp_usr", "__sbss_end", "__dtcm_data_top", "__itcm_start", "__itcm_end", "__end__"):
         marks[part[7]] = int(part[1], 16)
 demangle = dict(zip([s[3] for s in symbols],
                     subprocess.run([tools + "/arm-none-eabi-c++filt"], input="\n".join(s[3] for s in symbols),
@@ -218,6 +219,20 @@ summary = ("%s.dsl: %d bytes; the game: %d ARM functions, %d Thumb; helper calls
               len(arm_game), len(thumb_game), hard, soft))
 
 failed = []
+# The program has grown since kDsMapHeap was measured (shared/HlDsRoom.hpp):
+# each byte of it a byte less of a map'"'"'s heap, out of the margin kept
+# there. (Code and static data only: room.sh measures the rest.)
+if kind_of_elf == "main" and "__end__" in marks:
+    room = open(os.path.join(os.environ["ROOT"], "shared", "HlDsRoom.hpp")).read()
+    heap = re.search(r"kDsMapHeap = (\d+) - (\d+) \* 1024;", room)
+    end = re.search(r"kDsMapHeapProgramEnd = (0x[0-9a-fA-F]+);", room)
+    if heap and end:
+        margin = int(heap.group(2)) * 1024 - (marks["__end__"] - int(end.group(1), 16))
+        summary += "; map heap margin %d KB" % (margin // 1024)
+        if margin < 16 * 1024:
+            failed.append("the program has grown %d bytes since kDsMapHeap was measured: %d KB of its margin left, "
+                          "under 16 (tools/emu/room.sh ds, then shared/HlDsRoom.hpp)"
+                          % (marks["__end__"] - int(end.group(1), 16), margin // 1024))
 for name, banned in HOT.items():
     found = False
     for function, by in list(calls.items()) + [(f, {}) for f in where if f not in calls]:
