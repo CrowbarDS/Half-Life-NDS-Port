@@ -29,6 +29,12 @@ if [ -z "${EMU_KEEP_SAVE:-}" ]; then
         "${ROOT:?}/sdroot/_nds/hl_nds/data/saves/slot1.sav"
 fi
 START_FILE="$ROOT/sdroot/_nds/hl_nds/data/debug_start.txt"
+# (debug_start.txt is read by a development build only: HLDS_DEV=1 ./make.sh.
+# A release -- the game's mark, hlReleaseBuild, in its program -- starts as
+# a player's would, wherever EMU_START says.)
+if [ -n "${EMU_START:-}" ] && [ -z "${EMU_ROM:-}" ] && grep -q hlReleaseBuild "$ROOT/build/arm9/arm9.elf" 2>/dev/null; then
+    echo "play.sh: EMU_START wants a development build (HLDS_DEV=1 ./make.sh): this one is a release" >&2
+fi
 [ -n "${EMU_START:-}" ] && echo "$EMU_START" > "$START_FILE"
 [ -n "${EMU_START:-}" ] && [ -n "${EMU_FADE:-}" ] && echo "fade $EMU_FADE" >> "$START_FILE"
 if [ -n "${EMU_START:-}" ] && [ -n "${EMU_GO:-}" ]; then

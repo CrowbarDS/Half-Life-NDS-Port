@@ -15,7 +15,7 @@
 // profiles, measures, debugs or dumps is bigger by what it does, and only
 // says its margin.
 #if !defined(HLDS_PROFILE) && !defined(HLDS_ITCM_OFF) && !defined(HLDS_DEBUG_BUILD) && !defined(HLDS_BOX_TEST) && \
-    !defined(HLDS_VOICE_DUMP)
+    !defined(HLDS_VOICE_DUMP) && !defined(HLDS_DEV)
 extern "C" __attribute__((used)) const char hlReleaseBuild = 1; // (kept by build.py's --undefined)
 #endif
 

@@ -42,6 +42,7 @@
 # first's spot, each map left ROOM_GO seconds after it is up (default 20) by
 # its way into the next (debug_start.txt's "go" lines), as if walked into --
 # the map kept, the arrival and its saves -- and the last left by the menu.
+# (The start and the walk are a development build's: HLDS_DEV=1 ./make.sh.)
 # A row for each map gone into, in order; a walk that stopped short (a halt,
 # a map with no way to the next) says where. Each run's lines in
 # <out>/walk-<n>.txt. ROOM_LOAD=<s>: what a load is given (default 30).

@@ -62,8 +62,10 @@ namespace hlrt
             break;
         }
 
-        // A development aid: "x y z yaw" in debug_start.txt, in whole units
-        // and degrees, starts there instead (tools/emu/play.sh writes it).
+        // A development aid (HLDS_DEV): "x y z yaw" in debug_start.txt, in
+        // whole units and degrees, starts there instead (tools/emu/play.sh
+        // writes it).
+#ifdef HLDS_DEV
         if (std::FILE *file = std::fopen(global.dataPath("debug_start.txt").c_str(), "r"))
         {
             int x, y, z, yaw, track = -1, die = 0, models = 0, weapon = 0, god = 0;
@@ -121,6 +123,7 @@ namespace hlrt
             }
             std::fclose(file);
         }
+#endif
     }
 
     void Player::turn()

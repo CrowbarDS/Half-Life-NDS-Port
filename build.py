@@ -41,6 +41,10 @@ profile += ['HLDS_BOX_TEST=1'] if os.environ.get('HLDS_BOX_TEST') else []
 # and the first 8 s of what others said, as it came, to data/heard.wav (with
 # heard.txt: how many packets were brought down or dropped).
 profile += ['HLDS_VOICE_DUMP=1'] if os.environ.get('HLDS_VOICE_DUMP') else []
+# HLDS_DEV=1 ./make.sh: a development build -- what tools/emu and room.sh
+# start and steer the game with (debug_start.txt and its "go" walk,
+# debug_net.txt, debug_reopen.txt). A release has none of it.
+profile += ['HLDS_DEV=1'] if os.environ.get('HLDS_DEV') else []
 # HLDS_ITCM_OFF=1 ./make.sh: a build to measure with, not to play -- the
 # program's code out of ITCM, but for the interrupts' (HL_ITCM_IRQ) and the
 # divide's (HwMath.s), so that the I-cache profiler (build/tools/melonds-icache,

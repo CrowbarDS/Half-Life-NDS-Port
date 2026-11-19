@@ -50,6 +50,10 @@ extra = ['HLDS_CHILD_FROMCARD=\\"%s\\"' % fromcard] if fromcard else []
 # the ARM7 (Sound.hpp, vramTest), at the start.
 if os.environ.get('HLDS_CHILD_VRAMSOUND'):
     extra.append('HLDS_CHILD_VRAMSOUND')
+# HLDS_DEV=1: a development build, as the parent's (../build.py): the test
+# starts (debug_start.txt, debug_net.txt) and their walks.
+if os.environ.get('HLDS_DEV'):
+    extra.append('HLDS_DEV=1')
 # HLDS_DEBUG=1: the full heap guard, as the parent's (../build.py).
 if os.environ.get('HLDS_DEBUG'):
     extra.append('HLDS_GUARD_FULL')

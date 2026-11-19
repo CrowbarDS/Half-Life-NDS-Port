@@ -42,7 +42,9 @@ driver), which can be measured, or listened to with
 
 `EMU_START="x y z yaw [track]"` starts the player at a place, armed
 and wearing the suit, with the debug readout on: `track` starts that track of
-the music (-1 for none).
+the music (-1 for none). It is a development build's (`HLDS_DEV=1
+./make.sh`), as are `EMU_GO`, `EMU_FADE`, `debug_net.txt` and room.sh's
+walks: a release reads none of them (`play.sh` says so).
 
 The private card images are a gigabyte each (`setup.sh` says so to melonDS):
 a whole cooked campaign is a quarter of that, and an image that is full

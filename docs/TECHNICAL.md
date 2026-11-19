@@ -1485,6 +1485,12 @@ neighbour whose links had been zeroed) -- the culprit long gone.
     its size and who asked for it. Cost: 24 + 4 bytes a block and the held
     blocks, 10 to 16 KB on the tightest DS maps, which is why a release
     build is without it.
+  - **A development build** (`HLDS_DEV=1 ./make.sh`) has what the
+    emulator's tools start and steer the game with: `debug_start.txt` (a
+    start, armed, and its `go` walk of the maps), `debug_net.txt` and
+    `debug_reopen.txt`. A release reads none of them and has none of their
+    code: 3.7 KB of a DS's map heap. (The READOUT option, and the `perf.txt`
+    lines it writes, are a release's.)
   - NEA's video memory lists take no blocks during play: each
     split of them needs a node, and the nodes come from a reserve of 1,024 set
     aside at start-up (`Global.cpp`; 548 at most were measured, on

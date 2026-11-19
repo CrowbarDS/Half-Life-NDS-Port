@@ -440,13 +440,17 @@ namespace
         }
     }
 
-    /// A debug build, with debug_reopen.txt on the card: a read of the map's
+    /// A development build (HLDS_DEV), with debug_reopen.txt on the card: a read of the map's
     /// archive is made to fail once at the end of the load, so that NEA
     /// opens it again as it does after a card's failed read in play; what
     /// that took of the heap, at most and after, goes to perf.txt. (Then
     /// play's own measure starts again.)
     void measureReopen(const char *map)
     {
+#ifndef HLDS_DEV
+        (void)map;
+        return;
+#endif
         std::FILE *flag = std::fopen(global.dataPath("debug_reopen.txt").c_str(), "r");
         if (flag == nullptr)
             return;
@@ -752,8 +756,8 @@ namespace
 
     /// When the map in play was up (Global::vblanks).
     std::uint32_t mapBeganAt = 0;
-#ifndef HLDS_CHILD
-    /// debug_start.txt's "go" lines walk the maps: only their own ways out
+#if !defined(HLDS_CHILD) && defined(HLDS_DEV)
+    /// (HLDS_DEV) debug_start.txt's "go" lines walk the maps: only their own ways out
     /// are taken, not one the player arrives standing in (where the go put
     /// them in the map left, the way back often is). `debugGoWay`: the way
     /// the go took in this map, -1 before it does.
@@ -1085,7 +1089,7 @@ namespace
         hlrt::guard::check("map loaded");
         traceWrite([&](std::FILE *out) { hlrt::guard::traceLoadEnd(out, name.c_str(), "loaded"); });
         mapBeganAt = Global::vblanks();
-#ifndef HLDS_CHILD
+#if !defined(HLDS_CHILD) && defined(HLDS_DEV)
         debugGoWay = -1;
         if (std::strcmp(debugGoLastMap, name.c_str()) == 0)
             ++debugGoLoads;
@@ -1831,8 +1835,8 @@ namespace
         int colour = 0, amount = 255, durationMs = 1000, holdMs = 0, from = 1;
     } debugFade;
 
-#ifndef HLDS_CHILD
-    /// A development aid (tools/emu/room.sh's chain and pairs): lines
+#if !defined(HLDS_CHILD) && defined(HLDS_DEV)
+    /// A development aid (tools/emu/room.sh's chain and pairs; HLDS_DEV): lines
     /// "go <map> <seconds>" in debug_start.txt, after the rest, taken in
     /// order, a map at a time. Once the map in play has been up that many
     /// seconds, the player is put in its way out into <map> (that
@@ -1903,6 +1907,9 @@ namespace
     std::uint32_t debugFadeStart = 0;
     void debugFadeTick()
     {
+#ifndef HLDS_DEV
+        return;
+#endif
         if (debugFade.afterMs < 0)
             return;
         if (debugFadeStart == 0)
@@ -1923,9 +1930,13 @@ namespace
     }
 
     /// A development aid (tools/emu): a card with debug_start.txt on it starts
-    /// where that says, save or no save.
+    /// where that says, save or no save. Only in a development build
+    /// (HLDS_DEV=1 ./make.sh): a release has none of it.
     bool debugStart()
     {
+#ifndef HLDS_DEV
+        return false;
+#else
         std::FILE *file = std::fopen(global.dataPath("debug_start.txt").c_str(), "r");
         if (file == nullptr)
             return false;
@@ -1961,6 +1972,7 @@ namespace
         debugGoRead();
 #endif
         return true;
+#endif
     }
 }
 
@@ -2881,7 +2893,7 @@ int main(int argc, char *argv[])
                     hlrt::bottomScreen.showPad();
                 }
 
-#ifndef HLDS_CHILD
+#if !defined(HLDS_CHILD) && defined(HLDS_DEV)
                 // (A walk's: no way out but the go's -- cleared first, or a
                 // way the player arrived standing in, asked for again every
                 // frame, would keep the go below from ever being taken.)

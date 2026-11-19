@@ -2442,10 +2442,11 @@ namespace hlrt
         overMs_ = 0;
         lobbyAsked_ = false;
 
-        // A development aid (tools/emu/play.sh with two consoles): "x y z
-        // yaw" in debug_net.txt, whole units and degrees, puts the host
+        // A development aid (tools/emu/play.sh with two consoles; HLDS_DEV):
+        // "x y z yaw" in debug_net.txt, whole units and degrees, puts the host
         // there and every client 160 units in front of it, facing it -- so
         // that the two see each other from the first frame.
+#ifdef HLDS_DEV
         if (std::FILE *file = std::fopen(global.dataPath("debug_net.txt").c_str(), "r"))
         {
             int x, y, z, yaw;
@@ -2464,6 +2465,7 @@ namespace hlrt
             }
             std::fclose(file);
         }
+#endif
     }
 
     void NetGame::send(bool always)
