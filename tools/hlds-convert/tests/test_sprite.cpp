@@ -6,6 +6,7 @@
 // see-through. How a glow fades with distance (glowFalloff). Then, with
 // HLDS_VALVE_DIR, the game's own -- and which of the maps' glows fade.
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -15,6 +16,8 @@
 #include "HlSprite.hpp"
 #include "TestGame.hpp"
 #include "hlds/SpriteCook.hpp"
+#include "hlds/TextureCook.hpp"
+#include "hlds/TextureEncoder.hpp"
 
 using namespace hlds;
 using namespace hldata;
@@ -212,6 +215,80 @@ namespace
         check(scale >= 1 && bright == 256, "at the eye: tiny, and no divide by nothing");
     }
 
+    /// A3I5 or A5I3: the error measure prefers the form nearer the picture,
+    /// and A5I3 is read back and packed as what it is.
+    void testFormats()
+    {
+        // A soft white glow: one colour, alpha all the way down.
+        RgbaImage glow;
+        glow.width = glow.height = 32;
+        glow.rgba.assign(32 * 32 * 4, 255);
+        CookedTexture a3i5, a5i3;
+        a3i5.width = a5i3.width = a3i5.height = a5i3.height = 32;
+        a3i5.format = TextureFormat::A3I5;
+        a5i3.format = TextureFormat::A5I3;
+        a3i5.palette = a5i3.palette = {0xFF, 0x7F}; // white
+        for (int i = 0; i < 32 * 32; ++i)
+        {
+            const int x = i % 32 - 16, y = i / 32 - 16;
+            const int a = std::max(0, 255 - (x * x + y * y) * 255 / 256);
+            glow.rgba[i * 4 + 3] = static_cast<std::uint8_t>(a);
+            a3i5.texels.push_back(static_cast<std::uint8_t>(((a * 7 + 127) / 255) << 5));
+            a5i3.texels.push_back(static_cast<std::uint8_t>(((a * 31 + 127) / 255) << 3));
+        }
+        const double glowA3 = spriteAtlasError(glow, a3i5), glowA5 = spriteAtlasError(glow, a5i3);
+        check(glowA3 > 0 && glowA5 >= 0 && glowA5 < glowA3, "a soft glow is nearer in A5I3");
+
+        // Sixteen colours in stripes, solid: A3I5 has them all, A5I3 eight.
+        RgbaImage stripes;
+        stripes.width = stripes.height = 16;
+        CookedTexture all, few;
+        all.width = few.width = all.height = few.height = 16;
+        all.format = TextureFormat::A3I5;
+        few.format = TextureFormat::A5I3;
+        for (int c = 0; c < 16; ++c)
+        {
+            const std::uint16_t colour = static_cast<std::uint16_t>((c * 2) | ((31 - c * 2) << 10));
+            all.palette.push_back(static_cast<std::uint8_t>(colour));
+            all.palette.push_back(static_cast<std::uint8_t>(colour >> 8));
+            if (c % 2 == 0)
+            {
+                few.palette.push_back(static_cast<std::uint8_t>(colour));
+                few.palette.push_back(static_cast<std::uint8_t>(colour >> 8));
+            }
+        }
+        for (int i = 0; i < 16 * 16; ++i)
+        {
+            const int c = i % 16;
+            stripes.rgba.insert(stripes.rgba.end(), {static_cast<std::uint8_t>((c * 2) << 3), 0,
+                                                     static_cast<std::uint8_t>((31 - c * 2) << 3), 255});
+            all.texels.push_back(static_cast<std::uint8_t>(7 << 5 | c));
+            few.texels.push_back(static_cast<std::uint8_t>(31 << 3 | c / 2));
+        }
+        const double stripesA3 = spriteAtlasError(stripes, all), stripesA5 = spriteAtlasError(stripes, few);
+        check(stripesA3 >= 0 && stripesA3 < stripesA5, "sixteen solid colours are nearer in A3I5");
+
+        // Read back: alpha in the top five bits, the colour in the low three.
+        RgbaImage shown;
+        std::string error;
+        check(decodeTexture(a5i3, shown, error) && shown.rgba[(16 * 32 + 16) * 4 + 3] == 255 &&
+                  shown.rgba[3] == 0,
+              "A5I3 decodes: solid at the glow's middle, nothing at its corner");
+        CookedTexture back;
+        hldata::TextureHeader header;
+        check(unpackTexture(packTexture(a5i3, 0, 1), back, header) && back.format == TextureFormat::A5I3 &&
+                  (header.flags & hldata::kTextureA3I5) && (header.flags & hldata::kTextureA5I3),
+              "an A5I3 texture is packed as a byte a texel, marked A5I3, and read back so");
+        check(unpackTexture(packTexture(a3i5, hldata::kTextureA5I3, 1), back, header) &&
+                  back.format == TextureFormat::A3I5 && !(header.flags & hldata::kTextureA5I3),
+              "an A3I5 one is never marked A5I3");
+
+        SpriteFormat form = SpriteFormat::Auto;
+        check(parseSpriteFormat("A5I3", form) && form == SpriteFormat::A5I3 && parseSpriteFormat("auto", form) &&
+                  form == SpriteFormat::Auto && !parseSpriteFormat("a4i4", form),
+              "--sprite-format's names");
+    }
+
     /// Which of a map's glows fade (record.extra[3] bit 3: render fx 14 does not).
     void testMapGlows(const char *dir)
     {
@@ -250,6 +327,7 @@ int main()
 {
     testMade();
     testFalloff();
+    testFormats();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir != nullptr && dir[0] != '\0')
     {

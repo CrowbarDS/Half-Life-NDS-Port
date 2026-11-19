@@ -72,6 +72,12 @@ namespace
                      "      --language <name>  a translation installed beside the game folder\n"
                      "                         (valve_french: french), its text and voices\n"
                      "                         over the game's (default: english, the game's own)\n"
+                     "      --sprite-format <sprite>=<a3i5|a5i3|auto>\n"
+                     "                         the form a sprite's picture is cooked in (by its\n"
+                     "                         file's name: flare1=a5i3); again for each. auto,\n"
+                     "                         every sprite's default, takes whichever is nearer\n"
+                     "                         the picture: A3I5 has 8 steps of see-through and\n"
+                     "                         32 colours, A5I3 32 steps and 8 colours\n"
                      "      --no-compress      archives with nothing in them compressed\n"
                      "      --no-textures      levels only; the DS draws them in light alone\n"
                      "      --ptexconv <path>  the texture encoder, if it is not found by\n"
@@ -368,7 +374,8 @@ namespace
             std::printf("  sent to a console: textures %dK texels, all at once (%d of them smaller there)\n",
                         r.guestTexelKb, r.guestShrunk);
         if (r.sprites != 0 || r.spritesMissing != 0)
-            std::printf("  %d sprites: %dK texels (%d not found)\n", r.sprites, r.spriteTexelKb, r.spritesMissing);
+            std::printf("  %d sprites: %dK texels (%d not found, %d in A5I3)\n", r.sprites, r.spriteTexelKb,
+                        r.spritesMissing, r.spritesA5i3);
         if (r.sounds != 0 || r.soundsMissing != 0)
         {
             std::printf("  %d sounds: %d KB (%d at half rate, %d not found); %d music tracks\n",
@@ -525,6 +532,19 @@ namespace
                 options.compress = false;
             else if (args[i] == "--language" && i + 1 < args.size())
                 language = args[++i];
+            else if (args[i] == "--sprite-format" && i + 1 < args.size())
+            {
+                const std::string given = args[++i];
+                const std::size_t equals = given.find('=');
+                SpriteFormat form = SpriteFormat::Auto;
+                if (equals == std::string::npos || equals == 0 || !parseSpriteFormat(given.substr(equals + 1), form))
+                {
+                    std::fprintf(stderr, "error: --sprite-format wants <sprite>=<a3i5|a5i3|auto>, not %s\n",
+                                 given.c_str());
+                    return 2;
+                }
+                options.spriteFormats[spriteName(given.substr(0, equals))] = form;
+            }
             else if (options.gameDir.empty())
                 options.gameDir = args[i];
             else if (!all && mapName.empty())

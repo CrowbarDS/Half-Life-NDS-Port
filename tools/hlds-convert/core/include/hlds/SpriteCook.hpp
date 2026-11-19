@@ -63,6 +63,26 @@ namespace hlds
     /// "flare1").
     std::string spriteName(const std::string &path);
 
+    struct CookedTexture;
+
+    /// The form a sprite's atlas is encoded in: whichever of A3I5 (8 steps
+    /// of alpha, 32 colours) and A5I3 (32 steps, 8 colours) comes nearer the
+    /// picture (Auto), or one forced (the command line's --sprite-format).
+    enum class SpriteFormat : std::uint8_t
+    {
+        Auto,
+        A3I5,
+        A5I3,
+    };
+    /// "auto", "a3i5", "a5i3" (any case) -> the form; false for anything else.
+    bool parseSpriteFormat(const std::string &text, SpriteFormat &out);
+
+    /// How far a cooked atlas is from the picture it was made from, as the
+    /// console shows it: blended over black (what a light sprite adds) and
+    /// over white (how solid it is), the squared differences of every
+    /// channel of every texel added up. Negative when it cannot be decoded.
+    double spriteAtlasError(const RgbaImage &source, const CookedTexture &cooked);
+
     /// One of decals.wad's pictures as a sprite of one frame: its colour
     /// the palette's last, as solid as each texel's index (the game's way
     /// with a decal), lying as its wall does. False for an empty picture.

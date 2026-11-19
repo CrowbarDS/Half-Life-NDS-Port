@@ -31,6 +31,7 @@ namespace hlds
     {
         Tex4x4,
         A3I5,
+        A5I3, ///< a byte a texel too: 32 steps of alpha, 8 colours
     };
 
     struct CookedTexture
@@ -38,11 +39,13 @@ namespace hlds
         int width = 0;
         int height = 0;
         TextureFormat format = TextureFormat::Tex4x4;
-        std::vector<std::uint8_t> texels;  ///< 4x4: 4 bytes a block. A3I5: a byte a texel
-        std::vector<std::uint8_t> index;   ///< 4x4: 2 bytes a block. A3I5: empty
+        std::vector<std::uint8_t> texels;  ///< 4x4: 4 bytes a block. A3I5, A5I3: a byte a texel
+        std::vector<std::uint8_t> index;   ///< 4x4: 2 bytes a block. A3I5, A5I3: empty
         std::vector<std::uint8_t> palette; ///< 2 bytes a colour, RGB555
 
         int paletteColours() const { return static_cast<int>(palette.size() / 2); }
+        /// A byte a texel, alpha and colour (A3I5 or A5I3).
+        bool alphaFormat() const { return format == TextureFormat::A3I5 || format == TextureFormat::A5I3; }
     };
 
     class ITextureEncoder

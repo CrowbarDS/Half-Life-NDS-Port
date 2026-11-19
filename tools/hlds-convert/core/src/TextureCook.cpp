@@ -7,6 +7,7 @@
 
 #include "HlLevel.hpp"
 #include "hlds/AtomicWrite.hpp"
+#include "hlds/SpriteCook.hpp"
 #include "hlds/UiCook.hpp"
 
 namespace hlds
@@ -26,8 +27,9 @@ namespace hlds
         header.indexBytes = static_cast<std::uint32_t>(texture.index.size());
         header.paletteBytes = (static_cast<std::uint32_t>(texture.palette.size()) + 3) & ~3u;
         // The format is the texture's own; a caller cannot contradict it.
-        header.flags = (flags & ~hldata::kTextureA3I5) |
-                       (texture.format == TextureFormat::A3I5 ? hldata::kTextureA3I5 : 0u);
+        header.flags = (flags & ~(hldata::kTextureA3I5 | hldata::kTextureA5I3)) |
+                       (texture.alphaFormat() ? hldata::kTextureA3I5 : 0u) |
+                       (texture.format == TextureFormat::A5I3 ? hldata::kTextureA5I3 : 0u);
         header.sourceHash = sourceHash;
 
         std::vector<std::uint8_t> out(sizeof(header));
@@ -50,8 +52,9 @@ namespace hlds
         const std::uint8_t *p = bytes.data() + sizeof(header);
         texture.width = header.width;
         texture.height = header.height;
-        texture.format = (header.flags & hldata::kTextureA3I5) ? TextureFormat::A3I5
-                                                               : TextureFormat::Tex4x4;
+        texture.format = (header.flags & hldata::kTextureA5I3)   ? TextureFormat::A5I3
+                         : (header.flags & hldata::kTextureA3I5) ? TextureFormat::A3I5
+                                                                 : TextureFormat::Tex4x4;
         texture.texels.assign(p, p + header.texelBytes);
         p += header.texelBytes;
         texture.index.assign(p, p + header.indexBytes);
@@ -71,6 +74,8 @@ namespace hlds
             TextureFormat format = TextureFormat::Tex4x4;
             std::uint32_t flags = 0;
             std::uint32_t hash = 0;
+            /// A3I5 or A5I3, whichever is nearer the picture (spriteAtlasError).
+            bool eitherAlpha = false;
             std::string error;
             bool ok = false;
         };
@@ -137,7 +142,9 @@ namespace hlds
                                                   size.width,
                                                   size.height,
                                                   static_cast<std::uint32_t>(colours),
-                                                  static_cast<std::uint32_t>(form),
+                                                  // (3: the light form, since it
+                                                  // may be A5I3.)
+                                                  static_cast<std::uint32_t>(light ? 3 : form),
                                                   encoder.version()};
                 hash ^= hldata::crc32(reinterpret_cast<const std::uint8_t *>(settings),
                                       sizeof(settings)) *
@@ -171,6 +178,8 @@ namespace hlds
                 job.flags = (keyed ? hldata::kTextureColourKey : 0u) |
                             (a3i5 ? hldata::kTextureA3I5 : 0u) | (light ? hldata::kTextureLight : 0u);
                 job.hash = hash;
+                // (Light is mostly one hue fading out: often nearer in A5I3.)
+                job.eitherAlpha = light;
                 jobs.push_back(std::move(job));
             }
         }
@@ -187,9 +196,18 @@ namespace hlds
                 if (i >= jobs.size())
                     return;
                 Job &job = jobs[i];
-                CookedTexture encoded;
+                CookedTexture encoded, other;
+                std::string otherError;
                 if (!encoder.encode(job.image, job.colours, job.format, encoded, job.error))
                     continue;
+                if (job.eitherAlpha &&
+                    encoder.encode(job.image, hldata::kA5I3Colours, TextureFormat::A5I3, other, otherError))
+                {
+                    const double a3i5 = spriteAtlasError(job.image, encoded);
+                    const double a5i3 = spriteAtlasError(job.image, other);
+                    if (a5i3 >= 0 && (a3i5 < 0 || a5i3 < a3i5))
+                        encoded = std::move(other);
+                }
                 job.ok = writeFileAtomic(job.path, packTexture(encoded, job.flags, job.hash),
                                          job.error);
             }

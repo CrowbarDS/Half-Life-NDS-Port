@@ -18,6 +18,7 @@
 
 #include "hlds/LevelReport.hpp"
 #include "hlds/Portals.hpp"
+#include "hlds/SpriteCook.hpp"
 #include "hlds/TitlesFile.hpp"
 #include "HlGame.hpp"
 #include "HlManifest.hpp"
@@ -68,6 +69,9 @@ namespace hlds
         bool guardedMerges = true; ///< CookOptions::guardedMerges
         bool groupByLeaf = true;   ///< CookOptions::groupByLeaf
         std::string startMap; ///< empty: keep the manifest's, or the default
+        /// Sprites whose atlas form is forced, by name (spriteName: "flare1");
+        /// any other is Auto, whichever form is nearer its picture.
+        std::map<std::string, SpriteFormat> spriteFormats;
         /// Told of the parts of a run that are no map's: a phrase each.
         std::function<void(const std::string &)> status;
     };
@@ -146,6 +150,7 @@ namespace hlds
         int sprites = 0;       ///< sprites the map draws
         int spriteTexelKb = 0; ///< what their atlases take of texture memory
         int spritesMissing = 0;
+        int spritesA5i3 = 0; ///< of them, encoded in A5I3 (the rest A3I5)
         int musicTracks = 0;  ///< tracks of music the map starts
         int pathNodes = 0;     ///< where what walks may stand
         int pathLinks = 0;     ///< ... and the ways between

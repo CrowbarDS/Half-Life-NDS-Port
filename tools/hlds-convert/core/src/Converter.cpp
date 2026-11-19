@@ -1753,9 +1753,19 @@ namespace hlds
                 if (!ok)
                     break;
                 const hldata::SpriteRef &ref = level.sprites[one.index];
+                // In the form asked for, or whichever of the two is nearer
+                // its picture (Auto).
+                // (By the game's file name: a sprite cooked as light has
+                // "-l" after it.)
+                std::string plain(ref.name);
+                if (level.spriteLights[one.index] && plain.size() > 2 && plain.compare(plain.size() - 2, 2, "-l") == 0)
+                    plain.erase(plain.size() - 2);
+                const auto asked = options_.spriteFormats.find(plain);
+                const SpriteFormat form = asked != options_.spriteFormats.end() ? asked->second : SpriteFormat::Auto;
                 const std::uint32_t settings[] = {static_cast<std::uint32_t>(one.cell),
                                                   static_cast<std::uint32_t>(one.frames),
-                                                  level.spriteLights[one.index] ? 1u : 0u, encoder.version(), 1u};
+                                                  level.spriteLights[one.index] ? 1u : 0u, encoder.version(), 2u,
+                                                  static_cast<std::uint32_t>(form)};
                 const std::uint32_t hash =
                     one.sourceHash ^
                     hldata::crc32(reinterpret_cast<const std::uint8_t *>(settings), sizeof(settings)) * 131u;
@@ -1767,11 +1777,28 @@ namespace hlds
                 hldata::TextureHeader oldHeader;
                 if (readFile(file, existing, ignored) && unpackTexture(existing, old, oldHeader) &&
                     oldHeader.sourceHash == hash)
+                {
+                    result.spritesA5i3 += old.format == TextureFormat::A5I3 ? 1 : 0;
                     continue;
-                CookedTexture encoded;
+                }
+                CookedTexture encoded, other;
                 std::string why;
-                if (!encoder.encode(one.cooked.atlas, hldata::kA3I5Colours, TextureFormat::A3I5, encoded, why) ||
-                    !writeFileAtomic(file, packTexture(encoded, hldata::kTextureA3I5, hash), why))
+                bool made = false;
+                if (form != SpriteFormat::A5I3)
+                    made = encoder.encode(one.cooked.atlas, hldata::kA3I5Colours, TextureFormat::A3I5, encoded, why);
+                if (form != SpriteFormat::A3I5 &&
+                    encoder.encode(one.cooked.atlas, hldata::kA5I3Colours, TextureFormat::A5I3, other, why))
+                {
+                    // (A tie keeps A3I5, the form sprites always had.)
+                    const double a3i5 = made ? spriteAtlasError(one.cooked.atlas, encoded) : -1;
+                    const double a5i3 = spriteAtlasError(one.cooked.atlas, other);
+                    if (!made || (a5i3 >= 0 && (a3i5 < 0 || a5i3 < a3i5)))
+                        encoded = std::move(other);
+                    made = true;
+                }
+                if (made)
+                    result.spritesA5i3 += encoded.format == TextureFormat::A5I3 ? 1 : 0;
+                if (!made || !writeFileAtomic(file, packTexture(encoded, 0, hash), why))
                     result.warnings.push_back("the sprite '" + std::string(ref.name) + "' was not made: " + why);
             }
             std::error_code ec;

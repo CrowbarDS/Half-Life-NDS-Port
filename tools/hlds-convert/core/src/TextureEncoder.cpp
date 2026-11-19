@@ -194,9 +194,10 @@ namespace hlds
 
         // -gt texture, -ob raw binary outputs, -cm palette cap. Transparency is
         // taken from the PNG's alpha.
-        const bool a3i5 = format == TextureFormat::A3I5;
-        const std::string formatArgs =
-            a3i5 ? std::string(" -f a3i5") : " -f tex4x4 -cm " + std::to_string(maxColours);
+        const bool a3i5 = format == TextureFormat::A3I5 || format == TextureFormat::A5I3;
+        const std::string formatArgs = format == TextureFormat::A3I5   ? std::string(" -f a3i5")
+                                       : format == TextureFormat::A5I3 ? std::string(" -f a5i3")
+                                                                       : " -f tex4x4 -cm " + std::to_string(maxColours);
 #ifndef _WIN32
         const std::string command = quoted(executable_) + " -gt -ob" + formatArgs + " -o " +
                                     quoted(base) + " " + quoted(png) + " > /dev/null 2>&1";
@@ -293,8 +294,9 @@ namespace hlds
     {
         const int w = texture.width;
         const int h = texture.height;
-        if (texture.format == TextureFormat::A3I5)
+        if (texture.format == TextureFormat::A3I5 || texture.format == TextureFormat::A5I3)
         {
+            const bool a5i3 = texture.format == TextureFormat::A5I3;
             const int colours = texture.paletteColours();
             if (w <= 0 || h <= 0 || texture.texels.size() != static_cast<std::size_t>(w) * h ||
                 !texture.index.empty() || (texture.palette.size() & 1))
@@ -307,8 +309,7 @@ namespace hlds
             out.rgba.assign(static_cast<std::size_t>(w) * h * 4, 0);
             for (std::size_t i = 0; i < texture.texels.size(); ++i)
             {
-                const int colour = texture.texels[i] & 31;
-                const int alpha3 = texture.texels[i] >> 5;
+                const int colour = a5i3 ? texture.texels[i] & 7 : texture.texels[i] & 31;
                 if (colour >= colours)
                 {
                     error = "an A3I5 texel points outside its palette";
@@ -317,7 +318,8 @@ namespace hlds
                 const std::uint16_t c = static_cast<std::uint16_t>(
                     texture.palette[colour * 2] | (texture.palette[colour * 2 + 1] << 8));
                 // The hardware widens 3 bits of alpha to 5 as a*4 + a/2.
-                const int alpha5 = alpha3 * 4 + alpha3 / 2;
+                const int alpha3 = texture.texels[i] >> 5;
+                const int alpha5 = a5i3 ? texture.texels[i] >> 3 : alpha3 * 4 + alpha3 / 2;
                 out.rgba[i * 4 + 0] = static_cast<std::uint8_t>((c & 31) << 3);
                 out.rgba[i * 4 + 1] = static_cast<std::uint8_t>(((c >> 5) & 31) << 3);
                 out.rgba[i * 4 + 2] = static_cast<std::uint8_t>(((c >> 10) & 31) << 3);

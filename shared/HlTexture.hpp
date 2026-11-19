@@ -64,6 +64,11 @@ namespace hldata
     /// a brush the game adds to what is behind it (rendermode 3 or 5), whose
     /// black is nothing at all.
     inline constexpr std::uint32_t kTextureLight = 1u << 12;
+    /// With kTextureA3I5 (a byte a texel, alpha and a colour): the byte is
+    /// A5I3 -- 32 steps of alpha and 8 colours, where A3I5 has 8 and 32. What
+    /// a soft glow or puff wants, whose colours are few and whose edge is all
+    /// alpha (the converter takes whichever of the two is nearer the picture).
+    inline constexpr std::uint32_t kTextureA5I3 = 1u << 13;
     enum class Material : std::uint8_t
     {
         Concrete, ///< and whatever the game's list does not name
@@ -119,6 +124,7 @@ namespace hldata
     }
     inline constexpr int kSkySide = 128; ///< texels along each side of a sky picture
     inline constexpr int kA3I5Colours = 32;
+    inline constexpr int kA5I3Colours = 8;
 
     struct TextureHeader
     {

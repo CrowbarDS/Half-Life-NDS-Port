@@ -83,7 +83,8 @@ Milestone 11, "levels of detail".
   its textures cooked as light, as the sprites are: how bright a texel is
   becomes how solid it is, so its black shows nothing (it was a dark sheet,
   or at full amount an opaque one), and faces whose texture is dark all over
-  are not drawn at all (`kTextureLight`, `lightToAlpha`).
+  are not drawn at all (`kTextureLight`, `lightToAlpha`); A3I5 or A5I3, as
+  the sprites below.
 - Doors (sliding and hinged), buttons, lifts and trains on path corners,
   ladders, walls that switch on and off, and the wiring between them:
   triggers, relays, multi_managers, multisources, delays and killtargets.
@@ -425,7 +426,12 @@ Milestone 11, "levels of detail".
   `shared/HlSprite.hpp`). Most of them are "additive" in the game -- light,
   added to what is behind -- which the DS cannot do: how bright a texel was
   becomes how solid it is. Against the dark that is the same; against
-  something bright it is dimmer than the game's.
+  something bright it is dimmer than the game's. Each is encoded both as
+  A3I5 (8 steps of see-through, 32 colours) and as A5I3 (32 steps, 8
+  colours), and kept in whichever is nearer its picture blended over black
+  and over white (`spriteAtlasError`, `kTextureA5I3`): a glow's falloff in
+  A3I5 shows as rings, and most sprites are a few hues fading out, so most
+  are A5I3. `--sprite-format <sprite>=<a3i5|a5i3|auto>` forces one.
 - What the maps show and shake, from their own entities
   (`shared/HlEffects.hpp`): sprites and glows (`env_sprite`, `env_glow`; a
   glow, render mode 3, by the engine's rule (`glowFalloff`, HlSprite.hpp):

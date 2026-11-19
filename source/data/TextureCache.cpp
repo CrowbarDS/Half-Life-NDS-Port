@@ -368,9 +368,10 @@ namespace hlrt
         }
         else if (ok && a3i5)
         {
-            ok = NEA_MaterialTexLoad(material, NEA_A3PAL32, header.width, header.height, flags,
-                                     data) == 1 &&
-                 NEA_PaletteLoad(palette, paletteData, header.paletteColours, NEA_A3PAL32) == 1;
+            // (A5I3 is laid out alike: a byte a texel, then the palette.)
+            const NEA_TextureFormat format = (header.flags & hldata::kTextureA5I3) ? NEA_A5PAL8 : NEA_A3PAL32;
+            ok = NEA_MaterialTexLoad(material, format, header.width, header.height, flags, data) == 1 &&
+                 NEA_PaletteLoad(palette, paletteData, header.paletteColours, format) == 1;
         }
         else if (ok)
         {

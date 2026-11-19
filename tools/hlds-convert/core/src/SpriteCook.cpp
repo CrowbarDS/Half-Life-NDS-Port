@@ -1,4 +1,5 @@
 #include "hlds/SpriteCook.hpp"
+#include "hlds/TextureEncoder.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -325,6 +326,42 @@ namespace hlds
                                      : (spr.type == 3 || spr.type == 4 ? hldata::kSpriteOriented
                                                                        : hldata::kSpriteFacesEye);
         return true;
+    }
+
+    bool parseSpriteFormat(const std::string &text, SpriteFormat &out)
+    {
+        std::string lower = text;
+        for (char &c : lower)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (lower == "auto")
+            out = SpriteFormat::Auto;
+        else if (lower == "a3i5")
+            out = SpriteFormat::A3I5;
+        else if (lower == "a5i3")
+            out = SpriteFormat::A5I3;
+        else
+            return false;
+        return true;
+    }
+
+    double spriteAtlasError(const RgbaImage &source, const CookedTexture &cooked)
+    {
+        RgbaImage shown;
+        std::string ignored;
+        if (!decodeTexture(cooked, shown, ignored) || shown.width != source.width || shown.height != source.height)
+            return -1;
+        double error = 0;
+        for (std::size_t i = 0; i + 3 < source.rgba.size(); i += 4)
+        {
+            const double a = source.rgba[i + 3] / 255.0, b = shown.rgba[i + 3] / 255.0;
+            for (int c = 0; c < 3; ++c)
+            {
+                const double overBlack = source.rgba[i + c] * a - shown.rgba[i + c] * b;
+                const double overWhite = (source.rgba[i + c] * a + 255 * (1 - a)) - (shown.rgba[i + c] * b + 255 * (1 - b));
+                error += overBlack * overBlack + overWhite * overWhite;
+            }
+        }
+        return error;
     }
 
     std::string spriteName(const std::string &path)
