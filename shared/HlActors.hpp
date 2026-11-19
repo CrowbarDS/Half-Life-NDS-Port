@@ -422,6 +422,17 @@ namespace hldata
     /// rises from `a` to `b`, `size` tenths of the sprite's own size, in
     /// `colour`; nothing is seen for its first `sprite` ms.
     inline constexpr std::uint8_t kEffectSmoke = 11;
+    /// A glow left where something hot struck (the gauss's: the game's
+    /// hotglow.spr, render mode glow, of a size in the world): at `a`,
+    /// `size` units either way, `sprite` how bright (1..31), in `colour`;
+    /// whole until its last two seconds, then fading out (the game's
+    /// FTENT_FADEOUT, at its fade speed of 0.5).
+    inline constexpr std::uint8_t kEffectGlow = 12;
+    inline constexpr int kGlowFadeMs = 2000;
+    /// The gauss's: hotglow.spr is 64 units across at its scale of 1, and
+    /// orange ((255, 123, 0) at its brightest).
+    inline constexpr int kGaussGlowHalf = 32;
+    inline constexpr std::uint16_t kGaussGlowColour = 31 | 15 << 5;
     inline constexpr int kEgonMine = 0;
     /// How long a beam is still seen once nothing keeps it.
     inline constexpr int kEgonLingerMs = 80;
@@ -1269,6 +1280,17 @@ namespace hldata
         slot->sprite = 0xFFFF;
         slot->colour = 0x7FFF;
         return *slot;
+    }
+
+    /// A glow (kEffectGlow) at `at`, `half` units either way, `alpha` bright
+    /// (of 31), whole for `ms` and then fading.
+    inline void glowAdd(ActorWorld &a, const fx *at, int half, int alpha, std::uint16_t colour, int ms)
+    {
+        if (alpha < 1)
+            return;
+        Effect &glow = effectAdd(a, kEffectGlow, at, nullptr, half < 1 ? 1 : half, ms + kGlowFadeMs);
+        glow.sprite = static_cast<std::uint16_t>(alpha > 31 ? 31 : alpha);
+        glow.colour = colour;
     }
 
     /// The egon beam of `owner` (kEffectEgon), from `from` to `to`: found

@@ -44,10 +44,14 @@ namespace hlrt
             return length > 2 && ref.name[length - 2] == '-' && ref.name[length - 1] == 'l';
         }
 
-        /// One glow that may be shown this pass (`index` -1: an explosion's
-        /// light, in its own colour).
+        /// What a glow that may be shown this pass is: one of the map's
+        /// (`index` its record), an explosion's light, a glow left where
+        /// something struck (`index` its effect), the core of an egon's
+        /// flare. The last three are in their own colours.
+        enum : std::uint8_t { kOfRecord, kOfLight, kOfEffect, kOfFlare };
         struct Candidate
         {
+            std::uint8_t kind;
             const fx *at;         ///< where it is in the world
             std::int32_t dist;
             std::int16_t index;
@@ -72,6 +76,10 @@ namespace hlrt
         /// How solid its halo is at its middle (of 31), and the most the
         /// whole screen is lit by one the player is in.
         constexpr int kLightAlpha = 20, kWashMost = 8;
+        /// An egon's flare's core: the size of the 3D flare at rest (18
+        /// units either way), its blue-white, how solid at its middle.
+        constexpr int kFlareHalf = 18, kFlareAlpha = 16;
+        constexpr std::uint16_t kFlareColour = 16 | 22 << 5 | 31 << 10;
     } // namespace
 
     int GlowLayer::chooseSprite()
@@ -201,6 +209,7 @@ namespace hlrt
     void GlowLayer::choose()
     {
         takenCount_ = 0;
+        takenEffects_ = 0;
         shadowCount_ = 0;
         hudDraw.setWarm(0);
         if (!picture_ || sprite_ < 0 || !hudDraw.spritesLive())
@@ -257,6 +266,7 @@ namespace hlrt
             if (halfX > 32 || halfY > 32 || count == kCandidates)
                 continue;
             Candidate c;
+            c.kind = kOfRecord;
             c.at = record.move;
             c.dist = dist;
             c.index = static_cast<std::int16_t>(i);
@@ -329,6 +339,7 @@ namespace hlrt
             if (x + halfX < 0 || x - halfX >= 256 || y + halfY < 0 || y - halfY >= 192)
                 continue;
             Candidate c;
+            c.kind = kOfLight;
             c.at = effect.a;
             c.dist = dist;
             c.index = -1;
@@ -348,6 +359,72 @@ namespace hlrt
         }
         hudDraw.setWarm(static_cast<std::uint16_t>(wash[0] | wash[1] << 5 | wash[2] << 10));
 
+        // The glows left where something struck (the gauss's), whole and
+        // then fading; and the core of each egon's flare where it lands
+        // (the game's flare is a glow too), under the 3D flare. Both are
+        // as big in the world near or far (kRenderFxNoDissipation).
+        for (int n = 0; n < kMaxEffects && count < kCandidates; ++n)
+        {
+            const Effect &effect = actors.effects[n];
+            const bool struck = effect.kind == kEffectGlow;
+            if ((!struck && effect.kind != kEffectEgon) || effect.wholeMs <= 0)
+                continue;
+            const fx *at = struck ? effect.a : effect.b;
+            const std::int32_t d[3] = {fxToInt(at[0] - camera.pos[0]), fxToInt(at[1] - camera.pos[1]),
+                                       fxToInt(at[2] - camera.pos[2])};
+            const std::int32_t depth = (d[0] * camera.forward[0] + d[1] * camera.forward[1] + d[2] * camera.forward[2]) >> 12;
+            if (depth < 8)
+                continue;
+            const std::int32_t across = (d[0] * camera.right[0] + d[1] * camera.right[1] + d[2] * camera.right[2]) >> 12;
+            const std::int32_t up = (d[0] * camera.up[0] + d[1] * camera.up[1] + d[2] * camera.up[2]) >> 12;
+            const std::int32_t perX = camera.hudPixelX * depth, perY = camera.hudPixel * depth;
+            const int x = 128 + across * kDepth / perX, y = 96 - up * kDepth / perY;
+            if (x < 0 || x >= 256 || y < 0 || y >= 192)
+            {
+                // (The game's: nothing of a glow whose middle is off the screen.)
+                if (struck)
+                    takenEffects_ |= std::uint64_t(1) << n;
+                continue;
+            }
+            const int half = struck ? effect.size : kFlareHalf;
+            const int halfX = half * kDepth / perX, halfY = half * kDepth / perY;
+            if (halfX > 32 || halfY > 32)
+                continue;
+            int alpha;
+            if (struck)
+            {
+                const int fading = effect.leftMs < kGlowFadeMs ? (effect.leftMs > 0 ? effect.leftMs : 0) : kGlowFadeMs;
+                alpha = static_cast<int>(effect.sprite) * fading / kGlowFadeMs;
+            }
+            else
+            {
+                // (As the 3D flare fades: its last 40 ms.)
+                alpha = effect.leftMs >= 40 ? kFlareAlpha : kFlareAlpha * (effect.leftMs > 0 ? effect.leftMs : 0) / 40;
+            }
+            if (alpha < 1)
+                continue;
+            Candidate c;
+            c.kind = struck ? kOfEffect : kOfFlare;
+            c.at = at;
+            c.dist = static_cast<int>(isqrt64(static_cast<std::uint64_t>(
+                static_cast<std::int64_t>(d[0]) * d[0] + static_cast<std::int64_t>(d[1]) * d[1] +
+                static_cast<std::int64_t>(d[2]) * d[2])));
+            c.index = static_cast<std::int16_t>(n);
+            c.x = static_cast<std::int16_t>(x);
+            c.y = static_cast<std::int16_t>(y);
+            c.halfX = static_cast<std::int16_t>(halfX < 1 ? 1 : halfX);
+            c.halfY = static_cast<std::int16_t>(halfY < 1 ? 1 : halfY);
+            c.alpha = static_cast<std::uint8_t>(alpha > 31 ? 31 : alpha);
+            c.colour = struck ? effect.colour : kFlareColour;
+            int place = count++;
+            while (place > 0 && list[place - 1].dist > c.dist)
+            {
+                list[place] = list[place - 1];
+                --place;
+            }
+            list[place] = c;
+        }
+
         // What is held, where it is on the screen: a glow there would be
         // over it (the 2D engine is in front of all the 3D picture).
         int gun[4];
@@ -358,11 +435,20 @@ namespace hlrt
         std::uint16_t bankColour[kBanks];
         std::uint8_t bankAlpha[kBanks];
         int banks = 0;
+        // (Taken from the 3D picture: shown here, or hidden by the game's
+        // rule. A light and a flare's core are only ever here.)
+        auto take = [this](const Candidate &c)
+        {
+            if (c.kind == kOfRecord)
+                taken_[takenCount_++] = c.index;
+            else if (c.kind == kOfEffect)
+                takenEffects_ |= std::uint64_t(1) << c.index;
+        };
         const int traced = count < kTraced ? count : kTraced;
         for (int n = 0; n < traced && takenCount_ < kTaken; ++n)
         {
             const Candidate &c = list[n];
-            const bool light = c.index < 0;
+            const bool light = c.kind == kOfLight;
             // (A light lights what is held as well: it may be over it.)
             if (!light && held && c.x + c.halfX > gun[0] && c.x - c.halfX < gun[2] && c.y + c.halfY > gun[1] &&
                 c.y - c.halfY < gun[3])
@@ -382,8 +468,7 @@ namespace hlrt
             }
             if (!seen)
             {
-                if (!light)
-                    taken_[takenCount_++] = c.index;
+                take(c);
                 continue;
             }
             if (shadowCount_ == kSprites)
@@ -417,8 +502,7 @@ namespace hlrt
                     shadowColour_[bank][step - 1] = out;
                 }
             }
-            if (!light)
-                taken_[takenCount_++] = c.index;
+            take(c);
             // A 32 by 32 sprite, affine, shown in a box twice its size (so
             // up to twice as big), added to the picture; behind the display.
             const int k = shadowCount_++;

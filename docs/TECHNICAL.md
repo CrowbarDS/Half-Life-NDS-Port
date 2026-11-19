@@ -461,6 +461,16 @@ Milestone 11, "levels of detail".
   glow of its own draws the halo with the common glow, flare3.spr. (A
   gun's flash lights only models in the game, not the world: it has no
   halo.)
+- The gauss leaves the game's glows where it strikes (its hotglow.spr,
+  render mode glow, as big in the world near or far: `kEffectGlow`): a
+  shot met square on a little glowing bit of 200 for 0.3 s, one off at a
+  slant as bright as its damage times how square it met, for a twentieth
+  of a second of each; a charged beam through a wall a whole hotglow where
+  it goes in and a tenth of one where it comes out, as bright as its
+  damage, for six seconds. Each then fades over two seconds (the game's
+  FTENT_FADEOUT). They are the glow layer's, in the hotglow's orange, or
+  the common glow as a 3D quad when they do not fit. An egon's flare
+  keeps its 3D picture and has a core of blue-white light under it.
 - What the maps show and shake, from their own entities
   (`shared/HlEffects.hpp`): sprites and glows (`env_sprite`, `env_glow`; a
   glow, render mode 3, by the engine's rule (`glowFalloff`, HlSprite.hpp):

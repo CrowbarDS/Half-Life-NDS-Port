@@ -405,7 +405,7 @@ namespace hlrt
         for (int n = 0; n < kMaxEffects; ++n)
         {
             const Effect &effect = a.effects[n];
-            if (effect.kind == 0 || effect.wholeMs <= 0)
+            if (effect.kind == 0 || effect.wholeMs <= 0 || (effect.kind == kEffectGlow && glowLayer.takenEffect(n)))
                 continue;
             const bool line = effect.kind == kEffectBolt || effect.kind == kEffectTracer || effect.kind == kEffectEgon;
             const bool smoke = effect.kind == kEffectSmoke;
@@ -1467,6 +1467,24 @@ namespace hlrt
                 look(comes > 31 ? 31 : comes, nextId(freshId()), effect.colour);
                 picture(*ref, frame + 1, at, camera.right, camera.up, half, tall);
                 extraIds = 1;
+            }
+            break;
+        }
+        case kEffectGlow:
+        {
+            // A glow left where something struck, when the 2D engine has
+            // not got it (GlowLayer): the common glow, whole, then fading;
+            // brought a little towards the eye, off its wall.
+            const int fading = effect.leftMs < kGlowFadeMs ? (effect.leftMs > 0 ? effect.leftMs : 0) : kGlowFadeMs;
+            const int alpha = static_cast<int>(effect.sprite) * fading / kGlowFadeMs;
+            if (alpha < 1)
+                break;
+            if (const SpriteRef *ref = sprite(CommonSprite::Glow, alpha, effect.colour))
+            {
+                fx at[3];
+                for (int k = 0; k < 3; ++k)
+                    at[k] = effect.a[k] - camera.forward[k] * 2;
+                picture(*ref, 0, at, camera.right, camera.up, effect.size, effect.size);
             }
             break;
         }

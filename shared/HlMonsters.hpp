@@ -6059,9 +6059,14 @@ namespace hldata
                 fireLine(w, player, eye, forward, 8192, damage, false, true, &met, -1, reached, kDmgEnergyBeam);
                 beam(muzzle, reached, static_cast<std::uint16_t>(31 | 31 << 5 | 28 << 10), 6);
                 // Through a wall no thicker than what is left of it: a blast
-                // on the far side, the less for the thickness.
+                // on the far side, the less for the thickness. (The game
+                // leaves a glow where it goes in, the size of its hotglow,
+                // and a tenth of that where it comes out, as bright as the
+                // damage of 255, for six seconds.)
                 if (met == kMetWall && w.world != nullptr)
                 {
+                    if (w.actors != nullptr)
+                        glowAdd(*w.actors, reached, kGaussGlowHalf, damage * 31 / 255, kGaussGlowColour, 6000);
                     for (int depth = 8; depth < damage; depth += 8)
                     {
                         const fx at[3] = {reached[0] + forward[0] * depth, reached[1] + forward[1] * depth,
@@ -6070,6 +6075,7 @@ namespace hldata
                             continue;
                         if (w.actors != nullptr)
                         {
+                            glowAdd(*w.actors, at, kGaussGlowHalf / 10, damage * 31 / 255, kGaussGlowColour, 6000);
                             radiusDamage(w, player, at, damage - depth, (damage - depth) * 5 / 2, -1);
                             // (Heard where the gun is, as the game has it.)
                             aiSound(w, kSoundCombat, eye, kNormalExplosionVolume, 3000);
@@ -6123,6 +6129,19 @@ namespace hldata
                     const fx along = static_cast<fx>((static_cast<std::int64_t>(dir[0]) * normal[0] +
                                                       static_cast<std::int64_t>(dir[1]) * normal[1] +
                                                       static_cast<std::int64_t>(dir[2]) * normal[2]) >> kFxShift);
+                    // (The game's glow where it meets the wall, a fifth of
+                    // its hotglow: met square on, a little glowing bit of
+                    // 200 for 0.3 s; off at a slant, as bright as the damage
+                    // times how square it met it, of 255, for a twentieth of
+                    // a second of each.)
+                    if (w.actors != nullptr)
+                    {
+                        const int square = static_cast<int>(-along * damage / kFxOne);
+                        if (along < -kFxOne / 2)
+                            glowAdd(*w.actors, at, kGaussGlowHalf / 5, 200 * 31 / 255, kGaussGlowColour, 300);
+                        else
+                            glowAdd(*w.actors, at, kGaussGlowHalf / 5, square * 31 / 255, kGaussGlowColour, square * 50);
+                    }
                     if (along < -kFxOne / 2)
                         break; // (met square on: it stops there)
                     for (int i = 0; i < 3; ++i)

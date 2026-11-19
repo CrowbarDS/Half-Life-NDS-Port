@@ -49,6 +49,8 @@ namespace hlrt
         /// Whether record `index`'s glow is the 2D engine's this pass (shown,
         /// or hidden behind something): not to be drawn in 3D.
         bool taken(int index) const;
+        /// ... and whether effect `n`'s (a kEffectGlow) is.
+        bool takenEffect(int n) const { return (takenEffects_ >> n) & 1; }
 
         /// From HudDraw::draw() and clear(), once the pass is over: what
         /// choose() made, for the vertical blank to show with the rest of
@@ -72,6 +74,7 @@ namespace hlrt
         static constexpr int kTaken = 16;
         std::int16_t taken_[kTaken];
         int takenCount_ = 0;
+        std::uint64_t takenEffects_ = 0; ///< a bit each (kMaxEffects: 48)
 
         // What choose() made, and what the vertical blank shows: each
         // sprite's three words and its matrix's first number (8.8), its
