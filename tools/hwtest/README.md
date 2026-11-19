@@ -288,3 +288,44 @@ In melonDS (DS and DSi modes alike; the emulator is not the reference):
 | Scrolled right | no wrap: the backdrop shows |
 
 On a DS and a DSi: not yet run.
+
+## markpull/ — wall marks pulled toward the eye
+
+A wall mark is drawn today with the "same depth" test (polygon bit 14), which
+eats marks on a wall seen at a low angle (the mark probe's findings, measured
+on a DSi: one pixel spans tens of units of depth there). This probe draws the
+same marks pulled toward the eye along each corner's line of sight -- the
+same pixels on the screen, only nearer -- with the ordinary depth test, and
+measures what it costs: a mark drawn over something standing in front of its
+wall by less than the pull.
+
+- **P1 coverage**: five marks along a wall 1024 long, the eye 256 from its
+  middle, at 90, 45, 20, 10 and 5 degrees: by the "same depth" test (`eq`),
+  pulled 1/256, 1/128 or 1/64 of their distance, or by as much as the depth
+  changes across two pixels there and 1/128 more (`2px`). The worst mark,
+  the average, then each mark at 20 and 10 degrees with its size in pixels.
+- **P2 bleed**: a surface 1 to 16 units in front of the wall over half a
+  mark, at 45 and 20 degrees: how much of it the mark is drawn on (0 is
+  right).
+
+Results also go to `markpull.txt` at the root of the card. In melonDS (DSi
+mode; it matched the DSi's W-buffer depth almost exactly in the mark probe):
+
+| Coverage (worst / average) | eq | 1/256 | 1/128 | 1/64 | 2px |
+|---|---|---|---|---|---|
+| 90 degrees | 100 / 100 | 93 / 99 | 100 | 100 | 100 |
+| 45 | 100 | 100 | 100 | 100 | 100 |
+| 20 | 0 / 96 | 0 / 92 | 0 / 87 | 0 / 94 | 95 / 95 |
+| 10 | 33 / 93 | 50 / 92 | 50 / 93 | 83 / 98 | 50 / 99 |
+| 5 | 0 / 90 | 86 / 89 | 89 / 90 | 94 / 95 | 97 / 98 |
+
+At 20 degrees the far marks (110, 48 and 26 pixels) are 60, 0, 0 by `eq`
+and 0 pulled by a fixed part: one pixel there spans about 13 units of depth.
+`2px`, whose pull grows with that, keeps them whole.
+
+| Bleed onto a surface d in front | eq | 1/256 | 1/128 | 1/64 | 2px |
+|---|---|---|---|---|---|
+| 45 degrees, d 1 / 2 / 4 / 8 | 100 / 100 / 100 / 0 | 91 / 0 / 0 / 0 | 100 / 0 / 0 / 0 | 100 / 100 / 0 / 0 | 100 / 100 / 100 / 0 |
+| 20 degrees, d 1 / 2 / 4 / 8 | 100 / 100 / 0 / 0 | 32 / 0 / 0 / 0 | 65 / 0 / 0 / 0 | 100 / 2 / 0 / 0 | 100 / 100 / 99 / 0 |
+
+None bleed at 16. On a DS and a DSi: not yet run.
