@@ -2573,9 +2573,11 @@ namespace hldata
                 v[0] += player.onGround ? player.touchVelocity[0] : player.touchVelocity[0] / 10;
                 v[1] += player.onGround ? player.touchVelocity[1] : player.touchVelocity[1] / 10;
                 boxLimit(record, v);
-                // The pusher goes at the pace of the box.
-                player.velocity[0] = v[0];
-                player.velocity[1] = v[1];
+                // (The game's CPushable::Move gives the pusher the box's
+                // speed too, but the engine puts back the speed the player's
+                // move ended with once the touches are done: the pusher keeps
+                // their own, stopped by the box's face, and so stops when
+                // they stop pushing.)
             }
 
             // At rest on a floor with nobody at it, there is nothing to work
