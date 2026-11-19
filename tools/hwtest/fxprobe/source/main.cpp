@@ -13,7 +13,8 @@
 //      does each line of the 3D picture move by its own amount, and what is
 //      seen where the picture has moved away from the edge? And again on
 //      DMA 1 while the geometry FIFO is kept fed as the game feeds it (DMA
-//      0 on a DS, NDMA 0 on a DSi): is any line's move late?
+//      0 on a DS, NDMA 0 on a DSi): is any line's move late? Then on DMA 0
+//      (a DS fed by DMA 1), and on a DSi fed in blocks of 16 words, not 112.
 //
 // After the tests, A shows each scene live, B the results again.
 
@@ -297,40 +298,47 @@ namespace
     }
 
     // The geometry FIFO kept fed, as the game feeds it: MTX_IDENTITY four to
-    // a word (no numbers after it, harmless), by DMA 0 in its FIFO mode on a
-    // DS (NEA's display lists), NDMA 0 on a DSi (the world's), started again
-    // each time it ends.
+    // a word (no numbers after it, harmless), in its FIFO mode by a DMA on a
+    // DS (NEA's display lists: channel 0) or NDMA 0 on a DSi (the world's,
+    // in blocks of 112 words), started again each time it ends -- and how
+    // many times it was (2048 words each).
     u32 nops[2048];
     volatile bool feeding = false;
+    int feedChannel = 0; ///< the DMA a DS feeds by
+    int feedBlock = 112; ///< the words a DSi's NDMA moves at a time
+    volatile int feeds = 0;
 
     void feed()
     {
         if (!feeding)
             return;
+        feeds = feeds + 1;
         if (isDSiMode())
         {
             REG_NDMA_SRC(0) = reinterpret_cast<u32>(nops);
             REG_NDMA_DEST(0) = reinterpret_cast<u32>(&GFX_FIFO);
             REG_NDMA_LENGTH(0) = 2048;
-            REG_NDMA_BLENGTH(0) = 112;
+            REG_NDMA_BLENGTH(0) = feedBlock;
             REG_NDMA_CR(0) = NDMA_ENABLE | NDMA_START_FIFO | NDMA_SRC_INC | NDMA_DST_FIX | NDMA_IRQ_REQ;
         }
         else
         {
-            DMA_SRC(0) = reinterpret_cast<u32>(nops);
-            DMA_DEST(0) = reinterpret_cast<u32>(&GFX_FIFO);
-            DMA_CR(0) = DMA_FIFO | DMA_IRQ_REQ | 2048;
+            DMA_SRC(feedChannel) = reinterpret_cast<u32>(nops);
+            DMA_DEST(feedChannel) = reinterpret_cast<u32>(&GFX_FIFO);
+            DMA_CR(feedChannel) = DMA_FIFO | DMA_IRQ_REQ | 2048;
         }
     }
+
+    u32 feedIrq() { return isDSiMode() ? IRQ_NDMA0 : (feedChannel == 0 ? IRQ_DMA0 : IRQ_DMA1); }
 
     void startFeeding()
     {
         for (u32 &word : nops)
             word = 0x15151515;
         DC_FlushRange(nops, sizeof(nops));
-        const u32 irq = isDSiMode() ? IRQ_NDMA0 : IRQ_DMA0;
-        irqSet(irq, feed);
-        irqEnable(irq);
+        irqSet(feedIrq(), feed);
+        irqEnable(feedIrq());
+        feeds = 0;
         feeding = true;
         feed();
     }
@@ -342,9 +350,9 @@ namespace
             while (REG_NDMA_CR(0) & NDMA_ENABLE)
                 ;
         else
-            while (DMA_CR(0) & DMA_ENABLE)
+            while (DMA_CR(feedChannel) & DMA_ENABLE)
                 ;
-        irqDisable(isDSiMode() ? IRQ_NDMA0 : IRQ_DMA0);
+        irqDisable(feedIrq());
     }
 
     bool scrolling = false;
@@ -405,6 +413,28 @@ namespace
         }
     }
 
+    /// The scroll on DMA `scrollOn` while the FIFO is fed (a DS by DMA
+    /// `feedOn`, a DSi in blocks of `block`): the lines, and the 2048 words
+    /// it fed while the picture was caught. (From once the scene is sent: a
+    /// command's word must not come between another and its numbers.)
+    void fedScroll(const char *name, int scrollOn, int feedOn, int block)
+    {
+        stopScroll();
+        scrollChannel = scrollOn;
+        sceneScroll(false);
+        feedChannel = feedOn;
+        feedBlock = block;
+        startFeeding();
+        const bool ok = capture(true);
+        stopFeeding();
+        if (ok)
+        {
+            int right, late, other, first;
+            countScroll(right, late, other, first);
+            printf(" %s: %d ok %d late %d off %d\n", name, right, late, other, feeds);
+        }
+    }
+
     void testScroll()
     {
         printf("3 LINE SCROLL BY HBLANK DMA\n");
@@ -428,14 +458,14 @@ namespace
             countScroll(right, late, other, first);
             printf(" dma1: %d ok %d late %d off\n", right, late, other);
         }
-        startFeeding();
-        ok = capture(true);
-        stopFeeding();
-        if (ok)
-        {
-            countScroll(right, late, other, first);
-            printf(" fed: %d ok %d late %d off\n", right, late, other);
-        }
+        // Fed as the game feeds it; then the scroll on DMA 0 (a DS fed by
+        // DMA 1); then, on a DSi, fed in blocks of 16 words.
+        fedScroll("fed", 1, 0, 112);
+        fedScroll("fd0", 0, 1, 112);
+        if (isDSiMode())
+            fedScroll("f16", 1, 0, 16);
+        else
+            printf(" f16: a DSi's only\n");
         stopScroll();
         scrollChannel = 0;
         sceneScroll(true);

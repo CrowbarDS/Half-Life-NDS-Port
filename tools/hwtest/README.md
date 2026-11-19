@@ -269,7 +269,12 @@ runs the tests again.
    (`fed`) as the game feeds it: DMA 0 in its FIFO mode on a DS (NEA's
    display lists), NDMA 0 on a DSi (the world's). The underwater wobble
    (`source/render/WaterWobble`) is on DMA 1, and on a DSi only until the
-   `fed` line on a DS says it can be on one.
+   `fed` line on a DS says it can be on one. Two ways round it after: the
+   scroll on DMA 0 (`fd0`; a DS fed by DMA 1, as NEA would have to be), and
+   on a DSi the feed in blocks of 16 words, not 112 (`f16`). The number at
+   the end of each fed line is how many times 2048 words were fed while the
+   picture was caught (what short blocks cost). The title scrolls off the
+   top of the screen to make room.
 
 In melonDS (DS and DSi modes alike; the emulator is not the reference):
 
@@ -285,6 +290,8 @@ In melonDS (DS and DSi modes alike; the emulator is not the reference):
 | Per-line scroll | 190 lines right, 0 late (the 2 others: the bar's last rows) |
 | ... on DMA 1 | the same |
 | ... on DMA 1, the FIFO fed | DS: 19 right, 6 late, 167 other (DMA 0 holds it back); DSi: 190 right |
+| ... on DMA 0, fed by DMA 1 (DS) or NDMA 0 (DSi) | 190 right on both; 8 to 10 times 2048 words fed |
+| ... on DMA 1, a DSi fed 16 words at a time | 190 right; 8 times |
 | Scrolled right | no wrap: the backdrop shows |
 
 On the owner's DSi (2026-11-19): every line and sprite figure as in melonDS
