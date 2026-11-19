@@ -32,10 +32,12 @@ def main():
         print('[*] no Teak toolchain in %s: building without DSP audio' % EXT)
 
     lines = ['// Made by tools/dspsim/embed.py from build/teak.tlf: do not edit.',
-             '#include <cstdint>', '',
-             '// (Four-byte aligned: the loader reads its headers as words.)',
+             '#include <cstdint>', '#include <nds/ndstypes.h>', '',
+             '// (Four-byte aligned: the loader reads its headers as words. In the',
+             '// DSi\'s memory alone, TWL_DATA: a DS has no DSP to run it. Its size',
+             '// in the program\'s own, which says whether there is one, on either.)',
              'extern const std::uint32_t hlDspProgramBytes = %d;' % len(data),
-             'alignas(4) extern const std::uint8_t hlDspProgram[] = {']
+             'alignas(4) extern const std::uint8_t hlDspProgram[] TWL_DATA = {']
     for at in range(0, len(data), 16):
         lines.append('    ' + ' '.join('0x%02x,' % b for b in data[at:at + 16]))
     if not data:

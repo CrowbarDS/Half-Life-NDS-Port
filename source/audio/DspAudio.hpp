@@ -71,6 +71,10 @@ namespace hlrt
         int heard() const { return heard_; }
 
     private:
+        // (The DSi's alone, in its memory: DspAudio.cpp.)
+        bool startDsi();
+        void roomDsi(int room);
+        void frameDsi();
         bool command(std::uint16_t cmd, std::uint16_t a1, std::uint16_t a2, std::uint16_t &answer);
         void write(const std::uint16_t *words, std::uint16_t ring, std::uint16_t at, int count, int size);
         void feedEcho();

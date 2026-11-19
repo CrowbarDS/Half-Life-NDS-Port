@@ -32,11 +32,17 @@ namespace hlrt
     {
         using namespace hldata;
 
-        /// What is passed on to the DSP in one go.
-        std::uint16_t scratch[512];
+        /// What is passed on to the DSP in one go (in the DSi's memory alone).
+        TWL_BSS std::uint16_t scratch[512];
     } // namespace
 
-    bool DspAudio::command(std::uint16_t cmd, std::uint16_t a1, std::uint16_t a2, std::uint16_t &answer)
+    // What only a DSi with its DSP up does is in the DSi's memory alone
+    // (HL_TWL_CODE): a DS has none of it in its own, nor of the DSP's
+    // program. The calls a DS makes too (available, start, stop, room,
+    // frame) stop at their checks before any of it.
+
+    HL_TWL_CODE __attribute__((flatten)) bool DspAudio::command(std::uint16_t cmd, std::uint16_t a1,
+                                                                std::uint16_t a2, std::uint16_t &answer)
     {
         // Never for ever: a DSP that has stopped answering is done without.
         auto wait = [](bool (*ready)(int), int id)
@@ -88,6 +94,11 @@ namespace hlrt
             return true;
         if (!available())
             return false;
+        return startDsi();
+    }
+
+    HL_TWL_CODE bool DspAudio::startDsi()
+    {
         if (dspExecuteDefaultTLF(hlDspProgram) != DSP_EXEC_OK)
             return false;
         std::uint16_t answer = 0;
@@ -112,8 +123,8 @@ namespace hlrt
         return true;
     }
 
-    void DspAudio::write(const std::uint16_t *words, std::uint16_t ring, std::uint16_t at, int count,
-                         int size)
+    HL_TWL_CODE void DspAudio::write(const std::uint16_t *words, std::uint16_t ring, std::uint16_t at, int count,
+                                     int size)
     {
         // Round the end of the ring, in two pieces if it must be.
         const int first = count < size - at ? count : size - at;
@@ -124,8 +135,14 @@ namespace hlrt
 
     void DspAudio::room(int which)
     {
-        if (!up_ || which == room_)
-            return;
+        if (up_ && which != room_)
+            roomDsi(which);
+    }
+
+    // (Flattened: the room's numbers, a shared header's inline, made here
+    // and not as a function of the program's own.)
+    HL_TWL_CODE __attribute__((flatten)) void DspAudio::roomDsi(int which)
+    {
         room_ = which;
         // Its numbers written where the DSP keeps them, then taken (which
         // empties its lines: a room changed starts quiet).
@@ -137,7 +154,7 @@ namespace hlrt
         up_ = command(HL_DSP_CMD_ROOM, 0, 0, answer);
     }
 
-    HL_ARM void DspAudio::feedEcho()
+    HL_TWL_CODE HL_ARM void DspAudio::feedEcho()
     {
         const volatile std::int16_t *ring = arm7Audio.send();
         if (ring == nullptr)
@@ -186,8 +203,12 @@ namespace hlrt
 
     void DspAudio::frame()
     {
-        if (!up_)
-            return;
+        if (up_)
+            frameDsi();
+    }
+
+    HL_TWL_CODE void DspAudio::frameDsi()
+    {
         feedEcho();
         // Twice a second: how it is getting on.
         if (up_ && ++statusDue_ >= 30)

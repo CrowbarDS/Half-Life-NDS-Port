@@ -1762,7 +1762,11 @@ minute, nothing is drawn or heard).
 
 The DSP program needs the Teak LLVM toolchain and libteak in `$BLOCKSDSEXT`
 (`llvm-teak/`, `libteak/`); `./make.sh` builds it and links it into the ROM,
-and without them builds a ROM with no DSP audio. `tools/dspsim/run.sh` runs it
+and without them builds a ROM with no DSP audio. It is in the ROM's DSi part
+(`TWL_DATA`), with the code that drives it (`source/audio/DspAudio.cpp`'s
+`HL_TWL_CODE`): a DSi loads them, a DS never does, and has 8.5 KB more of its
+map heap. A DS stops at `DspAudio::available()` or the DSP not being up,
+before any of it. `tools/dspsim/run.sh` runs it
 against its model (it needs teakra, built: see the script), and says how much
 of the processor it uses; it is one of the test suites, skipped where teakra
 is not built.
