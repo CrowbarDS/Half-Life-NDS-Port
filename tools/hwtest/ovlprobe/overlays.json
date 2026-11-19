@@ -1,0 +1,8 @@
+{
+  "regions": [
+    {"name": "A", "overlays": [
+      {"name": "one", "id": "One", "mode": "full", "files": ["*/source/one.cpp.o"]},
+      {"name": "two", "id": "Two", "mode": "full", "files": ["*/source/two.arm.cpp.o"], "sizer": true}
+    ]}
+  ]
+}

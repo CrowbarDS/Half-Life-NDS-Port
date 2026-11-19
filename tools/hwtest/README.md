@@ -346,3 +346,44 @@ and 0 pulled by a fixed part: one pixel there spans about 13 units of depth.
 None bleed at 16. On the owner's DSi (DSi mode, 2026-11-19): every figure as
 in melonDS within a point (worst at 5 degrees, 1/256: 87; 1/128: 90; 1/64:
 95). On a DS: not yet run.
+
+## ovlprobe/ — overlays: code that shares a region, read when it is wanted
+
+The overlays of `tools/ovl.py` and `source/Overlay.*`, on their own: two
+overlays in one region (`overlays.json`), `one` in Thumb and `two` in ARM,
+each with code, constants, data and zeroed data. The linker script is the
+installed BlocksDS one with the region put in (`ovl.py ld`), the link is
+checked (`ovl.py check`), the overlays packed into NitroFS (`ovl.py pack`),
+and the ROM checked to hold none of them in its ARM9 image (`ovl.py
+romcheck`). `make`, then run `hl_ovlprobe.nds`; `./negative.sh` builds what
+must be refused.
+
+On the top screen, each a PASS or a FAIL:
+
+- **pack**: the pack is found (`nitro:/ovl/arm9.ovl`) and is the program's.
+- **one, two**: each answers as itself once loaded.
+- **swaps**: 1000 loads, one then the other, every answer right. A stale
+  instruction cache answers as the overlay before.
+- **zeroed**: each load's zeroed data starts at 0, and its data as built.
+- **heap**: no heap taken by a load.
+- **irq**: a timer's interrupt went on through the loads.
+- **twl** (DSi): DSi-only code calls into an overlay through its gate.
+- **loads**: how fast a load reads (1000 of the larger overlay's size).
+
+Then A calls `two` through its gate with `one` loaded: it must stop on
+`HALT: A gate found its overlay not loaded: two`.
+
+| Where | pack | one, two | swaps | zeroed | heap | irq | twl | loads | A |
+|---|---|---|---|---|---|---|---|---|---|
+| melonDS, DS mode (2026-11-19) | PASS | PASS | 0 wrong | PASS | 0 bytes | 352 ticks | — | 6.0 MB/s | halts, names `two` |
+| melonDS, DSi mode | PASS | PASS | 0 wrong | PASS | 0 bytes | 321 ticks | PASS | 6.6 MB/s | halts, names `two` |
+| melonDS, DS mode, BlocksDS v1.25.0's script | PASS | PASS | 0 wrong | PASS | 0 bytes | 351 ticks | — | 6.1 MB/s | |
+| DSi, TWiLight Menu++, from SD (2026-11-19) | PASS | PASS | 0 wrong | PASS | 0 bytes | 921 ticks | PASS | 2.3 MB/s | halts, names `two` |
+
+`negative.sh` (2026-11-19): a call into an overlay outside a gate (R1), a
+static constructor in an overlay (R0), and an overlay larger than its
+region's sizer (the link's assertion) are each refused. No DS with a
+flashcart was at hand: the DS's card read is checked in melonDS only.
+
+On the console the loads read at 2.3 MB/s (928 ms for 1000 loads of 2.1 KB):
+a 32 KB overlay is about 14 ms, a phase change's work, not a frame's. The 3DS in TWL mode: not yet run.
