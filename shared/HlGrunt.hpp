@@ -739,7 +739,7 @@ namespace hldata
                 int group = kHitBody;
                 const std::int16_t hit = aiTraceLine(c, gun, aim, 2048, end, &group);
                 if (n == 0)
-                    effectAdd(c.a, kEffectTracer, gun, end, 0, 60);
+                    tracerAdd(c.a, gun, end);
                 if (hit == kAiNone)
                 {
                     const fx far[3] = {gun[0] + aim[0] * 2048, gun[1] + aim[1] * 2048, gun[2] + aim[2] * 2048};

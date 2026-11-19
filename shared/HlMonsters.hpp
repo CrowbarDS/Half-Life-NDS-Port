@@ -2753,7 +2753,7 @@ namespace hldata
             fx at[3];
             for (int i = 0; i < 3; ++i)
                 at[i] = eye[i] + static_cast<fx>((static_cast<std::int64_t>(end[i] - eye[i]) * reach) >> kFractionShift);
-            effectAdd(a, kEffectTracer, eye, at, 0, 60);
+            tracerAdd(a, eye, at);
             effectAdd(a, kEffectMuzzle, eye, nullptr, 0, 50);
             // (What misses marks the wall behind.)
             if (reach == shot.fraction && shot.fraction < kFractionOne)
@@ -4617,7 +4617,7 @@ namespace hldata
             }
             else
             {
-                effectAdd(a, kEffectTracer, barrel, end, 0, 60);
+                tracerAdd(a, barrel, end);
             }
             if (atPlayer)
             {

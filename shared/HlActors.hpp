@@ -1304,6 +1304,17 @@ namespace hldata
         glow.colour = colour;
     }
 
+    /// A round's tracer (kEffectTracer) from `from` to `to`: seen for as long
+    /// as the game's takes to fly it, at its 6000 units a second -- and for
+    /// a frame or two at least, as the game draws one in the frame it is
+    /// made (one shorter flies over that, a little slower).
+    inline void tracerAdd(ActorWorld &a, const fx *from, const fx *to)
+    {
+        const fx d[3] = {to[0] - from[0], to[1] - from[1], to[2] - from[2]};
+        const int ms = fxToInt(fxLength(d)) / 6;
+        effectAdd(a, kEffectTracer, from, to, 0, ms < 60 ? 60 : (ms > 2000 ? 2000 : ms));
+    }
+
     /// One step of the sparks' chance: their own, so that nothing of the
     /// fight's (ActorWorld::seed is read, not moved on) is taken by them.
     inline std::uint32_t sparkHash(std::uint32_t x)

@@ -1501,9 +1501,52 @@ namespace hlrt
             }
             break;
         case kEffectTracer:
-            if (const SpriteRef *ref = sprite(CommonSprite::Beam, 20, RGB15(31, 28, 16)))
-                beam(*ref, 0, effect.a, effect.b, 20);
+        {
+            // A line a pixel wide (a triangle with two corners the same).
+            const fx d[3] = {effect.b[0] - effect.a[0], effect.b[1] - effect.a[1], effect.b[2] - effect.a[2]};
+            const int length = fxToInt(fxLength(d));
+            GFX_TEX_FORMAT = 0;
+            if (length < 64)
+            {
+                // Short: a spark thrown off where a round struck, in the
+                // sparks' colour, fading.
+                look(left, freshId(), kSparkColour);
+                GFX_BEGIN = GL_TRIANGLES;
+                corner(effect.a);
+                corner(effect.b);
+                corner(effect.b);
+                break;
+            }
+            // The game's tracer (R_TracerEffect): from 20 to 39 units out,
+            // flying at 6000 units a second, a streak ahead of it of 0.8 of a
+            // tenth of a second of its speed (480 units; less at its end),
+            // in (102, 102, 51) added -- here its hue, at 0.4 of solid.
+            // (Its flight's time: the game's, or -- one seen longer than it
+            // takes to fly, tracerAdd -- that, spread over its moment.)
+            const int life = length / 6;
+            const int gone = life >= effect.wholeMs ? effect.wholeMs - effect.leftMs
+                                                    : (effect.wholeMs - effect.leftMs) * life / effect.wholeMs;
+            const int out = 20 + (n * 7) % 20 + gone * 6;
+            const int flying = life - gone; // ms left
+            if (out >= length || flying <= 0)
+                break;
+            int ahead = out + (flying < 100 ? flying : 100) * 24 / 5;
+            ahead = ahead > length ? length : ahead;
+            // (How far along, of 4096: one divide each, in 32 bits.)
+            const int along0 = out * 4096 / length, along1 = ahead * 4096 / length;
+            fx from[3], to[3];
+            for (int k = 0; k < 3; ++k)
+            {
+                from[k] = effect.a[k] + static_cast<fx>((static_cast<std::int64_t>(d[k]) * along0) >> 12);
+                to[k] = effect.a[k] + static_cast<fx>((static_cast<std::int64_t>(d[k]) * along1) >> 12);
+            }
+            look(12, freshId(), RGB15(31, 31, 16));
+            GFX_BEGIN = GL_TRIANGLES;
+            corner(from);
+            corner(to);
+            corner(to);
             break;
+        }
         case kEffectBeam:
             // The gauss's and the egon's: in their colours, fading out.
             if (const SpriteRef *ref = sprite(CommonSprite::Beam, left, effect.colour))

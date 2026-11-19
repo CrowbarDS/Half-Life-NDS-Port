@@ -695,7 +695,7 @@ namespace hldata
             fx end[3];
             int group = kHitBody;
             const std::int16_t hit = aiTraceLine(c, gun, aim, 2048, end, &group);
-            effectAdd(c.a, kEffectTracer, gun, end, 0, 60);
+            tracerAdd(c.a, gun, end);
             const fx flash[3] = {gun[0] + dir[0] * 16, gun[1] + dir[1] * 16, gun[2] + dir[2] * 16};
             effectAdd(c.a, kEffectMuzzle, flash, nullptr, 0, 50);
             {
@@ -1241,7 +1241,7 @@ namespace hldata
             fx end[3];
             int group = kHitBody;
             const std::int16_t hit = aiTraceLine(c, gun, aim, 8192, end, &group);
-            effectAdd(c.a, kEffectTracer, gun, end, 0, 60);
+            tracerAdd(c.a, gun, end);
             effectAdd(c.a, kEffectMuzzle, gun, nullptr, 0, 50);
             if (c.w.heard != nullptr)
                 c.w.heard->add(CommonSound::TurretFire, c.me.pos, 127, 3000);

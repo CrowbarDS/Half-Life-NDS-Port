@@ -487,6 +487,13 @@ Milestone 11, "levels of detail".
   is worked out the first time they are seen, to the first wall in it,
   which stops them where the game's bounce off. The drawing is in the
   DSi's own memory; a DS makes none (the flash of the spark is on both).
+- A round's tracer is a line a pixel wide too, on both consoles, as the
+  game's R_TracerEffect: from 20 to 39 units out of the gun, flying at
+  6000 units a second, a streak ahead of it of 0.8 of a tenth of a second
+  of its speed (480 units, less at its end), in (102, 102, 51) added --
+  here its hue at 0.4 of solid; seen for as long as it takes to fly
+  (`tracerAdd`). The two short ones thrown off where a round strikes are
+  sparks: a line in the sparks' colour, fading.
 - What the maps show and shake, from their own entities
   (`shared/HlEffects.hpp`): sprites and glows (`env_sprite`, `env_glow`; a
   glow, render mode 3, by the engine's rule (`glowFalloff`, HlSprite.hpp):
