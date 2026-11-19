@@ -207,6 +207,8 @@ int main(int argc, char **argv)
         }
 
         // What the player's last move ran into: the box's shove, this frame.
+        // (The real game shoves it in that move's touch, and moves it in the
+        // physics after: the same place between two moves.)
         std::vector<fx> before;
         for (int r : boxes)
         {
@@ -252,7 +254,8 @@ int main(int argc, char **argv)
             const LogicRecord &record = g.view.logic[boxes[n]];
             if (touched != record.brush)
                 continue;
-            std::fprintf(out, "touch,%d,%d,%.4f,%s,player,1,%s,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", f, f, t,
+            // (Filed under the move that made it, as the real game's are.)
+            std::fprintf(out, "touch,%d,%d,%.4f,%s,player,1,%s,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", f - 1, f - 1, t,
                          names[record.brush].c_str(),
                          useHeld ? "buttons" : !touchedOnGround && g.player.waterLevel == 0 ? "air" : "ok", units(touchV[0]), units(touchV[1]),
                          units(before[2 * n]), units(before[2 * n + 1]), units(g.states[boxes[n]].travel[0]),

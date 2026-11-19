@@ -8,13 +8,11 @@ reads <dir>/<name>_pc.csv (tools/ref/diag.sh, the real game) and
 much, and writes the two side by side, frame by frame, to <dir>/<name>_cmp.csv.
 
 Frames are the script's (both sides are given the same input each frame, at
-the same sixtieth of a second). Where each side's frame ends:
-  - the player: its "pl" row of the frame (after its move);
-  - a box: the real game moves its boxes after the player, so a box where the
-    real game's frame N left it is its "box" row of frame N+1 (logged before
-    that frame's physics); the port moves them first, so it is its row of
-    frame N. (Which a log is, its "#diag pc|port" line says: two of the same
-    kind can be held against each other too.) Box speeds are worked out from where they went.
+the same sixtieth of a second). Each side's rows of frame N are taken as they
+are: the player after its move N; a box after the move that followed move
+N-1 -- the real game logs its boxes before frame N's physics, which moved
+them on from move N-1's touch, and the port after its logicTick N, which
+does the same. Box speeds are worked out from where they went.
 """
 import argparse
 import csv
@@ -118,16 +116,13 @@ def main():
             print(f'  {key:<14}same')
 
     box_pc, box_ds = boxes_per_frame(pc.get('box', [])), boxes_per_frame(ds.get('box', []))
-    # (Each log's box rows as its own kind of log has them: see the top.)
-    lag_pc = 1 if pc['_who'] == 'pc' else 0
-    lag_ds = 1 if ds['_who'] == 'pc' else 0
     moved = []
     for bid in sorted(set(box_pc) & set(box_ds)):
         bp, bd = box_pc[bid], box_ds[bid]
         series = {}
         for fr in frames:
-            if fr + lag_pc in bp and fr + lag_ds in bd:
-                series[fr] = (bp[fr + lag_pc], bd[fr + lag_ds])
+            if fr in bp and fr in bd:
+                series[fr] = (bp[fr], bd[fr])
         if not series:
             continue
         start_pc, start_ds = series[min(series)]
