@@ -88,7 +88,8 @@ namespace hlds
         std::vector<Job> jobs;
         for (std::size_t t = 0; t < bsp.textures.size(); ++t)
         {
-            if (plan.sizes[t].width == 0 && plan.alphaSizes[t].width == 0)
+            const bool wantsLight = t < plan.lightSizes.size() && plan.lightSizes[t].width != 0;
+            if (plan.sizes[t].width == 0 && plan.alphaSizes[t].width == 0 && !wantsLight)
                 continue;
             const BspTexture &tex = bsp.textures[t];
 
@@ -113,11 +114,14 @@ namespace hlds
             const bool keyed = !tex.name.empty() && tex.name[0] == '{';
             // Each form the plan asks for. In the opaque form a '{' texture's
             // index 255 is just a colour, as it is on a wall in the game; in
-            // the A3I5 form it is a hole.
-            for (int form = 0; form < 2; ++form)
+            // the A3I5 form it is a hole; in the light form (an additive
+            // brush's) it is a colour again, and brightness is alpha.
+            for (int form = 0; form < 3; ++form)
             {
-                const bool a3i5 = form == 1;
-                const TextureSize size = a3i5 ? plan.alphaSizes[t] : plan.sizes[t];
+                const bool a3i5 = form != 0;
+                const bool light = form == 2;
+                const TextureSize size = light ? (wantsLight ? plan.lightSizes[t] : TextureSize{})
+                                         : a3i5 ? plan.alphaSizes[t] : plan.sizes[t];
                 if (size.width == 0)
                     continue;
                 const int colours = a3i5 ? hldata::kA3I5Colours : plan.paletteColours[t];
@@ -133,7 +137,7 @@ namespace hlds
                                                   size.width,
                                                   size.height,
                                                   static_cast<std::uint32_t>(colours),
-                                                  a3i5 ? 1u : 0u,
+                                                  static_cast<std::uint32_t>(form),
                                                   encoder.version()};
                 hash ^= hldata::crc32(reinterpret_cast<const std::uint8_t *>(settings),
                                       sizeof(settings)) *
@@ -141,7 +145,7 @@ namespace hlds
 
                 char fileName[40];
                 hldata::textureFileName(tex.name.c_str(), size.width, size.height, a3i5,
-                                        fileName);
+                                        fileName, light);
                 const std::filesystem::path path = texDir / fileName;
 
                 std::vector<std::uint8_t> existing;
@@ -158,12 +162,14 @@ namespace hlds
                 Job job;
                 job.name = tex.name;
                 job.path = path;
-                job.image = resample(toRgba(source, a3i5), size.width, size.height, a3i5);
+                job.image = resample(toRgba(source, a3i5 && !light), size.width, size.height, a3i5);
                 brighten(job.image);
+                if (light)
+                    lightToAlpha(job.image);
                 job.colours = colours;
                 job.format = a3i5 ? TextureFormat::A3I5 : TextureFormat::Tex4x4;
                 job.flags = (keyed ? hldata::kTextureColourKey : 0u) |
-                            (a3i5 ? hldata::kTextureA3I5 : 0u);
+                            (a3i5 ? hldata::kTextureA3I5 : 0u) | (light ? hldata::kTextureLight : 0u);
                 job.hash = hash;
                 jobs.push_back(std::move(job));
             }

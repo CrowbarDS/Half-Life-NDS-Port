@@ -238,6 +238,8 @@ namespace
               "the longest name fits, with the A3I5 mark");
         hldata::textureFileName("{grate1", 64, 128, true, name);
         check(std::string(name) == "{grate1_64x128a.htx", "the A3I5 form has its own file");
+        hldata::textureFileName("c1a3yellow", 64, 64, true, name, true);
+        check(std::string(name) == "c1a3yellow_64x64l.htx", "and the light form another");
     }
 
     void testBudget()

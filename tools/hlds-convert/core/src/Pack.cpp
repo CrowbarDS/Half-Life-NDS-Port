@@ -271,7 +271,8 @@ namespace hlds
                 const hldata::TextureRef &ref = view.textures[i];
                 char name[40];
                 hldata::textureFileName(ref.name, ref.width, ref.height,
-                                        (ref.flags & hldata::kTextureA3I5) != 0, name);
+                                        (ref.flags & hldata::kTextureA3I5) != 0, name,
+                                        (ref.flags & hldata::kTextureLight) != 0);
                 // (Never compressed: a texture that streams is read in
                 // during play, straight into where it goes.)
                 packing.add(stage / "tex" / name, std::string("tex/") + name, false);
@@ -301,7 +302,8 @@ namespace hlds
                 {
                     char name[40];
                     hldata::textureFileName(textures[i].name, textures[i].width, textures[i].height,
-                                            (textures[i].flags & hldata::kTextureA3I5) != 0, name);
+                                            (textures[i].flags & hldata::kTextureA3I5) != 0, name,
+                                            (textures[i].flags & hldata::kTextureLight) != 0);
                     const auto found = colours.find(std::string("tex/") + name);
                     textures[i].paletteColours = found != colours.end() ? found->second : 0;
                 }

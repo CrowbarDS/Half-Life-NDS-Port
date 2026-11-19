@@ -102,6 +102,25 @@ namespace hlds
         return out;
     }
 
+    void lightToAlpha(RgbaImage &image)
+    {
+        for (std::size_t i = 0; i + 3 < image.rgba.size(); i += 4)
+        {
+            std::uint8_t *p = &image.rgba[i];
+            const int most = p[3] == 0 ? 0 : std::max({p[0], p[1], p[2]});
+            if (most == 0)
+            {
+                p[0] = p[1] = p[2] = p[3] = 0;
+                continue;
+            }
+            for (int c = 0; c < 3; ++c)
+                p[c] = static_cast<std::uint8_t>((p[c] * 255 + most / 2) / most);
+            // (Under a texel that was partly there -- an edge made smaller --
+            // the share of it that was.)
+            p[3] = static_cast<std::uint8_t>((most * p[3] + 127) / 255);
+        }
+    }
+
     bool writePng(const std::filesystem::path &path, const RgbaImage &image, std::string &error)
     {
         std::vector<std::uint8_t> file = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};

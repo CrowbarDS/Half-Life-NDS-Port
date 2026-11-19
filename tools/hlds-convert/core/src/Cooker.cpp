@@ -593,18 +593,25 @@ namespace hlds
         const std::vector<const BrushInfo *> brushOwner = brushOfModel(bsp, brushes);
 
         // --- Textures: only the ones a drawn face names, in the form it
-        // wears them. A '{' texture can be in the table twice.
-        std::map<std::tuple<int, bool, bool>, int> textureRemap;
-        auto sizeOf = [&](int bspTexture, bool a3i5)
+        // wears them (kFormOpaque, kFormHoles, kFormLight). A '{' texture can
+        // be in the table twice.
+        constexpr int kFormOpaque = 0, kFormHoles = 1, kFormLight = 2;
+        std::map<std::tuple<int, int, bool>, int> textureRemap;
+        auto sizesOf = [&](int form) -> const std::vector<TextureSize> &
         {
-            const std::vector<TextureSize> &sizes = a3i5 ? plan.alphaSizes : plan.sizes;
+            return form == kFormLight ? plan.lightSizes : form == kFormHoles ? plan.alphaSizes : plan.sizes;
+        };
+        auto sizeOf = [&](int bspTexture, int form)
+        {
+            const std::vector<TextureSize> &sizes = sizesOf(form);
             const BspTexture &src = bsp.textures[bspTexture];
             return sizes.empty() ? defaultTextureSize(src.width, src.height) : sizes[bspTexture];
         };
-        auto addTexture = [&](int bspTexture, bool a3i5)
+        auto addTexture = [&](int bspTexture, int form)
         {
+            const bool a3i5 = form != kFormOpaque;
             const BspTexture &src = bsp.textures[bspTexture];
-            const TextureSize size = sizeOf(bspTexture, a3i5);
+            const TextureSize size = sizeOf(bspTexture, form);
             TextureRef ref{};
             std::strncpy(ref.name, src.name.c_str(), sizeof(ref.name) - 1);
             ref.width = size.width;
@@ -615,6 +622,8 @@ namespace hlds
                 ref.flags |= kTextureColourKey;
             if (a3i5)
                 ref.flags |= kTextureA3I5;
+            if (form == kFormLight)
+                ref.flags |= kTextureLight;
             if (!a3i5 && !plan.streamed.empty() && plan.streamed[bspTexture])
                 ref.flags |= kTextureStreamed;
             // The game's own rule for what is drawn as liquid: the name.
@@ -648,26 +657,26 @@ namespace hlds
         // (A "scroll" texture on a conveyor slides with its belt; the same
         // texture on anything else stays still, as in the game, where the
         // speed is the entity's. So it may be in the table twice.)
-        auto useTexture = [&](int bspTexture, bool a3i5, bool belt)
+        auto useTexture = [&](int bspTexture, int form, bool belt)
         {
             const TextureFamily family = textureFamily(bsp, bspTexture);
             belt = belt && bsp.textures[bspTexture].name.rfind("scroll", 0) == 0;
-            const auto key = std::make_tuple(family.frames[0], a3i5, belt);
+            const auto key = std::make_tuple(family.frames[0], form, belt);
             const auto found = textureRemap.find(key);
             if (found != textureRemap.end())
                 return static_cast<std::uint16_t>(found->second);
-            const std::uint16_t first = addTexture(family.frames[0], a3i5);
+            const std::uint16_t first = addTexture(family.frames[0], form);
             textureRemap[key] = first;
             if (belt)
                 level.textures[first].flags |= kTextureScroll;
             for (std::size_t n = 1; n < family.frames.size(); ++n)
-                addTexture(family.frames[n], a3i5);
+                addTexture(family.frames[n], form);
             level.textures[first].frames = static_cast<std::uint8_t>(family.frames.size());
             if (!family.other.empty())
             {
-                const std::uint16_t other = addTexture(family.other[0], a3i5);
+                const std::uint16_t other = addTexture(family.other[0], form);
                 for (std::size_t n = 1; n < family.other.size(); ++n)
-                    addTexture(family.other[n], a3i5);
+                    addTexture(family.other[n], form);
                 level.textures[first].other = other;
                 level.textures[first].otherFrames = static_cast<std::uint8_t>(family.other.size());
             }
@@ -734,7 +743,7 @@ namespace hlds
             std::vector<MeshFace> meshFaces;
             std::map<std::tuple<int, int, int, int, int, int>, int> keys; // (plane, side, mapping, texture, leaf, lamp) -> key
             std::vector<int> keyPlane, keySide, keyTexture;
-            std::vector<char> keyAlpha;
+            std::vector<char> keyForm;
             for (int f = src.firstFace; f < src.firstFace + src.faceCount; ++f)
             {
                 const BspFace &face = bsp.faces[f];
@@ -744,10 +753,10 @@ namespace hlds
                 const BspTexture &tex = bsp.textures[bspTexture];
                 const bool holes = brush != nullptr && brush->cutsHoles() && !tex.name.empty() &&
                                    tex.name[0] == '{';
-                const bool planned =
-                    flatColour ||
-                    (holes ? plan.alphaSizes : plan.sizes).empty() ||
-                    (holes ? plan.alphaSizes : plan.sizes)[bspTexture].width != 0;
+                const int form = brush != nullptr && brush->asLight() ? kFormLight
+                                 : holes                              ? kFormHoles
+                                                                      : kFormOpaque;
+                const bool planned = flatColour || sizesOf(form).empty() || sizesOf(form)[bspTexture].width != 0;
                 if (!modelDrawn || tex.missing || isUndrawnTexture(tex.name) || !planned ||
                     (m != 0 && isWarpedTexture(tex.name) && !shownAsLiquidTop(bsp, src, face)))
                 {
@@ -779,7 +788,7 @@ namespace hlds
                     keyPlane.push_back(face.plane);
                     keySide.push_back(face.side != 0 ? 1 : 0);
                     keyTexture.push_back(bspTexture);
-                    keyAlpha.push_back(holes ? 1 : 0);
+                    keyForm.push_back(static_cast<char>(form));
                 }
                 mesh.key = found->second;
                 const BspPlane &plane = bsp.planes[face.plane];
@@ -861,17 +870,17 @@ namespace hlds
             {
                 const int key = meshFaces[group[0]].key;
                 const int bspTexture = keyTexture[key];
-                const bool a3i5 = keyAlpha[key] != 0;
+                const int form = keyForm[key];
                 const BspTexture &tex = bsp.textures[bspTexture];
                 const std::uint16_t texture =
                     flatColour ? kNoTexture
-                               : useTexture(bspTexture, a3i5, brush != nullptr && brush->className == "func_conveyor");
+                               : useTexture(bspTexture, form, brush != nullptr && brush->className == "func_conveyor");
 
                 std::vector<const MeshFace *> members;
                 for (int index : group)
                     members.push_back(&meshFaces[index]);
                 BuiltSurface built = buildGroupSurface(
-                    members, sizeOf(bspTexture, a3i5), tex.width, tex.height);
+                    members, sizeOf(bspTexture, form), tex.width, tex.height);
                 // Light that changes reaches this surface: each of its
                 // vertices gets a colour word of its own, and the level is
                 // told what each changing light adds to it (LightPatch).

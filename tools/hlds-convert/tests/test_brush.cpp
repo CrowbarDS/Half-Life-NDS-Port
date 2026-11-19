@@ -17,6 +17,7 @@
 #include "hlds/Cooker.hpp"
 #include "hlds/GxStream.hpp"
 #include "hlds/TextureCook.hpp"
+#include "hlds/TextureImage.hpp"
 
 namespace fs = std::filesystem;
 using namespace hlds;
@@ -341,6 +342,76 @@ namespace
         fs::remove_all(dir);
     }
 
+    /// The game ADDS a brush in render mode 3 or 5 to what is behind it:
+    /// its texture is cooked as light (brightness is alpha), and it is
+    /// see-through at any amount -- never a cutout, whose black would show.
+    void testAdditiveBrushes()
+    {
+        BoxRoom room;
+        room.brushes = {
+            /* 1 */ box("func_illusionary", "\"rendermode\" \"5\"\n\"renderamt\" \"255\"\n", "beam", -40),
+            /* 2 */ box("func_wall", "\"rendermode\" \"5\"\n\"renderamt\" \"128\"\n", "beam", -16),
+            /* 3 */ box("func_wall", "\"rendermode\" \"2\"\n\"renderamt\" \"255\"\n", "beam", 8),
+        };
+        BspFile bsp;
+        std::string error;
+        check(bsp.parse(buildBoxRoom(room), error), "the additive room parses");
+        std::vector<Entity> ents;
+        parseEntities(bsp.entities, ents, error);
+        const std::vector<BrushInfo> b = analyseBrushes(bsp, ents);
+        check(b.size() == 3, "three brush entities");
+        if (b.size() != 3)
+            return;
+        check(b[0].additive && b[0].asLight() && b[0].renderClass == RenderClass::Blend && b[0].alpha == 31 &&
+                  b[0].fullBright() && !b[0].cutsHoles(),
+              "render mode 5 at full amount: blended light, not a cutout");
+        check(b[1].additive && b[1].renderClass == RenderClass::Blend && b[1].alpha == 16,
+              "render mode 5 at 128: blended at 16");
+        check(!b[2].additive && b[2].renderClass == RenderClass::Cutout, "render mode 2 at full amount: as before");
+
+        int beam = -1;
+        for (std::size_t t = 0; t < bsp.textures.size(); ++t)
+        {
+            if (bsp.textures[t].name == "beam")
+                beam = static_cast<int>(t);
+        }
+        const TextureNeeds needs = textureNeeds(bsp, b, {});
+        check(beam >= 0 && needs.light[beam] && needs.opaque[beam] && !needs.alpha[beam],
+              "the beam texture: light for the additive brushes, opaque for the other");
+        const TexturePlan plan = planTextures(bsp, needs);
+        check(beam >= 0 && plan.lightSizes[beam].width != 0 && plan.alphaSizes[beam].width == 0,
+              "the light form is planned");
+        check(beam >= 0 &&
+                  plan.alphaTexels == static_cast<int>(plan.lightSizes[beam].width) * plan.lightSizes[beam].height,
+              "and counted in the A3I5 budget");
+
+        const Cooked c = cook(room);
+        check(c.ok, "the additive room cooks");
+        if (!c.ok)
+            return;
+        std::uint16_t tex = 0, colour = 0, other = 0;
+        check(firstSurface(c.view, 1, tex, colour) && tex != kNoTexture &&
+                  (c.view.textures[tex].flags & kTextureA3I5) && (c.view.textures[tex].flags & kTextureLight) &&
+                  colour == 0x7FFF,
+              "the additive brush wears the light form, at full brightness");
+        check(firstSurface(c.view, 2, other, colour) && other == tex, "both additive brushes share it");
+        check(firstSurface(c.view, 3, other, colour) && other != tex &&
+                  !(c.view.textures[other].flags & (kTextureA3I5 | kTextureLight)),
+              "the render-mode-2 brush keeps the opaque form");
+
+        // Light into alpha: black is nothing; colour raised to full.
+        RgbaImage image;
+        image.width = 3;
+        image.height = 1;
+        image.rgba = {255, 128, 0, 255, 100, 50, 0, 255, 0, 0, 0, 255};
+        lightToAlpha(image);
+        check(image.rgba[0] == 255 && image.rgba[1] == 128 && image.rgba[2] == 0 && image.rgba[3] == 255,
+              "a full-bright texel stays itself, opaque");
+        check(image.rgba[4] == 255 && image.rgba[5] == 128 && image.rgba[6] == 0 && image.rgba[7] == 100,
+              "a dim one: the same colour at full, its brightness as alpha");
+        check(image.rgba[11] == 0, "black: not there at all");
+    }
+
     void testReaderRefusesBadBrushes()
     {
         BspFile bsp;
@@ -377,6 +448,7 @@ int main()
     testClassification();
     testCookedBrushes();
     testTexturePlanAndFiles();
+    testAdditiveBrushes();
     testReaderRefusesBadBrushes();
     if (g_failures == 0)
         std::printf("test_brush: ok\n");

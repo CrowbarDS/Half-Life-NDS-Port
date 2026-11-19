@@ -196,7 +196,8 @@ namespace
         {
             char name[40];
             textureFileName(view.textures[i].name, view.textures[i].width, view.textures[i].height,
-                            (view.textures[i].flags & kTextureA3I5) != 0, name);
+                            (view.textures[i].flags & kTextureA3I5) != 0, name,
+                            (view.textures[i].flags & kTextureLight) != 0);
             all = all && (!fs::exists(stage / "tex" / name) || has(std::string("tex/") + name));
         }
         // (The weapons the map has not, and their sounds, are in the common

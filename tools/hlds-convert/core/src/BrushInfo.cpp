@@ -138,9 +138,12 @@ namespace hlds
                 break;
             }
             default: // 2 texture, 3 glow, 5 additive
+                // (Added light is see-through at any amount: its texture's
+                // alpha is its brightness.)
+                info.additive = mode == 3 || mode == 5;
                 if (alpha == 0)
                     info.renderClass = RenderClass::Hidden;
-                else if (alpha >= 31)
+                else if (alpha >= 31 && !info.additive)
                     info.renderClass = RenderClass::Cutout; // nothing left to blend
                 else
                 {
@@ -155,7 +158,8 @@ namespace hlds
             if (info.renderClass == RenderClass::Hidden && !entity.value("targetname").empty() &&
                 std::find(shown.begin(), shown.end(), std::string(entity.value("targetname"))) != shown.end())
             {
-                info.renderClass = RenderClass::Opaque;
+                // (Added light stays see-through: its texture says how much.)
+                info.renderClass = info.additive ? RenderClass::Blend : RenderClass::Opaque;
                 info.alpha = 31;
                 info.startsUnseen = true;
             }

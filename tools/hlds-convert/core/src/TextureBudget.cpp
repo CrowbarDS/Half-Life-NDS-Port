@@ -1,4 +1,5 @@
 #include "hlds/TextureBudget.hpp"
+#include "hlds/TextureImage.hpp"
 
 #include "hlds/TextureFamily.hpp"
 
@@ -125,21 +126,41 @@ namespace hlds
         for (std::size_t t = 0; t < bsp.textures.size(); ++t)
         {
             const BspTexture &tex = bsp.textures[t];
-            if (tex.missing || tex.name.empty() || tex.name[0] != '{')
+            if (tex.missing || tex.name.empty())
                 continue;
             IndexedImage wadImage;
             std::string ignored;
             const std::vector<std::uint8_t> *pixels = nullptr;
+            const std::vector<std::uint8_t> *palette = nullptr;
             if (tex.embedded)
+            {
                 pixels = &tex.pixels;
+                palette = &tex.palette;
+            }
             else if (wads.read(tex.name, wadImage, ignored))
+            {
                 pixels = &wadImage.pixels;
+                palette = &wadImage.palette;
+            }
             if (pixels == nullptr || pixels->empty())
                 continue; // not found: reported as missing elsewhere
-            hidden[t] = std::all_of(pixels->begin(), pixels->end(),
-                                    [](std::uint8_t p) { return p == 255; })
-                            ? 1
-                            : 0;
+            const bool keyed = tex.name[0] == '{';
+            if (keyed && std::all_of(pixels->begin(), pixels->end(), [](std::uint8_t p) { return p == 255; }))
+            {
+                hidden[t] = kHiddenEverywhere;
+                continue;
+            }
+            // Dark all over: what it shows as added light is nothing (less
+            // than the A3I5 form's faintest alpha).
+            std::uint8_t most = 0;
+            for (const std::uint8_t p : *pixels)
+            {
+                if ((keyed && p == 255) || static_cast<std::size_t>(p) * 3 + 2 >= palette->size())
+                    continue;
+                most = std::max({most, (*palette)[p * 3], (*palette)[p * 3 + 1], (*palette)[p * 3 + 2]});
+            }
+            if (brightened(most) < 16)
+                hidden[t] = kHiddenAsLight;
         }
         return hidden;
     }
@@ -150,8 +171,10 @@ namespace hlds
         TextureNeeds needs;
         needs.opaque.assign(bsp.textures.size(), 0);
         needs.alpha.assign(bsp.textures.size(), 0);
+        needs.light.assign(bsp.textures.size(), 0);
         needs.opaqueArea.assign(bsp.textures.size(), 0.0);
         needs.alphaArea.assign(bsp.textures.size(), 0.0);
+        needs.lightArea.assign(bsp.textures.size(), 0.0);
 
         const std::vector<const BrushInfo *> owner = brushOfModel(bsp, brushes);
         for (std::size_t m = 0; m < bsp.models.size(); ++m)
@@ -168,12 +191,14 @@ namespace hlds
                 const BspFace &face = bsp.faces[f];
                 const int t = wornTexture(bsp, face);
                 const BspTexture &tex = bsp.textures[t];
-                if (tex.missing || isUndrawnTexture(tex.name) || (!hidden.empty() && hidden[t]))
+                const bool light = brush != nullptr && brush->asLight();
+                if (tex.missing || isUndrawnTexture(tex.name) ||
+                    (!hidden.empty() && (hidden[t] == kHiddenEverywhere || (light && hidden[t] == kHiddenAsLight))))
                     continue;
                 const bool holes = brush != nullptr && brush->cutsHoles() && !tex.name.empty() &&
                                    tex.name[0] == '{';
-                (holes ? needs.alpha : needs.opaque)[t] = 1;
-                (holes ? needs.alphaArea : needs.opaqueArea)[t] += faceArea(bsp, face);
+                (light ? needs.light : holes ? needs.alpha : needs.opaque)[t] = 1;
+                (light ? needs.lightArea : holes ? needs.alphaArea : needs.opaqueArea)[t] += faceArea(bsp, face);
             }
         }
         // A texture that is one picture of several needs the others too,
@@ -182,7 +207,7 @@ namespace hlds
         {
             if (bsp.textures[t].missing || bsp.textures[t].name.empty() || bsp.textures[t].name[0] != '+')
                 continue;
-            if (!needs.opaque[t] && !needs.alpha[t])
+            if (!needs.opaque[t] && !needs.alpha[t] && !needs.light[t])
                 continue;
             const TextureFamily family = textureFamily(bsp, static_cast<int>(t));
             for (const std::vector<int> *part : {&family.frames, &family.other})
@@ -191,8 +216,10 @@ namespace hlds
                 {
                     needs.opaque[member] = needs.opaque[member] || needs.opaque[t];
                     needs.alpha[member] = needs.alpha[member] || needs.alpha[t];
+                    needs.light[member] = needs.light[member] || needs.light[t];
                     needs.opaqueArea[member] = std::max(needs.opaqueArea[member], needs.opaqueArea[t]);
                     needs.alphaArea[member] = std::max(needs.alphaArea[member], needs.alphaArea[t]);
+                    needs.lightArea[member] = std::max(needs.lightArea[member], needs.lightArea[t]);
                 }
             }
         }
@@ -253,6 +280,7 @@ namespace hlds
         TexturePlan plan;
         plan.sizes.assign(bsp.textures.size(), TextureSize{});
         plan.alphaSizes.assign(bsp.textures.size(), TextureSize{});
+        plan.lightSizes.assign(bsp.textures.size(), TextureSize{});
         plan.paletteColours.assign(bsp.textures.size(), 0);
         // Which are streamed (if any are): plain opaque ones, one picture and
         // one face.
@@ -273,7 +301,8 @@ namespace hlds
                 for (const std::vector<int> *part : {&family.frames, &family.other})
                 {
                     for (const int member : *part)
-                        ok = ok && needs.opaque[member] && !needs.alpha[member] && streamableName(bsp.textures[member].name);
+                        ok = ok && needs.opaque[member] && !needs.alpha[member] && !needs.light[member] &&
+                             streamableName(bsp.textures[member].name);
                 }
                 streamed[t] = ok;
             }
@@ -318,6 +347,11 @@ namespace hlds
                 plan.alphaSizes[t] = defaultTextureSize(tex.width, tex.height);
                 ++plan.usedTextures;
             }
+            if (needs.light[t])
+            {
+                plan.lightSizes[t] = defaultTextureSize(tex.width, tex.height);
+                ++plan.usedTextures;
+            }
         }
 
         std::vector<char> shrunk(bsp.textures.size(), 0);
@@ -344,12 +378,29 @@ namespace hlds
                     plan.sizes[t] = resident[t];
             }
         }
-        if (!shrinkToFit(plan.alphaSizes, needs.alphaArea, alphaBudget, plan.alphaTexels, shrunk))
-            plan.fits = false;
+        // (Both A3I5 forms share the one budget: shrunk as one list, the
+        // light form after the other.)
+        {
+            const std::size_t count = bsp.textures.size();
+            std::vector<TextureSize> both(plan.alphaSizes);
+            both.insert(both.end(), plan.lightSizes.begin(), plan.lightSizes.end());
+            std::vector<double> area(needs.alphaArea);
+            area.insert(area.end(), needs.lightArea.begin(), needs.lightArea.end());
+            std::vector<char> bothShrunk(2 * count, 0);
+            if (!shrinkToFit(both, area, alphaBudget, plan.alphaTexels, bothShrunk))
+                plan.fits = false;
+            for (std::size_t t = 0; t < count; ++t)
+            {
+                plan.alphaSizes[t] = both[t];
+                plan.lightSizes[t] = both[count + t];
+                if (bothShrunk[t] || bothShrunk[count + t])
+                    shrunk[t] = 1;
+            }
+        }
         plan.shrunk = static_cast<int>(std::count(shrunk.begin(), shrunk.end(), 1));
         // The pictures of one texture are all one size: the smallest any of
         // them was given. (One that changed size as it changed would jump.)
-        for (std::vector<TextureSize> *sizes : {&plan.sizes, &plan.alphaSizes})
+        for (std::vector<TextureSize> *sizes : {&plan.sizes, &plan.alphaSizes, &plan.lightSizes})
         {
             for (std::size_t t = 0; t < bsp.textures.size(); ++t)
             {
@@ -383,7 +434,8 @@ namespace hlds
         {
             if (streamed.empty() || !streamed[t])
                 plan.texels += static_cast<int>(plan.sizes[t].width) * plan.sizes[t].height;
-            plan.alphaTexels += static_cast<int>(plan.alphaSizes[t].width) * plan.alphaSizes[t].height;
+            plan.alphaTexels += static_cast<int>(plan.alphaSizes[t].width) * plan.alphaSizes[t].height +
+                                static_cast<int>(plan.lightSizes[t].width) * plan.lightSizes[t].height;
         }
         std::vector<std::vector<int>> views;
         if (!streamed.empty())
@@ -460,6 +512,8 @@ namespace hlds
         for (std::size_t t = 0; t < plan.alphaSizes.size(); ++t)
         {
             if (plan.alphaSizes[t].width != 0)
+                alphaColours += hldata::kA3I5Colours;
+            if (t < plan.lightSizes.size() && plan.lightSizes[t].width != 0)
                 alphaColours += hldata::kA3I5Colours;
         }
         static constexpr int kDivisors[] = {16, 24, 32, 48, 64, 96, 128};

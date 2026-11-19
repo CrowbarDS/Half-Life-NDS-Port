@@ -215,7 +215,8 @@ namespace hlrt
         const hldata::TextureRef &ref = level.view.textures[index];
         char fileName[40];
         const bool a3i5 = (ref.flags & hldata::kTextureA3I5) != 0;
-        hldata::textureFileName(ref.name, ref.width, ref.height, a3i5, fileName);
+        hldata::textureFileName(ref.name, ref.width, ref.height, a3i5, fileName,
+                                (ref.flags & hldata::kTextureLight) != 0);
         const std::string path = global.texDir() + fileName;
         // (A liquid's coordinates go through the texture matrix, and a
         // conveyor belt's.)

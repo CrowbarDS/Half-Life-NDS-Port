@@ -49,6 +49,12 @@ namespace hlds
     /// gradient rather than a staircase.
     RgbaImage resample(const RgbaImage &image, int width, int height, bool softAlpha = false);
 
+    /// A picture the game ADDS to what is behind it, made into one the DS
+    /// can blend: each texel's alpha its brightest channel, its colour raised
+    /// so that that channel is full. Blended over black it is what the game
+    /// adds; black itself is nothing at all, as it is in the game.
+    void lightToAlpha(RgbaImage &image);
+
     /// A minimal PNG writer (8-bit RGBA, no compression), enough to hand an
     /// image to the encoder and to look at one.
     /// An 8-bit, uncompressed Windows bitmap (the game's skies, its spray

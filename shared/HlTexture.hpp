@@ -59,6 +59,11 @@ namespace hldata
     /// Material (the game's sound/materials.txt, by the texture's name).
     inline constexpr int kTextureMaterialShift = 8;
     inline constexpr std::uint32_t kTextureMaterialMask = 0xFu << kTextureMaterialShift;
+    /// With kTextureA3I5: cooked as light, its alpha the brightness of each
+    /// texel and its colour that brightness raised to full -- the picture of
+    /// a brush the game adds to what is behind it (rendermode 3 or 5), whose
+    /// black is nothing at all.
+    inline constexpr std::uint32_t kTextureLight = 1u << 12;
     enum class Material : std::uint8_t
     {
         Concrete, ///< and whatever the game's list does not name
@@ -157,11 +162,12 @@ namespace hldata
                fileSize == sizeof(TextureHeader) + h.texelBytes + h.indexBytes + h.paletteBytes;
     }
 
-    /// "<name>_<w>x<h>.htx", or "...a.htx" for the A3I5 form, into `out` (at
-    /// least 40 bytes). Characters a FAT file name cannot hold are replaced,
-    /// the same way on both sides.
+    /// "<name>_<w>x<h>.htx", or "...a.htx" for the A3I5 form, "...l.htx" for
+    /// the A3I5 form cooked as light (kTextureLight), into `out` (at least 40
+    /// bytes). Characters a FAT file name cannot hold are replaced, the same
+    /// way on both sides.
     inline void textureFileName(const char *name, unsigned width, unsigned height, bool a3i5,
-                                char *out)
+                                char *out, bool light = false)
     {
         int n = 0;
         for (; name[n] != '\0' && n < 16; ++n)
@@ -190,7 +196,7 @@ namespace hldata
         out[n++] = 'x';
         number(height);
         if (a3i5)
-            out[n++] = 'a';
+            out[n++] = light ? 'l' : 'a';
         std::memcpy(out + n, ".htx", 5);
     }
 } // namespace hldata

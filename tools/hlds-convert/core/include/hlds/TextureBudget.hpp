@@ -58,10 +58,12 @@ namespace hlds
     {
         std::vector<char> opaque; ///< 4x4 compressed
         std::vector<char> alpha;  ///< A3I5
+        std::vector<char> light;  ///< A3I5 cooked as light (kTextureLight)
         /// Square units of drawn face wearing each form: what the budget pass
         /// weighs a texture's memory against.
         std::vector<double> opaqueArea;
         std::vector<double> alphaArea;
+        std::vector<double> lightArea;
     };
 
     /// Plain opaque textures are sized for what one view of the map lists,
@@ -83,6 +85,9 @@ namespace hlds
         /// form.
         std::vector<TextureSize> sizes;      ///< 4x4 compressed
         std::vector<TextureSize> alphaSizes; ///< A3I5
+        /// A3I5 cooked as light (kTextureLight), out of the A3I5 budget too.
+        /// May be empty (a plan made by hand): none.
+        std::vector<TextureSize> lightSizes;
         std::vector<int> paletteColours;     ///< of the 4x4 form; A3I5 is always 32
         int usedTextures = 0;  ///< forms, not names: a texture wanted both ways is two
         int texels = 0;
@@ -102,7 +107,13 @@ namespace hlds
     /// but not be seen -- the faces of a ladder brush, for one. A face wearing
     /// one can never show anything, so it is not drawn, which costs no
     /// polygons; and such a texture must never reach the encoder, which has
-    /// nothing to encode. By texture lump index, 1 = hidden.
+    /// nothing to encode. By texture lump index, kHiddenEverywhere.
+    ///
+    /// And textures dark all over, kHiddenAsLight: on a brush the game adds
+    /// to what is behind it (BrushInfo::additive) they add nothing, so faces
+    /// wearing them there are not drawn either.
+    inline constexpr char kHiddenEverywhere = 1;
+    inline constexpr char kHiddenAsLight = 2;
     std::vector<char> findHiddenTextures(const BspFile &bsp, const WadSet &wads);
 
     TexturePlan planTextures(const BspFile &bsp, const TextureNeeds &needs,

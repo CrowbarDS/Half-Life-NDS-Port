@@ -78,7 +78,12 @@ Milestone 11, "levels of detail".
   of that distance, so the far end fades out instead of ending in a hole.
   A view that fits has neither.
 - Brush entities are drawn and solid: opaque, cut-out, see-through (glass),
-  flat-colour, and invisible-but-solid.
+  flat-colour, and invisible-but-solid. One the game adds to what is behind
+  it (render mode 3 or 5: the yellow light cones, a spotlight's beam) wears
+  its textures cooked as light, as the sprites are: how bright a texel is
+  becomes how solid it is, so its black shows nothing (it was a dark sheet,
+  or at full amount an opaque one), and faces whose texture is dark all over
+  are not drawn at all (`kTextureLight`, `lightToAlpha`).
 - Doors (sliding and hinged), buttons, lifts and trains on path corners,
   ladders, walls that switch on and off, and the wiring between them:
   triggers, relays, multi_managers, multisources, delays and killtargets.

@@ -50,15 +50,21 @@ namespace hlds
         /// its box is what USE looks for (c1a4f's lift button, inside the
         /// car, is both).
         bool usable = false;
+        /// The game adds it to what is behind it (rendermode 3 or 5): its
+        /// textures are cooked as light (kTextureLight), so that its black
+        /// shows nothing rather than darkening what it covers.
+        bool additive = false;
         double origin[3] = {0, 0, 0};
 
         bool drawn() const { return renderClass != hldata::RenderClass::Hidden; }
         /// '{' textures on this brush are cooked with real holes.
         bool cutsHoles() const
         {
-            return renderClass == hldata::RenderClass::Cutout ||
-                   renderClass == hldata::RenderClass::Blend;
+            return !additive && (renderClass == hldata::RenderClass::Cutout ||
+                                 renderClass == hldata::RenderClass::Blend);
         }
+        /// Its textures are cooked as light (see `additive`).
+        bool asLight() const { return additive && drawn(); }
         /// Its light is not baked: the engine draws blended and coloured
         /// brushes at full brightness.
         bool fullBright() const
