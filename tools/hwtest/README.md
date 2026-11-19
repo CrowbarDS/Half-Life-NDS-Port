@@ -287,7 +287,12 @@ In melonDS (DS and DSi modes alike; the emulator is not the reference):
 | ... on DMA 1, the FIFO fed | DS: 19 right, 6 late, 167 other (DMA 0 holds it back); DSi: 190 right |
 | Scrolled right | no wrap: the backdrop shows |
 
-On a DS and a DSi: not yet run.
+On the owner's DSi (2026-11-19): every line and sprite figure as in melonDS
+(the lines' width, alpha, fog, edge and near plane; the sprite added and
+clamped, the front one winning, the backdrop added to). The per-line scroll:
+190 right on DMA 0 and on DMA 1 alone; **fed: 11 right, 13 late, 168 other**
+-- unlike melonDS, the DSi's NDMA 0 feeding the FIFO holds DMA 1 back too.
+On a DS: not yet run.
 
 ## markpull/ — wall marks pulled toward the eye
 
@@ -328,4 +333,6 @@ and 0 pulled by a fixed part: one pixel there spans about 13 units of depth.
 | 45 degrees, d 1 / 2 / 4 / 8 | 100 / 100 / 100 / 0 | 91 / 0 / 0 / 0 | 100 / 0 / 0 / 0 | 100 / 100 / 0 / 0 | 100 / 100 / 100 / 0 |
 | 20 degrees, d 1 / 2 / 4 / 8 | 100 / 100 / 0 / 0 | 32 / 0 / 0 / 0 | 65 / 0 / 0 / 0 | 100 / 2 / 0 / 0 | 100 / 100 / 99 / 0 |
 
-None bleed at 16. On a DS and a DSi: not yet run.
+None bleed at 16. On the owner's DSi (DSi mode, 2026-11-19): every figure as
+in melonDS within a point (worst at 5 degrees, 1/256: 87; 1/128: 90; 1/64:
+95). On a DS: not yet run.
