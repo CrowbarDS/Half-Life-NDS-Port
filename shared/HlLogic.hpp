@@ -2846,15 +2846,35 @@ namespace hldata
                 floor = trace(middle, under); // no room above it to look from
             // (On it, not over it: one with floor a little way under it falls
             // to it -- as one does, picked up a unit when it is spawned.)
-            const bool resting = !floor.startSolid && floor.fraction < kFractionOne &&
-                                 floor.normal[2] >= kFloorNormalZ && floor.endPos[2] >= middle[2] - fxFromInt(1) / 16;
+            bool resting = !floor.startSolid && floor.fraction < kFractionOne &&
+                           floor.normal[2] >= kFloorNormalZ && floor.endPos[2] >= middle[2] - fxFromInt(1) / 16;
+            // ... or, going along, as the engine has it after a move
+            // (SV_Physics_Step): on the ground while a point a unit under any
+            // corner of its bounds, as it is met, is in the world's solid. So
+            // a box pushed over an edge stands till its last corner is past
+            // it -- not till the hull its size picks is, a unit or two sooner.
+            // (The world only: a point in a brush entity is not asked. Not
+            // afloat, where the water has its say.)
+            bool byCorner = false;
+            if (!resting && wet == 0 && (v[0] != 0 || v[1] != 0) && moverIsBox(w.movers[brush]))
+            {
+                const MoverHull &met = w.movers[brush];
+                for (int corner = 0; corner < 4 && !byCorner; ++corner)
+                {
+                    const fx p[3] = {(corner & 1) ? met.maxs[0] : met.mins[0], (corner & 2) ? met.maxs[1] : met.mins[1],
+                                     met.mins[2] - kFxOne};
+                    byCorner = pointContents(*w.world, p) == kContentsSolid;
+                }
+                resting = byCorner;
+            }
             // (1: at rest on the world, which stays where it is; 2: on
-            // something that may move, which has to be watched.)
-            state.bits = resting ? (floor.mover >= 0 ? 2 : 1) : 0;
+            // something that may move, which has to be watched. On by a
+            // corner, the world's: the probe found no floor to be raised to.)
+            state.bits = resting ? (!byCorner && floor.mover >= 0 ? 2 : 1) : 0;
             bool raised = false;
             if (resting)
             {
-                if (floor.endPos[2] > middle[2] + kDistEpsilon)
+                if (!byCorner && floor.endPos[2] > middle[2] + kDistEpsilon)
                 {
                     middle[2] = floor.endPos[2];
                     raised = true;

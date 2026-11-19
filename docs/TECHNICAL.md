@@ -213,6 +213,10 @@ Milestone 11, "levels of detail".
   has it, a box is picked up a unit and settles back, and its first slide
   is not slowed (`LogicState::phase`, reused for a pushable). A box rests
   only on what it touches; with floor a little way under it, it falls.
+  Going along, it also stands while a point a unit under any corner of its
+  grown bounds is in the world's solid, as the engine's step physics has
+  it: pushed over an edge, it falls once its last corner is past it. (The
+  world's solid only: a ledge that is a brush entity is not asked.)
   The player and a box are never left in each other: a box that finds the
   player inside it gets out of them by the shortest way, and if it cannot,
   they are moved out of it. A door, a lift or a train pushes a box in its

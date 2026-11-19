@@ -1023,6 +1023,66 @@ namespace
         std::printf("test_boxes: spawned a unit up, settled at %.3f, first slide unslowed\n", a->movers[brush].mins[2] / 4096.0);
     }
 
+    /// A crate pushed off t0a0b's ledge (the 64 one on it, 49 above the
+    /// floor) stands on it as the engine's does (SV_Physics_Step): till
+    /// the last corner of its bounds -- as it is met, a unit grown -- is
+    /// past the edge, and not till the hull its size picks is, a unit or two
+    /// sooner. (Measured in the real game: tools/ref/diag/t0_ledge_nx.txt.)
+    void testLedge(const char *dir)
+    {
+        std::unique_ptr<Game> game = load(dir, "t0a0b");
+        if (game == nullptr)
+            return;
+        Game &g = *game;
+        int box = -1;
+        for (const int b : boxesOf(g))
+        {
+            if (fxToInt(g.movers[g.view.logic[b].brush].mins[0]) == 1391 &&
+                fxToInt(g.movers[g.view.logic[b].brush].mins[1]) == -1049)
+                box = b;
+        }
+        check(box >= 0, "t0a0b has its crate on the ledge");
+        if (box < 0)
+            return;
+        const MoverHull &hull = g.movers[g.view.logic[box].brush];
+        g.player.origin[2] += fxFromInt(6000); // (out of it: this is the box's)
+        FrameClock clock;
+        for (int n = 0; n < 60; ++n)
+        {
+            logicTick(g.logic, g.player, clock.ms(1));
+            g.drain();
+        }
+        // The edge, along -x from where it stands: where the ledge's floor,
+        // a unit under the crate, ends.
+        const fx y = (hull.mins[1] + hull.maxs[1]) / 2;
+        fx edge = hull.mins[0];
+        for (;; edge -= kFxOne / 4)
+        {
+            const fx p[3] = {edge, y, hull.mins[2] - kFxOne};
+            if (pointContents(g.move, p) != kContentsSolid)
+                break;
+        }
+        const fx restZ = hull.mins[2];
+        fx before = hull.maxs[0], droppedAt = 0;
+        for (int n = 0; n < 240 && droppedAt == 0; ++n)
+        {
+            g.logic.states[box].travel[0] = -fxFromInt(180); // (pushed, steadily, at its top speed)
+            g.logic.states[box].travel[1] = 0;
+            before = hull.maxs[0];
+            logicTick(g.logic, g.player, clock.ms(1));
+            g.drain();
+            if (hull.mins[2] < restZ - kFxOne / 8)
+                droppedAt = before;
+        }
+        std::printf("test_boxes: off t0a0b's ledge (its edge at %.2f): the crate's far side at %.2f when it began to fall\n",
+                    edge / 4096.0, droppedAt / 4096.0);
+        check(droppedAt != 0, "a crate pushed off the ledge falls");
+        // (The tick it fell in began with its far side over the edge, or
+        // within the tick's step of it.)
+        check(droppedAt <= edge + fxFromInt(4) && droppedAt > edge - fxFromInt(4),
+              "... once its last corner is past the edge, as the engine has it");
+    }
+
     /// A box's hulls are not in a save (only where in their tables they
     /// begin): laid back, it is met as a box again -- from a save made
     /// before boxes were boxes, too, whose crate is its brush.
@@ -1122,6 +1182,7 @@ int main()
         return g_failures == 0 ? 0 : 1;
     }
     testPullOnMap(dir);
+    testLedge(dir);
     testFloating(dir, "c2a3");
     testFloating(dir, "c2a4a");
     pushedAbout(dir, "c1a2");
