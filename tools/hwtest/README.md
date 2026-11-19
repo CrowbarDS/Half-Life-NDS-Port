@@ -265,6 +265,11 @@ runs the tests again.
 3. **A DMA started by each horizontal blank writing `BG0HOFS`** from a table
    (`y % 16` left, then right): lines moved by their own amount, a line late,
    or other; and, moved right, whether the edge wraps or shows the backdrop.
+   Then on DMA 1 (`dma1`), and on DMA 1 while the geometry FIFO is kept fed
+   (`fed`) as the game feeds it: DMA 0 in its FIFO mode on a DS (NEA's
+   display lists), NDMA 0 on a DSi (the world's). The underwater wobble
+   (`source/render/WaterWobble`) is on DMA 1, and on a DSi only until the
+   `fed` line on a DS says it can be on one.
 
 In melonDS (DS and DSi modes alike; the emulator is not the reference):
 
@@ -278,6 +283,8 @@ In melonDS (DS and DSi modes alike; the emulator is not the reference):
 | Two sprites over each other | 22: the front one only |
 | Sprite over the backdrop (6) | 18 |
 | Per-line scroll | 190 lines right, 0 late (the 2 others: the bar's last rows) |
+| ... on DMA 1 | the same |
+| ... on DMA 1, the FIFO fed | DS: 19 right, 6 late, 167 other (DMA 0 holds it back); DSi: 190 right |
 | Scrolled right | no wrap: the backdrop shows |
 
 On a DS and a DSi: not yet run.

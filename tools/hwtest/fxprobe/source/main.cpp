@@ -11,7 +11,9 @@
 //      31? Do two sprites over each other blend, or does the front one win?
 //   3. A DMA started by each horizontal blank, writing BG0HOFS from a table:
 //      does each line of the 3D picture move by its own amount, and what is
-//      seen where the picture has moved away from the edge?
+//      seen where the picture has moved away from the edge? And again on
+//      DMA 1 while the geometry FIFO is kept fed as the game feeds it (DMA
+//      0 on a DS, NDMA 0 on a DSi): is any line's move late?
 //
 // After the tests, A shows each scene live, B the results again.
 
@@ -282,14 +284,67 @@ namespace
     // --- 3. Per-line scroll by DMA ------------------------------------------------
 
     u16 scroll[193];
+    int scrollChannel = 0;
 
     void armScroll()
     {
-        DMA_CR(0) = 0;
+        const int c = scrollChannel;
+        DMA_CR(c) = 0;
         REG_BG0HOFS = scroll[0];
-        DMA_SRC(0) = reinterpret_cast<u32>(&scroll[1]);
-        DMA_DEST(0) = reinterpret_cast<u32>(&REG_BG0HOFS);
-        DMA_CR(0) = DMA_ENABLE | DMA_REPEAT | DMA_START_HBL | DMA_16_BIT | DMA_SRC_INC | DMA_DST_FIX | 1;
+        DMA_SRC(c) = reinterpret_cast<u32>(&scroll[1]);
+        DMA_DEST(c) = reinterpret_cast<u32>(&REG_BG0HOFS);
+        DMA_CR(c) = DMA_ENABLE | DMA_REPEAT | DMA_START_HBL | DMA_16_BIT | DMA_SRC_INC | DMA_DST_FIX | 1;
+    }
+
+    // The geometry FIFO kept fed, as the game feeds it: MTX_IDENTITY four to
+    // a word (no numbers after it, harmless), by DMA 0 in its FIFO mode on a
+    // DS (NEA's display lists), NDMA 0 on a DSi (the world's), started again
+    // each time it ends.
+    u32 nops[2048];
+    volatile bool feeding = false;
+
+    void feed()
+    {
+        if (!feeding)
+            return;
+        if (isDSiMode())
+        {
+            REG_NDMA_SRC(0) = reinterpret_cast<u32>(nops);
+            REG_NDMA_DEST(0) = reinterpret_cast<u32>(&GFX_FIFO);
+            REG_NDMA_LENGTH(0) = 2048;
+            REG_NDMA_BLENGTH(0) = 112;
+            REG_NDMA_CR(0) = NDMA_ENABLE | NDMA_START_FIFO | NDMA_SRC_INC | NDMA_DST_FIX | NDMA_IRQ_REQ;
+        }
+        else
+        {
+            DMA_SRC(0) = reinterpret_cast<u32>(nops);
+            DMA_DEST(0) = reinterpret_cast<u32>(&GFX_FIFO);
+            DMA_CR(0) = DMA_FIFO | DMA_IRQ_REQ | 2048;
+        }
+    }
+
+    void startFeeding()
+    {
+        for (u32 &word : nops)
+            word = 0x15151515;
+        DC_FlushRange(nops, sizeof(nops));
+        const u32 irq = isDSiMode() ? IRQ_NDMA0 : IRQ_DMA0;
+        irqSet(irq, feed);
+        irqEnable(irq);
+        feeding = true;
+        feed();
+    }
+
+    void stopFeeding()
+    {
+        feeding = false;
+        if (isDSiMode())
+            while (REG_NDMA_CR(0) & NDMA_ENABLE)
+                ;
+        else
+            while (DMA_CR(0) & DMA_ENABLE)
+                ;
+        irqDisable(isDSiMode() ? IRQ_NDMA0 : IRQ_DMA0);
     }
 
     bool scrolling = false;
@@ -322,8 +377,32 @@ namespace
     {
         scrolling = false;
         swiWaitForVBlank();
-        DMA_CR(0) = 0;
+        DMA_CR(scrollChannel) = 0;
         REG_BG0HOFS = 0;
+    }
+
+    /// Of the lines of the picture captured: moved by their own amount, by
+    /// the line before's (late), or neither (and the first of those).
+    void countScroll(int &right, int &late, int &other, int &first)
+    {
+        right = late = other = 0;
+        first = -1;
+        for (int y = 0; y < 192; ++y)
+        {
+            int at = -1;
+            for (int x = 0; x < 256 && at < 0; ++x)
+                at = (red(x, y) > 20 && green(x, y) > 20) ? x : -1;
+            const int moved = 60 - at;
+            if (moved == y % 16)
+                ++right;
+            else if (y > 0 && moved == (y - 1) % 16)
+                ++late;
+            else
+            {
+                ++other;
+                first = first < 0 ? y : first;
+            }
+        }
     }
 
     void testScroll()
@@ -334,24 +413,31 @@ namespace
         int right = 0, late = 0, other = 0, first = -1;
         if (ok)
         {
-            for (int y = 0; y < 192; ++y)
-            {
-                int at = -1;
-                for (int x = 0; x < 256 && at < 0; ++x)
-                    at = (red(x, y) > 20 && green(x, y) > 20) ? x : -1;
-                const int moved = 60 - at;
-                if (moved == y % 16)
-                    ++right;
-                else if (y > 0 && moved == (y - 1) % 16)
-                    ++late;
-                else
-                {
-                    ++other;
-                    first = first < 0 ? y : first;
-                }
-            }
+            countScroll(right, late, other, first);
             printf(" %d ok %d late %d off (y %d)\n", right, late, other, first);
         }
+        // Again on DMA 1, the geometry FIFO fed all the while (from once
+        // the scene is sent: a NOP must not come between a command and its
+        // numbers).
+        stopScroll();
+        scrollChannel = 1;
+        sceneScroll(false);
+        ok = capture(true);
+        if (ok)
+        {
+            countScroll(right, late, other, first);
+            printf(" dma1: %d ok %d late %d off\n", right, late, other);
+        }
+        startFeeding();
+        ok = capture(true);
+        stopFeeding();
+        if (ok)
+        {
+            countScroll(right, late, other, first);
+            printf(" fed: %d ok %d late %d off\n", right, late, other);
+        }
+        stopScroll();
+        scrollChannel = 0;
         sceneScroll(true);
         ok = capture(true);
         if (ok)
