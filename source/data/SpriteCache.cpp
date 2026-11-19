@@ -7,6 +7,7 @@
 #include "HlSprite.hpp"
 #include "data/LevelFile.hpp"
 #include "data/TextureCache.hpp"
+#include "render/GlowLayer.hpp"
 
 namespace hlrt
 {
@@ -26,6 +27,7 @@ namespace hlrt
 
     void SpriteCache::forget()
     {
+        glowLayer.forget();
         std::free(materials_);
         std::free(palettes_);
         materials_ = nullptr;
@@ -45,6 +47,8 @@ namespace hlrt
             return false;
         }
         count_ = count;
+        // (The glows' 2D picture is made from one of them as it is read.)
+        const int glow = glowLayer.chooseSprite();
         for (int i = 0; i < count; ++i)
         {
             const hldata::SpriteRef &ref = level.view.sprites[i];
@@ -52,7 +56,8 @@ namespace hlrt
                 continue;
             const std::string path =
                 global.mapPath("spr/") + hldata::spriteFile(ref.name, ref.width, ref.height);
-            TextureCache::loadFile(path.c_str(), false, ref.width, ref.height, 1, materials_[i], palettes_[i]);
+            TextureCache::loadFile(path.c_str(), false, ref.width, ref.height, 1, materials_[i], palettes_[i], nullptr,
+                                   false, i == glow ? &GlowLayer::takePicture : nullptr, &glowLayer);
         }
         return true;
     }

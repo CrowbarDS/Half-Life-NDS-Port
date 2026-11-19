@@ -432,6 +432,24 @@ Milestone 11, "levels of detail".
   and over white (`spriteAtlasError`, `kTextureA5I3`): a glow's falloff in
   A3I5 shows as rings, and most sprites are a few hues fading out, so most
   are A5I3. `--sprite-format <sprite>=<a3i5|a5i3|auto>` forces one.
+- Glows are added to the picture, as the game adds them, by the top
+  screen's 2D engine (`source/render/GlowLayer`): the display's sprites
+  are already blended so that they add to the 3D layer (BLDALPHA 16 and
+  16), so a glow put there brightens the wall behind it where a 3D quad
+  could only cover it. They follow the engine's rule for render mode 3: no
+  depth test, but hidden when the line from the eye stops more than 8
+  units short of it (glass and models do not stop it), nothing of it when
+  its middle is off the screen, and `glowFalloff`. Room for it: one
+  picture, 32 by 32 in sixteen levels, made as the map loads from the
+  sprite most of its glows use (cooked as light: its alpha is its
+  brightness) and put in a corner of the display's sheet neither layout
+  uses; eight affine sprites in a box twice their size (64 pixels across
+  at most), behind the display's; palettes 11 to 15, a colour at a
+  brightness each, shared by glows near enough alike. The nearest are
+  taken first. A glow that does not fit -- another sprite's, too big,
+  over the box of what is in hand at rest (the 2D engine is in front of
+  all the 3D picture), past the eight or the five -- is a 3D quad as
+  before, and so are all of them under a fade's own blend.
 - What the maps show and shake, from their own entities
   (`shared/HlEffects.hpp`): sprites and glows (`env_sprite`, `env_glow`; a
   glow, render mode 3, by the engine's rule (`glowFalloff`, HlSprite.hpp):

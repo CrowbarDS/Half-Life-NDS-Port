@@ -7,6 +7,7 @@
 #include <cstdio>
 
 #include "render/FrameFreeze.hpp"
+#include "render/GlowLayer.hpp"
 
 #include "Global.hpp"
 #include "HlFont.hpp"
@@ -172,6 +173,19 @@ namespace hlrt
         constexpr int tileOf(int x, int y)
         {
             return kSheetTile + (y >> 3) * 32 + (x >> 3);
+        }
+
+        /// The glows' picture (GlowLayer): at x 224, y 96 of the sheet, free
+        /// in both layouts, and left alone when the rest of it is made again
+        /// (sheetRam keeps it).
+        constexpr int kGlowX = 224, kGlowY = 96, kGlowSide = GlowLayer::kSide;
+        static_assert(HudDraw::kGlowTile == tileOf(kGlowX, kGlowY));
+        /// The sheet cleared, but for the glows' picture.
+        void clearSheet()
+        {
+            fillSheet(0, 0, 256, kGlowY, 0);
+            fillSheet(0, kGlowY, kGlowX, 128 - kGlowY, 0);
+            touchRows(kGlowY, kGlowSide);
         }
 
         /// Which of the sprites' palettes says what colours are: a ramp of
@@ -595,6 +609,7 @@ namespace hlrt
         if (game.logic.camera >= 0)
         {
             // (Nothing of it over a view from a trigger_camera.)
+            spritesLive_ = false;
             for (int n = 0; n < kSprites; ++n)
                 hide(n);
             flashColour = 0;
@@ -615,10 +630,26 @@ namespace hlrt
         std::memcpy(shownPain, painColour, sizeof(shownPain));
         std::memcpy(shownHurt, hurtColour, sizeof(shownHurt));
         leaveCriticalSection(state);
+        glowLayer.publish(spritesLive_);
+    }
+
+    void HudDraw::setGlowShape(const std::uint8_t *levels)
+    {
+        // (Straight onto the sheet, which may not be made yet.)
+        sheet.tiles = sheetRam;
+        sheet.width = 256;
+        sheet.height = 128;
+        for (int y = 0; y < kGlowSide; ++y)
+        {
+            for (int x = 0; x < kGlowSide; ++x)
+                sheet.pixel(kGlowX + x, kGlowY + y, levels != nullptr ? levels[y * kGlowSide + x] : 0);
+        }
+        touchRows(kGlowY, kGlowSide);
     }
 
     void HudDraw::clear()
     {
+        spritesLive_ = false;
         for (int n = 0; n < kSprites; ++n)
             hide(n);
         flashColour = 0;
@@ -630,6 +661,7 @@ namespace hlrt
         std::memcpy(shownPain, painColour, sizeof(shownPain));
         std::memcpy(shownHurt, hurtColour, sizeof(shownHurt));
         leaveCriticalSection(state);
+        glowLayer.publish(false);
     }
 
     void HudDraw::compose()
@@ -640,6 +672,7 @@ namespace hlrt
             hide(n);
         flashColour = 0;
         std::memset(painColour, 0, sizeof(painColour));
+        spritesLive_ = false;
         if (screenFade.curtained() || frameFreeze.frozen() || !atlas_)
             return;
 
@@ -652,12 +685,13 @@ namespace hlrt
             sheetMade = false;
         }
         spritesOn();
+        spritesLive_ = !screenFade.layered();
         if (!sheetMade)
         {
             sheet.tiles = sheetRam;
             sheet.width = 256;
             sheet.height = 128;
-            fillSheet(0, 0, 256, 128, 0);
+            clearSheet();
             fillSheet(0, 64, 64, 64, 1);
             blit((32 - kHudCrosshair.w) / 2, 32 + (32 - kHudCrosshair.h) / 2, kHudCrosshair);
             ramp(kBankHud, 1, kOrange);
@@ -837,6 +871,7 @@ namespace hlrt
         flashColour = 0;
         std::memset(painColour, 0, sizeof(painColour));
         std::memset(hurtColour, 0, sizeof(hurtColour));
+        spritesLive_ = false;
         if (screenFade.curtained() || frameFreeze.frozen() || !atlas_)
             return;
 
@@ -847,12 +882,13 @@ namespace hlrt
             sheetMade = false;
         }
         spritesOn();
+        spritesLive_ = !screenFade.layered();
         if (!sheetMade)
         {
             sheet.tiles = sheetRam;
             sheet.width = 256;
             sheet.height = 128;
-            fillSheet(0, 0, 256, 128, 0);
+            clearSheet();
             fillSheet(0, 64, 64, 64, 1);
             for (int n = 0; n < 4; ++n)
                 blit(kMarkCell[n][0], kMarkCell[n][1], kHud640Pain[n]);

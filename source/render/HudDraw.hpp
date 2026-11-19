@@ -88,6 +88,14 @@ namespace hlrt
         /// drawn: the sprites' pictures draw() changed, into video memory.
         void present();
 
+        /// The glows' picture (GlowLayer): 32 by 32 levels of 0..15, in a
+        /// corner of the sheet neither layout uses (x 224, y 96); null: none.
+        void setGlowShape(const std::uint8_t *levels);
+        static constexpr int kGlowTile = 512 + (96 / 8) * 32 + 224 / 8;
+        /// The sprites were shown, added to the picture, the last frame
+        /// (not under a fade's own blend, nor a view from a trigger_camera).
+        bool spritesLive() const { return spritesLive_; }
+
     private:
         void compose(); ///< draw()'s work, into the sprites' copy
         // ... with the 640 set, where the game has each piece (HlHudLayout.hpp).
@@ -127,6 +135,7 @@ namespace hlrt
 
     private:
         bool atlas_ = false; ///< the display's pictures are read (HudDraw.arm.cpp)
+        bool spritesLive_ = false;
         bool atlas640_ = false; ///< ... and they are the 640 set's (kHud640File)
         void *lampMaterial_ = nullptr;
         bool train_ = false; ///< the pictures of a driven train's speed are read (kHudTrainFile)

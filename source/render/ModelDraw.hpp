@@ -70,6 +70,10 @@ namespace hlrt
         /// Draw what the player holds, at the eye and turned as the view is.
         /// Call last: it is nearer than anything.
         void drawHeld();
+        /// Where what is in hand is on the screen, at most (its model's box
+        /// at rest, seen from the eye): `box` is left, top, right, bottom,
+        /// in pixels. False when it is not drawn.
+        bool heldBox(int *box) const;
         /// Where the end of what is in hand is (its model's attachment
         /// `which`), in the world, as drawHeld draws it: a beam starts
         /// there. False when it is not drawn, or has no such.

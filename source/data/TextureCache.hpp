@@ -86,10 +86,14 @@ namespace hlrt
         /// one (0 / -1: anything). False, with nothing left allocated, if it
         /// is missing, wrong, or does not fit in video memory.
         /// `ramBacked`: the texture is kept in main memory, and goes into video
-        /// memory only when NEA_MaterialTexVramLoad is asked.
+        /// memory only when NEA_MaterialTexVramLoad is asked. `peek`, if
+        /// given, is shown the file as read (its header, and what follows
+        /// it), with `context`, before it goes.
+        using Peek = void (*)(const hldata::TextureHeader &header, const std::uint8_t *body, void *context);
         static bool loadFile(const char *path, bool liquid, int expectWidth, int expectHeight,
                              int expectA3I5, NEA_Material *&material, NEA_Palette *&palette,
-                             std::uint16_t *tint = nullptr, bool ramBacked = false);
+                             std::uint16_t *tint = nullptr, bool ramBacked = false, Peek peek = nullptr,
+                             void *context = nullptr);
 
         /// The two halves of loadFile. readFile puts a file's header and
         /// the rest of it (texels, index, palette) in `body`, which has room

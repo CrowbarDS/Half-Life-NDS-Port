@@ -279,7 +279,7 @@ namespace hlrt
 
     bool TextureCache::loadFile(const char *path, bool liquid, int expectWidth, int expectHeight,
                                 int expectA3I5, NEA_Material *&outMaterial, NEA_Palette *&outPalette,
-                                std::uint16_t *tint, bool ramBacked)
+                                std::uint16_t *tint, bool ramBacked, Peek peek, void *context)
     {
         outMaterial = nullptr;
         outPalette = nullptr;
@@ -296,8 +296,10 @@ namespace hlrt
             bool ok = data != nullptr && cardReadMember(member, 0, data, member.size);
             if (ok)
                 std::memcpy(&header, data, sizeof(header));
-            ok = ok && headerFits(header, member.size, expectWidth, expectHeight, expectA3I5) &&
-                 create(header, data + sizeof(header), liquid, outMaterial, outPalette, tint, ramBacked);
+            ok = ok && headerFits(header, member.size, expectWidth, expectHeight, expectA3I5);
+            if (ok && peek != nullptr)
+                peek(header, data + sizeof(header), context);
+            ok = ok && create(header, data + sizeof(header), liquid, outMaterial, outPalette, tint, ramBacked);
             std::free(data);
             return ok;
         }
@@ -313,8 +315,10 @@ namespace hlrt
         const std::size_t body = static_cast<std::size_t>(size) - sizeof(hldata::TextureHeader);
         auto *data = static_cast<std::uint8_t *>(std::malloc(body));
         hldata::TextureHeader header;
-        bool ok = data != nullptr && readFile(path, expectWidth, expectHeight, expectA3I5, header, data, body) &&
-                  create(header, data, liquid, outMaterial, outPalette, tint, ramBacked);
+        bool ok = data != nullptr && readFile(path, expectWidth, expectHeight, expectA3I5, header, data, body);
+        if (ok && peek != nullptr)
+            peek(header, data, context);
+        ok = ok && create(header, data, liquid, outMaterial, outPalette, tint, ramBacked);
         std::free(data);
         return ok;
     }

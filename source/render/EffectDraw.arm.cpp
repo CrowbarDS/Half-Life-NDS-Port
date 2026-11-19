@@ -10,6 +10,7 @@
 #include "HlSprite.hpp"
 #include "HlUi.hpp"
 #include "HlPolygonIds.hpp"
+#include "render/GlowLayer.hpp"
 #include "data/TextureCache.hpp"
 #include "data/TextureStream.hpp"
 #include "render/HudDraw.hpp"
@@ -361,6 +362,9 @@ namespace hlrt
         refused_ = 0;
         if (player.noclip)
             return;
+        // The glows the 2D engine shows (or knows are hidden) first: those
+        // are not the 3D picture's.
+        glowLayer.choose();
         const ActorWorld &a = game.actors;
         const LogicWorld &logic = game.logic;
         const int detail = worldDraw.detailRatio();
@@ -444,7 +448,7 @@ namespace hlrt
             if (record.kind == static_cast<std::uint8_t>(LogicKind::Sprite))
             {
                 const SpriteRef *known = spriteCache.ref(record.extra[0]);
-                if (known == nullptr)
+                if (known == nullptr || glowLayer.taken(i))
                     continue;
                 const std::int16_t at[3] = {static_cast<std::int16_t>(fxToInt(record.move[0])),
                                             static_cast<std::int16_t>(fxToInt(record.move[1])),

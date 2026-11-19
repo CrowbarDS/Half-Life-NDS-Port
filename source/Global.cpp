@@ -21,6 +21,7 @@ extern "C" {
 #include <NEAAlloc.h> // (no C++ guard of its own)
 }
 #include "render/HudDraw.hpp"
+#include "render/GlowLayer.hpp"
 #include "render/Camera.hpp"
 #include "game/Think.hpp"
 #include "render/GpuStats.hpp"
@@ -40,6 +41,7 @@ namespace
         hlrt::GpuStats::onVblank();
         // The display's sprites, as the frame before made them.
         hlrt::hudDraw.onVblank();
+        hlrt::glowLayer.onVblank();
         // (A touch of STOP while a long job holds the console: kept for it.)
         hlrt::BottomScreen::onVblank();
         NEA_VBLFunc();

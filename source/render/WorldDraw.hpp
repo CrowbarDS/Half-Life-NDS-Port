@@ -224,6 +224,9 @@ namespace hlrt
         /// Whether brush entity `i` can be seen through (glass, a grate, one
         /// an env_render has made so): what is behind it is not hidden by it.
         bool brushSeeThrough(int i) const;
+        /// Whether `to` can be seen from `from`: nothing of the world or
+        /// of the brushes between, but what brushSeeThrough says.
+        bool sightClear(const hldata::fx *from, const hldata::fx *to) const;
 
     private:
         void markVisible(int leaf);

@@ -521,6 +521,11 @@ namespace hlrt
         return level.view.brushes[i].renderClass != static_cast<std::uint8_t>(RenderClass::Opaque) || look != 0;
     }
 
+    bool WorldDraw::sightClear(const fx *from, const fx *to) const
+    {
+        return hldata::sightClear(game.world, from, to, [this](int brush) { return brushSeeThrough(brush); });
+    }
+
     void WorldDraw::drawBrushes()
     {
         int drawn = 0;

@@ -599,7 +599,6 @@ namespace hlrt
                 // (Its middle, top and bottom, and its two sides as seen
                 // from the eye -- one peeking round a corner is seen; and
                 // glass and grates are not in the way of the eye.)
-                auto seeThrough = [](int brush) { return worldDraw.brushSeeThrough(brush); };
                 auto clear = [&]()
                 {
                     const int ends[3] = {0, ownPoints > 1 ? 1 : 0, ownPoints - 1};
@@ -609,7 +608,7 @@ namespace hlrt
                             continue;
                         const std::int16_t *p = points.at[ends[k]];
                         const fx to[3] = {fxFromInt(p[0]), fxFromInt(p[1]), fxFromInt(p[2])};
-                        if (sightClear(game.world, camera.pos, to, seeThrough))
+                        if (worldDraw.sightClear(camera.pos, to))
                             return true;
                     }
                     const std::int16_t *middle = points.at[0];
@@ -622,7 +621,7 @@ namespace hlrt
                         const fx to[3] = {fxFromInt(middle[0]) + camera.right[0] * way,
                                           fxFromInt(middle[1]) + camera.right[1] * way,
                                           fxFromInt(middle[2]) + camera.right[2] * way};
-                        if (sightClear(game.world, camera.pos, to, seeThrough))
+                        if (worldDraw.sightClear(camera.pos, to))
                             return true;
                     }
                     return false;
@@ -1327,5 +1326,34 @@ namespace hlrt
         glMatrixMode(GL_PROJECTION);
         glPopMatrix(1);
         glMatrixMode(GL_MODELVIEW);
+    }
+
+    bool ModelDraw::heldBox(int *box) const
+    {
+        const ActorState &held = game.held;
+        const ModelView *model = held.active ? actorModel(game.actors, held) : nullptr;
+        if (model == nullptr || !heldDrawn_ || player.state.health <= 0 || game.logic.camera >= 0)
+            return false;
+        // Its box's corners: its forward is the view's, its left the view's
+        // left, its up the view's up (drawHeld). What is nearer than a unit
+        // is not drawn (its near plane): a corner nearer is taken there.
+        const ModelHeader &header = *model->header;
+        box[0] = 256;
+        box[1] = 192;
+        box[2] = box[3] = 0;
+        for (int corner = 0; corner < 8; ++corner)
+        {
+            int forward = (corner & 1) ? header.maxs[0] : header.mins[0];
+            forward = forward < 1 ? 1 : forward;
+            const int left = (corner & 2) ? header.maxs[1] : header.mins[1];
+            const int up = (corner & 4) ? header.maxs[2] : header.mins[2];
+            const int x = 128 - left * 3058 / (camera.hudPixelX * forward);
+            const int y = 96 - up * 3058 / (camera.hudPixel * forward);
+            box[0] = x < box[0] ? x : box[0];
+            box[1] = y < box[1] ? y : box[1];
+            box[2] = x > box[2] ? x : box[2];
+            box[3] = y > box[3] ? y : box[3];
+        }
+        return true;
     }
 } // namespace hlrt
