@@ -90,25 +90,29 @@ namespace
         return worst;
     }
 
-    /// Whether the map's own collision lets a box be where it is: the
-    /// person-wide shape it is moved as, at every eight units across it.
+    /// Whether the map's own collision lets a box be where it is: as the
+    /// engine meets a box, by the hull its size picks, laid at its lower
+    /// corner (HlLogic.hpp's boxWorld).
     bool refused(const Game &g, int record)
     {
-        const MoverHull &hull = g.movers[g.view.logic[record].brush];
+        const int brush = g.view.logic[record].brush;
         const bool low = g.view.logic[record].extra[3] != 0;
-        const fx wide[2] = {hull.maxs[0] - hull.mins[0] - fxFromInt(32), hull.maxs[1] - hull.mins[1] - fxFromInt(32)};
-        for (int i = 0; i <= 8; ++i)
-        {
-            for (int j = 0; j <= 8; ++j)
-            {
-                const fx at[3] = {hull.mins[0] + fxFromInt(16) + (wide[0] > 0 ? wide[0] * i / 8 : 0),
-                                  hull.mins[1] + fxFromInt(16) + (wide[1] > 0 ? wide[1] * j / 8 : 0),
-                                  hull.mins[2] + hldata::detail::kPlayerHalfHeight[low ? 1 : 0]};
-                if (!hullPositionFree(low ? g.move.crouched : g.move.standing, at))
-                    return true;
-            }
-        }
-        return false;
+        fx middle[3];
+        hldata::detail::boxMiddle(g.logic, brush, low, middle);
+        return !hldata::detail::boxFits(g.logic, brush, low, middle);
+    }
+
+    /// Whether that hull covers the whole box: one longer than it goes into
+    /// a wall by the rest, in the game as here, and is not held to what is
+    /// seen of one.
+    bool covered(const Game &g, int record)
+    {
+        const MoverHull &hull = g.movers[g.view.logic[record].brush];
+        const int size[3] = {fxToInt(hull.maxs[0] - hull.mins[0]), fxToInt(hull.maxs[1] - hull.mins[1]),
+                             fxToInt(hull.maxs[2] - hull.mins[2])};
+        const int wide = size[0] > 36 ? 64 : 32;
+        const int high = size[0] > 36 ? 64 : (size[2] <= 36 ? 36 : 72);
+        return size[0] <= wide && size[1] <= wide && size[2] <= high;
     }
 
     /// How far two boxes are into each other: the least of the three ways
@@ -196,7 +200,8 @@ namespace
                     {
                         if (!g.brushStates[g.view.logic[boxes[o]].brush].active)
                             continue;
-                        worstWall = std::max(worstWall, sunk(g, boxes[o]) - built[o]);
+                        if (covered(g, boxes[o]))
+                            worstWall = std::max(worstWall, sunk(g, boxes[o]) - built[o]);
                         if (!builtIn[o] && refused(g, boxes[o]))
                         {
                             const MoverHull &in = g.movers[g.view.logic[boxes[o]].brush];
@@ -296,7 +301,7 @@ namespace
                 playerMove(g.player, walk, g.move, kPlayerTick);
                 g.drain();
                 inside += hldata::detail::playerInsideBrush(g.logic, g.player, brush) ? 1 : 0;
-                worst = std::max(worst, refused(g, box) ? 99 : sunk(g, box));
+                worst = std::max(worst, refused(g, box) ? 99 : covered(g, box) ? sunk(g, box) : 0);
             }
         }
         std::printf("test_boxes: walked at from every side: inside it for %d ticks, the crate at worst %d units into a wall\n",
@@ -324,7 +329,8 @@ namespace
         for (int candidate : boxesOf(g))
         {
             const MoverHull &hull = g.movers[g.view.logic[candidate].brush];
-            if (fxToInt(hull.mins[0]) == 256 && fxToInt(hull.mins[1]) == -833)
+            // (Its bounds grown by the engine's unit: logicPlaceBrush.)
+            if (fxToInt(hull.mins[0]) == 255 && fxToInt(hull.mins[1]) == -834)
                 box = candidate;
         }
         check(box >= 0, "c1a2 has its crate");
@@ -518,7 +524,8 @@ namespace
         int box = -1;
         for (const int b : boxesOf(g))
         {
-            if (fxToInt(g.movers[g.view.logic[b].brush].mins[0]) == 1152)
+            // (Its bounds grown by the engine's unit: logicPlaceBrush.)
+            if (fxToInt(g.movers[g.view.logic[b].brush].mins[0]) == 1151)
                 box = b;
         }
         check(box >= 0, "t0a0b has its crate at 1152");
@@ -561,7 +568,9 @@ namespace
     }
 
     /// The same on rooms made here, and what the maps cannot be asked for: a
-    /// crate shoved into a wall stops at it with its own side, however wide.
+    /// crate shoved into a wall stops where the engine's hull for its size
+    /// meets it (HlLogic.hpp's boxWorld) -- short of it, for one narrower
+    /// than that hull; in it, for one longer.
     /// How a crate goes when it is walked into, as the game does it: the
     /// player's move touches it, the next tick moves it. Each tick's step,
     /// after the first: how even (the spread, the ticks it stands still
@@ -920,16 +929,26 @@ namespace
                 g.drain();
             }
             const int reached = fxToInt(hull.maxs[0]);
-            std::printf("test_boxes: a crate %d wide, shoved at the wall at 256: its side gets to %d\n",
-                        static_cast<int>(width), reached);
-            check(reached > 256 - 4 && reached <= 256 + 1, "a crate shoved into a wall stops at it with its own side");
-            check(fxToInt(hull.maxs[0] - hull.mins[0]) == static_cast<int>(width), "... and is as wide as ever");
+            // (Met a unit wider each way; by a hull 64 wide past 36, else 32,
+            // from its lower corner.)
+            const int met = static_cast<int>(width) + 2;
+            const int expect = 256 - (met > 36 ? 64 : 32) + met;
+            std::printf("test_boxes: a crate %d wide, shoved at the wall at 256: its side gets to %d (the engine's: %d)\n",
+                        static_cast<int>(width), reached, expect);
+            check(reached > expect - 4 && reached <= expect + 1,
+                  "a crate shoved into a wall stops where the engine's hull for it meets the wall");
+            check(fxToInt(hull.maxs[0] - hull.mins[0]) == met, "... and is met a unit wider each way, as ever");
         }
     }
+
     // ------------------------------------------------------------------ the box as the game spawns it, across a save
     //
     // CPushable::Spawn picks a box up a unit and leaves its friction 0 till
-    // its first slide (LogicState::phase, reused for a pushable).
+    // its first slide (LogicState::phase, reused for a pushable); the engine
+    // meets it as its bounds grown by a unit (logicPlaceBrush). None of that
+    // is in a save but phase -- the box's hulls are made again when one is
+    // laid back -- so a save made before boxes were met as boxes is read as
+    // well as one made after.
 
     /// A room with one crate 64 each way, a unit off the floor as the game's
     /// maps have theirs.
@@ -977,8 +996,8 @@ namespace
         const int box = boxesOf(*a)[0];
         const int brush = a->view.logic[box].brush;
         const MoverHull &hull = a->movers[brush];
-        check(hull.mins[2] == fxFromInt(2) && hull.maxs[2] == fxFromInt(66),
-              "spawned: picked up a unit (2..66, built at 1..65)");
+        check(hull.mins[2] == fxFromInt(1) && hull.maxs[2] == fxFromInt(67),
+              "spawned: picked up a unit (and met a unit wider each way: 1..67)");
         check(a->states[box].phase == 1, "spawned: its first slide is not slowed yet");
         // Left alone, it settles onto the floor: a hair above it.
         a->player.origin[0] = fxFromInt(-80);
@@ -1001,10 +1020,92 @@ namespace
         std::printf("test_boxes: spawned a unit up, settled at %.3f, first slide unslowed\n", a->movers[brush].mins[2] / 4096.0);
     }
 
+    /// A box's hulls are not in a save (only where in their tables they
+    /// begin): laid back, it is met as a box again -- from a save made
+    /// before boxes were boxes, too, whose crate is its brush.
+    void testBoxSaves()
+    {
+        std::unique_ptr<Game> a = cook(spawnRoom());
+        check(a != nullptr, "the spawn room cooks");
+        if (a == nullptr)
+            return;
+        const std::uint32_t level = a->view.header->crc32;
+        const int box = boxesOf(*a)[0];
+        const int brush = a->view.logic[box].brush;
+        const MoverHull &hull = a->movers[brush];
+        check(moverIsBox(hull), "a crate is met as a box");
+        a->player.origin[0] = fxFromInt(-80);
+        a->player.origin[1] = 0;
+        a->player.origin[2] = fxFromInt(37);
+        FrameClock clockA;
+        for (int n = 0; n < 60; ++n)
+            frameAt60(*a, clockA, false);
+        // Pushed half a second, and saved in the middle of it.
+        for (int n = 0; n < 50; ++n)
+            frameAt60(*a, clockA, true);
+        check(a->states[box].travel[0] > 0 && hull.mins[0] > fxFromInt(-1), "walked into, it is being pushed");
+        const std::vector<std::uint8_t> midPush = takeMapState(a->logic, a->player, level);
+        const FrameClock clockMid = clockA;
+
+        // A save from before boxes were boxes: the same state, its crate as
+        // the old game had it -- its brush's own hulls, its bounds as built,
+        // its space the brush's.
+        std::vector<std::uint8_t> oldSave;
+        {
+            std::unique_ptr<Game> c = laid(midPush, level);
+            check(c != nullptr, "the save from the middle of the push lays back");
+            if (c != nullptr)
+            {
+                MoverHull &old = c->movers[brush];
+                const Brush &built = c->view.brushes[brush];
+                const Model &model = c->view.models[built.model];
+                const LevelView &v = c->view;
+                old.standing = Hull{v.clipNodes, v.planes, v.planeTypes, model.clipStanding};
+                old.crouched = Hull{v.clipNodes, v.planes, v.planeTypes, model.clipCrouched};
+                const fx *pos = c->brushStates[brush].pos;
+                for (int k = 0; k < 3; ++k)
+                {
+                    old.origin[k] = pos[k];
+                    old.mins[k] = fxFromInt(built.mins[k]) + pos[k] - built.origin[k];
+                    old.maxs[k] = fxFromInt(built.maxs[k]) + pos[k] - built.origin[k];
+                }
+                check(!moverIsBox(old), "made to look as an old save has it");
+                oldSave = takeMapState(c->logic, c->player, level);
+                check(oldSave.size() == midPush.size(), "an old save is the same size: no format change");
+            }
+        }
+
+        // Played on: as it was, from the save after, and from the save before.
+        std::unique_ptr<Game> after = laid(midPush, level), before = laid(oldSave, level);
+        check(after != nullptr && before != nullptr, "both saves lay back");
+        if (after == nullptr || before == nullptr)
+            return;
+        check(moverIsBox(before->movers[brush]) && before->movers[brush].mins[0] == hull.mins[0] &&
+                  before->movers[brush].origin[0] == hull.origin[0],
+              "a save from before: the crate is met as a box again, where it was");
+        FrameClock clockAfter = clockMid, clockBefore = clockMid;
+        bool same = true, sameOld = true;
+        for (int n = 0; n < 90; ++n)
+        {
+            const bool walk = n < 60;
+            frameAt60(*a, clockA, walk);
+            frameAt60(*after, clockAfter, walk);
+            frameAt60(*before, clockBefore, walk);
+            const std::vector<std::uint8_t> x = takeMapState(a->logic, a->player, level);
+            same = same && x == takeMapState(after->logic, after->player, level);
+            sameOld = sameOld && x == takeMapState(before->logic, before->player, level);
+        }
+        check(same, "a save made mid-push plays on exactly as the push it was taken from");
+        check(sameOld, "so does one made mid-push before boxes were boxes");
+        check(hull.mins[0] > fxFromInt(20), "and the crate went on being pushed");
+        std::printf("test_boxes: saves made mid-push, after boxes were boxes and before: crate at %.2f\n",
+                    hull.mins[0] / 4096.0);
+    }
 } // namespace
 
 int main()
 {
+    testBoxSaves();
     testSpawnRules();
     testPushFeel();
     testClimb();

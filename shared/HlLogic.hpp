@@ -27,6 +27,8 @@
 //
 // std-only and inline, like the collision it sits on: the host tests run it.
 
+#include <cstring>
+
 #include "HlAchEvents.hpp"
 #include "HlActors.hpp"
 #include "HlLevelReader.hpp"
@@ -224,6 +226,11 @@ namespace hldata
         BrushState *brushStates = nullptr; ///< one per brush
         MoverHull *movers = nullptr;       ///< one per brush: the collision's copy
         MoveWorld *world = nullptr;        ///< the world those movers belong to
+        /// Room for the planes of the box hulls of the boxes there are
+        /// (moverMakeBox): kBoxPlanes for each size of box (logicBoxSizes),
+        /// given by whoever made the world. None: the boxes are met by their
+        /// brushes' own clip hulls, and are not grown by the engine's unit.
+        Plane *boxPlanes = nullptr;
 
         /// The ladder volumes, one per record of kind Ladder in record order:
         /// the collision's copy, which the logic switches off if a ladder is
@@ -473,15 +480,22 @@ namespace hldata
                     reach = length;
             }
         }
+        // A box (moverIsBox) is met as its bounds grown by a unit each way:
+        // the engine's loader spreads every brush model's bounds so (its
+        // Mod_LoadSubmodels), and a box's bounds are its model's. Its own
+        // space is centred on it, where its hulls' planes are.
+        const bool box = moverIsBox(mover);
         for (int a = 0; a < 3; ++a)
         {
             state.pos[a] = pos[a];
             mover.origin[a] = pos[a];
+            if (box)
+                mover.origin[a] += (fxFromInt(brush.mins[a]) + fxFromInt(brush.maxs[a])) / 2 - brush.origin[a];
             // The record's bounds are where the brush was built; it has moved
             // by however far it now is from its origin.
             const fx shift = pos[a] - brush.origin[a];
-            mover.mins[a] = fxFromInt(brush.mins[a]) + shift;
-            mover.maxs[a] = fxFromInt(brush.maxs[a]) + shift;
+            mover.mins[a] = fxFromInt(brush.mins[a]) + shift - (box ? kFxOne : 0);
+            mover.maxs[a] = fxFromInt(brush.maxs[a]) + shift + (box ? kFxOne : 0);
             if (pivots && (a < 2 || tumbles))
             {
                 mover.mins[a] = pos[a] - reach;
@@ -546,6 +560,68 @@ namespace hldata
         }
 
         inline bool boxShove(LogicWorld &w, PlayerState &player, int record, const fx *delta);
+
+        /// A box's reach each way from its middle, as the engine has it:
+        /// its model's bounds grown by a unit each way (logicPlaceBrush).
+        inline void boxHalf(const Brush &brush, fx *half)
+        {
+            for (int a = 0; a < 3; ++a)
+                half[a] = fxFromInt(brush.maxs[a] - brush.mins[a]) / 2 + kFxOne;
+        }
+
+        /// A box's bounds at rest, whole units: grown by the engine's unit
+        /// each way if it is met as a box (moverIsBox), else as built.
+        [[gnu::noinline]] inline void boxSpan(const LogicWorld &w, int brush, int *lo, int *hi)
+        {
+            const Brush &built = w.brushes[brush];
+            const int grow = moverIsBox(w.movers[brush]) ? 1 : 0;
+            for (int a = 0; a < 3; ++a)
+            {
+                lo[a] = built.mins[a] - grow;
+                hi[a] = built.maxs[a] + grow;
+            }
+        }
+
+        /// Make every box (func_pushable: the only brush entity the game
+        /// makes SOLID_BBOX) a mover met as a box, its hulls' planes shared
+        /// with every other box of its size, in `planes` (w.boxPlanes). Where
+        /// they then are is the caller's to set (logicPlaceBrush). With no
+        /// planes, and no movers, only counts the sizes (logicBoxSizes).
+        [[gnu::noinline]] inline int boxSizesMake(const LogicRecord *records, int recordCount, const Brush *brushes,
+                                                  Plane *planes, MoverHull *movers)
+        {
+            fx seen[48][3]; // (each size by its half-sizes)
+            int sizes = 0;
+            for (int i = 0; i < recordCount; ++i)
+            {
+                const LogicRecord &record = records[i];
+                if (record.kind != static_cast<std::uint8_t>(LogicKind::Pushable) || record.brush == kNoBrush)
+                    continue;
+                fx half[3];
+                boxHalf(brushes[record.brush], half);
+                int size = 0;
+                while (size < sizes && std::memcmp(seen[size], half, sizeof(half)) != 0)
+                    ++size;
+                if (size == sizes)
+                {
+                    if (sizes == 48) // (never, in the game's maps)
+                        continue;
+                    std::memcpy(seen[size], half, sizeof(half));
+                    if (planes != nullptr)
+                        boxHullPlanes(half, &planes[size * kBoxPlanes]);
+                    ++sizes;
+                }
+                if (planes != nullptr && movers != nullptr)
+                    moverMakeBox(movers[record.brush], &planes[size * kBoxPlanes]);
+            }
+            return sizes;
+        }
+        inline void boxHullsSet(LogicWorld &w)
+        {
+            if (w.boxPlanes != nullptr)
+                boxSizesMake(w.records, w.recordCount, w.brushes, w.boxPlanes, w.movers);
+        }
+
         /// The boxes there are to push, found once.
         inline void pushableList(LogicWorld &w)
         {
@@ -2164,9 +2240,56 @@ namespace hldata
         {
             const Brush &built = w.brushes[brush];
             const fx *pos = w.brushStates[brush].pos;
+            int lo[3], hi[3];
+            boxSpan(w, brush, lo, hi);
             for (int a = 0; a < 3; ++a)
-                middle[a] = (fxFromInt(built.mins[a]) + fxFromInt(built.maxs[a])) / 2 + (pos[a] - built.origin[a]);
-            middle[2] = fxFromInt(built.mins[2]) + (pos[2] - built.origin[2]) + kPlayerHalfHeight[crouched ? 1 : 0];
+                middle[a] = (fxFromInt(lo[a]) + fxFromInt(hi[a])) / 2 + (pos[a] - built.origin[a]);
+            middle[2] = fxFromInt(lo[2]) + (pos[2] - built.origin[2]) + kPlayerHalfHeight[crouched ? 1 : 0];
+        }
+
+        /// How the world meets a box (one met as a box: moverIsBox), as the
+        /// engine meets anything that is not a brush (SV_HullForBsp): not as
+        /// itself, but as the one of the map's hulls its size picks -- the
+        /// large one (64 each way) for anything wider than 36, else a
+        /// person's, crouched if it is no taller than 36 -- laid with its
+        /// lower corner on the box's. (So a box 42 across is met as one 64
+        /// across, and stays that far off a wall on its far side; one 112
+        /// long goes into one by as much. The doors, lifts and trains it
+        /// meets are met by the box as wide as it is: boxTrace.)
+        struct BoxWorld
+        {
+            const Hull *hull = nullptr; ///< null: not met so (boxTrace's shapes, then)
+            fx offset[3] = {0, 0, 0};   ///< from the box's middle (boxMiddle) to the hull's point
+        };
+        [[gnu::noinline]] inline BoxWorld boxWorld(const LogicWorld &w, int brush, bool crouched)
+        {
+            BoxWorld out;
+            if (!moverIsBox(w.movers[brush]))
+                return out;
+            int lo[3], hi[3];
+            boxSpan(w, brush, lo, hi);
+            fx half[3];
+            if (hi[0] - lo[0] > 36)
+            {
+                if (w.world->large.nodes == nullptr)
+                    return out;
+                out.hull = &w.world->large;
+                half[0] = half[1] = half[2] = fxFromInt(32);
+            }
+            else
+            {
+                const bool low = hi[2] - lo[2] <= 36;
+                out.hull = low ? &w.world->crouched : &w.world->standing;
+                half[0] = half[1] = fxFromInt(16);
+                half[2] = low ? fxFromInt(18) : fxFromInt(36);
+            }
+            for (int a = 0; a < 3; ++a)
+            {
+                const fx middle = a < 2 ? (fxFromInt(lo[a]) + fxFromInt(hi[a])) / 2
+                                        : fxFromInt(lo[2]) + kPlayerHalfHeight[crouched ? 1 : 0];
+                out.offset[a] = fxFromInt(lo[a]) + half[a] - middle;
+            }
+            return out;
         }
 
         /// Whether a box (by its record) is inside the solid of brush
@@ -2176,11 +2299,12 @@ namespace hldata
         {
             const int brush = w.records[record].brush;
             const bool crouched = w.records[record].extra[3] != 0;
-            const Brush &built = w.brushes[brush];
+            int lo[3], hi[3];
+            boxSpan(w, brush, lo, hi);
             const MoverHull &hull = w.movers[mover];
             fx middle[3];
             boxMiddle(w, brush, crouched, middle);
-            const int over[2] = {built.maxs[0] - built.mins[0] - 32, built.maxs[1] - built.mins[1] - 32};
+            const int over[2] = {hi[0] - lo[0] - 32, hi[1] - lo[1] - 32};
             int count[2];
             for (int a = 0; a < 2; ++a)
                 count[a] = over[a] <= 0 ? 1 : (over[a] + 31) / 32 + 1 > 5 ? 5 : (over[a] + 31) / 32 + 1;
@@ -2210,16 +2334,22 @@ namespace hldata
         /// person.)
         inline bool boxFits(const LogicWorld &w, int brush, bool crouched, const fx *middle)
         {
-            const Brush &built = w.brushes[brush];
-            const int over[2] = {built.maxs[0] - built.mins[0] - 32, built.maxs[1] - built.mins[1] - 32};
-            const Hull &hull = crouched ? w.world->crouched : w.world->standing;
+            // (Met by the engine's hull: one place, at its offset. Else
+            // the person-wide shape every eight units across it.)
+            const BoxWorld engine = boxWorld(w, brush, crouched);
+            int lo[3], hi[3];
+            boxSpan(w, brush, lo, hi);
+            const bool one = engine.hull != nullptr;
+            const int over[2] = {one ? 0 : hi[0] - lo[0] - 32, one ? 0 : hi[1] - lo[1] - 32};
+            const Hull &hull = one ? *engine.hull : crouched ? w.world->crouched : w.world->standing;
             for (int x = 0;; x += 8)
             {
                 const int ox = over[0] <= 0 ? 0 : (x > over[0] ? over[0] : x) - over[0] / 2;
                 for (int y = 0;; y += 8)
                 {
                     const int oy = over[1] <= 0 ? 0 : (y > over[1] ? over[1] : y) - over[1] / 2;
-                    const fx at[3] = {middle[0] + fxFromInt(ox), middle[1] + fxFromInt(oy), middle[2]};
+                    const fx at[3] = {middle[0] + fxFromInt(ox) + engine.offset[0], middle[1] + fxFromInt(oy) + engine.offset[1],
+                                      middle[2] + engine.offset[2]};
                     if (!hullPositionFree(hull, at))
                         return false;
                     if (over[1] <= 0 || y >= over[1])
@@ -2229,6 +2359,22 @@ namespace hldata
                     break;
             }
             return true;
+        }
+
+        /// A move from `a` to `b` that goes nowhere: stopped where it is,
+        /// against the way it was going (boxTrace's, for a shape that starts
+        /// in solid and would end in it too).
+        [[gnu::noinline]] inline Trace boxStopped(const fx *a, const fx *b)
+        {
+            Trace t;
+            t.fraction = 0;
+            for (int k = 0; k < 3; ++k)
+                t.endPos[k] = a[k];
+            const fx along[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+            const fx far = fxLength(along);
+            for (int k = 0; k < 3; ++k)
+                t.normal[k] = far > 0 ? -static_cast<std::int32_t>((static_cast<std::int64_t>(along[k]) << kNormalShift) / far) : 0;
+            return t;
         }
 
         /// A box moved from `from` to `to` (its middle: boxMiddle), through
@@ -2243,18 +2389,39 @@ namespace hldata
         /// that starts in the world's solid then simply says nothing.)
         inline Trace boxTrace(LogicWorld &w, int brush, bool crouched, const fx *from, const fx *to, bool probing = false)
         {
-            const Brush &built = w.brushes[brush];
-            const int over[2] = {built.maxs[0] - built.mins[0] - 32, built.maxs[1] - built.mins[1] - 32};
+            int lo[3], hi[3];
+            boxSpan(w, brush, lo, hi);
+            const int over[2] = {hi[0] - lo[0] - 32, hi[1] - lo[1] - 32};
             int count[2];
             for (int a = 0; a < 2; ++a)
                 count[a] = over[a] <= 0 ? 1 : (over[a] + 31) / 32 + 1 > 5 ? 5 : (over[a] + 31) / 32 + 1;
             // (How far above the standing shape's middle the crouched one's
             // is when their tops are the box's: 0, it is as tall or taller.)
-            const int height = built.maxs[2] - built.mins[2];
+            const int height = hi[2] - lo[2];
             const fx rise = height < 72 ? fxFromInt(height - 54) : 0;
             const bool was = w.movers[brush].solid;
             w.movers[brush].solid = false;
             moverReachSet(*w.world, brush);
+            // A box the engine meets by a person's hull (one no wider than
+            // 36) is that one shape, at its offset, against the world and
+            // every brush alike: the brushes have those hulls too. One met by
+            // the large hull meets the world by it (below), and what moves
+            // by the shapes here, the world left out of them.
+            const BoxWorld engine = boxWorld(w, brush, crouched);
+            const bool single = engine.hull != nullptr && engine.hull != &w.world->large;
+            if (single)
+                count[0] = count[1] = 1;
+            // (Which of a person's hulls the shapes are.)
+            const bool low = single ? engine.hull == &w.world->crouched : crouched;
+            MoveWorld others;
+            const MoveWorld *shapes = w.world;
+            if (engine.hull != nullptr && !single)
+            {
+                others = *w.world;
+                others.standing.root = others.crouched.root = kContentsEmpty;
+                shapes = &others;
+            }
+            const fx lift3 = single ? engine.offset[2] : 0;
             // A brush that is turned (a door on a hinge) is met by one shape
             // at the box's middle, not by its corners, as the game meets it
             // with one hull: the shapes' room is grown along the brush's own
@@ -2280,11 +2447,13 @@ namespace hldata
             {
                 for (int j = 0; j < count[1]; ++j)
                 {
-                    const fx off[2] = {count[0] == 1 ? 0 : fxFromInt(-over[0]) / 2 + fxFromInt(over[0]) * i / (count[0] - 1),
-                                       count[1] == 1 ? 0 : fxFromInt(-over[1]) / 2 + fxFromInt(over[1]) * j / (count[1] - 1)};
-                    const fx a[3] = {from[0] + off[0], from[1] + off[1], from[2]};
-                    const fx b[3] = {to[0] + off[0], to[1] + off[1], to[2]};
-                    Trace t = traceAll(*w.world, crouched, a, b);
+                    const fx off[2] = {single ? engine.offset[0]
+                                       : count[0] == 1 ? 0 : fxFromInt(-over[0]) / 2 + fxFromInt(over[0]) * i / (count[0] - 1),
+                                       single ? engine.offset[1]
+                                       : count[1] == 1 ? 0 : fxFromInt(-over[1]) / 2 + fxFromInt(over[1]) * j / (count[1] - 1)};
+                    const fx a[3] = {from[0] + off[0], from[1] + off[1], from[2] + lift3};
+                    const fx b[3] = {to[0] + off[0], to[1] + off[1], to[2] + lift3};
+                    Trace t = traceAll(*shapes, low, a, b);
                     // A corner that starts in the world's solid (a box the
                     // map built into a wall; a hair's breadth of rounding)
                     // may come out of it, and that is all: a move that
@@ -2292,16 +2461,10 @@ namespace hldata
                     if (t.startSolid || t.allSolid)
                     {
                         stuck = true;
-                        if (probing || hullPositionFree(crouched ? w.world->crouched : w.world->standing, b))
+                        if (probing || (engine.hull != nullptr && !single) ||
+                            hullPositionFree(low ? w.world->crouched : w.world->standing, b))
                             continue;
-                        t = Trace();
-                        t.fraction = 0;
-                        for (int k = 0; k < 3; ++k)
-                            t.endPos[k] = a[k];
-                        const fx along[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
-                        const fx far = fxLength(along);
-                        for (int k = 0; k < 3; ++k)
-                            t.normal[k] = far > 0 ? -static_cast<std::int32_t>((static_cast<std::int64_t>(along[k]) << kNormalShift) / far) : 0;
+                        t = boxStopped(a, b);
                     }
                     // Going up, a box lower than the standing shape is met
                     // at its own top too, by the crouched shape level with
@@ -2309,10 +2472,10 @@ namespace hldata
                     // lid of their cage) is otherwise already inside that
                     // shape, and a thing that moves lets through what is in
                     // it.
-                    if (!crouched && rise > 0 && b[2] > a[2])
+                    if (!single && !crouched && rise > 0 && b[2] > a[2])
                     {
                         const fx at[3] = {a[0], a[1], a[2] + rise}, till[3] = {b[0], b[1], b[2] + rise};
-                        Trace top = traceAll(*w.world, true, at, till);
+                        Trace top = traceAll(*shapes, true, at, till);
                         if (!top.startSolid && !top.allSolid && top.fraction < t.fraction)
                         {
                             top.endPos[2] -= rise;
@@ -2323,6 +2486,7 @@ namespace hldata
                         continue;
                     t.endPos[0] -= off[0];
                     t.endPos[1] -= off[1];
+                    t.endPos[2] -= lift3;
                     best = t;
                     any = true;
                 }
@@ -2339,7 +2503,7 @@ namespace hldata
                 // stood open, would reach out further than the box does.)
                 const fx lift = fxFromInt(height / 2) - kPlayerHalfHeight[crouched ? 1 : 0];
                 const fx a[3] = {from[0], from[1], from[2] + lift}, b[3] = {to[0], to[1], to[2] + lift};
-                Trace t = traceAll(*w.world, true, a, b);
+                Trace t = traceAll(*shapes, true, a, b);
                 if (any && !t.startSolid && !t.allSolid && t.fraction < best.fraction)
                 {
                     t.endPos[2] -= lift;
@@ -2348,6 +2512,31 @@ namespace hldata
             }
             w.movers[brush].solid = was;
             moverReachSet(*w.world, brush);
+            // The world, as the engine meets the box (boxWorld): as one more
+            // of the shapes above, by the same rule for starting in solid.
+            if (engine.hull != nullptr && !single)
+            {
+                const fx a[3] = {from[0] + engine.offset[0], from[1] + engine.offset[1], from[2] + engine.offset[2]};
+                const fx b[3] = {to[0] + engine.offset[0], to[1] + engine.offset[1], to[2] + engine.offset[2]};
+                Trace t = traceHull(*engine.hull, a, b);
+                bool say = true;
+                if (t.startSolid || t.allSolid)
+                {
+                    stuck = true;
+                    if (probing || hullPositionFree(*engine.hull, b))
+                        say = false;
+                    else
+                        t = boxStopped(a, b);
+                }
+                if (say && (!any || t.fraction < best.fraction))
+                {
+                    for (int k = 0; k < 3; ++k)
+                        t.endPos[k] -= engine.offset[k];
+                    t.mover = -1;
+                    best = t;
+                    any = true;
+                }
+            }
             // Against the other boxes, box against box: what is above is
             // blind to anything a corner has got the least way into (as a
             // door is to someone it closes on), and two boxes sliding past
@@ -2356,8 +2545,8 @@ namespace hldata
             if (any)
             {
                 pushableList(w);
-                const fx half[3] = {fxFromInt(built.maxs[0] - built.mins[0]) / 2, fxFromInt(built.maxs[1] - built.mins[1]) / 2,
-                                    fxFromInt(built.maxs[2] - built.mins[2]) / 2};
+                const fx half[3] = {fxFromInt(hi[0] - lo[0]) / 2, fxFromInt(hi[1] - lo[1]) / 2,
+                                    fxFromInt(hi[2] - lo[2]) / 2};
                 const fx centre[3] = {from[0], from[1], from[2] - kPlayerHalfHeight[crouched ? 1 : 0] + half[2]};
                 const fx move[3] = {to[0] - from[0], to[1] - from[1], to[2] - from[2]};
                 for (int n = 0; n < w.pushableCount; ++n)
@@ -5189,6 +5378,13 @@ namespace hldata
     // ------------------------------------------------------------------ per frame
 
     /// Set everything to how the map starts. Call once the arrays are in place.
+    /// How many sizes of box there are among `records`: LogicWorld::boxPlanes
+    /// wants kBoxPlanes planes for each.
+    inline int logicBoxSizes(const LogicRecord *records, int recordCount, const Brush *brushes)
+    {
+        return detail::boxSizesMake(records, recordCount, brushes, nullptr, nullptr);
+    }
+
     inline void logicInit(LogicWorld &w)
     {
         for (LogicEvent &event : w.events)
@@ -5211,6 +5407,8 @@ namespace hldata
             w.brushStates[b].scroll = 0;
             logicPlaceBrush(w, b, w.brushes[b].origin);
         }
+        // (The boxes are met as boxes; placed below, as the game spawns them.)
+        detail::boxHullsSet(w);
         int ladderSlot = 0;
         for (int i = 0; i < w.recordCount; ++i)
         {

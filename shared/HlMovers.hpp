@@ -63,6 +63,62 @@ namespace hldata
         Unsaved<std::uint16_t> pad;
     };
 
+    /// A brush entity that is solid as a box (the game's SOLID_BBOX: of the
+    /// brush entities, only func_pushable is): the engine meets it, not by
+    /// the brush's own clip hulls, but by a box hull it makes of the
+    /// entity's bounds grown by the size of what moves (SV_HullForBox) --
+    /// six planes, two to an axis. Here such a mover's two hulls are those,
+    /// in its own space centred on the box, so that every box of a size can
+    /// share one set of planes: the x and y planes for both hulls (a person
+    /// crouched is as wide as one standing), then z for the standing one,
+    /// then z for the crouched one. A mover is a box when its hulls' nodes
+    /// are these: known by the mark in their first (a map's clip nodes have
+    /// 0 there), not by where they are -- a family's library has its own
+    /// copy of them.
+    inline constexpr int kBoxPlanes = 8;
+    inline constexpr std::uint16_t kBoxMark = 0xB0C5;
+    inline constexpr ClipNode kBoxNodes[2][6] = {
+        // Each axis: past the far plane, outside; short of the near one,
+        // outside; between all six, inside.
+        {{0, {kContentsEmpty, 1}, kBoxMark}, {1, {2, kContentsEmpty}, 0}, {2, {kContentsEmpty, 3}, 0},
+         {3, {4, kContentsEmpty}, 0}, {4, {kContentsEmpty, 5}, 0}, {5, {kContentsSolid, kContentsEmpty}, 0}},
+        {{0, {kContentsEmpty, 1}, kBoxMark}, {1, {2, kContentsEmpty}, 0}, {2, {kContentsEmpty, 3}, 0},
+         {3, {4, kContentsEmpty}, 0}, {6, {kContentsEmpty, 5}, 0}, {7, {kContentsSolid, kContentsEmpty}, 0}}};
+    inline constexpr std::uint8_t kBoxPlaneTypes[kBoxPlanes] = {kPlaneAxisX, kPlaneAxisX, kPlaneAxisY, kPlaneAxisY,
+                                                                kPlaneAxisZ, kPlaneAxisZ, kPlaneAxisZ, kPlaneAxisZ};
+
+    /// Whether a mover is met as a box (above).
+    inline bool moverIsBox(const MoverHull &mover)
+    {
+        return mover.standing.nodes != nullptr && mover.standing.nodes[0].pad == kBoxMark;
+    }
+
+    /// The planes of a box `half` (Q12, each way from its middle) for both
+    /// hulls: kBoxPlanes of them into `out`.
+    inline void boxHullPlanes(const fx *half, Plane *out)
+    {
+        // How far each hull's box reaches past the box: the player's
+        // half-size, standing and crouched (16 across either way; 36 and 18
+        // up and down).
+        const fx grow[4] = {fxFromInt(16), fxFromInt(16), fxFromInt(36), fxFromInt(18)};
+        for (int p = 0; p < kBoxPlanes; ++p)
+        {
+            const int axis = p < 4 ? p >> 1 : 2;
+            Plane &plane = out[p];
+            plane.normal[0] = plane.normal[1] = plane.normal[2] = 0;
+            plane.normal[axis] = 1 << 30;
+            const fx reach = half[axis] + grow[p < 4 ? axis : (p < 6 ? 2 : 3)];
+            plane.dist = (p & 1) ? -reach : reach;
+        }
+    }
+
+    /// Make `mover` a box whose planes are `planes` (boxHullPlanes').
+    inline void moverMakeBox(MoverHull &mover, const Plane *planes)
+    {
+        mover.standing = Hull{kBoxNodes[0], planes, kBoxPlaneTypes, 0};
+        mover.crouched = Hull{kBoxNodes[1], planes, kBoxPlaneTypes, 0};
+    }
+
     /// A volume the player climbs in: a func_ladder. Not solid, never drawn.
     struct LadderVolume
     {
@@ -344,6 +400,22 @@ namespace hldata
 
         /// A world point in the brush's own space: back along its origin,
         /// then turned back.
+        /// A brush's model box (its own space) in a mover's space: the same,
+        /// except for a box, whose space is centred on it (moverMakeBox).
+        /// (What a shot meets is the model's box, not grown by the engine's
+        /// unit as the game's SOLID_BBOX is: TECHNICAL.md, Boxes.)
+        [[gnu::noinline]] inline void boxCentred(const MoverHull &mover, fx *mins, fx *maxs)
+        {
+            if (!moverIsBox(mover))
+                return;
+            for (int a = 0; a < 3; ++a)
+            {
+                const fx middle = (mins[a] + maxs[a]) / 2;
+                mins[a] -= middle;
+                maxs[a] -= middle;
+            }
+        }
+
         HL_HOT void toMoverSpace(const MoverHull &mover, const fx *world, fx *local)
         {
             const fx d[3] = {world[0] - mover.origin[0], world[1] - mover.origin[1],
@@ -734,8 +806,9 @@ namespace hldata
             if (boxed)
             {
                 const Model &model = world.models[world.brushes[m].model];
-                const fx mins[3] = {fxFromInt(model.mins[0]), fxFromInt(model.mins[1]), fxFromInt(model.mins[2])};
-                const fx maxs[3] = {fxFromInt(model.maxs[0]), fxFromInt(model.maxs[1]), fxFromInt(model.maxs[2])};
+                fx mins[3] = {fxFromInt(model.mins[0]), fxFromInt(model.mins[1]), fxFromInt(model.mins[2])};
+                fx maxs[3] = {fxFromInt(model.maxs[0]), fxFromInt(model.maxs[1]), fxFromInt(model.maxs[2])};
+                detail::boxCentred(mover, mins, maxs);
                 // (One that starts inside it, or on it -- a gun's own shot -- leaves
                 // it: not stopped by it, as the hull never did.)
                 bool inside = true;
@@ -762,8 +835,9 @@ namespace hldata
     /// the axes -- as doors are.) `metMover`: the brush entity that stopped it,
     /// or -1 for the world (or for one it only passed within a hull's
     /// breadth of, as traceShot does not count it).
-    inline bool traceShotWall(const MoveWorld &world, const fx *start, const fx *end, fx *at, fx *normal,
-                              int *metMover = nullptr)
+    // (One copy, not one in every monster that looks for a wall.)
+    [[gnu::noinline]] inline bool traceShotWall(const MoveWorld &world, const fx *start, const fx *end, fx *at, fx *normal,
+                                                int *metMover = nullptr)
     {
         std::int32_t fraction = kFractionOne;
         int wall = -1;
@@ -803,8 +877,9 @@ namespace hldata
             if (metMover != nullptr && world.brushes != nullptr && world.models != nullptr)
             {
                 const Model &model = world.models[world.brushes[m].model];
-                const fx mins[3] = {fxFromInt(model.mins[0]), fxFromInt(model.mins[1]), fxFromInt(model.mins[2])};
-                const fx maxs[3] = {fxFromInt(model.maxs[0]), fxFromInt(model.maxs[1]), fxFromInt(model.maxs[2])};
+                fx mins[3] = {fxFromInt(model.mins[0]), fxFromInt(model.mins[1]), fxFromInt(model.mins[2])};
+                fx maxs[3] = {fxFromInt(model.maxs[0]), fxFromInt(model.maxs[1]), fxFromInt(model.maxs[2])};
+                detail::boxCentred(mover, mins, maxs);
                 on = detail::lineIntoBox(a, b, mins, maxs) >= 0 ? m : -1;
             }
             else if (metMover != nullptr)

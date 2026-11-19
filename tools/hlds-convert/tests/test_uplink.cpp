@@ -90,9 +90,10 @@ namespace
         const int startX = fxToInt(g.movers[box].mins[0]);
         const int restZ = fxToInt(g.movers[box].mins[2]);
         std::printf("test_uplink: the crate rests at x %d, z %d\n", startX, restZ);
-        // (On the rails' edge, not between them: the game's own crate, seen
-        // in the real game, rests there too -- its middle is on the face of
-        // the far rail's hull, and on the face is in it.)
+        // (On the rails' edge, not between them: the game's own crate rests
+        // there too -- measured in the real game, tools/ref/diag/
+        // uplink_rest.txt: its middle at 333.03, so its bounds, a unit grown
+        // each way, from 316.03.)
         check(restZ == 316, "the crate comes to rest on the rails, as in the game");
         check(!logicMasterAllows(g.logic, button), "the button is locked before the dish is lined up");
 

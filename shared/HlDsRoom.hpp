@@ -74,6 +74,9 @@ namespace hldata
     /// The game's arrays (dll/hl/Game.arm.cpp): for each actor and logic record.
     inline constexpr std::size_t kDsActorBytes = 264;
     inline constexpr std::size_t kDsLogicBytes = 56;
+    /// ... and for each size of box there is: its box hulls' planes
+    /// (LogicWorld::boxPlanes: kBoxPlanes of them).
+    inline constexpr std::size_t kDsBoxSizeBytes = 128;
 
     /// Animation keys apart (HlModel.hpp's kModelKeysApart): a DS keeps
     /// what it reads of them in one block, of this size -- the same here and
@@ -103,6 +106,7 @@ namespace hldata
         std::size_t sounds = 0;     ///< the sounds kept with the map, as a DS has them
         std::uint32_t actors = 0;
         std::uint32_t logicRecords = 0;
+        std::uint32_t boxSizes = 0; ///< how many sizes of func_pushable (logicBoxSizes)
         std::uint8_t families = 0;  ///< the game's families it needs (familyBit)
     };
 
@@ -111,7 +115,8 @@ namespace hldata
     inline std::size_t dsMapNeedBeforeSounds(const DsMapCost &cost)
     {
         return cost.level + cost.models + cost.heldSkins + kDsMapTables + kDsPlayRoom +
-               cost.actors * kDsActorBytes + cost.logicRecords * kDsLogicBytes + dsFamilyBytes(cost.families);
+               cost.actors * kDsActorBytes + cost.logicRecords * kDsLogicBytes + cost.boxSizes * kDsBoxSizeBytes +
+               dsFamilyBytes(cost.families);
     }
 
     /// What is left for its sounds (0 if nothing is).

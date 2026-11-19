@@ -394,6 +394,19 @@ namespace
             monstersTick(g.logic, g.player, 33);
             g.drain();
         }
+        // (In play the cart is in the machine by the time they come, pushed
+        // there (testCart): not where they come down. It is a box, solid all
+        // over as the game's SOLID_BBOX is, and one that comes down on it
+        // stands 11 units over their way out.)
+        const int cart = recordNamed(g, "sample_cart2", LogicKind::Pushable);
+        check(cart >= 0, "the cart is there");
+        if (cart >= 0)
+        {
+            const int brush = g.view.logic[cart].brush;
+            const fx *at = g.brushStates[brush].pos;
+            const fx there[3] = {at[0] + fxFromInt(210), at[1], at[2]};
+            logicPlaceBrush(g.logic, brush, there);
+        }
         const int before = g.actors.count;
         logicUse(g.logic, g.player, reinforcements, -1, kUseToggle);
         int made = 0, aliveInRoom = 0;

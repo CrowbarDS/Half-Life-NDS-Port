@@ -41,6 +41,7 @@ namespace hldstest
         std::vector<MoverReach> reach; ///< MoveWorld::reach
         std::vector<BrushState> brushStates;
         std::vector<LogicState> states;
+        std::vector<Plane> boxPlanes; ///< LogicWorld::boxPlanes
         std::vector<LadderVolume> ladders;
         std::vector<std::uint16_t> ladderModels;
         std::vector<std::uint8_t> cornerState;
@@ -318,6 +319,9 @@ namespace hldstest
         g.logic.states = g.states.data();
         g.logic.brushStates = g.brushStates.data();
         g.logic.movers = g.movers.data();
+        g.boxPlanes.resize(static_cast<std::size_t>(logicBoxSizes(v.logic, static_cast<int>(v.logicCount), v.brushes)) *
+                               kBoxPlanes + 1);
+        g.logic.boxPlanes = g.boxPlanes.data();
         g.logic.world = &g.move;
         g.logic.ladders = g.ladders.data();
         g.logic.globals = globals;

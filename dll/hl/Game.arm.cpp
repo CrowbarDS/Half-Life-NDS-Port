@@ -3,6 +3,7 @@
 #include "game/Think.hpp"
 #include "game/Game.hpp"
 
+#include "HlDsRoom.hpp"
 #include "HlMaterial.hpp"
 #include "HlSaveState.hpp"
 #include "HlMapStore.hpp"
@@ -48,7 +49,7 @@ namespace hlrt
         struct ArrayPlan
         {
             std::uint32_t brushStates, movers, reach, states, ladders, ladderModels, corners, actorStates, actorBoxes,
-                linkShut, aiSlots, aiHeld, total;
+                linkShut, aiSlots, aiHeld, boxPlanes, total;
             int ladderCount, actorCount;
         };
 
@@ -79,6 +80,11 @@ namespace hlrt
             take(plan.linkShut, view.pathLinkCount + 1);
             take(plan.aiSlots, actors * sizeof(std::int16_t));
             take(plan.aiHeld, actors);
+            // (Its boxes' hulls: the planes of each size of box.)
+            static_assert(kDsBoxSizeBytes == kBoxPlanes * sizeof(Plane), "HlDsRoom.hpp counts them so");
+            take(plan.boxPlanes,
+                 static_cast<std::uint32_t>(logicBoxSizes(view.logic, static_cast<int>(view.logicCount), view.brushes)) *
+                     kBoxPlanes * sizeof(Plane));
             plan.total = at;
             return plan;
         }
@@ -229,6 +235,7 @@ namespace hlrt
         logic.states = states_;
         logic.brushStates = brushStates_;
         logic.movers = movers_;
+        logic.boxPlanes = reinterpret_cast<Plane *>(arrays_ + plan.boxPlanes);
         logic.ladders = ladders_;
         logic.world = &world;
         logic.globals = &globals;

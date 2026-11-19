@@ -1,0 +1,6 @@
+# Uplink's crate on the dish rails (hldemo3 *31, 32 each way, built at z 332):
+# where it comes to rest, left alone.
+# map hldemo3
+# start -69 -22 154 0
+# keep func_.*|momentary_door
+120 0 0 0 0

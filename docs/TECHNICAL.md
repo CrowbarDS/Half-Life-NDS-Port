@@ -194,24 +194,42 @@ Milestone 11, "levels of detail".
   (air, again half a minute on). A map's cook report names what it does not
   handle yet ("not handled:").
 
-- A box that is pushed collides as the size it is. The map's collision
-  knows only shapes a person wide, so a wider box is that shape at each of
-  its corners (and between), and goes as far as the first of them to meet
-  something; where it comes to rest is asked of the map's collision every
-  eight units across it; against other boxes it is box against box. The
-  player and a box are never left in each other: a box that finds the
+- A box that is pushed (`func_pushable`, the only brush entity the game
+  makes `SOLID_BBOX`) is met as the engine meets it, not by its brush: by a
+  box hull made of its bounds grown by a unit each way (the engine's loader
+  spreads every brush model's bounds so) and by the size of what moves --
+  for the player, another box, a monster. Every box of a size shares one
+  set of that hull's planes (`moverMakeBox`, `LogicWorld::boxPlanes`,
+  allocated with the map's arrays; at most 6 sizes, 768 bytes, on a map).
+  The world meets a box as the engine does anything that is not a brush:
+  by the one of the map's hulls its size picks, laid with its lower corner
+  on the box's -- the large one (64 each way) for anything wider than 36,
+  else a person's, crouched if it is no taller than 36 (`boxWorld`). So a
+  box 42 across stays 20 units off a wall on its far side, and one 112
+  long goes 50 into one, as in the game. What moves -- a door, a lift, a
+  train -- is met by the box as wide as it is, a person-wide shape at each
+  of its corners and between (the converter keeps no large hull for a
+  brush). Against other boxes it is box against box. As `CPushable::Spawn`
+  has it, a box is picked up a unit and settles back, and its first slide
+  is not slowed (`LogicState::phase`, reused for a pushable). A box rests
+  only on what it touches; with floor a little way under it, it falls.
+  The player and a box are never left in each other: a box that finds the
   player inside it gets out of them by the shortest way, and if it cannot,
-  they are moved out of it. What moves -- a door, a lift, a train -- pushes
-  a box in its way, or is stopped by it as it is by the player, and carries
-  one that stands on it. Its scrape along the floor is the game's. As
-  `CPushable::Spawn` has it, a box is picked up a unit and settles back, and
-  its first slide is not slowed (`LogicState::phase`, reused for a pushable).
-  A box rests only on what it touches; with floor a little way under it, it
-  falls.
+  they are moved out of it. A door, a lift or a train pushes a box in its
+  way, or is stopped by it as it is by the player, and carries one that
+  stands on it. Its scrape along the floor is the game's.
+  The pusher keeps their own speed, stopped by the box's face (the engine
+  puts back the speed of the player's move once its touches are done), so
+  they stop when they stop pushing.
   (`shared/HlLogic.hpp`, `pushableTick`; `test_boxes` shoves every box of
-  four of the game's maps every way and looks.) Holding USE on one stops
-  the push and pulls it instead: it takes on the player's speed a quarter a
-  frame at 60 frames a second. USE held on the ground cuts the player's top
+  four of the game's maps every way and looks; `tools/ref/diag.sh` holds
+  pushes, pulls and jumps against the real game's, frame by frame.)
+  Known gap, for the weapons work: a shot meets a box's model box, not the
+  grown one the game's `SOLID_BBOX` gives it -- a unit short each way
+  (`traceShot`, `boxCentred`). Holding USE on one stops
+  the push and pulls it instead, after the player's move as the game's
+  `PlayerUse` does, from the first frame USE is held: it takes on the
+  player's speed a quarter a frame at 60 frames a second. USE held on the ground cuts the player's top
   speed to a third, with or without a box, as the game does. Not in a match, where a
   guest's USE isn't sent while held. In water a box floats as the game's
   do: gravity and a lift as deep as it is in, times its buoyancy by its area,

@@ -47,7 +47,7 @@ namespace hldata
     HL_FIELDS(BrushState, 6);
     HL_FIELDS(LogicState, 12);
     HL_FIELDS(LogicEvent, 6);
-    HL_FIELDS(LogicWorld, 77);
+    HL_FIELDS(LogicWorld, 78);
     HL_FIELDS(Hull, 4);
     HL_FIELDS(MoverHull, 11);
     HL_FIELDS(LadderVolume, 3);
@@ -512,6 +512,17 @@ namespace hldata
             {
                 for (int i = 0; i < w.actors->count; ++i)
                     actorPlaceBox(*w.actors, i);
+            }
+            // The boxes are met as boxes again, where the save has them: their
+            // hulls are not in it (only where in their tables they begin), and
+            // a save from before they were boxes has them as brushes.
+            detail::boxHullsSet(w);
+            for (int i = 0; i < w.recordCount; ++i)
+            {
+                const LogicRecord &record = w.records[i];
+                if (record.kind == static_cast<std::uint8_t>(LogicKind::Pushable) && record.brush != kNoBrush &&
+                    record.brush < w.brushCount)
+                    logicPlaceBrush(w, record.brush, w.brushStates[record.brush].pos);
             }
             // (The brushes are where the save has them: so is the table of
             // where they are.)

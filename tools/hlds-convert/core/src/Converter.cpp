@@ -19,6 +19,7 @@
 #include <mutex>
 #include <thread>
 #include <cctype>
+#include <array>
 #include <set>
 
 #include "HlArchive.hpp"
@@ -1132,6 +1133,21 @@ namespace hlds
                 dsLevelWhole = dsTrial.size();
             dsCost.actors = static_cast<std::uint32_t>(level.actors.size());
             dsCost.logicRecords = static_cast<std::uint32_t>(level.logic.size());
+            // (The sizes of its boxes, each with its hulls' planes: as
+            // logicBoxSizes counts them, by their bounds.)
+            {
+                std::set<std::array<int, 3>> sizes;
+                for (const hldata::LogicRecord &record : level.logic)
+                {
+                    if (record.kind != static_cast<std::uint8_t>(hldata::LogicKind::Pushable) ||
+                        record.brush >= level.brushes.size())
+                        continue;
+                    const hldata::Brush &brush = level.brushes[record.brush];
+                    sizes.insert({brush.maxs[0] - brush.mins[0], brush.maxs[1] - brush.mins[1],
+                                  brush.maxs[2] - brush.mins[2]});
+                }
+                dsCost.boxSizes = static_cast<std::uint32_t>(sizes.size());
+            }
             // (The game's families it needs: its actors', its visitors', and
             // the match's rules on a map a match is played on.)
             dsCost.families = static_cast<std::uint8_t>(
