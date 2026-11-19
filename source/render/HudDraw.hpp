@@ -63,6 +63,9 @@ namespace hlrt
             for (int i = 0; i < 4; ++i)
                 pain_[i] = pain[i];
         }
+        /// The light of an explosion the player is in (RGB555, added to the
+        /// whole screen this frame; 0: none). GlowLayer's.
+        void setWarm(std::uint16_t colour) { warm_ = colour; }
         /// Hurt by these kinds (HlPlayerMove.hpp's kHurt* bits): each one's
         /// picture shown at the left for a while, as the game shows them.
         void addHurt(unsigned kinds) { hurtKinds_ |= kinds; }
@@ -160,6 +163,7 @@ namespace hlrt
         bool lampOn_ = false;
         bool lampSuit_ = false; ///< the suit is worn: its lamp is shown, alight or not
         int flash_ = 0;
+        std::uint16_t warm_ = 0;
         int pain_[4] = {0, 0, 0, 0};
         unsigned hurtKinds_ = 0;
         int lampPercent_ = 100;

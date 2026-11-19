@@ -44,9 +44,11 @@ namespace hlrt
             return length > 2 && ref.name[length - 2] == '-' && ref.name[length - 1] == 'l';
         }
 
-        /// One glow that may be shown this pass.
+        /// One glow that may be shown this pass (`index` -1: an explosion's
+        /// light, in its own colour).
         struct Candidate
         {
+            const fx *at;         ///< where it is in the world
             std::int32_t dist;
             std::int16_t index;
             std::int16_t x, y;   ///< its middle on the screen
@@ -61,6 +63,15 @@ namespace hlrt
 
         /// One colour's channel times another's (each 0..31).
         int timesChannel(int a, int b) { return (a * b + 15) / 31; }
+
+        // An explosion's light (the engine's TE_EXPLOSION): a white one of
+        // radius 200 gone in a quarter of a second (800 units a second), an
+        // orange one of 150 shrinking 200 a second -- here gone with the
+        // fireball, at 450 ms. Its colours (250, 250, 150), (255, 190, 40).
+        constexpr int kLightWhite[3] = {31, 31, 18}, kLightOrange[3] = {31, 23, 5};
+        /// How solid its halo is at its middle (of 31), and the most the
+        /// whole screen is lit by one the player is in.
+        constexpr int kLightAlpha = 20, kWashMost = 8;
     } // namespace
 
     int GlowLayer::chooseSprite()
@@ -87,8 +98,13 @@ namespace hlrt
                 bestCount = count;
             }
         }
-        if (best < 0 || best >= static_cast<int>(level.view.spriteCount) || !cookedAsLight(level.view.sprites[best]))
-            return -1;
+        // (A map without one has the lights of explosions drawn with the
+        // common glow, flare3.spr: the game's file adds, so it is cooked
+        // with its brightness as its alpha too.)
+        const int common = static_cast<int>(CommonSprite::Glow);
+        if (best < 0 || best >= static_cast<int>(view.spriteCount) ||
+            (!cookedAsLight(view.sprites[best]) && best != common))
+            best = common < static_cast<int>(view.spriteCount) && view.sprites[common].frames > 0 ? common : -1;
         sprite_ = best;
         return best;
     }
@@ -186,6 +202,7 @@ namespace hlrt
     {
         takenCount_ = 0;
         shadowCount_ = 0;
+        hudDraw.setWarm(0);
         if (!picture_ || sprite_ < 0 || !hudDraw.spritesLive())
             return;
         const SpriteRef *ref = spriteCache.ref(static_cast<unsigned>(sprite_));
@@ -240,6 +257,7 @@ namespace hlrt
             if (halfX > 32 || halfY > 32 || count == kCandidates)
                 continue;
             Candidate c;
+            c.at = record.move;
             c.dist = dist;
             c.index = static_cast<std::int16_t>(i);
             c.x = static_cast<std::int16_t>(x);
@@ -261,6 +279,75 @@ namespace hlrt
             list[at] = c;
         }
 
+        // The explosions' lights: a halo where each is, as big as its light
+        // reaches; and, for one the player stands in, the whole screen lit a
+        // little (a light reaches round corners: no line is tried for that).
+        int wash[3] = {0, 0, 0};
+        const ActorWorld &actors = game.actors;
+        for (int n = 0; n < kMaxEffects; ++n)
+        {
+            const Effect &effect = actors.effects[n];
+            if (effect.kind != kEffectBurst || effect.size < 48 || effect.wholeMs <= 0)
+                continue;
+            const int t = effect.wholeMs - effect.leftMs;
+            const int white = t < 250 ? 200 - t * 4 / 5 : 0, orange = 150 - t / 5;
+            const int reach = white > orange ? white : orange;
+            if (reach <= 0)
+                continue;
+            int colour[3];
+            for (int k = 0; k < 3; ++k)
+            {
+                // (Each by how much of its radius is left; the orange gone
+                // with the fireball.)
+                const int v = kLightWhite[k] * white / 200 +
+                              kLightOrange[k] * orange * effect.leftMs / (150 * effect.wholeMs);
+                colour[k] = v > 31 ? 31 : v;
+            }
+            const std::int32_t d[3] = {fxToInt(effect.a[0] - camera.pos[0]), fxToInt(effect.a[1] - camera.pos[1]),
+                                       fxToInt(effect.a[2] - camera.pos[2])};
+            const int dist = static_cast<int>(isqrt64(static_cast<std::uint64_t>(
+                static_cast<std::int64_t>(d[0]) * d[0] + static_cast<std::int64_t>(d[1]) * d[1] +
+                static_cast<std::int64_t>(d[2]) * d[2])));
+            if (dist < reach)
+            {
+                for (int k = 0; k < 3; ++k)
+                {
+                    const int v = colour[k] * kWashMost * (reach - dist) / (31 * reach);
+                    wash[k] = v > wash[k] ? v : wash[k];
+                }
+            }
+            const std::int32_t depth = (d[0] * camera.forward[0] + d[1] * camera.forward[1] + d[2] * camera.forward[2]) >> 12;
+            if (depth < 8 || count == kCandidates)
+                continue;
+            const std::int32_t across = (d[0] * camera.right[0] + d[1] * camera.right[1] + d[2] * camera.right[2]) >> 12;
+            const std::int32_t up = (d[0] * camera.up[0] + d[1] * camera.up[1] + d[2] * camera.up[2]) >> 12;
+            const std::int32_t perX = camera.hudPixelX * depth, perY = camera.hudPixel * depth;
+            const int x = 128 + across * kDepth / perX, y = 96 - up * kDepth / perY;
+            int halfX = reach * kDepth / perX, halfY = reach * kDepth / perY;
+            halfX = halfX > 32 ? 32 : (halfX < 1 ? 1 : halfX);
+            halfY = halfY > 32 ? 32 : (halfY < 1 ? 1 : halfY);
+            if (x + halfX < 0 || x - halfX >= 256 || y + halfY < 0 || y - halfY >= 192)
+                continue;
+            Candidate c;
+            c.at = effect.a;
+            c.dist = dist;
+            c.index = -1;
+            c.x = static_cast<std::int16_t>(x);
+            c.y = static_cast<std::int16_t>(y);
+            c.halfX = static_cast<std::int16_t>(halfX);
+            c.halfY = static_cast<std::int16_t>(halfY);
+            c.alpha = kLightAlpha;
+            c.colour = static_cast<std::uint16_t>(colour[0] | colour[1] << 5 | colour[2] << 10);
+            int at = count++;
+            while (at > 0 && list[at - 1].dist > dist)
+            {
+                list[at] = list[at - 1];
+                --at;
+            }
+            list[at] = c;
+        }
+        hudDraw.setWarm(static_cast<std::uint16_t>(wash[0] | wash[1] << 5 | wash[2] << 10));
+
         // What is held, where it is on the screen: a glow there would be
         // over it (the 2D engine is in front of all the 3D picture).
         int gun[4];
@@ -275,12 +362,13 @@ namespace hlrt
         for (int n = 0; n < traced && takenCount_ < kTaken; ++n)
         {
             const Candidate &c = list[n];
-            if (held && c.x + c.halfX > gun[0] && c.x - c.halfX < gun[2] && c.y + c.halfY > gun[1] &&
+            const bool light = c.index < 0;
+            // (A light lights what is held as well: it may be over it.)
+            if (!light && held && c.x + c.halfX > gun[0] && c.x - c.halfX < gun[2] && c.y + c.halfY > gun[1] &&
                 c.y - c.halfY < gun[3])
                 continue;
             // The game's: hidden if the line from the eye stops more than 8
             // units short of it; glass and models do not stop it.
-            const LogicRecord &record = logic.records[c.index];
             bool seen = true;
             if (c.dist > 8)
             {
@@ -288,13 +376,14 @@ namespace hlrt
                 for (int k = 0; k < 3; ++k)
                 {
                     // (In 32 bits: a map is under 16384 units across.)
-                    end[k] = record.move[k] + (camera.pos[k] - record.move[k]) * 8 / c.dist;
+                    end[k] = c.at[k] + (camera.pos[k] - c.at[k]) * 8 / c.dist;
                 }
                 seen = worldDraw.sightClear(camera.pos, end);
             }
             if (!seen)
             {
-                taken_[takenCount_++] = c.index;
+                if (!light)
+                    taken_[takenCount_++] = c.index;
                 continue;
             }
             if (shadowCount_ == kSprites)
@@ -328,7 +417,8 @@ namespace hlrt
                     shadowColour_[bank][step - 1] = out;
                 }
             }
-            taken_[takenCount_++] = c.index;
+            if (!light)
+                taken_[takenCount_++] = c.index;
             // A 32 by 32 sprite, affine, shown in a box twice its size (so
             // up to twice as big), added to the picture; behind the display.
             const int k = shadowCount_++;

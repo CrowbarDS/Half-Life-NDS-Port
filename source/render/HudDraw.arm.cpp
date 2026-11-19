@@ -295,6 +295,16 @@ namespace hlrt
             return x;
         }
 
+        /// The colour the whole screen is added this frame: the red of being
+        /// hurt (`flash`, 0..256), and the light of an explosion near by
+        /// (`warm`, RGB555: GlowLayer).
+        std::uint16_t screenWash(int flash, std::uint16_t warm)
+        {
+            const int red = flash > 0 ? flash * 14 / 256 : 0;
+            const int r = red + (warm & 31);
+            return static_cast<std::uint16_t>((r > 31 ? 31 : r) | (warm & 0x7FE0));
+        }
+
         /// Sprite `n` of ours: `shape` (0 square, 1 wide, 2 tall) and
         /// `size` (0..3) as the hardware has them, from the sheet's (sx, sy),
         /// in palette `bank`, added to the picture.
@@ -712,10 +722,9 @@ namespace hlrt
         // Being hurt, which wants no suit: the screen reddened all over (a
         // sheet of twelve sprites, as bright as the hurt) and a red bar on
         // each side of its middle the hurt came from.
-        if (flash_ > 0)
+        flashColour = screenWash(flash_, warm_);
+        if (flashColour != 0)
         {
-            const int red = flash_ * 14 / 256;
-            flashColour = static_cast<std::uint16_t>(red > 31 ? 31 : red);
             for (int k = 0; k < 12; ++k)
                 sprite(8 + k, (k % 4) * 64, (k / 4) * 64, 0, 3, 0, 64, kBankFlash);
         }
@@ -913,10 +922,9 @@ namespace hlrt
         // Being hurt, which wants no suit: the screen reddened all over, as
         // compose() has it; the game's mark on each side the hurt came from,
         // in the display's colour (red when health is low), fading.
-        if (flash_ > 0)
+        flashColour = screenWash(flash_, warm_);
+        if (flashColour != 0)
         {
-            const int red = flash_ * 14 / 256;
-            flashColour = static_cast<std::uint16_t>(red > 31 ? 31 : red);
             for (int k = 0; k < 12; ++k)
                 sprite(18 + k, (k % 4) * 64, (k / 4) * 64, 0, 3, 0, 64, kBankFlash);
         }

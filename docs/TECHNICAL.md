@@ -450,6 +450,17 @@ Milestone 11, "levels of detail".
   over the box of what is in hand at rest (the 2D engine is in front of
   all the 3D picture), past the eight or the five -- is a 3D quad as
   before, and so are all of them under a fade's own blend.
+- An explosion lights what is round it, as the engine's TE_EXPLOSION does
+  with two lights: white (250, 250, 150) of radius 200, gone in a quarter
+  of a second, and orange (255, 190, 40) of 150, shrinking 200 a second --
+  here gone with the fireball, at 450 ms. Both are a halo of the glows'
+  picture where it is (as big as the light reaches, 64 pixels across at
+  most; hidden by the glows' rule), and, while the player stands inside
+  the light, the whole screen added a little of its colour by the
+  display's full-screen sheet that reddens it when hurt. A map without a
+  glow of its own draws the halo with the common glow, flare3.spr. (A
+  gun's flash lights only models in the game, not the world: it has no
+  halo.)
 - What the maps show and shake, from their own entities
   (`shared/HlEffects.hpp`): sprites and glows (`env_sprite`, `env_glow`; a
   glow, render mode 3, by the engine's rule (`glowFalloff`, HlSprite.hpp):
