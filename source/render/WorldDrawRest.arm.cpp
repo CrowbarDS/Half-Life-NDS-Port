@@ -582,7 +582,9 @@ namespace hlrt
             }
             else
             {
-                effectDraw.drawItem(e++, id);
+                // (Smoke may take the next number too: skipped.)
+                for (int extra = effectDraw.drawItem(e++, id); extra > 0; --extra)
+                    id = id % kIdSeeThroughCount + kIdSeeThroughFirst;
             }
         }
         effectDraw.end();

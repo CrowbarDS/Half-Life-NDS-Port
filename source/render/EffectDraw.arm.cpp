@@ -89,6 +89,11 @@ namespace hlrt
         {
             return currentId;
         }
+        /// How many numbers past its own the thing just drawn took (smoke
+        /// blending one frame into the next takes the one after it).
+        int extraIds = 0;
+        /// The number after `id` in the round the caller hands them out in.
+        int nextId(int id) { return id % kIdSeeThroughCount + kIdSeeThroughFirst; }
 
         /// Bind one of the map's sprites, to be drawn `alpha` solid (1..31)
         /// and tinted `colour`. Null if the map has not got it: then nothing
@@ -300,8 +305,8 @@ namespace hlrt
             if (ref != nullptr)
             {
                 // (Under the next number: blended over the core, not cut by it.)
-                const int other = (currentId - kIdSeeThroughFirst + 1) % kIdSeeThroughCount + kIdSeeThroughFirst;
-                look((24 * fade) >> 5, other, outer);
+                look((24 * fade) >> 5, nextId(currentId), outer);
+                extraIds = 1;
                 for (int k = 1; k <= kEgonPieces; ++k)
                 {
                     fx wave, unused;
@@ -427,7 +432,7 @@ namespace hlrt
                 continue;
             }
             add(kEffect, n, middle, 1 << 14,
-                effect.kind == kEffectBolt ? 4 : (effect.kind == kEffectEgon ? kEgonQuads : 1));
+                effect.kind == kEffectBolt ? 4 : (effect.kind == kEffectEgon ? kEgonQuads : (smoke ? 2 : 1)));
         }
         for (int i = 0; i < logic.recordCount; ++i)
         {
@@ -541,12 +546,13 @@ namespace hlrt
         return count_;
     }
 
-    void EffectDraw::drawItem(int n, int id)
+    int EffectDraw::drawItem(int n, int id)
     {
         // (Whatever was drawn before -- a pane of glass, as like as not --
         // may have left the hardware set for itself.)
         camera.apply();
         currentId = id;
+        extraIds = 0;
         const Item &item = items_[n];
         switch (item.type)
         {
@@ -557,6 +563,7 @@ namespace hlrt
         case kPiece:  drawPiece(item.index); break;
         default:      drawGlow(item.index); break;
         }
+        return extraIds;
     }
 
     /// Whether a small thing is near enough to be worth a polygon: the
@@ -1421,7 +1428,11 @@ namespace hlrt
         case kEffectSmoke:
         {
             // The game's smoke: nothing while it waits, then the sprite's
-            // frames once through as it rises, in its grey.
+            // frames once through as it rises, in its grey. The DS keeps
+            // few of its frames, so each is blended into the next by the
+            // polygons' alpha: the next comes up over it to the halfway
+            // point, then it goes from under the next -- never thinner
+            // than either. (The next is under the number after this one.)
             const int into = effect.wholeMs - effect.leftMs - effect.sprite;
             const int shown = effect.wholeMs - effect.sprite;
             if (into < 0 || shown <= 0)
@@ -1433,8 +1444,25 @@ namespace hlrt
                                   effect.a[1] + (effect.b[1] - effect.a[1]) / 32 * t,
                                   effect.a[2] + (effect.b[2] - effect.a[2]) / 32 * t};
                 const int half = (ref->worldWidth * effect.size) / 20;
-                picture(*ref, (ref->frames * t) / 32, at, camera.right, camera.up, half,
-                        half * ref->worldHeight / (ref->worldWidth ? ref->worldWidth : 1));
+                const int tall = half * ref->worldHeight / (ref->worldWidth ? ref->worldWidth : 1);
+                // Where it is among the frames, in 256ths: the first at the
+                // start, the last at the end.
+                const int place = ref->frames > 1 ? (into * (ref->frames - 1) * 256) / shown : 0;
+                const int frame = place >> 8, step = place & 255;
+                const int stays = (256 - step) * 62 >> 8, comes = step * 62 >> 8;
+                if (frame + 1 >= ref->frames || comes < 1)
+                {
+                    picture(*ref, frame, at, camera.right, camera.up, half, tall);
+                    break;
+                }
+                if (stays >= 1)
+                {
+                    look(stays > 31 ? 31 : stays, freshId(), effect.colour);
+                    picture(*ref, frame, at, camera.right, camera.up, half, tall);
+                }
+                look(comes > 31 ? 31 : comes, nextId(freshId()), effect.colour);
+                picture(*ref, frame + 1, at, camera.right, camera.up, half, tall);
+                extraIds = 1;
             }
             break;
         }

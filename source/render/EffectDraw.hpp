@@ -29,10 +29,12 @@ namespace hlrt
         void gather(int &polygons, int &vertices);
         /// How many things are in the list (the glows the models asked for
         /// since gather() among them). Then each is drawn by its place,
-        /// under the polygon ID given; and end() when all are.
+        /// under the polygon ID given; and end() when all are. drawItem
+        /// says how many of the IDs after it it took as well (they are
+        /// handed out in a round: kIdSeeThroughFirst..).
         int begin();
         std::int32_t distance(int n) const { return items_[n].distance; }
-        void drawItem(int n, int id);
+        int drawItem(int n, int id);
         /// Leaves the modelview as the camera's, no texture bound and the
         /// level's polygon format.
         void end();
