@@ -47,6 +47,10 @@ python tools/child_size.py
 PATH="${WONDERFUL_TOOLCHAIN}/toolchain/gcc-arm-none-eabi/bin:${PATH}" python tools/dlp_twl_child.py child/out/hl-child.nds child/out/hl-child-twl.nds
 # ... and the parent again, now carrying the child to send (dlplay/child.nds).
 python build.py "$@"
+# Its ARM9 image without the overlays (tools/ovl.py): ndstool left them out.
+if [ -f half-life-nds-port.nds ]; then
+    python tools/ovl.py romcheck --rom half-life-nds-port.nds --elf build/arm9/arm9.elf
+fi
 # The ELFs of every build, by its name, for looking up a crash screen's
 # addresses afterwards (arm-none-eabi-addr2line -e build/elf/<name>/arm9.elf);
 # the last twelve kept. With the families' (build/<family>/<family>.elf): an

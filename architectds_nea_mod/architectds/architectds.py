@@ -603,7 +603,12 @@ class GenericArmBinary(GenericCpuBinary):
         # header that ARM and Thumb sources both use is in each of their
         # objects, and the linker keeps the first it meets -- which then is
         # the ARM one (the game's shared headers: HlMonsters.hpp and the rest).
-        in_out_files.sort(key=lambda f: 0 if f.in_path.endswith('.arm.cpp') else 1)
+        # ... and an overlay's sources (link_last) after all the rest: the
+        # copy of such a function the linker keeps is then the program's own,
+        # not one in an overlay's memory (tools/ovl.py).
+        link_last = getattr(self, 'link_last', [])
+        in_out_files.sort(key=lambda f: 2 if any(f.in_path.endswith(e) for e in link_last)
+                          else 0 if f.in_path.endswith('.arm.cpp') else 1)
 
         for in_out_file in in_out_files:
             obj_out_path = in_out_file.out_path
@@ -719,8 +724,9 @@ class GenericArmBinary(GenericCpuBinary):
 
         obj_file_paths_str = ' '.join(self.obj_file_paths)
 
-        # post_link: (command, [files it depends on]), run as `command <elf>`
-        # once the ELF is linked, in the same step (it may rewrite the ELF).
+        # post_link: (command, [files it depends on][, [files it makes]]),
+        # run as `command <elf>` once the ELF is linked, in the same step (it
+        # may rewrite the ELF, and make other files of it).
         post_link = getattr(self, 'post_link', None)
         if post_link is None:
             self.print(
@@ -729,9 +735,10 @@ class GenericArmBinary(GenericCpuBinary):
                 '\n'
             )
         else:
-            command, deps = post_link
+            command, deps = post_link[0], post_link[1]
+            made = ''.join(' ' + f for f in (post_link[2] if len(post_link) > 2 else []))
             self.print(
-                f'build {self.elf_path} | {self.map_path}: ld_arm_post {obj_file_paths_str} | {" ".join(deps)} || {self.out_dir}\n'
+                f'build {self.elf_path} | {self.map_path}{made}: ld_arm_post {obj_file_paths_str} | {" ".join(deps)} || {self.out_dir}\n'
                 f'  ldflags = {ldflags}\n'
                 f'  post = {command}\n'
                 '\n'
@@ -751,7 +758,8 @@ class Arm9Binary(GenericArmBinary):
                  cflags='-Wall -O2',
                  cxxflags='-Wall -O2',
                  ldflags='',
-                 post_link=None):
+                 post_link=None,
+                 link_last=[]):
         '''
         Constructor of ARM9 binaries.
 
@@ -768,12 +776,16 @@ class Arm9Binary(GenericArmBinary):
         - 'cflags': Optional flags to be passed to the C compiler.
         - 'cxxflags': Optional flags to be passed to the C++ compiler.
         - 'ldflags': Optional flags to be passed to the linker.
-        - 'post_link': Optional (command, [files it depends on]): run as
-          `command <the ELF>` right after the link, in the same step.
+        - 'post_link': Optional (command, [files it depends on], [files it
+          makes]): run as `command <the ELF>` right after the link, in the
+          same step. The third list may be left out.
+        - 'link_last': Optional endings of source paths whose objects go last
+          on the link line (an overlay's: tools/ovl.py).
         '''
         super().__init__(self.ASSETS_BARRIER_ARM9)
 
         self.post_link = post_link
+        self.link_last = link_last
 
         self.sourcefiles = sourcefiles
         self.sourcedirs = sourcedirs

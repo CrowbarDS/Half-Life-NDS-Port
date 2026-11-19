@@ -158,43 +158,57 @@ namespace hlrt::ovl
         return true;
     }
 
-    void load(Id id)
+    namespace
     {
-        if (id == Id::None)
-            return;
-        const int i = index(id);
-        const Known &k = kKnown[i];
-        Id &there = inRegion[k.region];
-        if (there == id)
-            return;
-        if (inInterrupt())
-            fail("An overlay was asked for from an interrupt:", id);
-        if (fd < 0)
-            fail("No overlay pack to load from:", id);
-        if (there != Id::None && leaveChecks[index(there)] != nullptr && !leaveChecks[index(there)]())
-            fail("An overlay was still in use as it was to be replaced:", there);
-        // Nothing of what was there is kept: its lines in the cache go too.
-        there = Id::None;
-        const RegionBounds &b = kRegions[k.region];
-        DC_InvalidateRange(b.start, static_cast<std::uint32_t>(b.end - b.start));
-        const Entry &e = table[i];
-        if (e.load != 0)
+        /// load and tryLoad: `mayRefuse`, false rather than a halt when what
+        /// is there may not leave.
+        bool bring(Id id, bool mayRefuse)
         {
-            if (lseek(fd, static_cast<off_t>(e.offset), SEEK_SET) != static_cast<off_t>(e.offset) ||
-                read(fd, k.start, e.load) != static_cast<ssize_t>(e.load))
-                fail("An overlay could not be read from the card:", id);
-            DC_FlushRange(k.start, e.load);
+            if (id == Id::None)
+                return true;
+            const int i = index(id);
+            const Known &k = kKnown[i];
+            Id &there = inRegion[k.region];
+            if (there == id)
+                return true;
+            if (inInterrupt())
+                fail("An overlay was asked for from an interrupt:", id);
+            if (fd < 0)
+                fail("No overlay pack to load from:", id);
+            if (there != Id::None && leaveChecks[index(there)] != nullptr && !leaveChecks[index(there)]())
+            {
+                if (mayRefuse)
+                    return false;
+                fail("An overlay was still in use as it was to be replaced:", there);
+            }
+            // Nothing of what was there is kept: its lines in the cache go too.
+            there = Id::None;
+            const RegionBounds &b = kRegions[k.region];
+            DC_InvalidateRange(b.start, static_cast<std::uint32_t>(b.end - b.start));
+            const Entry &e = table[i];
+            if (e.load != 0)
+            {
+                if (lseek(fd, static_cast<off_t>(e.offset), SEEK_SET) != static_cast<off_t>(e.offset) ||
+                    read(fd, k.start, e.load) != static_cast<ssize_t>(e.load))
+                    fail("An overlay could not be read from the card:", id);
+                DC_FlushRange(k.start, e.load);
+            }
+            std::memset(k.loadEnd, 0, e.bss);
+            DC_FlushRange(k.loadEnd, e.bss);
+            if (e.load != 0)
+            {
+                IC_InvalidateRange(k.start, e.load);
+                if (sumOf(k.start, e.load) != e.sum)
+                    fail("An overlay was not read whole from the card:", id);
+            }
+            there = id;
+            return true;
         }
-        std::memset(k.loadEnd, 0, e.bss);
-        DC_FlushRange(k.loadEnd, e.bss);
-        if (e.load != 0)
-        {
-            IC_InvalidateRange(k.start, e.load);
-            if (sumOf(k.start, e.load) != e.sum)
-                fail("An overlay was not read whole from the card:", id);
-        }
-        there = id;
-    }
+    } // namespace
+
+    void load(Id id) { bring(id, false); }
+
+    bool tryLoad(Id id) { return bring(id, true); }
 
     Id current(Region r) { return inRegion[static_cast<int>(r)]; }
 
@@ -245,6 +259,7 @@ namespace hlrt::ovl
     // (No overlays: everything there is, is always there.)
     bool init(const char *, const char **) { return true; }
     void load(Id) {}
+    bool tryLoad(Id) { return true; }
     Id current(Region) { return Id::None; }
     bool loaded(Id) { return true; }
     void missing(Id, const char *) { hlOvlHalt("A gate found its overlay not loaded:", ""); }

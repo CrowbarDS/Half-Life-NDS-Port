@@ -4,9 +4,12 @@
 #include <filesystem.h>
 #include <nds.h>
 
+#include <NEAMain.h>
+
 #include "DebugLog.hpp"
 #include "Global.hpp"
 #include "Guard.hpp"
+#include "Overlay.hpp"
 #include "audio/Sound.hpp"
 #include "data/LevelFile.hpp"
 #include "data/ModelCache.hpp"
@@ -18,6 +21,7 @@
 #include "render/BottomScreen.hpp"
 #include "render/Camera.hpp"
 #include "render/HudDraw.hpp"
+#include "render/ProfileView.hpp"
 #include "render/ScreenFade.hpp"
 #include "render/TopText.hpp"
 #include "platform/Rumble.hpp"
@@ -111,6 +115,19 @@ namespace hlrt
             *why = "The ROM's files cannot be read.";
             return false;
         }
+        // Its overlays (source/Overlay.hpp): the pack, checked against this
+        // program; and what each lets go of before another takes its
+        // region -- the profile's picture, opened by the front end; a map's
+        // archive, whose index the map's overlay is.
+        if (!ovl::init(nullptr, why))
+            return false;
+#if HL_OVL_COUNT > 0
+        ovl::setLeaveCheck(ovl::Id::Front, []() {
+            profileView.close();
+            return true;
+        });
+        ovl::setLeaveCheck(ovl::Id::Map, []() { return !NEA_NpacIsMounted("map"); });
+#endif
 #endif
         if (!GetGameAPI(kGameApiVersion, gameLayout(), &hlEngine, &gameApi))
         {

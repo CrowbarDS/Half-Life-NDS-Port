@@ -7,8 +7,9 @@
 // Its model and its skin in 256 colours are the common archive's
 // (HlUi.hpp: kProfileModelFile, kProfileSkinFile), there where the card has
 // a multiplayer map. They are read when PROFILE opens and let go when it
-// closes: nothing of it stays beside a map. Drawn by HudDraw with the
-// title's picture (menuFrame), after it.
+// closes: nothing of it stays beside a map, nor does its code (an overlay:
+// ProfileView.cpp). Drawn by HudDraw with the title's picture (menuFrame),
+// after it.
 
 #include <cstdint>
 
@@ -39,6 +40,13 @@ namespace hlrt
         void draw();
 
     private:
+        // The work of each, in the front end's overlay (ProfileViewBody.cpp):
+        // the calls above are its gates.
+        bool openBody(int top, int bottom, int character);
+        void setColoursBody(int top, int bottom);
+        void closeBody();
+        void drawBody();
+
         std::uint8_t *data_ = nullptr;
         void *view_ = nullptr;     ///< (hldata::ModelView)
         void *material_ = nullptr; ///< (NEA_Material)

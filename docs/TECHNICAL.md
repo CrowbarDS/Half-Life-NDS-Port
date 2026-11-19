@@ -1460,6 +1460,53 @@ without `HL_NET_APART`), which took 92 KB off its image (1,517 KB to 1,425;
 - `demoBegin` keeps room for it: the received block and the largest family
   beside it.
 
+### Overlays
+
+A DS's map heap begins where the program ends (`__end__`), so every byte of
+code or static data is a byte less of it. Code only the menus run, and a
+buffer only a mounted map uses, are never wanted at once: an **overlay
+region** holds one of them at a time, read in from the ROM when its phase
+begins. BlocksDS has no overlays; these are the port's own
+(`tools/ovl.py`, `source/Overlay.hpp`, since 2026-11-19).
+
+- **The manifest** (`OVERLAYS` in `build.py`) names each region's overlays:
+  whole files, or a function or variable put in one with `HL_OVL_CODE(name)`
+  / `HL_OVL_BSS(name)`. A region is as large as its largest overlay, which
+  the manifest names (its *sizer*): the rest is what it saves.
+- **The link.** `tools/ovl.py ld` makes the linker script from the
+  installed BlocksDS one, with the regions put just before `__end__` (so the
+  report's margin counts them once) and each loaded overlay in a program
+  header ndstool leaves out of the ROM's ARM9 image (`make.sh` checks it
+  did). An overlay's sources go last on the link line, so the copy of a
+  shared inline function the linker keeps is the program's own.
+- **The checks** (`tools/ovl.py check`, part of the link, which fails on
+  any): the program reaches into an overlay only through a **gate**, a
+  function of its own (`HL_OVL_GATED`) that checks the overlay is there or
+  halts naming it (`HL_OVL_GATE`); its data never points into one; an
+  overlay never refers to another of its region nor loads one; no static
+  constructors, exception tables or `atexit` in one; and the sizer is the
+  largest. The interrupt walk (`tools/irq-divider.py`) fails a handler that
+  reaches a region; the families are refused if they would point into one.
+- **The pack** (`ovl/arm9.ovl` in NitroFS, written by the link) has each
+  overlay's bytes and their sum, and the program's ID. `hlrt::loadGame` opens
+  it once for good and checks it against the program; a load is a seek and a
+  read on that handle, no heap, then the caches made to agree, the zeroed
+  data cleared and the sum checked. Never from an interrupt.
+- **Leave checks.** Before an overlay gives its region up, what it holds is
+  let go of (or the load refused, or halted on).
+
+| Region | Overlay | What | Size (2026-11-19) |
+|---|---|---|---|
+| A | `front` | PROFILE's picture (`ProfileViewBody.cpp`) | 12,192 B |
+| A | `map` (sizer) | the map's archive index (`Global.cpp`'s `mapIndex`) | 32,768 B |
+
+`map` is loaded as a map's archive is mounted; `front`, as PROFILE's picture
+is opened, if no map is mounted (none is drawn beside one). Leaving `front`
+closes the picture; `map` may not leave while its archive is mounted, and
+the title lets that go once no level is loaded. The front end may grow to
+`map`'s size at no cost to a map. The Download Play child has none: its
+macros are plain, its gates always open.
+
 ### Guards, and the crash screen
 
 `source/Guard.hpp`. Added 2026-10-29, after a data abort on a DSi turned out,

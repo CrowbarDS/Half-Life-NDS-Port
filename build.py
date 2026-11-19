@@ -97,8 +97,20 @@ wifi_twl.make(os.path.join(os.path.expandvars('${BLOCKSDSEXT}'), 'dswifi_dl'), W
 # checks what it made of them (tools/arm9_post_link.py).
 import json
 import ovl
-OVERLAYS = {'regions': []}
+# Region A: the front end's code (front) and what only a mounted map uses
+# (map), which is the larger -- the region is the map's size, and the front
+# end may grow to it at no cost to a map's heap. The program reaches either
+# only through its gates (source/render/ProfileView.cpp, source/Global.cpp).
+OVERLAYS = {'regions': [
+    {'name': 'A', 'overlays': [
+        {'name': 'front', 'id': 'Front', 'mode': 'code', 'files': ['*/source/render/ProfileViewBody.cpp.o']},
+        {'name': 'map', 'id': 'Map', 'mode': 'bss', 'sizer': True},
+    ]},
+]}
+# (Their sources last on the link line: architectds's link_last.)
+OVL_SOURCES = ['source/render/ProfileViewBody.cpp']
 OVL_DIR = os.path.join('build', 'ld')
+OVL_PACK = os.path.join(OVL_DIR, 'arm9.ovl')
 OVL_MANIFEST = os.path.join(OVL_DIR, 'overlays.json')
 os.makedirs(OVL_DIR, exist_ok=True)
 ovl._write_if_changed(OVL_MANIFEST, json.dumps(OVERLAYS, indent=1) + '\n')
@@ -115,7 +127,8 @@ arm9 = Arm9Binary(
     sourcedirs=['source', 'dll/hl'],
     # 'thirdparty' puts yas on the include path as <yas/...>, the same spelling
     # the host converter uses -- both sides must agree on the serializer.
-    includedirs=['source', 'shared', 'thirdparty'],
+    # (build/ld: the overlays' list, OverlayList.gen.hpp, made above.)
+    includedirs=['source', 'shared', 'thirdparty', OVL_DIR],
     # HLDS_PROFILE=1 in the environment builds the frame-time readout in:
     # where the frame went, split between input, the BSP walk and the send to
     # the geometry engine, on the overlay and in perf.txt. Off, every one of
@@ -176,10 +189,12 @@ arm9 = Arm9Binary(
     # The program's ID (a hash of this ELF), stamped as it is linked: the
     # families are built for this program alone, and say so
     # (tools/program_id.py; source/game/FamilyApi.hpp). Then its overlays
-    # checked (tools/ovl.py).
+    # checked (tools/ovl.py), and packed for the ROM's NitroFS.
     post_link=('python3 tools/arm9_post_link.py ' + OVL_MANIFEST,
                ['tools/arm9_post_link.py', 'tools/program_id.py', 'tools/ovl.py', OVL_MANIFEST,
-                os.path.join(OVL_DIR, 'hl_arm9.ld'), os.path.join(OVL_DIR, 'hl_arm9_link.specs')]),
+                os.path.join(OVL_DIR, 'hl_arm9.ld'), os.path.join(OVL_DIR, 'hl_arm9_link.specs')],
+               [OVL_PACK]),
+    link_last=OVL_SOURCES,
 )
 
 arm9.generate_elf()
@@ -200,7 +215,8 @@ for family in ('boss', 'military', 'net', 'shift'):
         name=family,
         main_binary=arm9,
         sourcedirs=['dll/family'],
-        includedirs=['source', 'shared', 'thirdparty'],
+        # (build/ld: the overlays' list, OverlayList.gen.hpp, made above.)
+    includedirs=['source', 'shared', 'thirdparty', OVL_DIR],
         # (What Arm9Binary defines by itself, as well: libnds's and the
         # engine's headers lay their structures out by them. And the
         # program's own, all of them: the core's code it shares is the same
@@ -245,6 +261,9 @@ arm7.generate_elf()
 nitrofs = NitroFS()
 for lib in families:
     nitrofs.add_arm9_dsl(lib)
+# The program's overlays (above), read from here as each phase begins
+# (source/Overlay.arm.cpp).
+nitrofs.add_file(OVL_PACK, 'ovl/arm9.ovl')
 # The program the host sends consoles without the game by Download Play
 # (child/build.py: built after this one, whose ARM7 program it uses -- so it
 # is here from make.sh's second pass of this file on).

@@ -16,6 +16,7 @@
 
 #include "DebugLog.hpp"
 #include "Global.hpp"
+#include "Overlay.hpp"
 #include "Guard.hpp"
 #include "HlCommands.hpp"
 #include "HlPreview.hpp"
@@ -1976,6 +1977,12 @@ namespace
     }
 }
 
+// The overlay loader's halt (source/Overlay.hpp): the game's own.
+extern "C" [[noreturn]] void hlOvlHalt(const char *what, const char *detail)
+{
+    haltWith("Cannot go on:", what, detail);
+}
+
 int main(int argc, char *argv[])
 {
 
@@ -2081,9 +2088,20 @@ int main(int argc, char *argv[])
     // if it loaded something; false for a new game.
     auto titleScreen = [&]() -> bool
     {
+        // The menus have no map: its archive goes (once nothing of the map
+        // is loaded), and with it the map's overlay -- the memory the front
+        // end's code is read into (ProfileView.cpp).
+        const auto showMenu = [&]()
+        {
+#ifndef HLDS_CHILD
+            if (!hlrt::level.loaded())
+                global.unmountMap();
+#endif
+            return hlrt::hudDraw.showMenu();
+        };
         // The game's menu background with its animated title (or, on a card
         // without them, the loading picture, still).
-        bool moving = hlrt::hudDraw.showMenu();
+        bool moving = showMenu();
         if (moving)
         {
             NEA_WaitForVBL(static_cast<NEA_UpdateFlags>(0));
@@ -2099,7 +2117,7 @@ int main(int argc, char *argv[])
             hlrt::hudDraw.hideMenu();
             hlrt::guard::traceGeneration(); // (a trace build: the title's is a generation of its own)
         };
-        auto back = [&]() { moving = hlrt::hudDraw.showMenu(); };
+        auto back = [&]() { moving = showMenu(); };
         // (A match over: its lobby, not the title.)
         if (hlrt::netGame.on())
             hlrt::menu.openLobby();

@@ -36,8 +36,14 @@
 
 #define HL_OVL_STR2(x) #x
 #define HL_OVL_STR(x) HL_OVL_STR2(x)
+#if HL_OVL_COUNT > 0
 #define HL_OVL_CODE(name) __attribute__((section(".ovl." #name ".text." HL_OVL_STR(__COUNTER__)), noinline))
 #define HL_OVL_BSS(name) __attribute__((section(".ovl." #name ".bss." HL_OVL_STR(__COUNTER__))))
+#else
+// (No overlays -- the child, a program without regions: the program's own.)
+#define HL_OVL_CODE(name) __attribute__((noinline))
+#define HL_OVL_BSS(name)
+#endif
 #define HL_OVL_GATED __attribute__((noinline, section(".text.ovlgate." HL_OVL_STR(__COUNTER__))))
 
 namespace hlrt::ovl
@@ -69,6 +75,11 @@ namespace hlrt::ovl
     /// there already. Never from an interrupt, nor from an overlay's own
     /// code (tools/ovl.py: R4). A read that fails halts, naming it.
     void load(Id id);
+
+    /// The same, for a phase that may be put off: false, and nothing done,
+    /// if what is in the region may not leave yet (its leave check). A read
+    /// that fails still halts.
+    bool tryLoad(Id id);
 
     /// What is in region `r` now (None at first).
     Id current(Region r);

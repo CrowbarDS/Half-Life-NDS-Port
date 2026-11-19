@@ -31,12 +31,14 @@ THE MANIFEST (JSON):
        {"name": "front", "id": "Front", "mode": "code",
         "files": ["*/source/render/ProfileViewBody.cpp.o"], "callbacks": []},
        {"name": "map", "id": "Map", "mode": "bss", "sizer": true}]}],
-   "gate": "_ZN4hlrt3ovl7missing", "load": "_ZN4hlrt3ovl4load"}
+   "gate": "_ZN4hlrt3ovl7missing",
+   "load": ["_ZN4hlrt3ovl4load", "_ZN4hlrt3ovl7tryLoad"]}
   mode: "code" (the files' code and constants: their data and zeroed data
   stay in the program), "full" (all of the files), "bss" (zeroed data only,
   HL_OVL_BSS). sizer: the overlay the region is sized by -- it must be the
   largest (so that, say, the menus never decide a map's memory). gate, load:
-  the start of the mangled names of hlrt::ovl::missing and hlrt::ovl::load.
+  the start of the mangled names of hlrt::ovl::missing, and of
+  hlrt::ovl::load and tryLoad.
 
 THE RULES (check):
   R0  what an overlay is made of is in it: its files' sections in .ovl.*,
@@ -48,7 +50,7 @@ THE RULES (check):
       program's data never points into one.
   R2  no overlay refers to another of its region.
   R3  an overlay function whose address is taken is a declared callback.
-  R4  an overlay never calls ovl::load (it would replace itself).
+  R4  an overlay never calls ovl::load or tryLoad (it would replace itself).
   R5  each region ends at or before __end__, aligned to 32; its sizer is
       its largest overlay.
 
@@ -114,7 +116,8 @@ class Manifest:
     def __init__(self, d):
         self.regions = [Region(i, r) for i, r in enumerate(d.get('regions', []))]
         self.gate = d.get('gate', '_ZN4hlrt3ovl7missing')
-        self.load = d.get('load', '_ZN4hlrt3ovl4load')
+        load = d.get('load', ['_ZN4hlrt3ovl4load', '_ZN4hlrt3ovl7tryLoad'])
+        self.load = [load] if isinstance(load, str) else list(load)
         names = [o.name for o in self.overlays]
         if len(names) != len(set(names)):
             raise ValueError('overlay names must differ')
@@ -532,7 +535,7 @@ def check(elf, map_text, manifest):
             pass
         sym_name = sym['name'] if sym else '?'
         if site_ovl is not None:
-            if sym and sym['name'].startswith(manifest.load):
+            if sym and any(sym['name'].startswith(name) for name in manifest.load):
                 errors.append('R4 %s: calls ovl::load at %08x' % (site_ovl.name, at))
             if sym and sym['name'] in ('__aeabi_atexit', '__cxa_atexit', 'atexit'):
                 errors.append('R0 %s: registers an atexit destructor at %08x' % (site_ovl.name, at))

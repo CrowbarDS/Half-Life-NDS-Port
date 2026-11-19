@@ -7,7 +7,9 @@
    program alone, and the overlay pack is checked against it);
 2. its overlays checked against the rules of tools/ovl.py (none in a
    manifest with no regions): the link fails, and the ELF is removed, on
-   any problem -- the next build links again.
+   any problem -- the next build links again;
+3. their pack written beside the manifest (arm9.ovl, for the ROM's
+   NitroFS), written each time: the build counts it made by this step.
 """
 import os
 import sys
@@ -29,6 +31,11 @@ def main(argv):
         return 0
     map_path = os.path.join(os.path.dirname(elf), 'arm9.map')
     code = ovl.cmd_check({'elf': elf, 'map': map_path, 'manifest': manifest_path})
+    if code == 0:
+        pack = os.path.join(os.path.dirname(manifest_path), 'arm9.ovl')
+        code = ovl.cmd_pack({'elf': elf, 'manifest': manifest_path, 'out': pack})
+        if code == 0:
+            os.utime(pack)
     if code != 0:
         os.remove(elf)
     return code

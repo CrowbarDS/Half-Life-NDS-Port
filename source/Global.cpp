@@ -20,6 +20,7 @@
 extern "C" {
 #include <NEAAlloc.h> // (no C++ guard of its own)
 }
+#include "Overlay.hpp"
 #include "render/HudDraw.hpp"
 #include "render/GlowLayer.hpp"
 #include "render/WaterWobble.hpp"
@@ -259,10 +260,18 @@ namespace
     // The map's archive index, kept here rather than on the heap: one map is
     // mounted after another into the same memory (HlArchive.hpp). One whose
     // index is bigger -- the converter says so -- is mounted on the heap.
-    alignas(4) std::uint8_t mapIndex[hldata::kMapIndexMost];
+    // It is the map's overlay (build.py's OVERLAYS): the memory the front
+    // end's code has while no map is mounted.
+    alignas(4) std::uint8_t mapIndex[hldata::kMapIndexMost] HL_OVL_BSS(map);
 
-    int mountMapArchive(const std::string &path)
+    HL_OVL_GATED int mountMapArchive(const std::string &path)
     {
+        // (The front end's code gives the memory up, and with it what it had
+        // open: hlrt::loadGame's leave checks.)
+#if HL_OVL_COUNT > 0
+        hlrt::ovl::load(hlrt::ovl::Id::Map);
+#endif
+        HL_OVL_GATE(Map);
         if (NEA_NpacMountInto("map", path.c_str(), mapIndex, sizeof(mapIndex)) == 0)
             return 0;
         return errno == ENOSPC ? NEA_NpacMount("map", path.c_str()) : -1;
