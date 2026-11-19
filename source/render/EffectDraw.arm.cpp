@@ -903,6 +903,8 @@ namespace hlrt
         // rest is the wall's own light through it -- a mark in a dark
         // corridor is dark, not as bright as it would be lit.)
         constexpr int kDecalAlpha = 22;
+        /// Under this cosine (45 degrees) a mark is pulled toward the eye.
+        constexpr int kMarkSteep = 2896;
         // No more of them than this much of the screen between them (in
         // pixels, as they are seen: a stain on the floor far ahead covers a
         // sliver of what it would face on): see-through things one on
@@ -1002,6 +1004,11 @@ namespace hlrt
                 NEA_MaterialUse(wanted);
                 boundMaterial = wanted;
             }
+            // How square the eye meets its wall: `facing` is Q12 units, over
+            // the distance the cosine in 4096ths.
+            const fx toEye[3] = {fxFromInt(d[0]), fxFromInt(d[1]), fxFromInt(d[2])};
+            const std::int32_t distance = fxToInt(fxLength(toEye));
+            const int cosine = distance > 0 ? static_cast<int>(facing / distance) : 4096;
             // (About how much of the screen it is: its width in pixels --
             // 128 pixels to a unit at a unit's distance -- by its height, which
             // is that as much less as it is seen edge-on; neither more than
@@ -1009,10 +1016,6 @@ namespace hlrt
             {
                 const std::int32_t depth = -(d[0] * camera.forward[0] + d[1] * camera.forward[1] + d[2] * camera.forward[2]) >> 12;
                 const int across = (decal.half * 2 * 128) / (depth < 8 ? 8 : depth);
-                const fx toEye[3] = {fxFromInt(d[0]), fxFromInt(d[1]), fxFromInt(d[2])};
-                const std::int32_t length = fxToInt(fxLength(toEye));
-                // (`facing` is Q12 units: over the length, the cosine in 4096ths.)
-                const int cosine = length > 0 ? static_cast<int>(facing / length) : 4096;
                 const int wide = across > 256 ? 256 : across;
                 int high = static_cast<int>((static_cast<std::int64_t>(across) * cosine) >> 12);
                 high = high > 192 ? 192 : (high < 1 ? 1 : high);
@@ -1027,8 +1030,32 @@ namespace hlrt
             if (area > softArea)
                 alpha = alpha * (kMostArea - area) / (kMostArea - softArea);
             alpha = alpha < 1 ? 1 : (alpha > 31 ? 31 : alpha);
+            // Seen at a low angle (under 45 degrees to its wall), the "same
+            // depth" test eats a mark in patches -- a pixel there spans more
+            // depth than the test allows, and the wall's depth across a big
+            // polygon is not the mark's -- so it is drawn nearer the eye
+            // instead, each corner along its own line of sight (the same
+            // pixels), by as much as the depth changes across two pixels
+            // there and 1/128 of the distance more, with the ordinary test.
+            // What it costs: a mark shows over what stands that close in
+            // front of its wall (tools/hwtest/markpull, measured on a DSi:
+            // whole marks at 20 degrees where the test kept none of the far
+            // ones; 4 units at 20 degrees, as the test's own at 45).
+            // (Signs keep the test: seldom seen edge-on.)
+            int pull = 0; // of 4096: how much nearer the eye
+            if (cosine < kMarkSteep && !isSign)
+            {
+                // tan = sin / cos (a pixel is 1/128 of the distance across;
+                // the depth changes by that times the tangent).
+                const int c = cosine < 82 ? 82 : cosine;
+                const int sine = static_cast<int>(isqrt64(static_cast<std::uint64_t>(4096 * 4096 - c * c)));
+                const int tangent = sine * 4096 / c;
+                pull = (2 * tangent + 4096) / 128;
+                pull = pull < 16 ? 16 : (pull > 2048 ? 2048 : pull);
+            }
             NEA_PolyFormat(alpha, kIdMarksFirst + order[next] % kIdMarksCount, static_cast<NEA_LightEnum>(0), NEA_CULL_NONE,
-                           static_cast<NEA_OtherFormatEnum>(static_cast<int>(worldDraw.polygonMode()) | kDepthEqual));
+                           static_cast<NEA_OtherFormatEnum>(static_cast<int>(worldDraw.polygonMode()) |
+                                                            (pull == 0 ? kDepthEqual : 0)));
             if (isSign)
             {
                 // Upright on a wall, as the game puts one: its "up" the
@@ -1081,7 +1108,12 @@ namespace hlrt
             {
                 fx p[3];
                 for (int i = 0; i < 3; ++i)
+                {
                     p[i] = at[i] + u[i] * decal.half * sign[k][0] + v[i] * decal.half * sign[k][1];
+                    if (pull != 0)
+                        p[i] = camera.pos[i] +
+                               static_cast<fx>((static_cast<std::int64_t>(p[i] - camera.pos[i]) * (4096 - pull)) >> 12);
+                }
                 // (Turned a quarter, a half or three quarters: the same
                 // picture, another mark.)
                 const int *coordinate = st[(k + decal.turn) & 3];

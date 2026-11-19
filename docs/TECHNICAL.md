@@ -971,8 +971,16 @@ Milestone 11, "levels of detail".
     side are never made one -- and the walls' own cracks and dents among
     them. They are the game's own decals (your `decals.wad`, cooked to
     one 256x64 texture), each drawn as one quad in its wall's plane with
-    the hardware's "same depth" test, which is what that test is for. 32
-    of them on a DS, 64 on a DSi; one on a door or a pane goes with it.
+    the hardware's "same depth" test, which is what that test is for --
+    but for one seen at a low angle (under 45 degrees to its wall), which
+    that test eats in patches, the far ones whole: it is drawn nearer the
+    eye instead, each corner along its own line of sight (the same pixels),
+    by as much as the depth changes across two pixels there and 1/128 of
+    the distance more, with the ordinary test. It then shows over what
+    stands that close in front of its wall: 4 units at 20 degrees, as the
+    test's own at 45 (tools/hwtest/markpull, on a DSi). Signs keep the
+    test. 32 of them on a DS, 64 on a DSi; one on a door or a pane goes
+    with it.
     They are kept cheap: a hole or a dent where one already is takes that
     one's place (ten blows on one spot are one mark, a pane has one
     crack, glass that never breaks takes none from a blow), and blood or
