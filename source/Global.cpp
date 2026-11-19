@@ -22,6 +22,7 @@ extern "C" {
 }
 #include "render/HudDraw.hpp"
 #include "render/GlowLayer.hpp"
+#include "render/WaterWobble.hpp"
 #include "render/Camera.hpp"
 #include "game/Think.hpp"
 #include "render/GpuStats.hpp"
@@ -42,6 +43,7 @@ namespace
         // The display's sprites, as the frame before made them.
         hlrt::hudDraw.onVblank();
         hlrt::glowLayer.onVblank();
+        hlrt::waterWobble.onVblank();
         // (A touch of STOP while a long job holds the console: kept for it.)
         hlrt::BottomScreen::onVblank();
         NEA_VBLFunc();

@@ -22,6 +22,7 @@
 #include "render/HudDraw.hpp"
 #include "platform/Rumble.hpp"
 #include "render/ScreenFade.hpp"
+#include "render/WaterWobble.hpp"
 #include "render/TopText.hpp"
 #include "render/BottomScreen.hpp"
 #include "render/Camera.hpp"
@@ -1362,8 +1363,9 @@ namespace hlrt
                               inv.current == kWeaponMp5 ? inv.ammoAr : -1);
         }
         // With the eyes under, the picture dims: what there is of "under
-        // water" until there is fog.
+        // water" until there is fog; and, on a DSi, it wobbles.
         const bool under = player.state.waterLevel == 3 && !player.noclip;
         screenFade.setDim(under);
+        waterWobble.frame(under);
     }
 } // namespace hlrt

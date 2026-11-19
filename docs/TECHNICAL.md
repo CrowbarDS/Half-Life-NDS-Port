@@ -494,6 +494,17 @@ Milestone 11, "levels of detail".
   here its hue at 0.4 of solid; seen for as long as it takes to fly
   (`tracerAdd`). The two short ones thrown off where a round strikes are
   sparks: a line in the sparks' colour, fading.
+- With the eyes under water the picture wobbles on a DSi, as the game's
+  software renderer warps it (Quake's D_WarpScreen): each line moved
+  across by a sine of its height and of the time, once round in 128 lines,
+  moving on 20 lines a second -- here by up to two pixels either way (the
+  game's three at 320 across), and only across: the 3D layer has only a
+  horizontal scroll. A DMA started by each horizontal blank (DMA 1) writes
+  BG0HOFS from a table of the frame's lines, armed in each vertical blank;
+  the edge a moved line leaves shows the backdrop for those pixels. Not on
+  a DS: its geometry FIFO is fed by DMA 0 during the frame, which in the
+  emulator holds DMA 1 back past its line (tools/hwtest/fxprobe measures
+  it on the console). The tables are in the DSi's own memory.
 - What the maps show and shake, from their own entities
   (`shared/HlEffects.hpp`): sprites and glows (`env_sprite`, `env_glow`; a
   glow, render mode 3, by the engine's rule (`glowFalloff`, HlSprite.hpp):
