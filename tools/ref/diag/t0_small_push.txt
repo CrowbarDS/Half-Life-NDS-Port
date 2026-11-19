@@ -1,0 +1,6 @@
+# Push t0a0b's 32-unit crate (*20, met by the crouched hull) two seconds.
+# map t0a0b
+# start 1470 -300 -183 0
+30 0 0 0 0
+120 400 0 0 0
+60 0 0 0 0

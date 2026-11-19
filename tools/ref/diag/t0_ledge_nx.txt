@@ -1,0 +1,7 @@
+# Push t0a0b's crate on the ledge (*10, 49 above the floor) along -x for
+# three seconds.
+# map t0a0b
+# start 1508 -1016 -134 180
+30 0 0 180 0
+180 400 0 180 0
+60 0 0 180 0

@@ -1,0 +1,7 @@
+# Push the c1a2 *4 crate six seconds down the corridor: what it meets on the
+# way (a threshold, a step).
+# map c1a2
+# start 200 -801 -539 0
+20 0 0 0 0
+360 400 0 0 0
+40 0 0 0 0

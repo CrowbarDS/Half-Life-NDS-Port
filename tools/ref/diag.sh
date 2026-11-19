@@ -42,7 +42,8 @@ mkdir -p "$OUT"
 port() {
     local replay="$ROOT/build/convert/diag_replay"
     [ -x "$replay" ] || { echo "no $replay: build the converter (cmake --build build/convert --target diag_replay)" >&2; exit 1; }
-    "$replay" "$OUT/$NAME.bsp" "$SCEN" "$OUT/${NAME}_ds.csv" || exit 1
+    # (Each frame as long as the game's command was: its log.)
+    "$replay" "$OUT/$NAME.bsp" "$SCEN" "$OUT/${NAME}_ds.csv" 120 "$OUT/${NAME}_pc.csv" || exit 1
     python3 -I "$ROOT/tools/ref/diagcmp.py" "$NAME"
 }
 if [ -n "${DIAG_PORT_ONLY:-}" ]; then

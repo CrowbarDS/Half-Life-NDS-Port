@@ -1,0 +1,8 @@
+# Start standing on t0a0b's 64-unit crate (*13), in the open: stand, then
+# walk off its far edge. The crate must not move under someone standing on
+# it or stepping off it. (c1a2's crate has no room above it to stand.)
+# map t0a0b
+# start 1184 -424 -116 0
+60 0 0 0 0
+40 400 0 0 0
+60 0 0 0 0

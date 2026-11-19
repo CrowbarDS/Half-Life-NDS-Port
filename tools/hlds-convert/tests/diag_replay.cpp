@@ -2,11 +2,15 @@
 // own code (shared/), on the host, in the console's order of things each
 // frame, writing the same log the real game's diagnostic build writes.
 //
-//   diag_replay <map.bsp> <scenario.txt> <out.csv> [settle frames]
+//   diag_replay <map.bsp> <scenario.txt> <out.csv> [settle frames] [game's log]
 //
 // The map is the copy diag.sh made (start moved, entities stripped), so both
 // play the same map. Every frame is a sixtieth of a second, as the real game's
-// run is (host_framerate): one vblank, as on the console at full speed. Before
+// run is (host_framerate): one vblank, as on the console at full speed. Given
+// the real game's log, each scripted frame's move takes its command's own
+// length instead (whole milliseconds there: 17, 17, 16; its physics steps a
+// sixtieth), so that the two are given the same steps of time as well as the
+// same input. Before
 // the script, the player stands for `settle` frames (120) to come to rest on
 // the floor, as the real game's player has before its script starts.
 //
@@ -111,6 +115,30 @@ int main(int argc, char **argv)
         return 2;
     }
     const int settle = argc > 4 ? std::atoi(argv[4]) : 120;
+    // The real game's commands' lengths, by frame (0: not known).
+    std::vector<int> gameMs;
+    if (argc > 5)
+    {
+        std::ifstream log(argv[5]);
+        std::string line;
+        while (std::getline(log, line))
+        {
+            if (line.rfind("cmd,", 0) != 0)
+                continue;
+            // cmd,frame,seq,t,sframe,msec,...
+            std::istringstream in(line);
+            std::string field[6];
+            for (std::string &f : field)
+                std::getline(in, f, ',');
+            const int frame = std::atoi(field[1].c_str()), ms = std::atoi(field[5].c_str());
+            if (frame > 0)
+            {
+                if (static_cast<int>(gameMs.size()) <= frame)
+                    gameMs.resize(frame + 1, 0);
+                gameMs[frame] += ms;
+            }
+        }
+    }
     std::vector<Span> spans;
     if (!loadScenario(argv[2], spans))
     {
@@ -182,7 +210,14 @@ int main(int argc, char **argv)
             span.yaw = spans[0].yaw;
             span.pitch = spans[0].pitch;
         }
+        // The logic's step: a vblank's, in milliseconds as the console counts
+        // them (the real game's physics steps a sixtieth exactly). The
+        // player's: the command's length, in the real game whole
+        // milliseconds, if known; else a vblank's.
         const int ms = clock.ms(1);
+        const bool fromGame = f >= 1 && f < static_cast<int>(gameMs.size()) && gameMs[f] > 0;
+        const std::int32_t dt =
+            fromGame ? static_cast<std::int32_t>((static_cast<std::int64_t>(gameMs[f]) << 16) / 1000) : kVblankTime;
         timeMs += ms;
         const double t = timeMs / 1000.0;
         const bool useHeld = (span.buttons & kInUse) != 0;
@@ -244,7 +279,7 @@ int main(int argc, char **argv)
         for (int a = 0; a < 3; ++a)
             cmd.viewForward[a] = forward[a];
         cmd.viewRight[0] = sy, cmd.viewRight[1] = -cy, cmd.viewRight[2] = 0;
-        playerMove(g.player, cmd, g.move, kVblankTime);
+        playerMove(g.player, cmd, g.move, dt);
         if (pulled >= 0)
             logicPull(g.logic, g.player, pulled, ms);
 

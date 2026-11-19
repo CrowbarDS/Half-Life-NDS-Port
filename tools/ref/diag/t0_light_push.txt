@@ -1,0 +1,7 @@
+# Push t0a0b's 48-unit crate (*21, friction 100: top speed 300, not clamped
+# at once) two seconds: which impact speed the push takes.
+# map t0a0b
+# start 1460 -180 -183 0
+30 0 0 0 0
+120 400 0 0 0
+60 0 0 0 0
