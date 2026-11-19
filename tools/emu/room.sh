@@ -13,8 +13,10 @@
 # <out>/table.txt. The emulator is not the console: these say what a DS's
 # heap holds, not how fast its card is.
 #
-# The card is the repository's sdroot/, which its owner plays from: its
-# saves, settings, achievements, perf.txt and manifest are copied to
+# The card is the one the mode's emulator configuration gives melonDS
+# (build/emu/cfg_<mode>: ds and dsi, the repository's sdroot/, which its
+# owner plays from; or one of a scratch card, made by hand). Its saves,
+# settings, achievements, perf.txt and manifest are copied to
 # build/emu/cardbak/<time>-room/ first and put back at the end (copied
 # back, then what the runs left removed: rsync), even if the sweep is stopped.
 #
@@ -27,7 +29,8 @@
 #                      QUIT TO MAIN MENU, and of YES)
 #   ROOM_OUT=<dir>     default build/logs/room/<time>
 #   ROOM_WAIT=<s>      the most to wait for melonDS to write the card back (90)
-#   ROOM_STAGE=<dir>   the stage's maps folder (default sdroot-stage's): the
+#   ROOM_STAGE=<dir>   the stage's maps folder (default the card's stage's,
+#                      <card>-stage, as the converter makes it): the
 #                      maps' .ent for their start spots and .dsneed below
 #
 # At the end (tools/emu/room_margin.py): the least heap free before a map
@@ -52,11 +55,16 @@ MODE="${1:?ds or dsi}"
 shift
 [ $# -gt 0 ] || { echo "usage: $0 <ds|dsi> <map>..." >&2; exit 2; }
 cd "$ROOT"
-D=sdroot/_nds/hl_nds/data
+CFG="build/emu/cfg_$MODE/melonDS/melonDS.toml"
+[ -f "$CFG" ] || tools/emu/setup.sh >/dev/null
+CARD="$(sed -n 's/^FolderPath = "\(.*\)"$/\1/p' "$CFG" | head -1)"
+CARD="${CARD:-$ROOT/sdroot}"
+D="$CARD/_nds/hl_nds/data"
+echo "card: $CARD"
 STAMP=$(date +%Y%m%d-%H%M)
 OUT="${ROOM_OUT:-build/logs/room/$STAMP}"
 BAK="build/emu/cardbak/$STAMP-room"
-STAGE="${ROOM_STAGE:-sdroot-stage/_nds/hl_nds/data/maps}"
+STAGE="${ROOM_STAGE:-$CARD-stage/_nds/hl_nds/data/maps}"
 SPOTS="${ROOM_SPOTS:-build/logs/item4/campaign-specs.txt}"
 PLAY="${ROOM_PLAY:-40}"
 WALK="${ROOM_WALK:-key Left 4; sleep 3; key Right 2; sleep 3; key Up 3; sleep 3; key Left 2}"
@@ -160,7 +168,7 @@ for map in "$@"; do
     echo "$map: from $spot"
     EMU_START="$spot" timeout 900 tools/emu/play.sh "$MODE" \
         "ready 150; sleep 5; $WALK; sleep $PLAY; $EXIT; sleep 15" >/dev/null 2>&1
-    # (The emulator writes the card back to sdroot/ after it has quit.)
+    # (The emulator writes the card back to its folder after it has quit.)
     for _ in $(seq "${ROOM_WAIT:-90}"); do
         grep -q "^play: $map " "$D/perf.txt" 2>/dev/null && break
         sleep 1

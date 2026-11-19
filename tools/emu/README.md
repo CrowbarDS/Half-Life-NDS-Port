@@ -16,6 +16,14 @@ tools/emu/play.sh ds "sleep 9;shot /tmp/a.png"
 copies' SD card at this repository's `sdroot/`, with card images of their own.
 Your own configuration and card images are never written to.
 
+Another card (a scratch one, cooked with `hlds-convert cook-all ... -o
+<folder>`) is another mode: a copy of `build/emu/cfg_ds` as
+`build/emu/cfg_<mode>`, its `FolderPath` lines set to that folder and its
+`ImagePath` lines to images of its own. `play.sh <mode>` and `room.sh
+<mode>` then use that card: its saves are the ones cleared, its
+`debug_start.txt` the one written, and `room.sh` reads the maps' needs
+from its stage (`<folder>-stage`).
+
 `play.sh <ds|dsi> "<script>"` runs the ROM and feeds it a script of commands
 separated by `;`. melonDS is given a copy of the ROM marked as homebrew
 (`build/emu/<name>`, game code `####`): the game's own code, WHLD, gets no

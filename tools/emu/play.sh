@@ -19,16 +19,21 @@ MODE="${1:?ds or dsi}"
 CFG="$ROOT/build/emu/cfg_$MODE"
 [ -d "$CFG" ] || "$ROOT/tools/emu/setup.sh" >/dev/null
 cd "$ROOT"
+# The card: the folder the configuration gives melonDS (setup.sh's: sdroot/;
+# another, made by hand, a scratch card's), which what is written and taken
+# away below is on.
+CARD="$(sed -n 's/^FolderPath = "\(.*\)"$/\1/p' "$CFG/melonDS/melonDS.toml" | head -1)"
+CARD="${CARD:-$ROOT/sdroot}"
 # Saves left by an earlier run are not this run's: EMU_KEEP_SAVE=1 keeps
 # them (to test exactly that -- the title's CONTINUE and LOAD GAME).
 if [ -z "${EMU_KEEP_SAVE:-}" ]; then
     for save in auto quick save1 save2 save3 save4 save5 save6 arrival; do
-        rm -f "${ROOT:?}/sdroot/_nds/hl_nds/data/saves/$save.sav" "${ROOT:?}/sdroot/_nds/hl_nds/data/saves/$save.sav.new"
+        rm -f "${CARD:?}/_nds/hl_nds/data/saves/$save.sav" "${CARD:?}/_nds/hl_nds/data/saves/$save.sav.new"
     done
-    rm -f "${ROOT:?}/sdroot/_nds/hl_nds/data/saves/index.dat" "${ROOT:?}/sdroot/_nds/hl_nds/data/saves/slot0.sav" \
-        "${ROOT:?}/sdroot/_nds/hl_nds/data/saves/slot1.sav"
+    rm -f "${CARD:?}/_nds/hl_nds/data/saves/index.dat" "${CARD:?}/_nds/hl_nds/data/saves/slot0.sav" \
+        "${CARD:?}/_nds/hl_nds/data/saves/slot1.sav"
 fi
-START_FILE="$ROOT/sdroot/_nds/hl_nds/data/debug_start.txt"
+START_FILE="$CARD/_nds/hl_nds/data/debug_start.txt"
 # (debug_start.txt is read by a development build only: HLDS_DEV=1 ./make.sh.
 # A release -- the game's mark, hlReleaseBuild, in its program -- starts as
 # a player's would, wherever EMU_START says.)
@@ -81,7 +86,7 @@ if [ "${EMU_INSTANCES:-1}" = 2 ]; then
     [ "${EMU_ROM2:-}" = child ] && PICK2="${EMU_PICK2:-tap 200 75}"
     SCRIPT="sleep 6; place 0 0 0; sleep 0.5; tap 75 15; sleep 0.8; tap 120 387; sleep 0.8; tap 300 387; sleep 3; place 1 320 0; sleep 1; tap 340 15; sleep 1; tap 420 47; sleep 1; $PICK2; sleep 12; $SCRIPT"
 fi
-# (The wait: the emulator writes the card back to sdroot/ as it quits --
+# (The wait: the emulator writes the card back to its folder as it quits --
 # the files the ROM wrote, perf.txt -- and X must not go before it has.
 # Thirty seconds at most: a DSi's card takes longer than ten.)
 # (EMU_ROM: another ROM than the game's -- child/out/hl-child-twl.nds, the
@@ -98,6 +103,6 @@ env -u WAYLAND_DISPLAY QT_QPA_PLATFORM=xcb XDG_CONFIG_HOME="$CFG" EMU_SCRIPT="$S
 # back there, not the copy marked as homebrew, which TWiLight Menu++ would
 # not offer the wide screen to.)
 ORIGINAL="${EMU_ROM:-half-life-nds-port.nds}"
-if [ "$ROM" != "$(realpath "$ORIGINAL")" ] && [ -f "$ROOT/sdroot/$(basename "$ROM")" ]; then
-    cp "$ORIGINAL" "$ROOT/sdroot/$(basename "$ROM")"
+if [ "$ROM" != "$(realpath "$ORIGINAL")" ] && [ -f "$CARD/$(basename "$ROM")" ]; then
+    cp "$ORIGINAL" "$CARD/$(basename "$ROM")"
 fi
