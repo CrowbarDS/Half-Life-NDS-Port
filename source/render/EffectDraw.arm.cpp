@@ -296,15 +296,18 @@ namespace hlrt
         }
 #endif
 
+#ifndef HLDS_CHILD
         /// Where sparks that left `effect.a` are after `ms`: along to `b`,
-        /// where they stopped.
-        void sparksAt(const Effect &effect, int ms, fx *at)
+        /// where they stopped. (A DSi's only, as all of the sparks: in its
+        /// memory, not a DS's.)
+        HL_TWL_CODE void sparksAt(const Effect &effect, int ms, fx *at)
         {
             const int travel = effect.size;
             const int along = travel <= 0 || ms >= travel ? 4096 : ms * 4096 / travel;
             for (int k = 0; k < 3; ++k)
                 at[k] = effect.a[k] + static_cast<fx>((static_cast<std::int64_t>(effect.b[k] - effect.a[k]) * along) >> 12);
         }
+#endif
 
 #ifndef HLDS_CHILD
         HL_TWL_CODE void sparks(const Effect &effect)
