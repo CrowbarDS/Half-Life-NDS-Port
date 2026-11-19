@@ -25,10 +25,15 @@ namespace hldata
 {
     /// The heap free as a DS begins to load a map, before its families, less
     /// a margin for arriving by a level change rather than at a start.
-    /// Measured 2,339,520 bytes on 2026-11-18 (c1a0, t0a0b alike): 12,160
-    /// fewer than the day before, for what was hit sounding of what it is
-    /// and what breaks breaking as the game's (18,252 more of program, less
-    /// the common sounds' names now read from the card: 6,092). Before:
+    /// Measured 2,340,516 bytes on 2026-11-19 (c1a0, t0a0b alike; a
+    /// development build's 2,336,772 and the 3,744 bytes its program is
+    /// longer): 996 more, with PROFILE's picture's code in an overlay
+    /// (source/Overlay.hpp) -- 12,192 bytes -- and what the program grew
+    /// by since. Before: 2,339,520 bytes on 2026-11-18 (c1a0, t0a0b
+    /// alike): 12,160 fewer than the day before, for what was hit sounding
+    /// of what it is and what breaks breaking as the game's (18,252 more
+    /// of program, less the common sounds' names now read from the card:
+    /// 6,092). Before:
     /// 2,351,680 on 2026-11-17 (c1a0, c3a1, c1a3a, c2a3a
     /// alike), with NEA's unused modules left out and the program's own trim
     /// (integer printf, no exception handling, the old settings' sizes as a
@@ -38,7 +43,7 @@ namespace hldata
     /// program and its families apart; 2,175,824 with them linked in,
     /// 2,110,768 with the whole game a library). Measure again
     /// (tools/emu/room.sh ds) whenever the program grows.
-    inline constexpr std::size_t kDsMapHeap = 2339520 - 32 * 1024;
+    inline constexpr std::size_t kDsMapHeap = 2340516 - 32 * 1024;
     /// Where the program ended (its __end__, where the heap begins) when
     /// kDsMapHeap was measured. Each byte the program has grown since is a
     /// byte less of that heap: tools/arm9-report.sh --check fails when what
@@ -48,7 +53,7 @@ namespace hldata
     /// heap measured is the reference -- tools/emu/room.sh ds, before every
     /// release and in every full DS sweep, says the real margin, and which
     /// maps are within 4 KB of the 128 KB floor for their sounds.
-    inline constexpr std::uint32_t kDsMapHeapProgramEnd = 0x02191db0;
+    inline constexpr std::uint32_t kDsMapHeapProgramEnd = 0x02191a38;
     /// What each family takes of the heap loaded (GameFamily's order):
     /// measured in melonDS's DS mode on 2026-11-16, 70,764 and 60,724 bytes
     /// for the bosses and the soldiers (perf.txt's room line), the rules
