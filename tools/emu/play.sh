@@ -37,7 +37,14 @@ START_FILE="$CARD/_nds/hl_nds/data/debug_start.txt"
 # (debug_start.txt is read by a development build only: HLDS_DEV=1 ./make.sh.
 # A release -- the game's mark, hlReleaseBuild, in its program -- starts as
 # a player's would, wherever EMU_START says.)
-if [ -n "${EMU_START:-}" ] && [ -z "${EMU_ROM:-}" ] && grep -q hlReleaseBuild "$ROOT/build/arm9/arm9.elf" 2>/dev/null; then
+# (Defined, not only named: every link asks for it by name.)
+released()
+{
+    python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import ovl
+e = ovl.Elf(open(sys.argv[2], "rb").read()); s = e.by_name.get("hlReleaseBuild")
+sys.exit(0 if s is not None and s["shndx"] != 0 else 1)' "$ROOT/tools" "$ROOT/build/arm9/arm9.elf" 2>/dev/null
+}
+if [ -n "${EMU_START:-}" ] && [ -z "${EMU_ROM:-}" ] && released; then
     echo "play.sh: EMU_START wants a development build (HLDS_DEV=1 ./make.sh): this one is a release" >&2
 fi
 [ -n "${EMU_START:-}" ] && echo "$EMU_START" > "$START_FILE"
