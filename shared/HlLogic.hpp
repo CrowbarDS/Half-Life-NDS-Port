@@ -347,6 +347,10 @@ namespace hldata
         /// The player holds USE: a box they walk into is not pushed (it is
         /// theirs to pull, logicPull). Whoever reads the buttons sets it.
         Unsaved<bool> useHeld;
+        /// ... as it was during the player's last move, whose touch of a box
+        /// this tick's shove is (the game's CPushable::Touch asks of the
+        /// buttons at the touch): logicTick keeps it, at its end.
+        Unsaved<bool> useHeldAtTouch;
         /// The guns' aim is NOT to bend towards a monster near it (it may on
         /// EASY and MEDIUM: the game's sv_aim, HlAutoaim.hpp). The caller's
         /// setting, given each frame: not the game's state.
@@ -2759,7 +2763,7 @@ namespace hldata
             if (player.groundMover == brush && player.onGround && wet > 0)
                 v[2] += player.velocity[2] / 10;
             if (player.touchedMover == brush && (player.onGround || wet > 0) && player.groundMover != brush &&
-                !w.useHeld.value)
+                !w.useHeldAtTouch.value)
             {
                 if (player.touchVelocity[0] != 0 || player.touchVelocity[1] != 0)
                     boxScrape(w, index);
@@ -6103,6 +6107,8 @@ namespace hldata
                 break;
             }
         }
+        // (The USE the next tick's shoves are of: see useHeldAtTouch.)
+        w.useHeldAtTouch.value = w.useHeld.value;
     }
 
     /// A game between consoles: someone who is not this console's player

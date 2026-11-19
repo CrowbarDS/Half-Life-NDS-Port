@@ -385,8 +385,11 @@ namespace
         check(logicFindUsable(g.logic, eye, east) == box, "USE, facing a box, is the box");
         check(logicFindUsable(g.logic, eye, west) == -1, "... and not with its back to it");
 
-        // Walking into it, holding USE: it stays where it is.
+        // Walking into it, holding USE: it stays where it is. (Held through
+        // the moves that touch it too: a touch is of the buttons as they
+        // were at it, as the game's CPushable::Touch has them.)
         g.logic.useHeld.value = true;
+        g.logic.useHeldAtTouch.value = true;
         for (int tick = 0; tick < 30; ++tick)
         {
             g.player.touchedMover = static_cast<std::int16_t>(brush);

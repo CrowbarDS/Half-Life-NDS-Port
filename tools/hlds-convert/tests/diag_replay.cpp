@@ -214,6 +214,7 @@ int main(int argc, char **argv)
         }
         const int touched = g.player.touchedMover;
         const bool touchedOnGround = g.player.onGround;
+        const bool touchedHolding = g.logic.useHeldAtTouch.value; // (USE as it was at the touch)
         const fx touchV[2] = {g.player.touchVelocity[0], g.player.touchVelocity[1]};
 
         // Game::frame's order (dll/hl/Game.arm.cpp): the logic (boxes
@@ -257,7 +258,7 @@ int main(int argc, char **argv)
             // (Filed under the move that made it, as the real game's are.)
             std::fprintf(out, "touch,%d,%d,%.4f,%s,player,1,%s,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", f - 1, f - 1, t,
                          names[record.brush].c_str(),
-                         useHeld ? "buttons" : !touchedOnGround && g.player.waterLevel == 0 ? "air" : "ok", units(touchV[0]), units(touchV[1]),
+                         touchedHolding ? "buttons" : !touchedOnGround && g.player.waterLevel == 0 ? "air" : "ok", units(touchV[0]), units(touchV[1]),
                          units(before[2 * n]), units(before[2 * n + 1]), units(g.states[boxes[n]].travel[0]),
                          units(g.states[boxes[n]].travel[1]));
         }

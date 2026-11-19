@@ -227,7 +227,8 @@ Milestone 11, "levels of detail".
   Known gap, for the weapons work: a shot meets a box's model box, not the
   grown one the game's `SOLID_BBOX` gives it -- a unit short each way
   (`traceShot`, `boxCentred`). Holding USE on one stops
-  the push and pulls it instead, after the player's move as the game's
+  the push (as USE was at the touch, as the game's `CPushable::Touch` asks)
+  and pulls it instead, after the player's move as the game's
   `PlayerUse` does, from the first frame USE is held: it takes on the
   player's speed a quarter a frame at 60 frames a second. USE held on the ground cuts the player's top
   speed to a third, with or without a box, as the game does. Not in a match, where a
