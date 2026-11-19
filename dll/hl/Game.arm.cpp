@@ -905,6 +905,7 @@ namespace hlrt
             input.lookDx = input.lookDy = input.lookFineX = input.lookFineY = 0;
         }
         std::uint32_t netDid = 0; // what the weapon did this frame, for a game between consoles
+        int pulled = -1;          // a box pulled with USE held: after the move (below)
         // (A development aid: debug_start.txt's sixth number, the seconds
         // after which the player dies, once -- for seeing what dying goes
         // back to.)
@@ -958,7 +959,13 @@ namespace hlrt
                 else if (personUse(logic, player.state, eye, camera.forward)) // (a scientist or a guard: follow, or stay)
                     sound.ui(kUiSoundWeapon, kUseVolume);
                 else if (box)
+                {
                     sound.ui(kUiSoundWeapon, kUseVolume);
+                    // (Pulled from the first frame of the press: the game's
+                    // PlayerUse uses a continuous-use object while held.)
+                    if (logic.useHeld.value)
+                        pulled = target;
+                }
                 else
                     sound.ui(kUiSoundDeny, kUseVolume);
             }
@@ -977,7 +984,7 @@ namespace hlrt
                 if (target >= 0 && (logicContinuousUse(logic.records[target]) || wheel))
                     logicUse(logic, player.state, target, -1, kUseSet);
                 else if (target >= 0 && logic.useHeld.value && logic.records[target].kind == static_cast<std::uint8_t>(LogicKind::Pushable))
-                    logicPull(logic, player.state, target, ms);
+                    pulled = target;
             }
         }
         // What fights, what lies about, and what is in hand.
@@ -1242,6 +1249,10 @@ namespace hlrt
             }
         }
         player.frame(vblanks);
+        // The box being pulled takes the speed of this frame's move, as the
+        // game's PlayerUse does after the move: it then goes before the next.
+        if (pulled >= 0)
+            logicPull(logic, player.state, pulled, ms);
         cameraView();
         // A game between consoles: what this player did goes out, what the
         // others did comes in (HlNetGame.hpp). And a player just put back

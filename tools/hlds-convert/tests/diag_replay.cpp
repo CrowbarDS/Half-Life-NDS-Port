@@ -158,7 +158,6 @@ int main(int argc, char **argv)
     FrameClock clock;
     constexpr std::int32_t kVblankTime = 1092; // a sixtieth of a second, Q16 (source/game/Player.arm.cpp)
     long timeMs = 0;
-    bool useWas = false;
     int frameAll = 0;
     const int scripted = [&] {
         int n = 0;
@@ -187,8 +186,6 @@ int main(int argc, char **argv)
         timeMs += ms;
         const double t = timeMs / 1000.0;
         const bool useHeld = (span.buttons & kInUse) != 0;
-        const bool usePressed = useHeld && !useWas;
-        useWas = useHeld;
 
         // The view, as the console's camera has it: yaw and pitch in turns,
         // the game's pitch down.
@@ -225,11 +222,12 @@ int main(int argc, char **argv)
         logicTick(g.logic, g.player, ms);
         g.logic.viewTurn = 0;
         const fx eye[3] = {g.player.origin[0], g.player.origin[1], g.player.origin[2] + g.player.viewHeight};
-        if (!usePressed && useHeld && g.player.health > 0)
+        int pulled = -1; // (pulled after the move, as Game::frame does)
+        if (useHeld && g.player.health > 0)
         {
             const int target = logicFindUsable(g.logic, eye, forward);
             if (target >= 0 && g.logic.records[target].kind == static_cast<std::uint8_t>(LogicKind::Pushable))
-                logicPull(g.logic, g.player, target, ms);
+                pulled = target;
         }
         monstersTick(g.logic, g.player, ms);
         g.drain();
@@ -246,6 +244,8 @@ int main(int argc, char **argv)
             cmd.viewForward[a] = forward[a];
         cmd.viewRight[0] = sy, cmd.viewRight[1] = -cy, cmd.viewRight[2] = 0;
         playerMove(g.player, cmd, g.move, kVblankTime);
+        if (pulled >= 0)
+            logicPull(g.logic, g.player, pulled, ms);
 
         if (f < 1)
             continue;
