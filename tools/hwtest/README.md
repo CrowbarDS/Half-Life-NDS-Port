@@ -249,3 +249,35 @@ more pieces than its table may hold -- 2 KB, 255 pieces, in DS mode; 4 KB,
 `tools/emu/fragcard.sh` runs that test in melonDS on a card image of its own.
 
 Results: to be filled in (docs/ds-memory-phase0.md).
+
+## fxprobe/ — the tricks the effects plan leans on
+
+Each test captures the picture into bank D and reads it back, so the answers
+are numbers on the bottom screen. After them, A shows each scene live and B
+runs the tests again.
+
+1. **Lines**: a triangle with two equal vertices: its width, alpha 15, fog
+   (with a fogged quad beside it as a control), cut at the right edge of the
+   screen, and one running through the near plane.
+2. **A blended sprite over the 3D layer** with `BLDALPHA` 16/16 (the head-up
+   display's setting): is it added, clamped at 31; does the back one of two
+   sprites over each other show; is the backdrop added to as well?
+3. **A DMA started by each horizontal blank writing `BG0HOFS`** from a table
+   (`y % 16` left, then right): lines moved by their own amount, a line late,
+   or other; and, moved right, whether the edge wraps or shows the backdrop.
+
+In melonDS (DS and DSi modes alike; the emulator is not the reference):
+
+| Test | melonDS |
+|---|---|
+| Line width, slanted run | 1 pixel; 80 pixels for an 81-long run |
+| Line at alpha 15 | red 15: blended |
+| Fogged line, fogged quad | both fogged (an earlier run without the quad read the line unfogged) |
+| Line over the edge, through the near plane | 56 of 56 pixels; drawn to the bottom row |
+| Sprite 12 over 3D 10 / 25 | 22 / 31: added, clamped |
+| Two sprites over each other | 22: the front one only |
+| Sprite over the backdrop (6) | 18 |
+| Per-line scroll | 190 lines right, 0 late (the 2 others: the bar's last rows) |
+| Scrolled right | no wrap: the backdrop shows |
+
+On a DS and a DSi: not yet run.
