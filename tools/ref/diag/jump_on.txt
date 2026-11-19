@@ -1,0 +1,11 @@
+# Crouch-jump onto the c1a2 *4 crate (64 high: more than a plain jump) and
+# stand on it: the box must not be pushed by someone riding it, nor by
+# someone in the air against it.
+# map c1a2
+# start 170 -801 -539 0
+20 0 0 0 0
+14 400 0 0 0
+4 400 0 0 0 jd
+30 400 0 0 0 d
+60 400 0 0 0
+40 0 0 0 0

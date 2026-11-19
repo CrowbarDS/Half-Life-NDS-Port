@@ -250,6 +250,13 @@ if(HLDS_BUILD_TESTS)
         set_tests_properties(${test_name} PROPERTIES SKIP_RETURN_CODE 77)
     endforeach()
 
+    # Not a suite: the port's side of tools/ref/diag.sh, a scenario played
+    # through the game's code and logged as the real game's diagnostic build
+    # logs it.
+    add_executable(diag_replay tests/diag_replay.cpp)
+    target_compile_options(diag_replay PRIVATE ${HLDS_TEST_OPTIMISE})
+    target_link_libraries(diag_replay PRIVATE hlds_convert_core)
+
     # The DSi's DSP program (teak/, assembly) run in an emulated DSP and held
     # against its model, sample for sample (tools/dspsim). Skipped where the
     # emulator or the Teak toolchain is not there: the script says which.

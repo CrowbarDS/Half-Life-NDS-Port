@@ -59,3 +59,52 @@ removed when the run is over.)
   wants; the script clicks that away.
 - **Sound** is not captured: what the game sounds like is read out of its
   source (`helpSrc/`).
+
+## Physics, frame by frame
+
+Pictures say little about how a box slides or a grenade flies. For that the
+real game is run with the game code of a diagnostic build of the SDK,
+[CrowbarDS/hlsdk-portable-diag](https://github.com/CrowbarDS/hlsdk-portable-diag),
+which logs what moves, frame by frame; and the port plays the same thing on
+the host, through its own game code, into a log of the same form.
+
+    tools/ref/diag.sh push_straight
+    DIAG_PORT_ONLY=1 tools/ref/diag.sh push_straight    # the port's side again
+
+- **A scenario** (`tools/ref/diag/<name>.txt`) names a map and a start in its
+  head (`# map c1a2`, `# start x y z yaw`, and `# keep <pattern>` for the
+  classes kept besides the world, `func_.*` by default: no monsters). Each
+  line after is a span of frames, `<frames> <forward> <side> <yaw> <pitch>
+  [buttons]`: speeds as the keys give them (400), the view in degrees (pitch
+  down positive, as the game's), buttons as letters (`a` attack, `b` the
+  second, `u` USE, `j` jump, `d` duck, `r` reload).
+- **The real game's side.** `REF_DIAG=1` (which `diag.sh` sets) makes
+  `setup.sh` copy that build's `hl.so` and `client.so` into the side folder
+  and point its `liblist.gam` at them; without it they are taken away again.
+  The client plays the scenario in place of the keys, so each frame's input
+  is exactly the script's; `host_framerate` makes every frame a sixtieth of a
+  second, however slowly the game runs off-screen (`DIAG_STEP` for another).
+  The log is `build/ref/diag/<name>_pc.csv`; the map as it was played, start
+  moved and entities stripped, `build/ref/diag/<name>.bsp`.
+- **The port's side.** `build/convert/diag_replay` (built with the
+  converter) cooks that same map, stands the player still for two seconds,
+  then plays the scenario in the console's order of things each frame (the
+  logic and its boxes, USE, the monsters, then the player's move), a
+  sixtieth of a second each, into `build/ref/diag/<name>_ds.csv`.
+- **Holding them together.** `diagcmp.py <name>` says, for the player and
+  each box that moved, from which frame the two part, by how much at worst,
+  and where each ends; and writes both side by side to
+  `build/ref/diag/<name>_cmp.csv`. (The real game moves its boxes after the
+  player in a frame, the port before: a box's place at the end of a frame is
+  read from each log accordingly.)
+- **Building the SDK fork**: next to this repository, 32-bit (the Steam game
+  is), with `gcc-multilib`, `g++-multilib` and `libsdl2-dev:i386`:
+
+      cmake -S ../hlsdk-portable-diag -B ../hlsdk-portable-diag/build -G Ninja \
+          -D64BIT=OFF -DGOLDSOURCE_SUPPORT=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+          -DCMAKE_SHARED_LINKER_FLAGS="-static-libstdc++ -static-libgcc"
+      cmake --build ../hlsdk-portable-diag/build
+
+  (Not Release: that adds `-funsafe-math-optimizations`, and the game's own
+  is to be matched. `HLDS_DIAG_BUILD` says where the build is, if elsewhere.)
+- The logs are measurements of the player's own game: they stay in `build/`.

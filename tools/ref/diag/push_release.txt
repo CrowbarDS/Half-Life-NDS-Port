@@ -1,0 +1,8 @@
+# Push the c1a2 *4 crate one second, then back off at once: who goes on
+# moving when the push stops.
+# map c1a2
+# start 200 -801 -539 0
+20 0 0 0 0
+90 400 0 0 0
+30 -400 0 0 0
+60 0 0 0 0

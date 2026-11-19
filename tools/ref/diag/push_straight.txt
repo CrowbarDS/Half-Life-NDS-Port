@@ -1,0 +1,7 @@
+# Walk straight into a 64-unit crate (c1a2 *4, friction 350) and push it for
+# two seconds, then let go.
+# map c1a2
+# start 200 -801 -539 0
+60 0 0 0 0        # stand a second
+120 400 0 0 0     # walk into the crate, pushing it
+60 0 0 0 0        # let go

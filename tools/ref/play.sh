@@ -22,7 +22,8 @@ AT="${2:?x y z yaw}"
 SCRIPT="${3:-sleep 2}"
 # The game asks Steam who is playing, and stops if nobody answers.
 pgrep -x steam >/dev/null || { echo "Steam is not running: the real game cannot start without it" >&2; exit 3; }
-[ -f "$REF/liblist.gam" ] || "$ROOT/tools/ref/setup.sh" >/dev/null
+# (Every time: REF_DIAG says whose game code is run, see setup.sh.)
+"$ROOT/tools/ref/setup.sh" >/dev/null || exit 1
 RUNTIME="$HOME/.steam/debian-installation/ubuntu12_32/steam-runtime/run.sh"
 # (Steam has since made that a stub that runs the game on the host, where it
 # finds none of its old 32-bit libraries: the scout runtime it still ships
@@ -30,6 +31,8 @@ RUNTIME="$HOME/.steam/debian-installation/ubuntu12_32/steam-runtime/run.sh"
 SCOUT="$HOME/.steam/debian-installation/steamapps/common/SteamLinuxRuntime/steam-runtime/run.sh"
 case "$(readlink "$RUNTIME" 2>/dev/null)" in *legacy-run-stub*) [ -x "$SCOUT" ] && RUNTIME="$SCOUT" ;; esac
 LOG="$HL/qconsole.log"
+# REF_SIZE="<w> <h>": the game's window (640 480, the smallest it starts in).
+read -r REF_W REF_H <<< "${REF_SIZE:-640 480}"
 
 # The map, with the player's start moved (place.py), in the side folder:
 # found there before the game's own.
@@ -85,6 +88,12 @@ cat > "$REF/ref.cfg" <<'CFG'
 sv_cheats 1
 echo REF-START
 CFG
+# REF_CFG: more console lines for the start (tools/ref/diag.sh's), in both
+# files: a key bound in ref.cfg is lost again by the time the map is in.
+if [ -n "${REF_CFG:-}" ]; then
+    printf '%s\n' "$REF_CFG" >> "$REF/ref.cfg"
+    printf '%s\n' "$REF_CFG" >> "$REF/config.cfg"
+fi
 
 # REF_AUDIO=<file>: the game's sound, written to that file (SDL's own disk
 # driver, as tools/emu/play.sh's EMU_AUDIO): nothing is played, and nothing of
@@ -110,6 +119,8 @@ finish() {
         kill -KILL -- "-$GAME" 2>/dev/null
     fi
     kill "$XVFB" 2>/dev/null
+    # (A diagnostic run's console is kept, to see what the DLLs said.)
+    [ -n "${REF_DIAG:-}" ] && mkdir -p "$ROOT/build/ref" && cp "$LOG" "$ROOT/build/ref/diag_console.log" 2>/dev/null
     rm -f "$REF/maps/$MAP.bsp" "$LOG"
 }
 trap finish EXIT
@@ -117,7 +128,7 @@ trap 'exit 1' INT TERM
 sleep 1
 cd "$HL" || exit 1
 DISPLAY="$DISP" LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 SteamAppId=70 SteamGameId=70 \
-    setsid "$RUNTIME" ./hl.sh -game hlds_ref -windowed -w 640 -h 480 -novid $SOUND -nomouse -condebug \
+    setsid "$RUNTIME" ./hl.sh -game hlds_ref -windowed -w "$REF_W" -h "$REF_H" -novid $SOUND -nomouse -condebug \
     +sv_cheats 1 +map "$MAP" +exec ref.cfg >"$REF/run.log" 2>&1 &
 GAME=$!
 cd "$ROOT" || exit 1
@@ -140,3 +151,13 @@ done
 sleep "${REF_SETTLE:-6}"
 # Everything to hand, the crowbar in it, and nothing can hurt.
 python3 tools/emu/xin.py "key F8 0.1; sleep 0.2; key F5 0.1; sleep 0.6; key F6 0.1; sleep 1.5; $SCRIPT"
+# REF_UNTIL=<pattern>: then wait (REF_UNTIL_TIMEOUT seconds at most, 300 by
+# default) until the game's console says it -- the game runs slower than
+# its clock without a graphics card, so a script's length says little.
+if [ -n "${REF_UNTIL:-}" ]; then
+    for _ in $(seq 1 $(( ${REF_UNTIL_TIMEOUT:-300} * 2 ))); do
+        grep -q -- "$REF_UNTIL" "$LOG" 2>/dev/null && break
+        sleep 0.5
+    done
+    sleep 1
+fi

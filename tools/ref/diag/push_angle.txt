@@ -1,0 +1,7 @@
+# Walk into the c1a2 *4 crate off its middle, 20 degrees off its face: how it
+# turns aside, and how the player slides along it.
+# map c1a2
+# start 200 -830 -539 20
+30 0 0 20 0
+150 400 0 20 0
+60 0 0 20 0

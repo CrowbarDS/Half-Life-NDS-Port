@@ -1,0 +1,6 @@
+# Stand against the c1a2 *4 crate, hold USE and back away: the pull.
+# map c1a2
+# start 238 -801 -539 0
+30 0 0 0 0
+120 -400 0 0 0 u   # pull it two seconds
+60 0 0 0 0

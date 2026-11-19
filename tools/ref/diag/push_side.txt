@@ -1,0 +1,7 @@
+# Push the c1a2 *4 crate across the corridor (towards +y) until the wall
+# stops it, and on into it.
+# map c1a2
+# start 288 -860 -539 90
+20 0 0 90 0
+240 400 0 90 0
+40 0 0 90 0
