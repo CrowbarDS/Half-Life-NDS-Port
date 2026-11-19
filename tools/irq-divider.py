@@ -100,10 +100,17 @@ def run(*command):
 
 def check(elf):
     symbols = set()
+    # The overlay regions (tools/ovl.py): what is there is not always there,
+    # and a handler can come at any time -- none may reach into one.
+    marks = {}
     for line in run(TOOL + "nm", "-n", "--defined-only", "-C", elf).splitlines():
         parts = line.split(None, 2)
         if len(parts) == 3 and parts[1] in "tTwW" and not parts[2].startswith("$"):
             symbols.add((int(parts[0], 16) & ~1, parts[2]))
+        if len(parts) == 3 and re.match(r"__ovl_[A-Z]\w*_(start|end)$", parts[2]):
+            marks[parts[2]] = int(parts[0], 16)
+    regions = [(name[6:-6], marks[name], marks.get(name[:-6] + "_end", marks[name]))
+               for name in marks if name.endswith("_start")]
     symbols = sorted(symbols)
     starts = [at for at, _ in symbols]
     names = {name for _, name in symbols}
@@ -225,6 +232,18 @@ def check(elf):
         for caller in sorted(who_calls(installer)):
             if not any(caller.startswith(known) for known in allowed):
                 print("%s: %s calls %s: a new handler? Add it here" % (elf, caller, installer))
+                bad += 1
+    where_is = {}
+    for at, name in symbols:
+        where_is.setdefault(name, at)
+    for name in sorted(came_from):
+        at = where_is.get(name)
+        for region, start, end in regions:
+            if at is not None and start <= at < end:
+                path = [name]
+                while came_from[path[-1]] is not None:
+                    path.append(came_from[path[-1]])
+                print("%s: in overlay region %s: %s" % (elf, region, " <- ".join(path)))
                 bad += 1
     for name in sorted(came_from):
         if name not in uses and name not in UNITS:

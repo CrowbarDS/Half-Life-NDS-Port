@@ -229,6 +229,21 @@ summary = ("%s.dsl: %d bytes; the game: %d ARM functions, %d Thumb; helper calls
               marks.get("__dtcm_data_top", 0) - marks.get("__sbss_end", 0),
               len(arm_game), len(thumb_game), hard, soft))
 
+# The overlays (tools/ovl.py): each region, as large as its largest
+# overlay, and what that saves -- the sum of its overlays, less the region.
+ovl_marks = {}
+for line in run(tools + "/arm-none-eabi-readelf", "-sW", elf).splitlines():
+    part = line.split()
+    m = re.match(r"__ovl_(\w+?)_(start|load_end|end)$", part[7]) if len(part) >= 8 else None
+    if m:
+        ovl_marks[(m.group(1), m.group(2))] = int(part[1], 16)
+for region in sorted(n for (n, k) in ovl_marks if k == "start" and n[:1].isupper()):
+    start, stop = ovl_marks[(region, "start")], ovl_marks.get((region, "end"), 0)
+    members = sorted(n for (n, k) in ovl_marks if k == "start" and n[:1].islower() and ovl_marks[(n, k)] == start)
+    each = [(n, ovl_marks.get((n, "end"), start) - start) for n in members]
+    summary += "; overlay region %s: %d bytes (%s), %d saved" % (
+        region, stop - start, ", ".join("%s %d" % e for e in each), sum(b for _, b in each) - (stop - start))
+
 failed = []
 # The program has grown since kDsMapHeap was measured (shared/HlDsRoom.hpp):
 # each byte of it a byte less of a map'"'"'s heap, out of the margin kept

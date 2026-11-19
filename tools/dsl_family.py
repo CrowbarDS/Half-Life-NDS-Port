@@ -21,6 +21,9 @@ that points at one by the address the library is loaded at. So, in OUT:
 - then dsl_strip's strip, held to the same loading test;
 - and the program's ID (tools/program_id.py) stamped into hlFamilyProgramId.
 
+A family may not reach into an overlay region of the program (tools/ovl.py):
+what is there is not always there, and a family cannot ask.
+
 A family may not have constructors: the loader runs them as it loads, before
 the ID can be checked.
 """
@@ -42,8 +45,9 @@ PROGRAM_LOW, PROGRAM_HIGH = 0x01000000, 0x03000000
 MOST_ADDEND = 0x10000
 
 
-def fix(full):
-    """`full` with the program's symbols the program's: (the DSL, problems)."""
+def fix(full, regions=()):
+    """`full` with the program's symbols the program's: (the DSL, problems).
+    `regions`: the program's overlay regions, (name, start, end)."""
     problems = []
     if full.space >= PROGRAM_LOW:
         problems.append('the library is %d bytes: its addresses meet the program\'s' % full.space)
@@ -81,6 +85,10 @@ def fix(full):
         if programs(value):
             if not PROGRAM_LOW <= value < PROGRAM_HIGH:
                 problems.append('%s (%#x): neither the library\'s nor the program\'s' % (name, value))
+            for region, start, end in regions:
+                if start <= value < end:
+                    problems.append('%s (%#x) is in the program\'s overlay region %s: a family may not reach into one'
+                                    % (name, value, region))
             if kind in MOVED:
                 w = word(offset)
                 if w is None:
@@ -124,9 +132,9 @@ def stamp(dsl, ident):
     raise ValueError('%s: %s is not in the library\'s data' % (dsl.name, ID_SYMBOL))
 
 
-def make(full, ident):
+def make(full, ident, regions=()):
     """(the family ready to load, problems)."""
-    fixed, problems = fix(full)
+    fixed, problems = fix(full, regions)
     if problems:
         return None, problems
     out = Dsl(dsl_strip.strip(fixed).write(), full.name + ' (family)')
@@ -195,7 +203,24 @@ def self_test():
     bad.data[0] = bad.data[0][:4] + struct.pack('<I', 0x02100000) + bad.data[0][8:]
     if not make(Dsl(bad.write(), 'bad'), ident)[1]:
         failed.append('a word far from its program symbol went through')
+    # A call into an overlay region of the program must be refused too.
+    if not make(made_up(), ident, [('A', 0x02000800, 0x02002000)])[1]:
+        failed.append('a family that reaches into an overlay region went through')
+    if make(made_up(), ident, [('A', 0x02100000, 0x02108000)])[1]:
+        failed.append('a family clear of the overlay regions was refused')
     return failed
+
+
+def overlay_regions(program):
+    """The program's overlay regions (tools/ovl.py): (name, start, end)."""
+    import ovl
+    elf = ovl.Elf(open(program, 'rb').read())
+    names = {s['name']: s['value'] for s in elf.symbols}
+    out = []
+    for name, start in names.items():
+        if name.startswith('__ovl_') and name.endswith('_start') and name[6:7].isupper():
+            out.append((name[6:-6], start, names.get(name[:-6] + '_end', start)))
+    return out
 
 
 def main(argv):
@@ -211,11 +236,12 @@ def main(argv):
     program, full_path, out_path = argv[1:]
     try:
         ident = program_id.read(program)
+        regions = overlay_regions(program)
         full = Dsl(open(full_path, 'rb').read(), full_path)
     except (OSError, ValueError) as e:
         print('dsl_family: %s' % e)
         return 1
-    out, problems = make(full, ident)
+    out, problems = make(full, ident, regions)
     if problems:
         for p in problems:
             print('dsl_family: %s: %s' % (full_path, p))
