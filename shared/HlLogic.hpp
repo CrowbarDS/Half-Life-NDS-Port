@@ -77,7 +77,11 @@ namespace hldata
         bool dead = false;    ///< removed, or used up
         bool running = false; ///< a multi_manager with targets still to fire
         std::int32_t timer = -1; ///< ms until its pending "think"; -1 = none
-        std::int32_t phase = 0;  ///< Q30: how far along its travel
+        /// Q30: how far along its travel. For a pushable (which has no
+        /// travel) it is instead 1 while the game's pev->friction for it is
+        /// still the 0 CPushable::Spawn leaves: its first slide on the floor
+        /// is not slowed (pushableTick), after which the engine makes it 1.
+        std::int32_t phase = 0;
         /// A multisource's inputs that are on. For a train: the path corner it
         /// last arrived at. For a rotating door: the angle it rests at.
         std::uint32_t bits = 0;
@@ -2647,8 +2651,10 @@ namespace hldata
             Trace floor = boxTrace(w, brush, crouched, above, under, true);
             if (floor.startSolid)
                 floor = trace(middle, under); // no room above it to look from
+            // (On it, not over it: one with floor a little way under it falls
+            // to it -- as one does, picked up a unit when it is spawned.)
             const bool resting = !floor.startSolid && floor.fraction < kFractionOne &&
-                                 floor.normal[2] >= kFloorNormalZ;
+                                 floor.normal[2] >= kFloorNormalZ && floor.endPos[2] >= middle[2] - fxFromInt(1) / 16;
             // (1: at rest on the world, which stays where it is; 2: on
             // something that may move, which has to be watched.)
             state.bits = resting ? (floor.mover >= 0 ? 2 : 1) : 0;
@@ -2667,8 +2673,14 @@ namespace hldata
                 const fx speed = fxLength(flat);
                 if (speed > 0)
                 {
+                    // (Its first slide is not slowed, and from then on is:
+                    // the game's pev->friction, 0 from its spawn, made 1 by
+                    // the engine's first step with it -- LogicState::phase,
+                    // reused for a pushable.)
+                    const int friction = state.phase != 0 ? 0 : 4;
+                    state.phase = 0;
                     const fx control = speed < fxFromInt(100) ? fxFromInt(100) : speed;
-                    const fx drop = static_cast<fx>((static_cast<std::int64_t>(control) * 4 * ms) / 1000);
+                    const fx drop = static_cast<fx>((static_cast<std::int64_t>(control) * friction * ms) / 1000);
                     const fx left = speed > drop ? speed - drop : 0;
                     v[0] = static_cast<fx>((static_cast<std::int64_t>(v[0]) * left) / speed);
                     v[1] = static_cast<fx>((static_cast<std::int64_t>(v[1]) * left) / speed);
@@ -5403,6 +5415,16 @@ namespace hldata
                 // Where it was built, at rest; nothing of a door's about it.
                 for (int a = 0; a < 3; ++a)
                     state.base[a] = state.travel[a] = 0;
+                // CPushable::Spawn: picked a unit up off the floor (it settles
+                // back), and its friction 0 until its first slide (phase: see
+                // LogicState).
+                if (record.brush != kNoBrush)
+                {
+                    const fx *built = w.brushes[record.brush].origin;
+                    const fx lifted[3] = {built[0], built[1], built[2] + kFxOne};
+                    logicPlaceBrush(w, record.brush, lifted);
+                }
+                state.phase = 1;
                 continue;
             }
             if (record.kind == static_cast<std::uint8_t>(LogicKind::TrackTrain))

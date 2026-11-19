@@ -203,7 +203,11 @@ Milestone 11, "levels of detail".
   player inside it gets out of them by the shortest way, and if it cannot,
   they are moved out of it. What moves -- a door, a lift, a train -- pushes
   a box in its way, or is stopped by it as it is by the player, and carries
-  one that stands on it. Its scrape along the floor is the game's.
+  one that stands on it. Its scrape along the floor is the game's. As
+  `CPushable::Spawn` has it, a box is picked up a unit and settles back, and
+  its first slide is not slowed (`LogicState::phase`, reused for a pushable).
+  A box rests only on what it touches; with floor a little way under it, it
+  falls.
   (`shared/HlLogic.hpp`, `pushableTick`; `test_boxes` shoves every box of
   four of the game's maps every way and looks.) Holding USE on one stops
   the push and pulls it instead: it takes on the player's speed a quarter a

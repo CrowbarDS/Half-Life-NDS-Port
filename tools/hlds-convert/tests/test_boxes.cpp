@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+#include "HlFrameClock.hpp"
+#include "HlSaveState.hpp"
 #include "TestGame.hpp"
 
 using namespace hlds;
@@ -924,10 +926,86 @@ namespace
             check(fxToInt(hull.maxs[0] - hull.mins[0]) == static_cast<int>(width), "... and is as wide as ever");
         }
     }
+    // ------------------------------------------------------------------ the box as the game spawns it, across a save
+    //
+    // CPushable::Spawn picks a box up a unit and leaves its friction 0 till
+    // its first slide (LogicState::phase, reused for a pushable).
+
+    /// A room with one crate 64 each way, a unit off the floor as the game's
+    /// maps have theirs.
+    BoxRoom spawnRoom()
+    {
+        BoxRoom room;
+        room.mins[0] = room.mins[1] = -512;
+        room.maxs[0] = room.maxs[1] = 512;
+        room.maxs[2] = 256;
+        BrushBox box = crate(0, -32, 64, 65);
+        box.mins[2] = 1;
+        room.brushes.push_back(box);
+        return room;
+    }
+
+    /// A sixtieth of a second, in the console's order (logic, then the
+    /// player's move), walking along +x or standing.
+    void frameAt60(Game &g, FrameClock &clock, bool walk)
+    {
+        logicTick(g.logic, g.player, clock.ms(1));
+        g.logic.viewTurn = 0;
+        g.drain();
+        MoveCommand cmd;
+        cmd.forward = walk ? 1 : 0;
+        playerMove(g.player, cmd, g.move, 1092);
+    }
+
+    std::unique_ptr<Game> laid(const std::vector<std::uint8_t> &state, std::uint32_t level)
+    {
+        std::unique_ptr<Game> g = cook(spawnRoom());
+        if (g == nullptr || !layMapState(state.data(), state.size(), g->logic, g->player, level))
+            return nullptr;
+        return g;
+    }
+
+    /// As CPushable::Spawn has it: picked up a unit, settling back, not
+    /// slowed till its first slide -- across a save, too.
+    void testSpawnRules()
+    {
+        std::unique_ptr<Game> a = cook(spawnRoom());
+        check(a != nullptr, "the spawn room cooks");
+        if (a == nullptr)
+            return;
+        const std::uint32_t level = a->view.header->crc32;
+        const int box = boxesOf(*a)[0];
+        const int brush = a->view.logic[box].brush;
+        const MoverHull &hull = a->movers[brush];
+        check(hull.mins[2] == fxFromInt(2) && hull.maxs[2] == fxFromInt(66),
+              "spawned: picked up a unit (2..66, built at 1..65)");
+        check(a->states[box].phase == 1, "spawned: its first slide is not slowed yet");
+        // Left alone, it settles onto the floor: a hair above it.
+        a->player.origin[0] = fxFromInt(-80);
+        a->player.origin[1] = 0;
+        a->player.origin[2] = fxFromInt(37);
+        FrameClock clock;
+        for (int n = 0; n < 60; ++n)
+            frameAt60(*a, clock, false);
+        check(hull.mins[2] >= 0 && hull.mins[2] <= fxFromInt(1) / 16, "left alone, it falls back onto the floor");
+        check(a->states[box].phase == 1, "and has still not slid");
+        // Saved at rest, laid back: the flag with it.
+        {
+            const std::vector<std::uint8_t> state = takeMapState(a->logic, a->player, level);
+            std::unique_ptr<Game> b = laid(state, level);
+            check(b != nullptr && b->states[box].phase == 1, "the flag of a box not yet slid survives a save");
+        }
+        for (int n = 0; n < 50; ++n)
+            frameAt60(*a, clock, true);
+        check(a->states[box].travel[0] > 0 && a->states[box].phase == 0, "pushed, it slides, and is slowed from then on");
+        std::printf("test_boxes: spawned a unit up, settled at %.3f, first slide unslowed\n", a->movers[brush].mins[2] / 4096.0);
+    }
+
 } // namespace
 
 int main()
 {
+    testSpawnRules();
     testPushFeel();
     testClimb();
     testRooms();
