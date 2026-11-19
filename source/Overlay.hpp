@@ -98,9 +98,10 @@ namespace hlrt::ovl
     /// guard's check of what nothing should write.
     bool whole();
 
-    /// The overlay `address` is in, if it is in a region (None if not), and
-    /// how far into it: for the crash screen's "ovl front+0x40".
-    Id place(std::uint32_t address, std::uint32_t &offset);
+    /// Whether `address` is in a region; if it is, what is loaded there
+    /// (None: nothing) and how far into the region: for the crash screen's
+    /// "front+40".
+    bool place(std::uint32_t address, Id &id, std::uint32_t &offset);
 
     /// Before `out` leaves its region: whether it may (a menu's picture
     /// still shown, a map still mounted: no). A halt names it if not.

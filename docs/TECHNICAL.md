@@ -1552,8 +1552,13 @@ neighbour whose links had been zeroed) -- the culprit long gone.
   a pattern, looked at every frame.
 - **The crash screen** (in place of libnds's): the build's name
   (`tools/buildid.py`: commit, and `+` the time if the tree was not clean),
-  what happened, pc and lr placed (`main`, `dsl+offset`, `itcm+offset`), the
-  registers, the code addresses found on the stack, and the three checks.
+  what happened, pc and lr placed (`main`, `dsl+offset`, `itcm+offset`, an
+  overlay's `front+offset` -- into its region -- or `ovl?+offset` with
+  nothing loaded there), the registers, the code addresses found on the
+  stack, the three checks, and what each overlay region holds (`ovl map
+  ok`: its code as it was read). An overlay's code written over halts at
+  the next map load or save, as a family's does; a gate that finds its
+  overlay gone halts naming it, the gate and what was there instead.
   `make.sh` keeps each build's ELFs in `build/elf/<name>/` (the last twelve):
   `arm-none-eabi-addr2line -f -C -e build/elf/<name>/arm9.elf <address>`; an
   address in a family is in its ELF (kept there too) at its offset from where

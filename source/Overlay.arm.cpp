@@ -1,5 +1,6 @@
 #include "Overlay.hpp"
 
+#include <cstdio>
 #include <cstring>
 
 #if HL_OVL_COUNT > 0
@@ -216,8 +217,12 @@ namespace hlrt::ovl
 
     void missing(Id want, const char *who)
     {
-        (void)who;
-        fail("A gate found its overlay not loaded:", want);
+        // "front, by draw (map there)": the overlay, the gate that wanted
+        // it, and what its region held instead.
+        static char line[64];
+        std::snprintf(line, sizeof(line), "%s, by %s (%s there)", kKnown[index(want)].name, who,
+                      name(inRegion[kKnown[index(want)].region]));
+        hlOvlHalt("A gate found its overlay not loaded:", line);
     }
 
     const char *name(Id id) { return id == Id::None ? "none" : kKnown[index(id)].name; }
@@ -236,7 +241,7 @@ namespace hlrt::ovl
         return true;
     }
 
-    Id place(std::uint32_t address, std::uint32_t &offset)
+    bool place(std::uint32_t address, Id &id, std::uint32_t &offset)
     {
         for (int r = 0; r < HL_OVL_REGION_COUNT; ++r)
         {
@@ -244,10 +249,10 @@ namespace hlrt::ovl
             if (address < reinterpret_cast<std::uintptr_t>(b.start) || address >= reinterpret_cast<std::uintptr_t>(b.end))
                 continue;
             offset = address - reinterpret_cast<std::uintptr_t>(b.start);
-            return inRegion[r];
+            id = inRegion[r];
+            return true;
         }
-        offset = 0;
-        return Id::None;
+        return false;
     }
 
     void setLeaveCheck(Id out, LeaveCheck check)
@@ -265,11 +270,7 @@ namespace hlrt::ovl
     void missing(Id, const char *) { hlOvlHalt("A gate found its overlay not loaded:", ""); }
     const char *name(Id) { return "none"; }
     bool whole() { return true; }
-    Id place(std::uint32_t, std::uint32_t &offset)
-    {
-        offset = 0;
-        return Id::None;
-    }
+    bool place(std::uint32_t, Id &, std::uint32_t &) { return false; }
     void setLeaveCheck(Id, LeaveCheck) {}
 #endif
 } // namespace hlrt::ovl

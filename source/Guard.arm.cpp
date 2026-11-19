@@ -1,4 +1,5 @@
 #include "Guard.hpp"
+#include "Overlay.hpp"
 #include "game/Think.hpp"
 
 #include <cerrno>
@@ -528,13 +529,16 @@ namespace hlrt::guard
         void hex(std::uint32_t v) { consolePrintUnsigned(v, 16); }
         void at(int x, int y) { consoleSetCursor(nullptr, x, y); }
 
+        constexpr const char kMain[] = "main";
+
         /// What an address is: the program's code, the library's (how far
-        /// in), ITCM; or nothing.
+        /// in), ITCM, an overlay's (by its name: how far into its region;
+        /// "ovl?" with none loaded there); or nothing.
         const char *place(std::uint32_t a, std::uint32_t &offset)
         {
             offset = a;
             if (a >= reinterpret_cast<std::uint32_t>(__text_start) && a < reinterpret_cast<std::uint32_t>(__text_end))
-                return "main";
+                return kMain;
             if (libraryBase != nullptr && a >= reinterpret_cast<std::uint32_t>(libraryBase) &&
                 a < reinterpret_cast<std::uint32_t>(libraryBase) + libraryCode)
             {
@@ -546,6 +550,10 @@ namespace hlrt::guard
                 offset = a & 0x7FFF;
                 return "itcm";
             }
+            ovl::Id in = ovl::Id::None;
+            if (ovl::place(a, in, offset))
+                return in != ovl::Id::None ? ovl::name(in) : "ovl?";
+            offset = a;
             return nullptr;
         }
 
@@ -554,7 +562,7 @@ namespace hlrt::guard
             std::uint32_t offset = 0;
             const char *where = place(a, offset);
             hex(a);
-            if (where != nullptr && where[0] != 'm')
+            if (where != nullptr && where != kMain)
             {
                 print(" ");
                 print(where);
@@ -643,15 +651,31 @@ namespace hlrt::guard
             print("stack:");
             const std::uint32_t *sp = reinterpret_cast<const std::uint32_t *>(regs[13] & ~3u);
             const std::uint32_t *top = reinterpret_cast<const std::uint32_t *>(__sp_usr);
-            int shown = 0;
-            for (const std::uint32_t *w = sp; w < top && w < sp + 1024 && shown < 8; ++w)
+            // Two to a row; one with an offset (dsl+, front+) is too long for
+            // half of one, and has a row of its own.
+            int row = 15, column = 0;
+            for (const std::uint32_t *w = sp; w < top && w < sp + 1024 && row < 19; ++w)
             {
                 std::uint32_t offset = 0;
-                if (place(*w, offset) == nullptr)
+                const char *where = place(*w, offset);
+                if (where == nullptr)
                     continue;
-                at((shown & 1) * 16, 15 + shown / 2);
+                const bool wide = where != kMain;
+                if (wide && column != 0)
+                {
+                    column = 0;
+                    if (++row >= 19)
+                        break;
+                }
+                at(column * 16, row);
                 placed(*w);
-                ++shown;
+                if (wide || column == 1)
+                {
+                    column = 0;
+                    ++row;
+                }
+                else
+                    column = 1;
             }
             // The checks.
 #ifdef HLDS_GUARD_FULL
@@ -668,6 +692,18 @@ namespace hlrt::guard
             hex(reinterpret_cast<std::uint32_t>(libraryBase));
             print(" ");
             hex(libraryCode);
+#if HL_OVL_REGION_COUNT > 0
+            // What each overlay region holds, and whether its code is as it
+            // was read (Overlay.hpp).
+            at(0, 22);
+            print("ovl");
+            for (int r = 0; r < HL_OVL_REGION_COUNT; ++r)
+            {
+                print(" ");
+                print(ovl::name(ovl::current(static_cast<ovl::Region>(r))));
+            }
+            print(ovl::whole() ? " ok" : " BAD");
+#endif
             at(0, 23);
             print("build/elf/<name>: addr2line");
             for (;;)
@@ -767,6 +803,10 @@ namespace hlrt::guard
         if (!libraryIntact())
             crash("DSL: its code was written over", reinterpret_cast<std::uint32_t>(libraryBase), libraryCode,
                   reinterpret_cast<std::uint32_t>(where));
+        // (The same of an overlay's code: the crash screen's ovl row says
+        // which.)
+        if (!ovl::whole())
+            crash("OVL: its code was written over", 0, 0, reinterpret_cast<std::uint32_t>(where));
     }
 
     void crash(const char *what, std::uint32_t a, std::uint32_t b, std::uint32_t c)
