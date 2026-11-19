@@ -399,13 +399,21 @@ namespace hlrt
             if (effect.kind == 0 || effect.wholeMs <= 0)
                 continue;
             const bool line = effect.kind == kEffectBolt || effect.kind == kEffectTracer || effect.kind == kEffectEgon;
-            const fx middle[3] = {line ? (effect.a[0] + effect.b[0]) / 2 : effect.a[0],
-                                  line ? (effect.a[1] + effect.b[1]) / 2 : effect.a[1],
-                                  line ? (effect.a[2] + effect.b[2]) / 2 : effect.a[2]};
-            const std::int16_t a16[3] = {static_cast<std::int16_t>(fxToInt(effect.a[0])),
-                                         static_cast<std::int16_t>(fxToInt(effect.a[1])),
-                                         static_cast<std::int16_t>(fxToInt(effect.a[2]))};
-            const int reach = effect.size > 16 ? effect.size : 16;
+            const bool smoke = effect.kind == kEffectSmoke;
+            // (Smoke is not seen while it waits; then it is about the middle
+            // of its rise, its tenths a little under half its height.)
+            if (smoke && effect.wholeMs - effect.leftMs < effect.sprite)
+                continue;
+            const bool span = line || smoke;
+            const fx middle[3] = {span ? (effect.a[0] + effect.b[0]) / 2 : effect.a[0],
+                                  span ? (effect.a[1] + effect.b[1]) / 2 : effect.a[1],
+                                  span ? (effect.a[2] + effect.b[2]) / 2 : effect.a[2]};
+            const fx *const ball = line ? effect.a : middle;
+            const std::int16_t a16[3] = {static_cast<std::int16_t>(fxToInt(ball[0])),
+                                         static_cast<std::int16_t>(fxToInt(ball[1])),
+                                         static_cast<std::int16_t>(fxToInt(ball[2]))};
+            const int reach = smoke ? effect.size * 3 + fxToInt(effect.b[2] - effect.a[2]) / 2
+                                    : (effect.size > 16 ? effect.size : 16);
             if (line)
             {
                 const std::int16_t b16[3] = {static_cast<std::int16_t>(fxToInt(effect.b[0])),
@@ -1410,6 +1418,26 @@ namespace hlrt
                 picture(*ref, (ref->frames * gone) / 32, effect.a, camera.right, camera.up, half, half);
             }
             break;
+        case kEffectSmoke:
+        {
+            // The game's smoke: nothing while it waits, then the sprite's
+            // frames once through as it rises, in its grey.
+            const int into = effect.wholeMs - effect.leftMs - effect.sprite;
+            const int shown = effect.wholeMs - effect.sprite;
+            if (into < 0 || shown <= 0)
+                break;
+            if (const SpriteRef *ref = sprite(CommonSprite::Smoke, 31, effect.colour))
+            {
+                const int t = (into * 32) / shown;
+                const fx at[3] = {effect.a[0] + (effect.b[0] - effect.a[0]) / 32 * t,
+                                  effect.a[1] + (effect.b[1] - effect.a[1]) / 32 * t,
+                                  effect.a[2] + (effect.b[2] - effect.a[2]) / 32 * t};
+                const int half = (ref->worldWidth * effect.size) / 20;
+                picture(*ref, (ref->frames * t) / 32, at, camera.right, camera.up, half,
+                        half * ref->worldHeight / (ref->worldWidth ? ref->worldWidth : 1));
+            }
+            break;
+        }
         case kEffectSprite:
             if (const SpriteRef *ref = sprite(effect.sprite, 31, effect.colour))
             {

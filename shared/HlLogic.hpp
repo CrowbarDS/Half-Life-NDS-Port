@@ -1651,9 +1651,22 @@ namespace hldata
             player.health = 100;
     }
 
+    /// How big the smoke a grenade leaves is (CGrenade::Smoke), in tenths
+    /// of the sprite's size: (damage - 50) * 0.8.
+    inline constexpr int grenadeSmoke(int damage)
+    {
+        return damage <= 50 ? 0 : ((damage - 50) * 4 / 5 > 255 ? 255 : (damage - 50) * 4 / 5);
+    }
+    /// ... and an env_explosion's (and so a breakable's, ExplosionCreate):
+    /// (magnitude - 50) * 0.6, and 10 at least.
+    inline constexpr int explosionSmoke(int magnitude)
+    {
+        return (magnitude - 50) * 3 / 5 < 10 ? 10 : ((magnitude - 50) * 3 / 5 > 255 ? 255 : (magnitude - 50) * 3 / 5);
+    }
+
     // (HlEffects.hpp: what goes off when something explosive breaks.)
     inline void explodeAt(LogicWorld &w, PlayerState &player, const fx *at, int size, bool fireball, bool sound,
-                          bool hurts);
+                          bool hurts, int smoke = 0);
 
     namespace detail
     {
@@ -1855,7 +1868,7 @@ namespace hldata
                 static int chain = 0;
                 const bool hurts = chain < 4;
                 ++chain;
-                explodeAt(w, player, middle, record.damage, true, true, hurts);
+                explodeAt(w, player, middle, record.damage, true, true, hurts, explosionSmoke(record.damage));
                 --chain;
             }
         }

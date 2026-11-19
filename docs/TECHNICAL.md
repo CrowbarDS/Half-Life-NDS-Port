@@ -459,6 +459,14 @@ Milestone 11, "levels of detail".
   a bullsquid's spit, a houndeye's shock wave; a flash at the player's own
   gun, a puff where a shot lands on something that bleeds; the view shakes
   at an explosion near by.
+- Explosions leave the game's smoke (`steam1.spr`, a common sprite from
+  level version 79): a third of a second after, sized as the game sizes it
+  (a grenade's by its damage, an `env_explosion`'s by its magnitude, none
+  with its "no smoke" flag or under water), rising 30 units a second while
+  its frames play once at 12 a second, in a dark grey. A falling apache or
+  osprey smokes as it goes. Its own frames grow and thin out, so it is
+  drawn as one quad with no fade of its own; at most a sixth of the effects
+  are smoke, and past that the one nearest its end gives way.
 - The HEV suit is taken where the game has it (it is what opens the way on),
   and armour is for someone wearing it.
 - The seated and the dead are let down onto what is under them, as the game

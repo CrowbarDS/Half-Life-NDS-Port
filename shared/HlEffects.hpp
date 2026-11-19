@@ -23,11 +23,64 @@ namespace hldata
         w.shakeMs = w.shakeWholeMs = ms;
     }
 
-    /// An explosion of `size` (the game's magnitude) at `at`: seen, heard,
-    /// felt, and -- with `hurts` -- hurting whatever is near.
-    inline void explodeAt(LogicWorld &w, PlayerState &player, const fx *at, int size, bool fireball, bool sound,
-                          bool hurts)
+    /// How many frames the game's smoke sprite has: its frames are played
+    /// through once at the rate it is given, whatever the DS keeps of them.
+    inline constexpr int kSmokeFrames = 16;
+
+    /// The game's TE_SMOKE at `at`, `scale` tenths of the sprite's size,
+    /// played at `fps`, after `waitMs`: from 20 units above `at`, rising 30
+    /// units a second, in a dark grey of its own. Under water there is
+    /// none (the game makes bubbles there). A sixth of the effects at most
+    /// are smoke: past that the one nearest its end gives way.
+    inline void smokeAt(LogicWorld &w, const fx *at, int scale, int fps, int waitMs)
     {
+        if (w.actors == nullptr || scale <= 0 || fps <= 0)
+            return;
+        if (w.world != nullptr && pointContents(*w.world, at) == kContentsWater)
+            return;
+        ActorWorld &a = *w.actors;
+        const int life = kSmokeFrames * 1000 / fps;
+        const fx from[3] = {at[0], at[1], at[2] + fxFromInt(20)};
+        const fx to[3] = {at[0], at[1], from[2] + fxFromInt(30 * life / 1000)};
+        const int limit = a.effectLimit < 1 ? 1 : (a.effectLimit > kMaxEffects ? kMaxEffects : a.effectLimit);
+        const int most = limit / 6 > 2 ? limit / 6 : 2;
+        int count = 0;
+        Effect *oldest = nullptr;
+        for (int i = 0; i < limit; ++i)
+        {
+            Effect &effect = a.effects[i];
+            if (effect.kind != kEffectSmoke)
+                continue;
+            ++count;
+            if (oldest == nullptr || effect.leftMs < oldest->leftMs)
+                oldest = &effect;
+        }
+        Effect &smoke = count >= most ? *oldest : effectAdd(a, kEffectSmoke, from, to, 0, 0);
+        smoke.kind = kEffectSmoke;
+        for (int i = 0; i < 3; ++i)
+        {
+            smoke.a[i] = from[i];
+            smoke.b[i] = to[i];
+        }
+        smoke.size = static_cast<std::int16_t>(scale);
+        smoke.leftMs = smoke.wholeMs = static_cast<std::int16_t>(waitMs + life);
+        smoke.sprite = static_cast<std::uint16_t>(waitMs);
+        // (A grey of 20 to 35 of 255, the game's at random: here by where it
+        // is, so that it takes nothing from the effects' chances.)
+        const int pick = static_cast<int>((static_cast<std::uint32_t>(at[0] ^ at[1] ^ at[2]) >> 12) & 15);
+        const int grey = ((20 + pick) * 31 + 127) / 255;
+        smoke.colour = static_cast<std::uint16_t>(grey | grey << 5 | grey << 10);
+    }
+
+    /// An explosion of `size` (the game's magnitude) at `at`: seen, heard,
+    /// felt, and -- with `hurts` -- hurting whatever is near. With `smoke`
+    /// (tenths of the sprite's size: grenadeSmoke, explosionSmoke) it
+    /// leaves smoke, a third of a second later.
+    inline void explodeAt(LogicWorld &w, PlayerState &player, const fx *at, int size, bool fireball, bool sound,
+                          bool hurts, int smoke)
+    {
+        if (smoke > 0)
+            smokeAt(w, at, smoke, 12, 300);
         if (w.actors != nullptr && fireball)
             effectAdd(*w.actors, kEffectBurst, at, nullptr, size < 48 ? 48 : (size > 160 ? 160 : size), 450);
         if (w.actors != nullptr && w.world != nullptr && fireball)
@@ -244,7 +297,8 @@ namespace hldata
             break;
         case LogicKind::Explosion:
             explodeAt(w, player, record.move, static_cast<int>(record.extra[0]), !(record.extra[1] & 4),
-                      !(record.extra[1] & 64), !(record.extra[1] & 1));
+                      !(record.extra[1] & 64), !(record.extra[1] & 1),
+                      (record.extra[1] & 8) ? 0 : explosionSmoke(static_cast<int>(record.extra[0])));
             if (!(record.extra[1] & 2))
                 state.dead = true;
             break;

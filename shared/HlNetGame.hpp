@@ -831,7 +831,7 @@ namespace hldata
                 if (from != match.me && match.playing && !match.over)
                 {
                     const fx at[3] = {event.v[0] * 1024, event.v[1] * 1024, event.v[2] * 1024};
-                    explodeAt(w, player, at, 100, true, true, false);
+                    explodeAt(w, player, at, 100, true, true, false, grenadeSmoke(100));
                 }
                 break;
             case NetEventType::Died:

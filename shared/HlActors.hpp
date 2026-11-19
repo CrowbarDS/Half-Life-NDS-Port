@@ -418,6 +418,10 @@ namespace hldata
     /// as long as it fires (egonBeam): `size` says whose (kEgonMine, or
     /// 1 + a player of a match), `sprite` how long it has fired, in ms.
     inline constexpr std::uint8_t kEffectEgon = 10;
+    /// Smoke (smokeAt): CommonSprite::Smoke played through once while it
+    /// rises from `a` to `b`, `size` tenths of the sprite's own size, in
+    /// `colour`; nothing is seen for its first `sprite` ms.
+    inline constexpr std::uint8_t kEffectSmoke = 11;
     inline constexpr int kEgonMine = 0;
     /// How long a beam is still seen once nothing keeps it.
     inline constexpr int kEgonLingerMs = 80;

@@ -590,7 +590,7 @@ namespace hldata
     inline bool lineEntersBox(const fx *from, const fx *to, const fx *mins, const fx *maxs, std::int64_t &enter);
     inline void shakeStart(LogicWorld &w, fx amplitude, int ms);
     inline void explodeAt(LogicWorld &w, PlayerState &player, const fx *at, int size, bool fireball, bool sound,
-                          bool hurts);
+                          bool hurts, int smoke);
     /// What a grenade's blast throws up, a moment after it: one of three,
     /// at a little over half of full (CGrenade::Explode). Every grenade's:
     /// a hand grenade, the MP5's, a satchel, a tripmine, a rocket.
@@ -1819,7 +1819,7 @@ namespace hldata
                         shot.active = false;
                         const fx at[3] = {shot.pos[0] + shot.velocity[0] * 8, shot.pos[1] + shot.velocity[1] * 8,
                                           shot.pos[2] + shot.velocity[2] * 8};
-                        explodeAt(w, player, at, kMineBlast, true, true, true);
+                        explodeAt(w, player, at, kMineBlast, true, true, true, grenadeSmoke(kMineBlast));
                         grenadeDebris(w, at);
                         continue;
                     }
@@ -2161,7 +2161,7 @@ namespace hldata
                     {
                         // Off, where it met something: 100, to 250 units.
                         shot.active = false;
-                        explodeAt(w, player, shot.pos, 100, true, true, true);
+                        explodeAt(w, player, shot.pos, 100, true, true, true, grenadeSmoke(100));
                         grenadeDebris(w, shot.pos);
                         continue;
                     }
@@ -2347,7 +2347,7 @@ namespace hldata
                     if (met)
                     {
                         shot.active = false;
-                        explodeAt(w, player, shot.pos, kGrenadeBlast, true, true, true);
+                        explodeAt(w, player, shot.pos, kGrenadeBlast, true, true, true, grenadeSmoke(kGrenadeBlast));
                         grenadeDebris(w, shot.pos);
                     }
                     else if ((shot.leftMs + ms) / 200 != shot.leftMs / 200)
@@ -2424,7 +2424,7 @@ namespace hldata
                         if (shot.sprite == 1)
                         {
                             shot.active = false;
-                            explodeAt(w, player, shot.pos, kSatchelBlast, true, true, true);
+                            explodeAt(w, player, shot.pos, kSatchelBlast, true, true, true, grenadeSmoke(kSatchelBlast));
                             grenadeDebris(w, shot.pos);
                         }
                         continue;
@@ -3133,7 +3133,7 @@ namespace hldata
                 actorPlaceBox(a, index);
                 const fx at[3] = {mine.pos[0] + forward[0] * 8, mine.pos[1] + forward[1] * 8,
                                   mine.pos[2] + forward[2] * 8};
-                explodeAt(w, player, at, kMineBlast, true, true, true);
+                explodeAt(w, player, at, kMineBlast, true, true, true, grenadeSmoke(kMineBlast));
                 grenadeDebris(w, at);
                 return;
             }
@@ -4594,7 +4594,9 @@ namespace hldata
             if (variant == kTankMortar)
             {
                 // A shell where the line meets something: the map's blast.
-                explodeAt(w, player, end, record.mins[2] > 0 ? record.mins[2] : 100, true, true, true);
+                // (ExplosionCreate: an env_explosion's, and its smoke.)
+                const int magnitude = record.mins[2] > 0 ? record.mins[2] : 100;
+                explodeAt(w, player, end, magnitude, true, true, true, explosionSmoke(magnitude));
                 return;
             }
             int damage = tankDamage(w, record);
@@ -4921,7 +4923,7 @@ namespace hldata
                 Effect &streak = effectAdd(a, kEffectBeam, at, sky, 4, 120);
                 streak.colour = 0x3A9F; // (255, 160, 100)
                 at[2] += fxFromInt(8);
-                explodeAt(w, player, at, 200, true, true, true);
+                explodeAt(w, player, at, 200, true, true, true, grenadeSmoke(200));
                 if (w.heard != nullptr && w.sounds != nullptr && w.sounds[index].stop != kNoSound)
                     w.heard->add(w.sounds[index].stop, at, 127, kRadiusLarge, 0, random(95, 124));
                 --state.phase;

@@ -464,6 +464,8 @@ namespace hldata
                                         c.me.pos[1] + fxFromInt(aiRandomLong(c.a, -150, 150)),
                                         c.me.pos[2] + fxFromInt(aiRandomLong(c.a, -150, -50))};
                     explodeAt(c.w, c.player, spot, aiRandomLong(c.a, 30, 59), true, false, false);
+                    // (And smoke: the game's at a spot of its own, here the same.)
+                    smokeAt(c.w, spot, 100, 10, 0);
                 }
                 if (shot.fraction < kFractionOne || c.ai.now >= c.m.time1 + 6000)
                 {
@@ -1454,10 +1456,15 @@ namespace hldata
                                     c.me.pos[1] + fxFromInt(aiRandomLong(c.a, -150, 150)),
                                     c.me.pos[2] + fxFromInt(aiRandomLong(c.a, -150, -50))};
                 explodeAt(c.w, c.player, spot, aiRandomLong(c.a, 30, 59), true, false, false);
+                // (And smoke: the game's at a spot of its own, here the same.)
+                smokeAt(c.w, spot, 100, 10, 0);
             }
             if (met || c.ai.now >= c.m.time1)
             {
                 explodeAt(c.w, c.player, c.me.pos, 160, true, false, false);
+                // (Its big smoke, high over it and slow.)
+                const fx high[3] = {c.me.pos[0], c.me.pos[1], c.me.pos[2] + fxFromInt(512)};
+                smokeAt(c.w, high, 250, 5, 0);
                 if (c.w.heard != nullptr)
                     c.w.heard->add(CommonSound::MortarHit, c.me.pos, 127, 3000);
                 radiusDamage(c.w, c.player, c.me.pos, 300, 750, c.index);

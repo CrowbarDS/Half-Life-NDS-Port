@@ -1570,7 +1570,7 @@ namespace hlds
         };
         std::vector<SpriteOut> sprites;
         {
-            static const int kCommon[][2] = {{32, 8}, {32, 2}, {16, 6}, {32, 1}, {32, 1}, {32, 3}, {16, 4}, {32, 1}, {32, 1}, {16, 4}};
+            static const int kCommon[][2] = {{32, 8}, {32, 2}, {16, 6}, {32, 1}, {32, 1}, {32, 3}, {16, 4}, {32, 1}, {32, 1}, {16, 4}, {32, 8}};
             static_assert(sizeof(kCommon) / sizeof(kCommon[0]) == static_cast<std::size_t>(hldata::CommonSprite::Count));
             int texels = 0;
             // (The map's signs are pictures of decals.wad, made sprites.)

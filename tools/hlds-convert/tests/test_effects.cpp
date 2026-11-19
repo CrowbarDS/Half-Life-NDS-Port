@@ -201,9 +201,41 @@ namespace
             check((burst || (r.extra[1] & 4)) && shaken && (g.times(CommonSound::Explode) == heard + 1 || (r.extra[1] & 64)),
                   "... and is seen, heard and felt");
             check(g.states[blast].dead == !(r.extra[1] & 2), "it goes off once, unless it says otherwise");
+            // Its smoke (TE_SMOKE): unless it says it has none, a third of
+            // a second after, its size by the magnitude, rising, played
+            // through at twelve frames a second.
+            const Effect *smoke = nullptr;
+            for (const Effect &e : g.actors.effects)
+                smoke = e.kind == kEffectSmoke ? &e : smoke;
+            if (r.extra[1] & 8)
+            {
+                check(smoke == nullptr, "an explosion that says it has no smoke has none");
+            }
+            else
+            {
+                const int expected = explosionSmoke(static_cast<int>(r.extra[0]));
+                std::printf("test_effects: its smoke: %d tenths, %d ms, %d ms of it waiting\n",
+                            smoke ? smoke->size : -1, smoke ? smoke->wholeMs : -1, smoke ? smoke->sprite : -1);
+                check(smoke != nullptr && smoke->size == expected && smoke->sprite == 300 &&
+                          smoke->wholeMs == 300 + kSmokeFrames * 1000 / 12 && smoke->b[2] > smoke->a[2] &&
+                          smoke->a[2] == r.move[2] + fxFromInt(20),
+                      "... and leaves smoke, as the game's");
+            }
             for (int n = 0; n < 40; ++n)
                 tick(g);
             check(g.logic.shakeMs <= 0, "the shaking dies away");
+            // Smoke by the dozen keeps to a sixth of the effects.
+            for (int n = 0; n < 30; ++n)
+            {
+                const fx at[3] = {r.move[0] + fxFromInt(n * 8), r.move[1], r.move[2]};
+                smokeAt(g.logic, at, 40, 12, 0);
+            }
+            int smokes = 0;
+            for (const Effect &e : g.actors.effects)
+                smokes += e.kind == kEffectSmoke;
+            const int most = g.actors.effectLimit / 6 > 2 ? g.actors.effectLimit / 6 : 2;
+            std::printf("test_effects: thirty smokes at once: %d kept, of %d effects\n", smokes, g.actors.effectLimit);
+            check(smokes == most, "smoke keeps to a sixth of the effects");
         }
 
         // A shake by itself.
