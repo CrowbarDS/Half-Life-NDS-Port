@@ -159,6 +159,7 @@ def bare(name):
 calls = {}      # function -> {helper: count}
 where = {}      # function -> address
 current = None
+counted = False  # (the line before was an instruction already counted)
 head = re.compile(r"^([0-9a-f]{8}) <(.*)>:$")
 branch = re.compile(r"\tblx?\t[0-9a-f]+ <([^>+]+)>")
 relocated = re.compile(r": R_ARM_(?:CALL|JUMP24)\t(\S+)")
@@ -172,7 +173,16 @@ for line in sys.stdin:
         continue
     if current is None:
         continue
-    m = branch.search(line) or relocated.search(line)
+    # (A relocation line is under the instruction it is of. The program is
+    # linked keeping them (--emit-relocs, for tools/ovl.py): a call it shows
+    # as a branch already is not counted again; in a family library, where
+    # a call is unresolved, the relocation alone says where it goes.)
+    r = relocated.search(line)
+    if r and counted:
+        counted = False
+        continue
+    counted = False
+    m = branch.search(line) or r
     helper = None
     if m and m.group(1) in HELPERS:
         helper = m.group(1)
@@ -183,6 +193,7 @@ for line in sys.stdin:
     if helper:
         calls.setdefault(current, {})
         calls[current][helper] = calls[current].get(helper, 0) + 1
+        counted = r is None
 
 itcm_at, itcm_size = sizes.get(".itcm", (0, 0))[1], sizes.get(".itcm", (0, 0))[0]
 dtcm_size = sizes.get(".dtcm", (0, 0))[0] + sizes.get(".sbss", (0, 0))[0]

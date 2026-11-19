@@ -89,6 +89,23 @@ import wifi_twl
 WIFI_TWL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build', 'wifi_twl')
 wifi_twl.make(os.path.join(os.path.expandvars('${BLOCKSDSEXT}'), 'dswifi_dl'), WIFI_TWL_DIR)
 
+# OVERLAYS (tools/ovl.py, source/Overlay.hpp): code and data that share a
+# region of main memory, a phase at a time, read from the ROM when the phase
+# begins. Each region is as large as its largest overlay, so the program
+# saves the rest. The linker script is the installed BlocksDS one with the
+# regions put in, made here before the build is written, and the link
+# checks what it made of them (tools/arm9_post_link.py).
+import json
+import ovl
+OVERLAYS = {'regions': []}
+OVL_DIR = os.path.join('build', 'ld')
+OVL_MANIFEST = os.path.join(OVL_DIR, 'overlays.json')
+os.makedirs(OVL_DIR, exist_ok=True)
+ovl._write_if_changed(OVL_MANIFEST, json.dumps(OVERLAYS, indent=1) + '\n')
+ovl.cmd_ld({'template': os.path.join(os.path.expandvars('${BLOCKSDS}'), 'sys', 'crts', 'ds_arm9.ld'),
+            'specs': os.path.join(os.path.expandvars('${BLOCKSDS}'), 'sys', 'crts', 'ds_arm9.specs'),
+            'manifest': OVL_MANIFEST, 'out-dir': OVL_DIR})
+
 arm9 = Arm9Binary(
     # The engine (source/) and the game's core (dll/hl/), linked together
     # (HL_STATIC_GAME): a library of the core cost the heap ~53 KB more than
@@ -151,11 +168,18 @@ arm9 = Arm9Binary(
         INTEGER_STDIO +
         # DTCM's own data and its heap (dtcm_malloc), at the top of DTCM;
         # the stack has the rest under it.
-        ['-Wl,--defsym=__dtcm_data_size=' + str(DTCM_DATA_SIZE)]),
+        ['-Wl,--defsym=__dtcm_data_size=' + str(DTCM_DATA_SIZE)] +
+        # The linker script with the overlay regions (above), after the
+        # stock specs: its *link: is the one used. The relocations kept, for
+        # tools/ovl.py's check of what refers into an overlay.
+        ['-specs=' + os.path.join(OVL_DIR, 'hl_arm9_link.specs'), '-Wl,--emit-relocs']),
     # The program's ID (a hash of this ELF), stamped as it is linked: the
     # families are built for this program alone, and say so
-    # (tools/program_id.py; source/game/FamilyApi.hpp).
-    post_link=('python3 tools/program_id.py stamp', ['tools/program_id.py']),
+    # (tools/program_id.py; source/game/FamilyApi.hpp). Then its overlays
+    # checked (tools/ovl.py).
+    post_link=('python3 tools/arm9_post_link.py ' + OVL_MANIFEST,
+               ['tools/arm9_post_link.py', 'tools/program_id.py', 'tools/ovl.py', OVL_MANIFEST,
+                os.path.join(OVL_DIR, 'hl_arm9.ld'), os.path.join(OVL_DIR, 'hl_arm9_link.specs')]),
 )
 
 arm9.generate_elf()
