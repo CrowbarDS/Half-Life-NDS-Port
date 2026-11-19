@@ -501,10 +501,15 @@ Milestone 11, "levels of detail".
   game's three at 320 across), and only across: the 3D layer has only a
   horizontal scroll. A DMA started by each horizontal blank (DMA 1) writes
   BG0HOFS from a table of the frame's lines, armed in each vertical blank;
-  the edge a moved line leaves shows the backdrop for those pixels. Not on
-  a DS: its geometry FIFO is fed by DMA 0 during the frame, which in the
-  emulator holds DMA 1 back past its line (tools/hwtest/fxprobe measures
-  it on the console). The tables are in the DSi's own memory.
+  the edge a moved line leaves shows the backdrop for those pixels. The
+  geometry FIFO is fed during the frame, and a feed that holds the bus
+  makes DMA 1 miss its line: on a DSi, NDMA 0 in blocks of 112 words kept
+  only 11 to 19 lines of 192 in step; in blocks of 16 all of them, with as
+  many words fed (tools/hwtest/fxprobe, on the owner's DSi). So the world's
+  feed (WorldDrawEmit) and NEA's display lists (its
+  NEA_NDMA_GFX_FIFO_BLOCK) move 16 words at a time. Not on a DS: its
+  feed is DMA 0 in FIFO mode, always 112 words a time, which in the
+  emulator holds DMA 1 back too. The tables are in the DSi's own memory.
 - What the maps show and shake, from their own entities
   (`shared/HlEffects.hpp`): sprites and glows (`env_sprite`, `env_glow`; a
   glow, render mode 3, by the engine's rule (`glowFalloff`, HlSprite.hpp):

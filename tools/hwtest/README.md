@@ -299,7 +299,10 @@ On the owner's DSi (2026-11-19): every line and sprite figure as in melonDS
 clamped, the front one winning, the backdrop added to). The per-line scroll:
 190 right on DMA 0 and on DMA 1 alone; **fed: 11 right, 13 late, 168 other**
 -- unlike melonDS, the DSi's NDMA 0 feeding the FIFO holds DMA 1 back too.
-On a DS: not yet run.
+Two more runs with the variants: fed 16 and 19 right; `fd0` (the scroll on
+DMA 0) 13 and 14 -- no better; **`f16` (NDMA 0 in blocks of 16) 190 right**,
+8 times 2048 words fed as in every run. The game and NEA feed the DSi's
+FIFO 16 words at a time since. On a DS: not yet run.
 
 ## markpull/ — wall marks pulled toward the eye
 

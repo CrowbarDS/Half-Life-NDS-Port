@@ -13,9 +13,11 @@
 // A DMA started by each horizontal blank writes the 3D layer's horizontal
 // scroll (BG0HOFS) from a table of the frame's 192 lines, armed again in
 // each vertical blank: no interrupt and nothing of the processor's per line.
-// It is on DMA 1. A DSi's only: on a DS the geometry FIFO is fed by DMA 0 in
-// the frame, which in the emulator holds DMA 1 back past its line (the
-// effects probe, tools/hwtest/fxprobe, measures it on the console).
+// It is on DMA 1. While the geometry FIFO is fed by a DMA that holds the bus,
+// DMA 1 misses its line: on a DSi the feed goes 16 words at a time for that
+// (WorldDrawEmit, NEA's NEA_NDMA_GFX_FIFO_BLOCK; measured on the console by
+// tools/hwtest/fxprobe). A DSi's only: a DS feeds by DMA 0 in its FIFO mode,
+// always 112 words at a time, which in the emulator holds DMA 1 back.
 
 namespace hlrt
 {

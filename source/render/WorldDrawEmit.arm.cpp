@@ -37,13 +37,17 @@ namespace hlrt
         /// Start the DSi's own DMA feeding `words` words to the geometry
         /// engine, as fast as it asks for them, and come straight back. (As
         /// NEA's NEA_DisplayListDrawNDMA_GFX_FIFO does it, which waits.)
+        /// Sixteen words at a time: in blocks of 112 it holds the bus long
+        /// enough that a DMA started by a horizontal blank (WaterWobble's)
+        /// misses its line -- on a DSi, 11 to 19 lines of 192 right; in 16,
+        /// all of them, and as many words fed (tools/hwtest/fxprobe).
         inline void feed(const std::uint32_t *from, std::uint32_t words)
         {
             DC_FlushRange(from, words * 4);
             REG_NDMA_SRC(0) = reinterpret_cast<std::uint32_t>(from);
             REG_NDMA_DEST(0) = reinterpret_cast<std::uint32_t>(&GFX_FIFO);
             REG_NDMA_LENGTH(0) = words;
-            REG_NDMA_BLENGTH(0) = 112;
+            REG_NDMA_BLENGTH(0) = 16;
             REG_NDMA_CR(0) = NDMA_ENABLE | NDMA_START_FIFO | NDMA_SRC_INC | NDMA_DST_FIX;
         }
 
