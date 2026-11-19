@@ -231,8 +231,9 @@ summary = ("%s.dsl: %d bytes; the game: %d ARM functions, %d Thumb; helper calls
 
 # The overlays (tools/ovl.py): each region, as large as its largest
 # overlay, and what that saves -- the sum of its overlays, less the region.
+# (The program alone: a family sees its symbols, but has no region.)
 ovl_marks = {}
-for line in run(tools + "/arm-none-eabi-readelf", "-sW", elf).splitlines():
+for line in run(tools + "/arm-none-eabi-readelf", "-sW", elf).splitlines() if kind_of_elf != "dsl" else []:
     part = line.split()
     m = re.match(r"__ovl_(\w+?)_(start|load_end|end)$", part[7]) if len(part) >= 8 else None
     if m:
