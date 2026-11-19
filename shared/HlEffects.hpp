@@ -72,15 +72,31 @@ namespace hldata
         smoke.colour = static_cast<std::uint16_t>(grey | grey << 5 | grey << 10);
     }
 
+    /// The game's spark_shower, none to three of them (CGrenade::Explode,
+    /// CEnvExplosion::Use): each thrown off the floor, showering sparks
+    /// every tenth of a second for 0.5 to 1.5 s (kSparksShower).
+    inline void sparkShowers(ActorWorld &a, const fx *at)
+    {
+        std::uint32_t seed = sparkHash(static_cast<std::uint32_t>(at[0] ^ (at[1] << 7) ^ (at[2] << 13)) ^ a.seed);
+        for (int n = static_cast<int>(seed & 3); n > 0; --n)
+        {
+            seed = sparkHash(seed + 0x9E3779B9u);
+            sparksAdd(a, at, kSparksShower, seed);
+        }
+    }
+
     /// An explosion of `size` (the game's magnitude) at `at`: seen, heard,
     /// felt, and -- with `hurts` -- hurting whatever is near. With `smoke`
     /// (tenths of the sprite's size: grenadeSmoke, explosionSmoke) it
-    /// leaves smoke, a third of a second later.
+    /// leaves smoke, a third of a second later; with `showers`, none to
+    /// three showers of sparks (a grenade's and an env_explosion's).
     inline void explodeAt(LogicWorld &w, PlayerState &player, const fx *at, int size, bool fireball, bool sound,
-                          bool hurts, int smoke)
+                          bool hurts, int smoke, bool showers)
     {
         if (smoke > 0)
             smokeAt(w, at, smoke, 12, 300);
+        if (showers && w.actors != nullptr && (w.world == nullptr || pointContents(*w.world, at) != kContentsWater))
+            sparkShowers(*w.actors, at);
         if (w.actors != nullptr && fireball)
             effectAdd(*w.actors, kEffectBurst, at, nullptr, size < 48 ? 48 : (size > 160 ? 160 : size), 450);
         if (w.actors != nullptr && w.world != nullptr && fireball)
@@ -298,7 +314,8 @@ namespace hldata
         case LogicKind::Explosion:
             explodeAt(w, player, record.move, static_cast<int>(record.extra[0]), !(record.extra[1] & 4),
                       !(record.extra[1] & 64), !(record.extra[1] & 1),
-                      (record.extra[1] & 8) ? 0 : explosionSmoke(static_cast<int>(record.extra[0])));
+                      (record.extra[1] & 8) ? 0 : explosionSmoke(static_cast<int>(record.extra[0])),
+                      !(record.extra[1] & 32));
             if (!(record.extra[1] & 2))
                 state.dead = true;
             break;
@@ -492,6 +509,7 @@ namespace hldata
                 Effect &spark = effectAdd(*w.actors, kEffectSprite, at, nullptr, 14, 150);
                 spark.sprite = static_cast<std::uint16_t>(CommonSprite::Glow);
                 spark.colour = 0x3BFF; // (as an env_spark's)
+                sparksAdd(*w.actors, at);
             }
         }
     } // namespace detail
@@ -597,6 +615,8 @@ namespace hldata
                     Effect &spark = effectAdd(*a, kEffectSprite, record.move, nullptr, 14, 150);
                     spark.sprite = static_cast<std::uint16_t>(CommonSprite::Glow);
                     spark.colour = 0x3BFF; // a yellow white
+                    // ... and its streaks (UTIL_Sparks).
+                    sparksAdd(*a, record.move);
                 }
                 // One of its six sounds, at 0.10..0.30 of full, carrying as
                 // the game's normal attenuation does (DoSpark). A map cooked

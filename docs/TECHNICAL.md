@@ -471,6 +471,22 @@ Milestone 11, "levels of detail".
   FTENT_FADEOUT). They are the glow layer's, in the hotglow's orange, or
   the common glow as a 3D quad when they do not fit. An egon's flare
   keeps its 3D picture and has a core of blue-white light under it.
+- Sparks throw streaks of light, as the game's do, on a DSi
+  (`kEffectSparks`): env_spark, a beam's sparks, a computer shot at, and
+  an explosion's spark showers (none to three, a grenade's and an
+  env_explosion's unless it says no sparks). The game's TE_SPARKS is
+  something thrown off at up to 300 units a second that, every tenth of a
+  second for 0.5 to 1.5 s, throws eight streaks, each falling and fading
+  within half a second; a spark shower is thrown off the floor and makes a
+  TE_SPARKS each tenth (here one spray each, from where it is). Each streak
+  is a line a pixel wide (a triangle with two corners the same), as long as
+  a twentieth of a second of its speed, in (255, 167, 17), its polygon
+  alpha fading over its last half second; slowed across by 0.9 a second
+  and falling at the world's gravity. Nothing of them is kept but the
+  effect: each streak is worked out from its seed and the time. Their way
+  is worked out the first time they are seen, to the first wall in it,
+  which stops them where the game's bounce off. The drawing is in the
+  DSi's own memory; a DS makes none (the flash of the spark is on both).
 - What the maps show and shake, from their own entities
   (`shared/HlEffects.hpp`): sprites and glows (`env_sprite`, `env_glow`; a
   glow, render mode 3, by the engine's rule (`glowFalloff`, HlSprite.hpp):

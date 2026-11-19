@@ -433,6 +433,17 @@ namespace hldata
     /// orange ((255, 123, 0) at its brightest).
     inline constexpr int kGaussGlowHalf = 32;
     inline constexpr std::uint16_t kGaussGlowColour = 31 | 15 << 5;
+    /// Sparks (sparksAdd): something thrown from `a` that throws a spray of
+    /// streaks of light every tenth of a second for its first `sprite`
+    /// tenths, each falling and fading within kSparkStreakMs; `colour` is
+    /// the seed it is all drawn from. How it is thrown (`size`): kSparksLoose,
+    /// the game's TE_SPARKS, or kSparksShower, a spark_shower. Its way is the
+    /// drawing's to work out (EffectDraw: to the first wall in it, which
+    /// stops it, where the game's bounces off), as it is first drawn: `b`
+    /// then is where it stops, and `size` the ms it takes to get there.
+    inline constexpr std::uint8_t kEffectSparks = 13;
+    inline constexpr int kSparkStreakMs = 500;
+    inline constexpr std::int16_t kSparksLoose = -1, kSparksShower = -2;
     inline constexpr int kEgonMine = 0;
     /// How long a beam is still seen once nothing keeps it.
     inline constexpr int kEgonLingerMs = 80;
@@ -1291,6 +1302,38 @@ namespace hldata
         Effect &glow = effectAdd(a, kEffectGlow, at, nullptr, half < 1 ? 1 : half, ms + kGlowFadeMs);
         glow.sprite = static_cast<std::uint16_t>(alpha > 31 ? 31 : alpha);
         glow.colour = colour;
+    }
+
+    /// One step of the sparks' chance: their own, so that nothing of the
+    /// fight's (ActorWorld::seed is read, not moved on) is taken by them.
+    inline std::uint32_t sparkHash(std::uint32_t x)
+    {
+        x ^= x >> 16;
+        x *= 0x7FEB352Du;
+        x ^= x >> 15;
+        x *= 0x846CA68Bu;
+        x ^= x >> 16;
+        return x;
+    }
+
+    /// Sparks at `at` (kEffectSparks), thrown as `how` says, from `seed`:
+    /// throwing streaks for 0.5 to 1.5 s (the game's 0.5 to 1.5 of speed,
+    /// lost a tenth at a time). A DSi's: a DS has half the effects, and
+    /// draws no streaks.
+    inline void sparksAdd(ActorWorld &a, const fx *at, std::int16_t how, std::uint32_t seed)
+    {
+        if (a.effectLimit < kMaxEffects)
+            return;
+        const int tenths = 5 + static_cast<int>(seed % 11u);
+        Effect &sparks = effectAdd(a, kEffectSparks, at, nullptr, how, tenths * 100 + kSparkStreakMs);
+        sparks.sprite = static_cast<std::uint16_t>(tenths);
+        sparks.colour = static_cast<std::uint16_t>(sparkHash(seed) >> 8);
+    }
+    /// The game's UTIL_Sparks at `at` (TE_SPARKS).
+    inline void sparksAdd(ActorWorld &a, const fx *at)
+    {
+        sparksAdd(a, at, kSparksLoose,
+                  sparkHash(static_cast<std::uint32_t>(at[0] ^ (at[1] << 7) ^ (at[2] << 13)) ^ a.seed));
     }
 
     /// The egon beam of `owner` (kEffectEgon), from `from` to `to`: found

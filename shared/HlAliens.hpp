@@ -2045,7 +2045,7 @@ namespace hldata
             const fx at[3] = {c.me.pos[0] + fxFromInt(aiRandomLong(c.a, -70, 70)),
                               c.me.pos[1] + fxFromInt(aiRandomLong(c.a, -70, 70)),
                               c.me.pos[2] + fxFromInt(32 + c.m.count1 * 30)};
-            explodeAt(c.w, c.player, at, 60 + c.m.count1 * 40, true, true, false, explosionSmoke(60 + c.m.count1 * 40));
+            explodeAt(c.w, c.player, at, 60 + c.m.count1 * 40, true, true, false, explosionSmoke(60 + c.m.count1 * 40), true);
             ++c.m.count1;
         }
 

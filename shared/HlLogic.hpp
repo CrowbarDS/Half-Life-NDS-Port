@@ -1666,7 +1666,7 @@ namespace hldata
 
     // (HlEffects.hpp: what goes off when something explosive breaks.)
     inline void explodeAt(LogicWorld &w, PlayerState &player, const fx *at, int size, bool fireball, bool sound,
-                          bool hurts, int smoke = 0);
+                          bool hurts, int smoke = 0, bool showers = false);
 
     namespace detail
     {
@@ -1868,7 +1868,7 @@ namespace hldata
                 static int chain = 0;
                 const bool hurts = chain < 4;
                 ++chain;
-                explodeAt(w, player, middle, record.damage, true, true, hurts, explosionSmoke(record.damage));
+                explodeAt(w, player, middle, record.damage, true, true, hurts, explosionSmoke(record.damage), true);
                 --chain;
             }
         }

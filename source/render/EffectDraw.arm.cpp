@@ -248,6 +248,116 @@ namespace hlrt
             return out;
         }
 
+        // Sparks (kEffectSparks), as the game's are drawn: each streak a
+        // line from where it is along its way, as long as a twentieth of a
+        // second of it (the game's: its speed times half of up to a tenth),
+        // in the yellow-orange of its sparks (255, 167, 17), fading over its
+        // last half second; a tracer particle's motion, damped across by 0.9
+        // a second and falling at the world's gravity. The DS draws a
+        // triangle with two corners the same as a line a pixel wide. A DSi's
+        // only (sparksFly makes none on a DS, nor a guest).
+        constexpr std::uint16_t kSparkColour = 31 | 20 << 5 | 2 << 10;
+        constexpr int kSparkStreaks = 8;
+
+#ifndef HLDS_CHILD
+        /// Sparks' way (kEffectSparks), worked out when they are first seen:
+        /// thrown as the game throws them, falling at half the world's
+        /// gravity (MOVETYPE_BOUNCE at a gravity of 0.5, FTENT_SLOWGRAVITY),
+        /// to the first wall in their way -- which stops them, where the
+        /// game's bounce off it. TE_SPARKS's at up to 300 units a second
+        /// across and 200 up or down; a spark_shower's off the floor at 200
+        /// to 300, 100 either way across and 200 more up.
+        HL_TWL_CODE void sparksWay(Effect &effect)
+        {
+            std::uint32_t seed = sparkHash(effect.colour ^ 0x5A17u);
+            int velocity[3];
+            for (int k = 0; k < 3; ++k)
+            {
+                seed = sparkHash(seed + 0x9E3779B9u);
+                if (effect.size == kSparksShower)
+                    velocity[k] = k == 2 ? 400 + static_cast<int>(seed % 101u) : static_cast<int>(seed % 201u) - 100;
+                else
+                    velocity[k] = static_cast<int>(seed % (k == 2 ? 401u : 601u)) - (k == 2 ? 200 : 300);
+            }
+            const int life = effect.sprite * 100;
+            fx end[3];
+            for (int k = 0; k < 3; ++k)
+                end[k] = effect.a[k] + fxFromInt(velocity[k]) / 1000 * life;
+            // (400: half of half the gravity of 800.)
+            end[2] -= fxFromInt(400) / 1000 * life / 1000 * life;
+            const std::int32_t fraction = traceShot(game.world, effect.a, end).fraction;
+            for (int k = 0; k < 3; ++k)
+            {
+                const fx along = static_cast<fx>((static_cast<std::int64_t>(end[k] - effect.a[k]) * fraction) >> kFractionShift);
+                // (A unit short of the wall it meets.)
+                effect.b[k] = effect.a[k] + (fraction < kFractionOne && along != 0 ? along - (along > 0 ? kFxOne : -kFxOne) : along);
+            }
+            effect.size = static_cast<std::int16_t>((static_cast<std::int64_t>(life) * fraction) >> kFractionShift);
+        }
+#endif
+
+        /// Where sparks that left `effect.a` are after `ms`: along to `b`,
+        /// where they stopped.
+        void sparksAt(const Effect &effect, int ms, fx *at)
+        {
+            const int travel = effect.size;
+            const int along = travel <= 0 || ms >= travel ? 4096 : ms * 4096 / travel;
+            for (int k = 0; k < 3; ++k)
+                at[k] = effect.a[k] + static_cast<fx>((static_cast<std::int64_t>(effect.b[k] - effect.a[k]) * along) >> 12);
+        }
+
+#ifndef HLDS_CHILD
+        HL_TWL_CODE void sparks(const Effect &effect)
+        {
+            const int t = effect.wholeMs - effect.leftMs;
+            const int streaks = kSparkStreaks;
+            GFX_TEX_FORMAT = 0;
+            for (int burst = 0; burst < effect.sprite; ++burst)
+            {
+                const int age = t - burst * 100;
+                if (age < 0)
+                    break;
+                if (age >= kSparkStreakMs)
+                    continue;
+                fx from[3];
+                sparksAt(effect, burst * 100, from);
+                for (int k = 0; k < streaks; ++k)
+                {
+                    const std::uint32_t h = sparkHash(effect.colour ^ static_cast<std::uint32_t>(burst * 8 + k) * 0x9E3779B9u);
+                    const int life = 100 + static_cast<int>(sparkHash(h) % 401u);
+                    if (age >= life)
+                        continue;
+                    const int left = life - age;
+                    const int alpha = left * 62 / 1000 > 31 ? 31 : left * 62 / 1000;
+                    if (alpha < 1)
+                        continue;
+                    const int v[3] = {static_cast<int>(h % 401u) - 200, static_cast<int>((h >> 9) % 401u) - 200,
+                                      static_cast<int>((h >> 18) % 401u) - 200};
+                    // (Across: v t (1 - 0.45 t), 0.45 being 1843 of 4096;
+                    // up: v t - 400 t^2. t in ms.)
+                    const int damp = 4096 - 1843 * age / 1000;
+                    fx at[3], end[3];
+                    const int length = left < 100 ? left : 100; // ms of its speed, doubled
+                    for (int k2 = 0; k2 < 3; ++k2)
+                    {
+                        const fx moved = fxFromInt(v[k2]) * age / 1000;
+                        at[k2] = from[k2] + (k2 < 2 ? static_cast<fx>((static_cast<std::int64_t>(moved) * damp) >> 12) : moved);
+                        const int speed = k2 < 2 ? v[k2] * (1000 - 9 * age / 10) / 1000 : v[k2] - 800 * age / 1000;
+                        end[k2] = at[k2] + fxFromInt(speed) / 2000 * length;
+                    }
+                    at[2] -= fxFromInt(400) / 1000 * age / 1000 * age;
+                    end[2] -= fxFromInt(400) / 1000 * age / 1000 * age;
+                    look(alpha, freshId(), kSparkColour);
+                    GFX_BEGIN = GL_TRIANGLES;
+                    corner(at);
+                    corner(end);
+                    corner(end);
+                }
+            }
+        }
+
+#endif
+
         /// An egon's beam (kEffectEgon), as the game's is drawn: a bright
         /// core out of the gun, strongest near it; a thinner beam about it
         /// that bows out to one side and the other as it turns about the
@@ -414,15 +524,31 @@ namespace hlrt
             if (smoke && effect.wholeMs - effect.leftMs < effect.sprite)
                 continue;
             const bool span = line || smoke;
-            const fx middle[3] = {span ? (effect.a[0] + effect.b[0]) / 2 : effect.a[0],
-                                  span ? (effect.a[1] + effect.b[1]) / 2 : effect.a[1],
-                                  span ? (effect.a[2] + effect.b[2]) / 2 : effect.a[2]};
+            fx middle[3] = {span ? (effect.a[0] + effect.b[0]) / 2 : effect.a[0],
+                            span ? (effect.a[1] + effect.b[1]) / 2 : effect.a[1],
+                            span ? (effect.a[2] + effect.b[2]) / 2 : effect.a[2]};
+            // (Sparks: where they are now; their streaks reach a hundred
+            // units about it at most.)
+            const bool sparked = effect.kind == kEffectSparks;
+            if (sparked)
+            {
+#ifdef HLDS_CHILD
+                continue;
+#else
+                if (!isDSiMode())
+                    continue;
+                if (effect.size < 0)
+                    sparksWay(game.actors.effects[n]);
+                sparksAt(effect, effect.wholeMs - effect.leftMs, middle);
+#endif
+            }
             const fx *const ball = line ? effect.a : middle;
             const std::int16_t a16[3] = {static_cast<std::int16_t>(fxToInt(ball[0])),
                                          static_cast<std::int16_t>(fxToInt(ball[1])),
                                          static_cast<std::int16_t>(fxToInt(ball[2]))};
-            const int reach = smoke ? effect.size * 3 + fxToInt(effect.b[2] - effect.a[2]) / 2
-                                    : (effect.size > 16 ? effect.size : 16);
+            const int reach = smoke     ? effect.size * 3 + fxToInt(effect.b[2] - effect.a[2]) / 2
+                              : sparked ? 100
+                                        : (effect.size > 16 ? effect.size : 16);
             if (line)
             {
                 const std::int16_t b16[3] = {static_cast<std::int16_t>(fxToInt(effect.b[0])),
@@ -436,7 +562,11 @@ namespace hlrt
                 continue;
             }
             add(kEffect, n, middle, 1 << 14,
-                effect.kind == kEffectBolt ? 4 : (effect.kind == kEffectEgon ? kEgonQuads : (smoke ? 2 : 1)));
+                effect.kind == kEffectBolt    ? 4
+                : effect.kind == kEffectEgon  ? kEgonQuads
+                : smoke                       ? 2
+                : sparked                     ? kSparkStreaks * kSparkStreakMs / 100
+                                              : 1);
         }
         for (int i = 0; i < logic.recordCount; ++i)
         {
@@ -1470,6 +1600,12 @@ namespace hlrt
             }
             break;
         }
+        case kEffectSparks:
+#ifndef HLDS_CHILD
+            if (isDSiMode())
+                sparks(effect);
+#endif
+            break;
         case kEffectGlow:
         {
             // A glow left where something struck, when the 2D engine has

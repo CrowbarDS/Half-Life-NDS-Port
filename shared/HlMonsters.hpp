@@ -513,14 +513,11 @@ namespace hldata
                 Effect &spark = effectAdd(a, kEffectSprite, off, nullptr, 14, 150);
                 spark.sprite = static_cast<std::uint16_t>(CommonSprite::Glow);
                 spark.colour = 0x3BFF; // a yellow white, as env_spark's
-                for (int n = 0; n < 3; ++n)
-                {
-                    fx to[3];
-                    for (int k = 0; k < 3; ++k)
-                        to[k] = off[k] + normal[k] * 10 + fxFromInt(static_cast<int>((next() >> 12) & 15) - 7);
-                    to[2] -= fxFromInt(4);
-                    effectAdd(a, kEffectTracer, off, to, 0, 80 + static_cast<int>((next() >> 12) & 63));
-                }
+                sparksAdd(a, off);
+                // (The chance its three tracers took before the streaks, still
+                // taken: what the fight draws next is as it was.)
+                for (int n = 0; n < 12; ++n)
+                    next();
                 const std::uint32_t r = next();
                 if (w.level != nullptr)
                     play(r & 1 ? CommonSound::Spark5 : CommonSound::Spark6, r & 1 ? CommonSound::Spark6 : CommonSound::Spark5,
@@ -590,7 +587,7 @@ namespace hldata
     inline bool lineEntersBox(const fx *from, const fx *to, const fx *mins, const fx *maxs, std::int64_t &enter);
     inline void shakeStart(LogicWorld &w, fx amplitude, int ms);
     inline void explodeAt(LogicWorld &w, PlayerState &player, const fx *at, int size, bool fireball, bool sound,
-                          bool hurts, int smoke);
+                          bool hurts, int smoke, bool showers);
     /// What a grenade's blast throws up, a moment after it: one of three,
     /// at a little over half of full (CGrenade::Explode). Every grenade's:
     /// a hand grenade, the MP5's, a satchel, a tripmine, a rocket.
@@ -1819,7 +1816,7 @@ namespace hldata
                         shot.active = false;
                         const fx at[3] = {shot.pos[0] + shot.velocity[0] * 8, shot.pos[1] + shot.velocity[1] * 8,
                                           shot.pos[2] + shot.velocity[2] * 8};
-                        explodeAt(w, player, at, kMineBlast, true, true, true, grenadeSmoke(kMineBlast));
+                        explodeAt(w, player, at, kMineBlast, true, true, true, grenadeSmoke(kMineBlast), true);
                         grenadeDebris(w, at);
                         continue;
                     }
@@ -2161,7 +2158,7 @@ namespace hldata
                     {
                         // Off, where it met something: 100, to 250 units.
                         shot.active = false;
-                        explodeAt(w, player, shot.pos, 100, true, true, true, grenadeSmoke(100));
+                        explodeAt(w, player, shot.pos, 100, true, true, true, grenadeSmoke(100), true);
                         grenadeDebris(w, shot.pos);
                         continue;
                     }
@@ -2347,7 +2344,7 @@ namespace hldata
                     if (met)
                     {
                         shot.active = false;
-                        explodeAt(w, player, shot.pos, kGrenadeBlast, true, true, true, grenadeSmoke(kGrenadeBlast));
+                        explodeAt(w, player, shot.pos, kGrenadeBlast, true, true, true, grenadeSmoke(kGrenadeBlast), true);
                         grenadeDebris(w, shot.pos);
                     }
                     else if ((shot.leftMs + ms) / 200 != shot.leftMs / 200)
@@ -2424,7 +2421,7 @@ namespace hldata
                         if (shot.sprite == 1)
                         {
                             shot.active = false;
-                            explodeAt(w, player, shot.pos, kSatchelBlast, true, true, true, grenadeSmoke(kSatchelBlast));
+                            explodeAt(w, player, shot.pos, kSatchelBlast, true, true, true, grenadeSmoke(kSatchelBlast), true);
                             grenadeDebris(w, shot.pos);
                         }
                         continue;
@@ -3133,7 +3130,7 @@ namespace hldata
                 actorPlaceBox(a, index);
                 const fx at[3] = {mine.pos[0] + forward[0] * 8, mine.pos[1] + forward[1] * 8,
                                   mine.pos[2] + forward[2] * 8};
-                explodeAt(w, player, at, kMineBlast, true, true, true, grenadeSmoke(kMineBlast));
+                explodeAt(w, player, at, kMineBlast, true, true, true, grenadeSmoke(kMineBlast), true);
                 grenadeDebris(w, at);
                 return;
             }
@@ -4596,7 +4593,7 @@ namespace hldata
                 // A shell where the line meets something: the map's blast.
                 // (ExplosionCreate: an env_explosion's, and its smoke.)
                 const int magnitude = record.mins[2] > 0 ? record.mins[2] : 100;
-                explodeAt(w, player, end, magnitude, true, true, true, explosionSmoke(magnitude));
+                explodeAt(w, player, end, magnitude, true, true, true, explosionSmoke(magnitude), true);
                 return;
             }
             int damage = tankDamage(w, record);
@@ -4923,7 +4920,7 @@ namespace hldata
                 Effect &streak = effectAdd(a, kEffectBeam, at, sky, 4, 120);
                 streak.colour = 0x3A9F; // (255, 160, 100)
                 at[2] += fxFromInt(8);
-                explodeAt(w, player, at, 200, true, true, true, grenadeSmoke(200));
+                explodeAt(w, player, at, 200, true, true, true, grenadeSmoke(200), true);
                 if (w.heard != nullptr && w.sounds != nullptr && w.sounds[index].stop != kNoSound)
                     w.heard->add(w.sounds[index].stop, at, 127, kRadiusLarge, 0, random(95, 124));
                 --state.phase;
