@@ -3072,8 +3072,10 @@ namespace hldata
         {
             const bool small = monsterKind(c.me.kind).small;
             const fx lift = small ? kCrouchedFeet : kStandingFeet;
-            const fx from[3] = {c.me.pos[0], c.me.pos[1], c.me.pos[2] + lift + fxFromInt(1)};
-            const fx to[3] = {c.me.pos[0], c.me.pos[1], c.me.pos[2] + lift - fxFromInt(2)};
+            // (Where the engine's hull is for it: monsterHullShift.)
+            const fx shift = monsterHullShift(c.me.kind);
+            const fx from[3] = {c.me.pos[0] + shift, c.me.pos[1] + shift, c.me.pos[2] + lift + fxFromInt(1)};
+            const fx to[3] = {c.me.pos[0] + shift, c.me.pos[1] + shift, c.me.pos[2] + lift - fxFromInt(2)};
             const Trace under = traceAll(*c.w.world, small, from, to);
             // (Nothing, or only someone, under it: someone is no floor.)
             if (!under.startSolid && (under.fraction >= kFractionOne || under.box >= 0))

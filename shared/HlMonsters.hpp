@@ -3903,6 +3903,37 @@ namespace hldata
         /// base velocity) -- c1a1c's crabs out from under the monstermakers
         /// that drop them. (Upwards, and the pushes that go once, are the
         /// player's.)
+        /// A monster carried by a push (its basevelocity, in the engine's
+        /// SV_FlyMove): along the push and along what it meets, but never
+        /// up a step -- a lip of two units holds it. `feet` moved.
+        inline void pushSlide(const MoveWorld &world, ActorWorld &a, int index, bool small, fx *feet, fx dx, fx dy)
+        {
+            const fx lift = small ? kCrouchedFeet : kStandingFeet;
+            fx move[2] = {dx, dy};
+            for (int bump = 0; bump < 2 && (move[0] != 0 || move[1] != 0); ++bump)
+            {
+                const fx from[3] = {feet[0], feet[1], feet[2] + lift};
+                const fx to[3] = {from[0] + move[0], from[1] + move[1], from[2]};
+                const Trace t = walkerTrace(world, &a, index, small, from, to);
+                if (t.startSolid)
+                    return;
+                feet[0] = t.endPos[0];
+                feet[1] = t.endPos[1];
+                if (t.fraction >= kFractionOne)
+                    return;
+                // (What is left of it, along the plane met.)
+                const std::int64_t rest = kFractionOne - t.fraction;
+                fx left[2];
+                for (int k = 0; k < 2; ++k)
+                    left[k] = static_cast<fx>((static_cast<std::int64_t>(move[k]) * rest) >> kFractionShift);
+                const std::int64_t into =
+                    (static_cast<std::int64_t>(left[0]) * t.normal[0] + static_cast<std::int64_t>(left[1]) * t.normal[1]) >>
+                    kNormalShift;
+                for (int k = 0; k < 2; ++k)
+                    move[k] = left[k] - static_cast<fx>((into * t.normal[k]) >> kNormalShift);
+            }
+        }
+
         inline void monsterPushes(LogicWorld &w, int ms)
         {
             ActorWorld &a = *w.actors;
@@ -3930,7 +3961,11 @@ namespace hldata
                         hi[2] < fxFromInt(record.mins[2]) || lo[2] > fxFromInt(record.maxs[2]))
                         continue;
                     fx feet[3] = {actor.pos[0], actor.pos[1], actor.pos[2]};
-                    if (walkStep(*w.world, &a, n, monsterHull(actor.kind), feet, dx, dy))
+                    const int hull = monsterHull(actor.kind);
+                    // (One the size of a squid keeps to where its hull has room:
+                    // walkStep's own test for it.)
+                    if (hull == kWalkLarge ? walkStep(*w.world, &a, n, hull, feet, dx, dy) :
+                                             (pushSlide(*w.world, a, n, hull == kWalkCrouched, feet, dx, dy), true))
                     {
                         for (int k = 0; k < 3; ++k)
                             actor.pos[k] = feet[k];

@@ -476,6 +476,81 @@ namespace hldata
             moverReachSet(world, m);
     }
 
+    namespace detail
+    {
+        /// The boxes (the actors') in the way of a move from `start` to
+        /// `end`: each grown by `growXY` across and `growZ` up and down, one
+        /// pair of faces at a time; the nearer hit put into `best`.
+        HL_HOT void traceBoxes(const MoveWorld &world, const fx *start, const fx *end, fx growXY, fx growZ, Trace &best)
+        {
+            // (A move that starts inside one passes through it, as with a
+            // brush: nobody is ever frozen inside an actor who walked up to
+            // them.)
+            for (int n = 0; n < world.boxCount; ++n)
+            {
+                const SolidBox &box = world.boxes[n];
+                if (!box.active)
+                    continue;
+                std::int64_t enter = -1; // Q30; -1 = from before the start
+                std::int64_t leave = kFractionOne;
+                int axis = -1;
+                bool inside = true, miss = false;
+                for (int i = 0; i < 3 && !miss; ++i)
+                {
+                    const fx grow = i == 2 ? growZ : growXY;
+                    const fx lo = box.mins[i] - grow, hi = box.maxs[i] + grow;
+                    const fx d = end[i] - start[i];
+                    if (start[i] <= lo || start[i] >= hi)
+                        inside = false;
+                    if (d == 0)
+                    {
+                        miss = start[i] <= lo || start[i] >= hi;
+                        continue;
+                    }
+                    std::int64_t t0 = (static_cast<std::int64_t>(lo - start[i]) << kFractionShift) / d;
+                    std::int64_t t1 = (static_cast<std::int64_t>(hi - start[i]) << kFractionShift) / d;
+                    if (t0 > t1)
+                    {
+                        const std::int64_t swap = t0;
+                        t0 = t1;
+                        t1 = swap;
+                    }
+                    if (t0 > enter)
+                    {
+                        enter = t0;
+                        axis = i;
+                    }
+                    if (t1 < leave)
+                        leave = t1;
+                    miss = enter > leave;
+                }
+                if (miss || inside || axis < 0 || enter < 0 || enter >= best.fraction)
+                    continue;
+                // Stop a little short, as the hull trace does.
+                const fx d = end[axis] - start[axis];
+                const std::int64_t back =
+                    (static_cast<std::int64_t>(kFxOne / 32) << kFractionShift) / (d < 0 ? -d : d);
+                const std::int64_t fraction = enter > back ? enter - back : 0;
+                best.fraction = static_cast<std::int32_t>(fraction);
+                for (int i = 0; i < 3; ++i)
+                {
+                    best.endPos[i] = start[i] + static_cast<fx>(
+                                                    (static_cast<std::int64_t>(end[i] - start[i]) * fraction) >>
+                                                    kFractionShift);
+                    best.normal[i] = 0;
+                }
+                best.normal[axis] = d > 0 ? -(1 << kNormalShift) : (1 << kNormalShift);
+                {
+                    const fx grow = axis == 2 ? growZ : growXY;
+                    best.dist = d > 0 ? -(box.mins[axis] - grow) : box.maxs[axis] + grow;
+                }
+                best.mover = -1;
+                best.box = static_cast<std::int16_t>(n);
+                best.hit = true;
+            }
+        }
+    } // namespace detail
+
     /// Move the player's origin from `start` towards `end` through the world
     /// and every solid brush.
 #ifdef HL_DSL
@@ -529,74 +604,8 @@ namespace hldata
             best.dist = t.dist + static_cast<fx>(shift >> kNormalShift);
             best.mover = static_cast<std::int16_t>(m);
         }
-        // The boxes: the move against each, grown by the player's size, one
-        // pair of faces at a time. A move that starts inside one passes
-        // through it, as with a brush: nobody is ever frozen inside an actor
-        // who walked up to them.
-        for (int n = 0; n < world.boxCount; ++n)
-        {
-            const SolidBox &box = world.boxes[n];
-            if (!box.active)
-                continue;
-            std::int64_t enter = -1; // Q30; -1 = from before the start
-            std::int64_t leave = kFractionOne;
-            int axis = -1;
-            bool inside = true, miss = false;
-            for (int i = 0; i < 3 && !miss; ++i)
-            {
-                const fx grow = i == 2 ? detail::kPlayerHalfHeight[crouched ? 1 : 0]
-                                       : detail::kPlayerHalfWidth;
-                const fx lo = box.mins[i] - grow, hi = box.maxs[i] + grow;
-                const fx d = end[i] - start[i];
-                if (start[i] <= lo || start[i] >= hi)
-                    inside = false;
-                if (d == 0)
-                {
-                    miss = start[i] <= lo || start[i] >= hi;
-                    continue;
-                }
-                std::int64_t t0 = (static_cast<std::int64_t>(lo - start[i]) << kFractionShift) / d;
-                std::int64_t t1 = (static_cast<std::int64_t>(hi - start[i]) << kFractionShift) / d;
-                if (t0 > t1)
-                {
-                    const std::int64_t swap = t0;
-                    t0 = t1;
-                    t1 = swap;
-                }
-                if (t0 > enter)
-                {
-                    enter = t0;
-                    axis = i;
-                }
-                if (t1 < leave)
-                    leave = t1;
-                miss = enter > leave;
-            }
-            if (miss || inside || axis < 0 || enter < 0 || enter >= best.fraction)
-                continue;
-            // Stop a little short, as the hull trace does.
-            const fx d = end[axis] - start[axis];
-            const std::int64_t back =
-                (static_cast<std::int64_t>(kFxOne / 32) << kFractionShift) / (d < 0 ? -d : d);
-            const std::int64_t fraction = enter > back ? enter - back : 0;
-            best.fraction = static_cast<std::int32_t>(fraction);
-            for (int i = 0; i < 3; ++i)
-            {
-                best.endPos[i] = start[i] + static_cast<fx>(
-                                                (static_cast<std::int64_t>(end[i] - start[i]) * fraction) >>
-                                                kFractionShift);
-                best.normal[i] = 0;
-            }
-            best.normal[axis] = d > 0 ? -(1 << kNormalShift) : (1 << kNormalShift);
-            {
-                const fx grow = axis == 2 ? detail::kPlayerHalfHeight[crouched ? 1 : 0]
-                                          : detail::kPlayerHalfWidth;
-                best.dist = d > 0 ? -(box.mins[axis] - grow) : box.maxs[axis] + grow;
-            }
-            best.mover = -1;
-            best.box = static_cast<std::int16_t>(n);
-            best.hit = true;
-        }
+        // The boxes: the move against each, grown by the player's size.
+        detail::traceBoxes(world, start, end, detail::kPlayerHalfWidth, detail::kPlayerHalfHeight[crouched ? 1 : 0], best);
         return best;
     }
 #endif

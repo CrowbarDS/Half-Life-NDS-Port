@@ -1871,10 +1871,20 @@ engine's step monsters do: gravity, then the move, sliding along what it
 meets (SV_FlyMove), and on landing it goes on, slowing to a stop, rather
 than stopping dead -- a headcrab's leap lands where the game's does.
 
-Still apart there: the engine traces a monster narrower than its hull --
-a headcrab, 24 units across, in the 32-unit crouching hull -- with the hull
-set at its least corner, not about its middle, so in the game its box runs
-4 units further one way than the other; the port's is about its middle.
+The engine traces a monster narrower than its hull -- a headcrab, 24 units
+across, in the 32-unit crouching hull -- with the hull set at its least
+corner, not about its middle (SV_HullForBsp), so its box runs 4 units
+further one way than the other; the port's does too (`monsterHullShift`).
+Against another monster the engine uses no hull at all but the mover's own
+box (SV_HullForBox), so two headcrabs stop 24 apart, not 32. And what a
+push carries (a trigger_push, the engine's basevelocity) slides along what
+it meets but never steps up: c1a1c's crabs are held by the parked lift's
+6-unit lip, and one stands under hck4, which therefore makes none
+(`mon_crabmaker`). Still apart there: the game's crabs stop 4.8 units
+further on than the port's, and why is not known yet.
+Still apart: what the engine moves as a point (hull 0: a rat, a roach, a
+leech, a snark, all 8 units across or less) the port moves in the
+crouching hull.
 
 ## The pass's budget
 

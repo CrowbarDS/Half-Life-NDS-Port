@@ -245,7 +245,9 @@ namespace
     bool inSolid(const Game &g, const ActorState &actor)
     {
         const bool small = monsterKind(actor.kind).small;
-        const fx at[3] = {actor.pos[0], actor.pos[1],
+        // (Where the engine's hull is for it: monsterHullShift.)
+        const fx shift = monsterHullShift(actor.kind);
+        const fx at[3] = {actor.pos[0] + shift, actor.pos[1] + shift,
                           actor.pos[2] + (small ? kCrouchedFeet : kStandingFeet)};
         const Hull &hull = small ? g.move.crouched : g.move.standing;
         return hullPointContents(hull, hull.root, at) == kContentsSolid;

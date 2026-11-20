@@ -237,10 +237,51 @@ namespace hldata
 
     // ------------------------------------------------------------- walking
 
+    /// How far off its middle the engine's hull is for a monster narrower
+    /// than it, along x and along y: SV_HullForBsp sets the hull at the
+    /// monster's least corner (offset = the hull's mins - its own), so a
+    /// headcrab, 24 across in the crouching hull's 32, is traced as a box
+    /// from 12 behind its origin to 20 ahead. (Its height starts at its
+    /// feet already.)
+    inline fx monsterHullShift(std::uint8_t kind)
+    {
+#ifdef HL_DSL
+        // (No kind of a family's is narrower than its hull: none in a library.)
+        (void)kind;
+        return 0;
+#else
+        return kind == static_cast<std::uint8_t>(ActorKind::Headcrab) ||
+                       kind == static_cast<std::uint8_t>(ActorKind::BabyCrab)
+                   ? fxFromInt(4)
+                   : 0;
+#endif
+    }
+
     namespace detail
     {
+        /// traceAll for one whose hull is `shift` off its middle along x and y
+        /// (monsterHullShift): the world and the brushes with the hull there
+        /// (the engine's SV_HullForBsp); the actors' boxes as its own box
+        /// meets them, about its middle and of its own width (SV_HullForBox:
+        /// no hull there). (Called, not inlined: the walkers are in ITCM, and
+        /// few are shifted.)
+        HL_WARM __attribute__((noinline)) Trace shiftedTrace(const MoveWorld &world, bool small, const fx *start,
+                                                              const fx *end, fx shift)
+        {
+            const fx from[3] = {start[0] + shift, start[1] + shift, start[2]};
+            const fx to[3] = {end[0] + shift, end[1] + shift, end[2]};
+            MoveWorld bare = world;
+            bare.boxCount = 0;
+            Trace t = traceAll(bare, small, from, to);
+            t.endPos[0] -= shift;
+            t.endPos[1] -= shift;
+            traceBoxes(world, start, end, kPlayerHalfWidth - shift, kPlayerHalfHeight[small ? 1 : 0], t);
+            return t;
+        }
+
         /// A trace as the thing at `index` (or as nobody, -1): its own box
-        /// is not in its way.
+        /// is not in its way, and the hull is where the engine's is for it
+        /// (monsterHullShift).
         inline Trace walkerTrace(const MoveWorld &world, const ActorWorld *a, int index, bool small,
                                  const fx *start, const fx *end)
         {
@@ -248,7 +289,8 @@ namespace hldata
             const bool was = own != nullptr && own->active;
             if (own != nullptr)
                 own->active = false;
-            const Trace t = traceAll(world, small, start, end);
+            const fx shift = a != nullptr && index >= 0 ? monsterHullShift(a->states[index].kind) : 0;
+            const Trace t = shift == 0 ? traceAll(world, small, start, end) : shiftedTrace(world, small, start, end, shift);
             if (own != nullptr)
                 own->active = was;
             return t;

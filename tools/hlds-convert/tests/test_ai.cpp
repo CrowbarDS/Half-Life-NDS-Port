@@ -1461,7 +1461,10 @@ namespace
             }
         }
         std::printf("test_ai: c1a1c: %d crab makers made %d\n", makers, made);
-        check(makers == 5 && made >= 9, "c1a1c's crab makers make their crabs (two alive each, as room allows)");
+        // (Seven in the minute, as the real game makes them -- tools/ref/diag
+        // mon_crabmaker: hck4 makes none, one of hck3's crabs standing in the
+        // column under it, MakeMonster's "don't build a stack of monsters".)
+        check(makers == 5 && made == 7, "c1a1c's crab makers make their crabs (two alive each, as room allows)");
         check(!underIt, "... each carried out from under its maker by the push");
         check(!stacked, "... and none made on top of another");
 
