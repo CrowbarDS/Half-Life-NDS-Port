@@ -526,6 +526,7 @@ namespace hldata
         HL_DIAG(route, c.index, c.m.moveGoal, goal);
         c.m.moveBlockedMs = 0;
         c.m.moveAsked = false;
+        c.m.movePlanned = false;
         c.m.moveNear = false;
         c.m.round.detouring = c.m.round.asking = false;
         aiForgetMemory(c, kMemoryLookedRound);
@@ -3588,11 +3589,16 @@ namespace hldata
                c.a.states[id].scriptPhase == kActorMoving;
     }
 
+    /// How far a route's first plan looks for a straight walk: as far as a
+    /// monster looks (m_flDistLook), where the game's BuildRoute has no end.
+    inline constexpr int kAiRouteReach = 2048;
+
     /// FRefreshRoute, as the walker has it: its way planned afresh from
     /// where it stands (no way at all fails the move: kWalkNoWay).
     inline void aiReplan(AiCtx &c)
     {
         c.m.moveAsked = false;
+        c.m.movePlanned = false;
         c.me.thinkMs = 0;
         c.me.hasGoal = false;
         c.me.goalNode = c.me.fromNode = -1;
@@ -3905,11 +3911,23 @@ namespace hldata
 #endif
         }
         const MonsterKind &kind = monsterKind(c.me.kind);
+        // (A route's first plan looks for a straight walk along the whole
+        // way, as far as it can see, as BuildRoute's CheckLocalMove does; a
+        // plan made again, on its way, no further than the walk's own.)
+        const bool planDue = c.me.thinkMs <= ms;
         // (Move: MakeIdealYaw to the way it is going, and ChangeYaw at its
         // own yaw speed -- aiTurnTick, after this.)
         const int went = walkTick(c.a, *c.w.world, c.index, aiHull(c), dest, speed, ms, &c.player, kind.half,
                                   kind.height, round.detouring || c.m.movementGoal == kMoveGoalLocation,
-                                  &c.m.idealYaw);
+                                  &c.m.idealYaw, c.m.movePlanned ? 0 : kAiRouteReach);
+        if (planDue && !c.m.movePlanned)
+        {
+            // (Made now; or, asked of the worker, made with that reach.)
+            const ThinkQueue *q = c.a.think;
+            const bool deferred = q != nullptr && q->deferred && c.index < q->count;
+            if (!deferred || (q->slots[c.index].state == kThinkAsked && q->slots[c.index].kind == kThinkPlan))
+                c.m.movePlanned = true;
+        }
 #ifndef HLDS_CHILD
         // (Its plan, asked as a walk's: a fight's, if it is fighting.)
         if (c.m.state == kStateCombat && c.a.think != nullptr && c.a.think->deferred && c.index < c.a.think->count)

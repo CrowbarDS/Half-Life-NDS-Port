@@ -1008,11 +1008,15 @@ namespace hldata
     /// straight walk is looked for from further off, since it need be found
     /// only once -- the plan is made again only on reaching a node or on
     /// being held up.
+    ///
+    /// `reach`, if given, is how far a straight walk is looked for in a plan
+    /// made now, in place of walkReach's (a monster's first plan of a route,
+    /// which looks along the whole way as the game's BuildRoute does).
 #ifdef HL_DSL
     // (In the game library, the engine's own, in ITCM: game/GameApi.hpp.)
     int walkTick(ActorWorld &a, const MoveWorld &world, int index, int small, const fx *dest,
                         fx speed, int ms, const PlayerState *player, fx half, fx height,
-                        bool still = false, std::uint16_t *idealYaw = nullptr);
+                        bool still = false, std::uint16_t *idealYaw = nullptr, int reach = 0);
 #else
     /// How far walkTick looks for a straight walk before it goes by the
     /// nodes: 480 (1024 for something going to its mark, which asks less
@@ -1025,8 +1029,10 @@ namespace hldata
 
     HL_HOT int walkTick(ActorWorld &a, const MoveWorld &world, int index, int small, const fx *dest,
                         fx speed, int ms, const PlayerState *player, fx half, fx height,
-                        bool still = false, std::uint16_t *idealYaw = nullptr)
+                        bool still = false, std::uint16_t *idealYaw = nullptr, int reach = 0)
     {
+        if (reach <= 0)
+            reach = walkReach(a, still);
         ActorState &actor = a.states[index];
         actor.thinkMs -= ms;
         if (actor.thinkMs <= 0)
@@ -1037,7 +1043,7 @@ namespace hldata
             bool planned = slot == nullptr;
             if (slot == nullptr)
             {
-                detail::walkPlan(a, world, index, small, dest, walkReach(a, still));
+                detail::walkPlan(a, world, index, small, dest, reach);
             }
             else if (slot->kind == kThinkPlan && slot->state == kThinkDone)
             {
@@ -1063,7 +1069,7 @@ namespace hldata
                 for (int i = 0; i < 3; ++i)
                     slot->at[i] = dest[i];
                 slot->small = static_cast<std::int16_t>(small);
-                slot->reach = static_cast<std::int16_t>(walkReach(a, still));
+                slot->reach = static_cast<std::int16_t>(reach);
                 // (A mark does not move: its walker can wait the longest.
                 // The AI says when it is a fight's: aiMoveTick.)
                 slot->band = still ? kThinkBandIdle : kThinkBandWalk;

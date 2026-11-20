@@ -47,7 +47,7 @@ namespace hlrt
     class TopText;
 
     /// Changed whenever either table or anything they carry changes shape.
-    inline constexpr std::uint32_t kGameApiVersion = 11;
+    inline constexpr std::uint32_t kGameApiVersion = 12;
 
     /// The sizes of what both sides lay out, compared at the handshake: a
     /// library built from other headers, or with other settings, is refused
@@ -124,7 +124,7 @@ namespace hlrt
         std::uint32_t (*actorAdvance)(const hldata::ActorWorld &, hldata::ActorState &, int ms);
         int (*walkTick)(hldata::ActorWorld &, const hldata::MoveWorld &, int index, int small, const hldata::fx *dest,
                         hldata::fx speed, int ms, const hldata::PlayerState *player, hldata::fx half,
-                        hldata::fx height, bool still, std::uint16_t *idealYaw);
+                        hldata::fx height, bool still, std::uint16_t *idealYaw, int reach);
     };
 
     /// What the engine asks of the game. The first group is `Game`'s own

@@ -484,6 +484,9 @@ namespace hldata
         std::int32_t moveBlockedMs = 0;
         std::int32_t moveWaitFinished = 0;
         bool moveAsked = false; ///< the first plan of this move has been asked for
+        /// Its route's first plan has been made, or asked of the worker:
+        /// later ones look no further than the walk's own reach.
+        bool movePlanned = false;
         /// At its last think it was within reach of its goal: its next think's
         /// Move ends the move (AdvanceRoute, on the distance it starts with).
         bool moveNear = false;
