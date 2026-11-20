@@ -609,7 +609,18 @@ namespace hldata
         /// above to 32 below; for one that went off at what it met
         /// (ExplodeTouch), along `velocity`, 32 back to 32 on. No face met,
         /// where it is.
-        [[gnu::noinline]] inline void blastSpot(const MoveWorld &world, fx *pos, const fx *velocity, int damage)
+        /// ... the face found by a line `from`..`to` (a tripmine's: from 8
+        /// out from its wall to 64 behind it).
+        [[gnu::noinline]] inline void blastSpotOn(const MoveWorld &world, fx *pos, const fx *from, const fx *to, int damage)
+        {
+            const Trace t = tracePoint(world, from, to);
+            if (!t.hit || t.startSolid)
+                return;
+            const fx lift = fxFromInt(damage - 24) * 6 / 10;
+            for (int i = 0; i < 3; ++i)
+                pos[i] = t.endPos[i] + static_cast<fx>((static_cast<std::int64_t>(t.normal[i]) * lift) >> kNormalShift);
+        }
+        inline void blastSpot(const MoveWorld &world, fx *pos, const fx *velocity, int damage)
         {
             fx from[3] = {pos[0], pos[1], pos[2] + fxFromInt(8)};
             fx to[3] = {pos[0], pos[1], pos[2] - fxFromInt(32)};
@@ -623,12 +634,7 @@ namespace hldata
                     to[i] = pos[i] + along;
                 }
             }
-            const Trace t = tracePoint(world, from, to);
-            if (!t.hit || t.startSolid)
-                return;
-            const fx lift = fxFromInt(damage - 24) * 6 / 10;
-            for (int i = 0; i < 3; ++i)
-                pos[i] = t.endPos[i] + static_cast<fx>((static_cast<std::int64_t>(t.normal[i]) * lift) >> kNormalShift);
+            blastSpotOn(world, pos, from, to, damage);
         }
     } // namespace detail
     inline void monsterHurt(LogicWorld &w, int index, int damage, bool bullet, int group = kHitBody,
@@ -1906,9 +1912,15 @@ namespace hldata
                         if (shot.leftMs > 0)
                             continue;
                         shot.active = false;
-                        const fx at[3] = {shot.pos[0] + shot.velocity[0] * 8, shot.pos[1] + shot.velocity[1] * 8,
-                                          shot.pos[2] + shot.velocity[2] * 8};
-                        explodeAt(w, player, at, kMineBlast, true, true, true, grenadeSmoke(kMineBlast), true);
+                        // (Off its wall: DelayDeathThink's line, 8 out to 64
+                        // behind it.)
+                        fx at[3] = {shot.pos[0], shot.pos[1], shot.pos[2]};
+                        const fx out[3] = {shot.pos[0] + shot.velocity[0] * 8, shot.pos[1] + shot.velocity[1] * 8,
+                                           shot.pos[2] + shot.velocity[2] * 8};
+                        const fx behind[3] = {shot.pos[0] - shot.velocity[0] * 64, shot.pos[1] - shot.velocity[1] * 64,
+                                              shot.pos[2] - shot.velocity[2] * 64};
+                        blastSpotOn(*w.world, at, out, behind, kMineBlast);
+                        explodeAt(w, player, at, kMineBlast, true, true, true, grenadeSmoke(kMineBlast), true, shot.pos);
                         grenadeDebris(w, at);
                         continue;
                     }
@@ -2456,10 +2468,12 @@ namespace hldata
                 const bool satchel = shot.kind == kShotSatchel;
                 const bool grenade = shot.kind == kShotGrenade || gib || satchel;
                 // (Half gravity for what is thrown -- aerodynamic, the game
-                // says; a gib falls as anything does.)
+                // says; a gib falls as anything does, and a satchel once it
+                // has met anything: SatchelSlide.)
+                const bool whole = gib || (satchel && shot.sprite == 0xFFFE);
                 if (grenade)
                     shot.velocity[2] -= static_cast<fx>(
-                        (static_cast<std::int64_t>(gib ? gravityOf(player) : gravityOf(player) / 2) * ms) / 1000);
+                        (static_cast<std::int64_t>(whole ? gravityOf(player) : gravityOf(player) / 2) * ms) / 1000);
                 fx to[3];
                 for (int i = 0; i < 3; ++i)
                     to[i] = shot.pos[i] + static_cast<fx>((static_cast<std::int64_t>(shot.velocity[i]) * ms) / 1000);
@@ -2475,6 +2489,8 @@ namespace hldata
                             tossBounce(shot.velocity, t, gib ? kTossGib : (satchel ? kTossSatchel : kTossGrenade), ms,
                                        gravityOf(player));
                         tossOn(*w.world, t, shot.velocity, ms, to, true);
+                        if (satchel && shot.sprite == 0xFFFF)
+                            shot.sprite = 0xFFFE;
                         if (!gib && met == kTossBounced && w.heard != nullptr && fxLength(shot.velocity) > fxFromInt(60))
                         {
                             // (One of its three knocks: a grenade's quiet, a
@@ -5937,13 +5953,12 @@ namespace hldata
             }
             if (state.cooldownMs <= 0 && ((attack && out == 0) || second) && ars->satchels > 0 && w.actors != nullptr)
             {
-                fx from[3], velocity[3];
+                // (From where the player stands -- their middle -- as the
+                // game's Throw does.)
+                fx velocity[3];
                 for (int i = 0; i < 3; ++i)
-                {
-                    from[i] = eye[i] + forward[i] * 16;
                     velocity[i] = forward[i] * 274 + player.velocity[i];
-                }
-                if (!launch(kShotSatchel, from, velocity, 0x3FFFFFFF))
+                if (!launch(kShotSatchel, player.origin, velocity, 0x3FFFFFFF))
                     return did;
                 ars->satchels = static_cast<std::int16_t>(ars->satchels - 1);
                 state.cooldownMs = 1000;
@@ -5967,8 +5982,9 @@ namespace hldata
                 fx at[3], dir[3];
                 if (!traceShotWall(*w.world, eye, to, at, dir))
                     return did;
+                // (8 out from it, and the 32nd the engine stops short of it.)
                 for (int i = 0; i < 3; ++i)
-                    at[i] += dir[i] * 4;
+                    at[i] += dir[i] * 8 + (dir[i] >> 5);
                 if (!launch(kShotMine, at, dir, 2500))
                     return did;
                 ars->tripmines = static_cast<std::int16_t>(ars->tripmines - 1);
@@ -5995,15 +6011,37 @@ namespace hldata
             if (attack && state.cooldownMs <= 0 && ars->snarks > 0 && w.actors != nullptr && w.world != nullptr)
             {
                 state.cooldownMs = 300;
-                fx at[3], velocity[3];
+                // Where the game lets it go: along a line from 24 ahead of
+                // where the player stands (their middle; crouched, higher) to
+                // 60 ahead as they look, as far as that line goes. Ahead is
+                // level, turned to the look the more they look down; and
+                // that way it goes, at 200, and as the player went.
+                const fx level[3] = {-right[1], right[0], 0};
+                const fx flat[3] = {forward[0], forward[1], 0};
+                const fx down = -forward[2];
+                // (The level part: all of it looking level or up, else how
+                // far down they look, of a right angle -- the game's sum.)
+                const fx k = down <= 0 ? kFxOne : static_cast<fx>(fxAtan2Turns(down, fxLength(flat)) >> 2);
+                fx ahead[3], from[3], to[3], velocity[3];
+                for (int i = 0; i < 3; ++i)
+                    ahead[i] = fxMul(level[i], k) + fxMul(forward[i], kFxOne - k);
+                fx origin[3] = {player.origin[0], player.origin[1], player.origin[2]};
+                if (player.ducked)
+                    origin[2] += fxMul(fxFromInt(18), k + kFxOne);
                 for (int i = 0; i < 3; ++i)
                 {
-                    at[i] = eye[i] + forward[i] * 20 - up[i] * 8;
-                    velocity[i] = forward[i] * 200 + player.velocity[i];
+                    from[i] = origin[i] + ahead[i] * 24;
+                    to[i] = origin[i] + forward[i] * 60;
+                    velocity[i] = ahead[i] * 200 + player.velocity[i];
                 }
-                const Trace t = traceAll(*w.world, true, eye, at);
-                if (t.startSolid || t.fraction < kFractionOne)
+                const Trace line = tracePoint(*w.world, from, to);
+                if (line.startSolid || line.fraction == 0)
                     return did; // (no room in front)
+                // (It moves as a crouched person's box: its middle that high
+                // over where it is let go, if there is room for it there.)
+                const fx at[3] = {line.endPos[0], line.endPos[1], line.endPos[2] + kCrouchedFeet};
+                if (traceAll(*w.world, true, at, at).startSolid)
+                    return did;
                 if (!launch(kShotSnark, at, velocity, 15000))
                     return did;
                 ars->snarks = static_cast<std::int16_t>(ars->snarks - 1);

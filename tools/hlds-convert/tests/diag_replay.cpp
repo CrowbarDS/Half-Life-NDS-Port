@@ -657,7 +657,9 @@ int main(int argc, char **argv)
             slotWas[n] = true;
             std::fprintf(out, "proj,%d,%d,%.4f,%d,%s,%s,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,0,0,0\n", f, f, t,
                          1000 + n * 100 + slotUse[n] % 100, cls, sub, units(shot.pos[0]), units(shot.pos[1]),
-                         units(shot.pos[2]), units(shot.velocity[0]), units(shot.velocity[1]), units(shot.velocity[2]));
+                         // (One that moves as a box: where its feet are, the game's origin.)
+                         units(shot.pos[2] - (shotMovesAsBox(shot.kind) ? kCrouchedFeet : 0)), units(shot.velocity[0]),
+                         units(shot.velocity[1]), units(shot.velocity[2]));
         }
     }
     std::fprintf(out, "END,%d,%d,%.4f\n", scripted, scripted, timeMs / 1000.0);

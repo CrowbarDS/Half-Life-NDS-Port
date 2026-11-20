@@ -1169,7 +1169,7 @@ namespace hlrt
             else if (shot.kind == kShotMine)
             {
                 for (int k = 0; k < 3; ++k)
-                    thing.pos[k] -= dir[k] * 4; // (back onto the wall)
+                    thing.pos[k] -= dir[k] * 8; // (back onto the wall)
             }
             // Its forward along `dir`: yaw and pitch as the pieces have them.
             fx forward[3] = {kFxOne, 0, 0};
