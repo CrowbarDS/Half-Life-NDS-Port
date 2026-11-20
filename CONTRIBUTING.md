@@ -36,7 +36,7 @@ Install these under `$BLOCKSDSEXT` (`/opt/wonderful/thirdparty/blocksds/external
 
 | | |
 |---|---|
-| [BlocksDS](https://blocksds.skylyrac.net/docs/setup/) | The SDK and its ARM compiler; the code is C++26, so it needs a current one |
+| [BlocksDS](https://blocksds.skylyrac.net/docs/setup/) | The SDK and its ARM compiler; the code is C++26, so it needs a current one. Build the SDK from source at `BLOCKSDS_COMMIT` and point `HLDS_BLOCKSDS` at it: `make.sh` stops on any other version, since a newer libnds changes how its threads run |
 | [ptexconv](https://github.com/Garhoogin/ptexconv) | Used by the converter for textures |
 | [Nitro Engine Advanced](https://github.com/Warioware64/nitro-engine) | This fork: `make -f Makefile.blocksds install NEA_MAXMOD=1` |
 | [dswifi](https://github.com/Warioware64/dswifi) | This fork: `make && make install` puts it beside the stock one as `dswifi_dl` |

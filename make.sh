@@ -24,7 +24,21 @@ source "${VENV_DIR}/bin/activate"
 # (arm7_dswifi_maxmod.elf) can't be found. ${VAR:-default} keeps any value an
 # already-configured shell provides.
 export WONDERFUL_TOOLCHAIN="${WONDERFUL_TOOLCHAIN:-/opt/wonderful}"
-export BLOCKSDS="${BLOCKSDS:-${WONDERFUL_TOOLCHAIN}/thirdparty/blocksds/core}"
+# The BlocksDS the game is built with is pinned (docker/versions.env,
+# tools/blocksds_pin.py): the first of these that is that version. A newer
+# libnds elsewhere -- BLOCKSDS from ~/.bashrc -- is passed over, not used.
+BLOCKSDS_CANDIDATES=("${HLDS_BLOCKSDS:-}" "${BLOCKSDS:-}" /opt/blocksds/hl-known-good
+                     "${WONDERFUL_TOOLCHAIN}/thirdparty/blocksds/core" /opt/blocksds/core)
+if pinned="$(python "${SCRIPT_DIR}/tools/blocksds_pin.py" --pick "${BLOCKSDS_CANDIDATES[@]}")"; then
+    export BLOCKSDS="${pinned}"
+elif [ -z "${HLDS_BLOCKSDS_ANY:-}" ]; then
+    echo "ERROR: no BlocksDS $(python "${SCRIPT_DIR}/tools/blocksds_pin.py") found (looked in:" \
+         "${BLOCKSDS_CANDIDATES[*]})." >&2
+    echo "Build it from docker/versions.env's BLOCKSDS_COMMIT and set HLDS_BLOCKSDS, or HLDS_BLOCKSDS_ANY=1." >&2
+    exit 1
+else
+    export BLOCKSDS="${HLDS_BLOCKSDS:-${BLOCKSDS:-${WONDERFUL_TOOLCHAIN}/thirdparty/blocksds/core}}"
+fi
 export BLOCKSDSEXT="${BLOCKSDSEXT:-${WONDERFUL_TOOLCHAIN}/thirdparty/blocksds/external}"
 export PATH="${WONDERFUL_TOOLCHAIN}/bin:${PATH}"
 

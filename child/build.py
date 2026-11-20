@@ -30,6 +30,11 @@ import os
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'tools'))
+import blocksds_pin
+# (Only the pinned BlocksDS, as the parent's: ../tools/blocksds_pin.py.)
+blocksds_pin.check(os.environ.get('BLOCKSDS', '/opt/blocksds/core'))
+
 from architectds import *
 
 ROOT = os.path.abspath('..')

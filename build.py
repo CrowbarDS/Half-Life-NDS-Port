@@ -28,6 +28,12 @@
 # HLDS_JOBS=4 in the environment keeps ninja to four compilers at once.
 
 import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tools'))
+import blocksds_pin
+# (Only the pinned BlocksDS: tools/blocksds_pin.py. Before architectds reads it.)
+blocksds_pin.check(os.environ.get('BLOCKSDS', '/opt/blocksds/core'))
 
 from architectds import *
 
@@ -83,8 +89,6 @@ DTCM_DATA_SIZE = 1024
 # The wireless library with its IP stack, for online play (a DSi's only):
 # its Internet half moved to the DSi-only part of the program, which a DS
 # never loads (tools/wifi_twl.py). Made here, before the build is written.
-import sys
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tools'))
 import wifi_twl
 WIFI_TWL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build', 'wifi_twl')
 wifi_twl.make(os.path.join(os.path.expandvars('${BLOCKSDSEXT}'), 'dswifi_dl'), WIFI_TWL_DIR)

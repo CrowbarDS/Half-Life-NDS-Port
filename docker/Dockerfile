@@ -34,8 +34,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY versions.env fetch.sh /opt/hlds/
 
-# ptexconv, which the converter runs for textures. (BlocksDS and its compiler
-# are the image's own, at the versions it was made with.)
+# BlocksDS's libraries and start-up files, at the commit the game is pinned
+# to (versions.env), built from source over the image's own release. Its
+# tools are the release's: the pinned commit has the same ones (grit, mmutil,
+# ndstool... at their v1.25.0 tags), and this system's compiler is too old
+# to build mmutil. The version.txt written reads BLOCKSDS_VERSION, which
+# every build checks (tools/blocksds_pin.py).
+ARG SDK_JOBS=4
+RUN . /opt/hlds/versions.env && \
+    sh /opt/hlds/fetch.sh "$BLOCKSDS_REPO" "$BLOCKSDS_COMMIT" /tmp/blocksds && \
+    git -C /tmp/blocksds submodule update --init --recursive -q && \
+    cd /tmp/blocksds && \
+    for tool in "${BLOCKSDS}"/tools/*; do \
+        [ -d "tools/$(basename "$tool")" ] && cp -r "$tool/." "tools/$(basename "$tool")/"; \
+    done && \
+    BLOCKSDS=/tmp/blocksds make -C libs -j"${SDK_JOBS}" VERSION_STRING="$BLOCKSDS_VERSION" && \
+    BLOCKSDS=/tmp/blocksds make -C sys -j"${SDK_JOBS}" && \
+    BLOCKSDS=/tmp/blocksds make -C libs install INSTALLDIR="${BLOCKSDS}/libs" VERSION_STRING="$BLOCKSDS_VERSION" && \
+    BLOCKSDS=/tmp/blocksds make -C sys install INSTALLDIR="${BLOCKSDS}/sys" && \
+    echo "$BLOCKSDS_VERSION" > "${BLOCKSDS}/version.txt" && \
+    rm -rf /tmp/blocksds
+
+# ptexconv, which the converter runs for textures. (The compiler is the
+# image's own, at the version it was made with.)
 RUN . /opt/hlds/versions.env && \
     sh /opt/hlds/fetch.sh "$PTEXCONV_REPO" "$PTEXCONV_COMMIT" /tmp/ptexconv && \
     mkdir -p "${BLOCKSDSEXT}/ptexconv" && \

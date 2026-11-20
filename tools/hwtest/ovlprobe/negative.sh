@@ -6,7 +6,7 @@
 #   big      an overlay larger than the one its region is sized by (link)
 set -u
 cd "$(dirname "$0")"
-export BLOCKSDS="${BLOCKSDS:-/opt/blocksds/core}"
+export BLOCKSDS="${HLDS_BLOCKSDS:-/opt/blocksds/hl-known-good}"
 fail=0
 check() {
     local neg=$1 want=$2 out
