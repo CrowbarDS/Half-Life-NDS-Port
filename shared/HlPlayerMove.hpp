@@ -1720,9 +1720,11 @@ namespace hldata
 
         m.nudgeOutOfMovers();
         m.categorizePosition();
+        // The ladder looked for before a duck changes the player's size, as
+        // the game's PM_PlayerMove does; climbed after it.
+        const int ladder = m.findLadder();
         m.duck(cmd, ms);
 
-        const int ladder = m.findLadder();
         state.onLadder = ladder >= 0 && m.ladderMove(cmd, ladder);
         if (state.onLadder)
         {
