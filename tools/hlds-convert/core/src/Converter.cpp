@@ -699,7 +699,11 @@ namespace hlds
             out.far = modelReport.levels.empty() ? modelReport.triangles : modelReport.levels.back().triangles;
             // A DSi's file, where the game's own mesh is more than that, or
             // it has more clips.
-            if (modelReport.sourceTriangles > modelReport.triangles || clipsDsi.size() > clips.size())
+            // (A DS's clips played with another's frames -- "turn>idle" -- are
+            // not clips of their own: a DSi has the real ones.)
+            const auto own = std::count_if(clips.begin(), clips.end(),
+                                           [](const std::string &c) { return c.find('>') == std::string::npos; });
+            if (modelReport.sourceTriangles > modelReport.triangles || static_cast<long>(clipsDsi.size()) > own)
             {
                 CookedModel whole;
                 ModelCookReport wholeReport;

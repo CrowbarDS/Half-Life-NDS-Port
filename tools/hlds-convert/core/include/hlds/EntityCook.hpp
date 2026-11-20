@@ -105,8 +105,10 @@ namespace hlds
         bool activities = false;
         /// What a DS keeps of those: for each of these activities the
         /// heaviest clip, unless `clips` has one for it already. (What is left
-        /// out the game's code goes without: a plain death for one by where
-        /// the blow landed, the turn on the spot for a turn clip.)
+        /// out the game's code goes without -- a plain death for one by where
+        /// the blow landed -- but for a turn: that is kept as the game's code
+        /// sees it, played with the idle's frames, "turn>idle", since how
+        /// fast a monster turns goes by it.)
         std::vector<std::uint8_t> dsActivities;
     };
 

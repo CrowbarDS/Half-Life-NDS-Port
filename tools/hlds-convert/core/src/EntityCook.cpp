@@ -783,6 +783,32 @@ namespace hlds
             if (need.activities && seq.activity != 0 && !held(dsi, nameOf(seq)))
                 dsi.push_back(nameOf(seq));
         }
+        // (A turn the DS has no frames for is still there for the game's
+        // code -- SetTurnActivity, and the yaw speed a monster has while it
+        // turns -- played with its idle's frames: "turn>idle", ModelCook.cpp.)
+        if (!need.activities || need.dsActivities.empty())
+            return;
+        const MdlSequence *idle = nullptr;
+        for (const MdlSequence &seq : mdl.sequences)
+        {
+            if (seq.activity == kActIdle && held(ds, nameOf(seq)) && (idle == nullptr || seq.actWeight > idle->actWeight))
+                idle = &seq;
+        }
+        for (const std::uint8_t turn : {kActTurnLeft, kActTurnRight})
+        {
+            const MdlSequence *heaviest = nullptr;
+            bool has = false;
+            for (const MdlSequence &seq : mdl.sequences)
+            {
+                if (seq.activity != turn)
+                    continue;
+                has = has || held(ds, nameOf(seq));
+                if (heaviest == nullptr || seq.actWeight > heaviest->actWeight)
+                    heaviest = &seq;
+            }
+            if (heaviest != nullptr && !has && idle != nullptr)
+                ds.push_back(nameOf(*heaviest) + ">" + nameOf(*idle));
+        }
     }
 
     bool isMultiplayerMap(const std::vector<Entity> &entities)

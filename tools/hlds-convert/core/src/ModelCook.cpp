@@ -853,10 +853,30 @@ namespace hlds
 
         // ---- the clips
         // (By its label; or "@n", the model's n-th sequence, for one whose
-        // label another has too -- both of a roach's are "run".)
+        // label another has too -- both of a roach's are "run". And
+        // "label>base": the sequence `label` as the game's code sees it --
+        // its name, what it is for, how often it is chosen -- played with
+        // the frames of the clip `base`, which is cooked too: a DS without
+        // room for a turn's own frames still turns as the game does,
+        // looking as it stands meanwhile.)
+        auto sequenceOf = [&](const std::string &label) {
+            if (label.size() > 1 && label[0] == '@')
+            {
+                const int at = std::atoi(label.c_str() + 1);
+                return at >= 0 && at < static_cast<int>(mdl.sequences.size()) ? at : -1;
+            }
+            return label.empty() ? -1 : mdl.sequenceByName(label);
+        };
+        std::vector<std::pair<std::string, std::string>> aliases;
         std::vector<int> wanted;
         for (const std::string &name : clipNames)
         {
+            const std::string::size_type to = name.find('>');
+            if (to != std::string::npos)
+            {
+                aliases.emplace_back(lower(name.substr(0, to)), lower(name.substr(to + 1)));
+                continue;
+            }
             const std::string label = lower(name);
             int index = -1;
             if (label.size() > 1 && label[0] == '@')
@@ -1109,6 +1129,31 @@ namespace hlds
                 clip.blendHigh = static_cast<std::int8_t>(std::clamp(std::lround(seq.blendEnd), -128L, 127L));
             }
             report.sourceFrames += frameCount * boneCount;
+            out.clips.push_back(clip);
+        }
+        for (const auto &[label, base] : aliases)
+        {
+            const int index = sequenceOf(label), from = sequenceOf(base);
+            int baseClip = -1;
+            for (std::size_t c = 0; from >= 0 && c < out.clips.size(); ++c)
+            {
+                if (out.clips[c].name == nameHash(lower(mdl.sequences[from].label).c_str()))
+                    baseClip = static_cast<int>(c);
+            }
+            if (index < 0 || baseClip < 0)
+            {
+                report.missingClips.push_back(label + ">" + base);
+                continue;
+            }
+            const MdlSequence &seq = mdl.sequences[index];
+            ModelClip clip = out.clips[baseClip];
+            clip.name = nameHash(lower(seq.label).c_str());
+            clip.flags = static_cast<std::uint16_t>((clip.flags & kClipLoops) | (std::clamp(seq.activity, 0, 255) << 8) |
+                                                    (std::clamp(seq.actWeight, 0, 63) << 2));
+            // (None of the base's events: they are what the base does.)
+            clip.firstEvent = static_cast<std::uint16_t>(out.events.size());
+            clip.eventCount = 0;
+            clipFirstZ.push_back(clipFirstZ[baseClip]);
             out.clips.push_back(clip);
         }
         report.clips = static_cast<int>(out.clips.size());
