@@ -667,13 +667,14 @@ namespace hldata
 
         inline int yawSpeed(AiCtx &) { return 360; }
 
-        /// GetGunPosition: m_HackedGunPos, 24 to its right and 48 up.
+        /// GetGunPosition: m_HackedGunPos (0, 24, 48) -- its y is ahead, its
+        /// x to the right: 24 ahead of her and 48 up.
         inline void gunPosition(const AiCtx &c, fx *at)
         {
-            fx right[3];
-            aiRight(c.me.yaw, right);
+            fx forward[3];
+            aiForward(c.me.yaw, forward);
             for (int k = 0; k < 3; ++k)
-                at[k] = c.me.pos[k] + right[k] * 24;
+                at[k] = c.me.pos[k] + forward[k] * 24;
             at[2] += fxFromInt(48);
         }
 
@@ -794,7 +795,8 @@ namespace hldata
                 dir[k] = static_cast<fx>((static_cast<std::int64_t>(dir[k]) << kFxShift) / far);
             fx end[3];
             const std::int16_t hit = aiTraceLine(c, gun, dir, fxToInt(far) + 1, end);
-            return hit == c.m.enemy || hit == kAiNone;
+            // (The enemy struck, or nothing at all on the way: not the world.)
+            return hit == c.m.enemy || (hit == kAiNone && lineClear(*c.w.world, gun, t.center));
         }
 
         /// A grenade, once it has grown frustrated: at what stands within
