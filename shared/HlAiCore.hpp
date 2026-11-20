@@ -3076,7 +3076,9 @@ namespace hldata
             const fx shift = monsterHullShift(c.me.kind);
             const fx from[3] = {c.me.pos[0] + shift, c.me.pos[1] + shift, c.me.pos[2] + lift + fxFromInt(1)};
             const fx to[3] = {c.me.pos[0] + shift, c.me.pos[1] + shift, c.me.pos[2] + lift - fxFromInt(2)};
-            const Trace under = traceAll(*c.w.world, small, from, to);
+            // (A point, at its feet, for the one the engine moves as one.)
+            const Trace under = monsterIsPoint(c.me.kind) ? detail::pointTrace(*c.w.world, small, from, to)
+                                                         : traceAll(*c.w.world, small, from, to);
             // (Nothing, or only someone, under it: someone is no floor.)
             if (!under.startSolid && (under.fraction >= kFractionOne || under.box >= 0))
             {

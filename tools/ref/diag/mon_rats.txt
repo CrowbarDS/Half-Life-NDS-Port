@@ -1,0 +1,6 @@
+# The hazard course's rats (t0a0b), the player standing at the start: where
+# each settles, moved as the engine moves them -- a point, having no size.
+# map t0a0b
+# start -1752 676 -152 90
+# keep func_.*|monster_rat|info_node.*
+600 0 0 90 0      # ten seconds

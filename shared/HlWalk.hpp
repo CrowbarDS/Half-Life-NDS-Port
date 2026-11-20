@@ -257,8 +257,37 @@ namespace hldata
 #endif
     }
 
+    /// Whether the engine moves a monster as a point (hull 0, for what is 8
+    /// units across or less), of those that walk as the game's monsters do:
+    /// the rat, which has no size at all. (A roach, a leech and a snark
+    /// move as points their own ways: HlAliens.hpp.)
+    inline bool monsterIsPoint(std::uint8_t kind)
+    {
+#ifdef HL_DSL
+        (void)kind; // (none in a library)
+        return false;
+#else
+        return kind == static_cast<std::uint8_t>(ActorKind::Rat);
+#endif
+    }
+
     namespace detail
     {
+        /// walkerTrace for a point (monsterIsPoint): at its feet, through the
+        /// world and the brushes (tracePoint), and against the others' boxes
+        /// at no size of its own (the engine's SV_HullForBox).
+        HL_WARM __attribute__((noinline)) Trace pointTrace(const MoveWorld &world, bool small, const fx *start,
+                                                            const fx *end)
+        {
+            const fx lift = small ? kCrouchedFeet : kStandingFeet;
+            const fx from[3] = {start[0], start[1], start[2] - lift};
+            const fx to[3] = {end[0], end[1], end[2] - lift};
+            Trace t = tracePoint(world, from, to);
+            traceBoxes(world, from, to, 0, 0, t);
+            t.endPos[2] += lift;
+            return t;
+        }
+
         /// traceAll for one whose hull is `shift` off its middle along x and y
         /// (monsterHullShift): the world and the brushes with the hull there
         /// (the engine's SV_HullForBsp); the actors' boxes as its own box
@@ -279,6 +308,21 @@ namespace hldata
             return t;
         }
 
+        /// Whether the engine's hull is not the walk's own for `kind`: off its
+        /// middle (monsterHullShift), or a point (monsterIsPoint).
+        inline bool monsterTracedApart(std::uint8_t kind)
+        {
+            return kind != 0 && (monsterIsPoint(kind) || monsterHullShift(kind) != 0);
+        }
+        /// ... and its trace, as the engine's: called, not inlined, from the
+        /// walkers in ITCM.
+        HL_WARM __attribute__((noinline)) Trace apartTrace(const MoveWorld &world, bool small, const fx *start,
+                                                            const fx *end, std::uint8_t kind)
+        {
+            return monsterIsPoint(kind) ? pointTrace(world, small, start, end)
+                                        : shiftedTrace(world, small, start, end, monsterHullShift(kind));
+        }
+
         /// A trace as the thing at `index` (or as nobody, -1): its own box
         /// is not in its way, and the hull is where the engine's is for it
         /// (monsterHullShift).
@@ -289,8 +333,9 @@ namespace hldata
             const bool was = own != nullptr && own->active;
             if (own != nullptr)
                 own->active = false;
-            const fx shift = a != nullptr && index >= 0 ? monsterHullShift(a->states[index].kind) : 0;
-            const Trace t = shift == 0 ? traceAll(world, small, start, end) : shiftedTrace(world, small, start, end, shift);
+            const std::uint8_t kind = a != nullptr && index >= 0 ? a->states[index].kind : 0;
+            const Trace t = monsterTracedApart(kind) ? apartTrace(world, small, start, end, kind)
+                                                     : traceAll(world, small, start, end);
             if (own != nullptr)
                 own->active = was;
             return t;

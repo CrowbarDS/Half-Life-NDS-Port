@@ -1882,9 +1882,10 @@ it meets but never steps up: c1a1c's crabs are held by the parked lift's
 6-unit lip, and one stands under hck4, which therefore makes none
 (`mon_crabmaker`). Still apart there: the game's crabs stop 4.8 units
 further on than the port's, and why is not known yet.
-Still apart: what the engine moves as a point (hull 0: a rat, a roach, a
-leech, a snark, all 8 units across or less) the port moves in the
-crouching hull.
+What the engine moves as a point (hull 0, for what is 8 units across or
+less) the port moves as one too: a roach, a leech and a snark their own
+ways, and a rat -- which has no size, and walks as a monster -- by the
+walk's point trace (`monsterIsPoint`).
 
 ## The pass's budget
 
