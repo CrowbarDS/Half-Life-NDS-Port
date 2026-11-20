@@ -1657,9 +1657,15 @@ namespace hldata
         state.onLadder = ladder >= 0 && m.ladderMove(cmd, ladder);
         if (state.onLadder)
         {
+            // The game's fly move (PM_PlayerMove's MOVETYPE_FLY): the water
+            // seen, what carries the player taken along for the move and
+            // left out after it; and the ground as it was found before the
+            // move, not looked for again after it.
+            m.checkWater();
             m.checkVelocity();
+            m.carry(1, true);
             m.flyMove();
-            m.categorizePosition();
+            m.carry(-1, true);
             return;
         }
 
