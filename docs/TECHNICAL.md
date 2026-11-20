@@ -1895,6 +1895,13 @@ schedule starts at the think the game's does. Still apart: on its way the
 game stops on each waypoint and loses a think there (a think's move goes
 no further than the waypoint it began with), where the port's walk turns
 20 units before a node and goes on.
+A grunt holds its fire while a squadmate stands in the game's NoFriendlyFire
+volume, which leans the wrong way: its "ahead" comes from UTIL_VecToAngles
+and goes back through UTIL_MakeVectors, which read pitch the opposite way
+up, so with its enemy's middle above its feet it tilts down, and a squadmate
+in cover on the floor below, even a little behind, is in the way. In
+`mon_squad` that keeps the game's grunt running in to kick the player,
+rather than stopping to fire as soon as it has passed its squadmate.
 
 ## The pass's budget
 

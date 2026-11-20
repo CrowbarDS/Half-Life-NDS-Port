@@ -429,9 +429,14 @@ namespace hldata
             AiTarget t;
             if (!aiTargetOf(c.w, c.player, c.m.enemy, t))
                 return false;
-            const std::uint16_t yaw = fxAtan2Turns(t.center[1] - c.me.pos[1], t.center[0] - c.me.pos[0]);
-            fx forward[3], right[3];
-            aiForward(yaw, forward);
+            // The way to the enemy's middle, as UTIL_VecToAngles gives it
+            // and UTIL_MakeVectors reads it back: with its pitch the wrong
+            // way up, so that "ahead" leans down where the enemy is above
+            // (the game's own BUGBUG) -- a squadmate on the floor below,
+            // well behind, is in the way all the same.
+            const fx to[3] = {t.center[0] - c.me.pos[0], t.center[1] - c.me.pos[1], t.center[2] - c.me.pos[2]};
+            const std::uint16_t yaw = fxAtan2Turns(to[1], to[0]);
+            fx right[3];
             aiRight(yaw, right);
             for (int i = 0; i < kMaxSquadMembers; ++i)
             {
@@ -439,11 +444,16 @@ namespace hldata
                 if (id == kAiNone || id == c.index)
                     continue;
                 const fx *p = c.a.states[id].pos;
-                const fx d[2] = {p[0] - c.me.pos[0], p[1] - c.me.pos[1]};
-                const std::int64_t ahead = static_cast<std::int64_t>(d[0]) * forward[0] + static_cast<std::int64_t>(d[1]) * forward[1];
+                const fx d[3] = {p[0] - c.me.pos[0], p[1] - c.me.pos[1], p[2] - c.me.pos[2]};
+                // (Only the sign of how far ahead counts: no need to make
+                // the way a unit long.)
+                const std::int64_t ahead = static_cast<std::int64_t>(d[0]) * to[0] +
+                                           static_cast<std::int64_t>(d[1]) * to[1] -
+                                           static_cast<std::int64_t>(d[2]) * to[2];
                 const std::int64_t side = static_cast<std::int64_t>(d[0]) * right[0] + static_cast<std::int64_t>(d[1]) * right[1];
+                // (size.x * 1.5 to either side; on a plane is in front.)
                 const std::int64_t width = static_cast<std::int64_t>(fxFromInt(48)) * kFxOne;
-                if (ahead > 0 && side < width && side > -width)
+                if (ahead >= 0 && side <= width && side >= -width)
                     return false;
             }
             return true;
