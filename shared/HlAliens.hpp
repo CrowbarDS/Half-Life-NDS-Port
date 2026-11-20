@@ -134,6 +134,7 @@ namespace hldata
         {
             const fx far = aiDist2D(c.m.vec1, c.me.pos);
             c.me.yaw = fxAtan2Turns(c.m.vec1[1] - c.me.pos[1], c.m.vec1[0] - c.me.pos[0]);
+            c.m.turning = false; // (its own turn: none of ChangeYaw's under way)
             fx forward[3];
             aiForward(c.me.yaw, forward);
             const fx speed = c.m.groundSpeed > 0 ? c.m.groundSpeed : monsterKind(c.me.kind).speed;
@@ -1589,6 +1590,7 @@ namespace hldata
             const int yawRate = static_cast<std::int16_t>(c.m.idealYaw) * 360 / 65536;
             const int scaled = c.m.flag1 ? static_cast<int>((static_cast<std::int64_t>(yawRate) * c.m.value2) >> kFxShift) : yawRate;
             c.me.yaw = static_cast<std::uint16_t>(c.me.yaw + scaled * 65536 / 360 * ms / 1000);
+            c.m.turning = false; // (its own turn: none of ChangeYaw's under way)
             fx forward[3];
             facing(c, forward);
             for (int k = 0; k < 3; ++k)
@@ -2410,6 +2412,7 @@ namespace hldata
             const int turnMost = fxToInt(c.m.value1) * 65536 / 3600; // (speed * 0.1 degrees)
             const int turn = velYaw > turnMost ? turnMost : (velYaw < -turnMost ? -turnMost : velYaw);
             c.me.yaw = static_cast<std::uint16_t>(c.me.yaw + turn);
+            c.m.turning = false; // (its own turn: none of ChangeYaw's under way)
             c.m.idealYaw = c.me.yaw;
             int roll = static_cast<std::int16_t>(c.me.aimYaw) - turn;
             const int rollMost = 20 * 65536 / 360;
@@ -3329,6 +3332,7 @@ namespace hldata
             const int diff = static_cast<std::int16_t>(c.m.idealYaw - c.me.yaw);
             const int most = 180 * 65536 / 360 * ms / 1000;
             c.me.yaw = static_cast<std::uint16_t>(c.me.yaw + (diff > most ? most : (diff < -most ? -most : diff)));
+            c.m.turning = false; // (its own turn: none of ChangeYaw's under way)
         }
 
         inline void animEvent(AiCtx &c, int event)
@@ -4451,6 +4455,7 @@ namespace hldata
                     c.me.pos[k] += static_cast<fx>((static_cast<std::int64_t>(c.me.velocity[k]) * ms) / 1000);
                 c.me.yaw = static_cast<std::uint16_t>(
                     c.me.yaw + static_cast<std::int32_t>((static_cast<std::int64_t>(c.m.vec1[1]) * 65536 * ms) / (360LL * kFxOne * 1000)));
+                c.m.turning = false; // (its own turn: none of ChangeYaw's under way)
                 c.m.idealYaw = c.me.yaw;
                 actorPlaceBox(c.a, c.index);
             }
@@ -4737,6 +4742,7 @@ namespace hldata
             fx toLeader[3] = {head.pos[0] - c.me.pos[0], head.pos[1] - c.me.pos[1], head.pos[2] - c.me.pos[2]};
             const fx dist = fxLength(toLeader);
             c.me.yaw = head.yaw;
+            c.m.turning = false; // (its own turn: none of ChangeYaw's under way)
             c.me.wantPitch = head.wantPitch;
             c.me.wantYaw = head.wantYaw;
             const fx leaderSpeed = fxLength(head.velocity);
@@ -4834,6 +4840,7 @@ namespace hldata
             {
                 auto turn = [&](fx rate) { return static_cast<std::int32_t>((static_cast<std::int64_t>(rate) * 65536 * ms) / (360LL * kFxOne * 1000)); };
                 c.me.yaw = static_cast<std::uint16_t>(c.me.yaw + turn(c.m.vec1[1]));
+                c.m.turning = false; // (its own turn: none of ChangeYaw's under way)
                 c.m.idealYaw = c.me.yaw;
                 c.me.wantPitch = static_cast<std::uint16_t>(c.me.wantPitch + turn(c.m.vec1[0]));
                 c.me.wantYaw = static_cast<std::uint16_t>(c.me.wantYaw + turn(c.m.vec1[2]));

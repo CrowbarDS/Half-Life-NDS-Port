@@ -447,7 +447,7 @@ namespace hldata
     };
 
     /// What one monster thinks (the CBaseMonster fields that are not its
-    /// entity's). Not saved.
+    /// entity's). Saved field by field (HlAiSave.hpp).
     struct AiMonster
     {
         std::int16_t actor = -1;
@@ -488,7 +488,12 @@ namespace hldata
         fx groundSpeed = 0;
         // Turning.
         std::uint16_t idealYaw = 0;
-        bool turning = false; ///< a task is turning it to idealYaw
+        /// A turn under way: what ChangeYaw turned it to (yawGoal), shown a
+        /// frame at a time (aiTurnTick) at turnRate a think.
+        bool turning = false;
+        std::uint16_t yawGoal = 0;
+        std::uint16_t turnRate = 0;
+        std::int32_t lastYawMs = -1; ///< m_flLastYawTime (-1: never turned)
         int yawSpeed = 0;     ///< pev->yaw_speed, degrees
         // Time.
         std::int32_t thinkMs = 0;

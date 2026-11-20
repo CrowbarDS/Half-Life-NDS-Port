@@ -257,6 +257,7 @@ namespace hldata
                 c.me.velocity[k] = vel1(c)[k] + fxMul(vel2(c)[k] - vel1(c)[k], f);
             }
             c.me.yaw = turnsOf(c.m.value1 + fxMul(c.m.value2 - c.m.value1, f));
+            c.m.turning = false; // (its own turn: none of ChangeYaw's under way)
             c.m.idealYaw = c.me.yaw;
         }
 
@@ -455,6 +456,7 @@ namespace hldata
                 for (int k = 0; k < 3; ++k)
                     c.me.pos[k] += static_cast<fx>((static_cast<std::int64_t>(to[k] - c.me.pos[k]) * shot.fraction) >> kFractionShift);
                 c.me.yaw = static_cast<std::uint16_t>(c.me.yaw + c.m.count1 * ms / 1000);
+                c.m.turning = false; // (its own turn: none of ChangeYaw's under way)
                 // (Explosions about it as it falls, five a second.)
                 c.m.time3 -= ms;
                 if (c.m.time3 <= 0 && c.ai.now < c.m.time1)
@@ -1426,6 +1428,7 @@ namespace hldata
             }
             c.me.wantPitch = static_cast<std::uint16_t>(c.me.wantPitch + turnsOf(static_cast<fx>((static_cast<std::int64_t>(av[0]) * ms) / 1000)));
             c.me.yaw = static_cast<std::uint16_t>(c.me.yaw + turnsOf(static_cast<fx>((static_cast<std::int64_t>(av[1]) * ms) / 1000)));
+            c.m.turning = false; // (its own turn: none of ChangeYaw's under way)
             c.me.wantYaw = static_cast<std::uint16_t>(c.me.wantYaw + turnsOf(static_cast<fx>((static_cast<std::int64_t>(av[2]) * ms) / 1000)));
             c.m.idealYaw = c.me.yaw;
             fx to[3];

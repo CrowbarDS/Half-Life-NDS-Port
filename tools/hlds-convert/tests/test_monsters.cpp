@@ -1431,14 +1431,17 @@ namespace
         monsterHurt(g.logic, crab, 1, false);
         bool solid = false;
         int frames = 0;
-        // (While it walks it turns at its own yaw speed, yaw_speed * 2
-        // degrees a second -- not faster, whatever the way does.)
+        // (While it walks it turns at its own yaw speed: the game's
+        // ChangeYaw turns it yaw_speed * 2 degrees a second of the time since
+        // it last turned, a quarter of a second's at most, in a think -- here
+        // shown over the think's tenth of a second. Not faster, whatever the
+        // way does.)
         int walkedTurn = 0, tooFast = 0;
         for (; frames < 30 * 40 && g.player.health == 100; ++frames)
         {
             const AiMonster *m = aiFind(g.actors, crab);
             const bool walking = m != nullptr && m->movementGoal != kMoveGoalNone && !m->inAir;
-            const int most = m != nullptr ? (m->yawSpeed * 2 * 65536 * 33) / (360 * 1000) + 2 : 0;
+            const int most = m != nullptr ? (m->yawSpeed * 2 * 65536 / 4 / 360) * 34 / kAiThinkMs + 2 : 0; // (a tick: 33 or 34 ms)
             const std::uint16_t before = actor.yaw;
             tick(g, 2);
             solid = solid || inSolid(g, actor);

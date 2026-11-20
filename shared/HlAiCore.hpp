@@ -293,10 +293,14 @@ namespace hldata
         }
         c.m.idealYaw = fxAtan2Turns(dy, dx);
     }
+    /// Its yaw as the game's is: where the turn under way takes it (the
+    /// game's turns at once, in the think; this one is shown over the frames
+    /// after, aiTurnTick).
+    inline std::uint16_t aiYaw(const AiCtx &c) { return c.m.turning ? c.m.yawGoal : c.me.yaw; }
     /// FlYawDiff, in 65536ths of a turn.
     inline int aiYawDiff(const AiCtx &c)
     {
-        return static_cast<std::int16_t>(c.m.idealYaw - c.me.yaw);
+        return static_cast<std::int16_t>(c.m.idealYaw - aiYaw(c));
     }
     /// FacingIdeal
     inline bool aiFacingIdeal(const AiCtx &c)
@@ -304,23 +308,50 @@ namespace hldata
         const int d = aiYawDiff(c);
         return d <= 1 && d >= -1;
     }
-    /// ChangeYaw: it turns, at its yaw speed, until the next think (done a
-    /// frame at a time: aiTurnTick).
+    /// ChangeYaw, with the game's monsteryawspeedfix: it turns towards its
+    /// ideal yaw by yaw_speed * 2 degrees a second of the time since it last
+    /// turned (a quarter of a second at most; its very first turn, a
+    /// frame's). The game's is done at once, in the think; here that is
+    /// where it is taken to be (aiYaw), and it is shown turning there over
+    /// the next tenth of a second (aiTurnTick).
     inline void aiChangeYaw(AiCtx &c)
     {
+        const int diff = aiYawDiff(c);
+        if (diff == 0)
+            return;
+        // (In 16ths of a ms; the turn in 65536ths of one: 2 / 16000 s / 360
+        // degrees, Q16.)
+        const std::int32_t since = c.m.lastYawMs < 0 ? 267 : 16 * std::min<std::int32_t>(c.ai.now - c.m.lastYawMs, 250);
+        c.m.lastYawMs = c.ai.now;
+        const int most = static_cast<int>(
+            (static_cast<std::uint64_t>(c.m.yawSpeed > 0 ? c.m.yawSpeed : 0) * static_cast<std::uint32_t>(since) * 1491u) >> 16);
+        const int turn = diff > most ? most : (diff < -most ? -most : diff);
+        if (turn == 0)
+            return;
+        c.m.yawGoal = static_cast<std::uint16_t>(aiYaw(c) + turn);
         c.m.turning = true;
+        const int shown = static_cast<std::int16_t>(c.m.yawGoal - c.me.yaw);
+        c.m.turnRate = static_cast<std::uint16_t>(shown < 0 ? -shown : shown);
     }
+    /// The turn under way, shown: a think's turn spread over the think.
     inline void aiTurnTick(AiCtx &c, int ms)
     {
         if (!c.m.turning)
             return;
-        const int diff = aiYawDiff(c);
-        if (diff == 0)
+        const int left = static_cast<std::int16_t>(c.m.yawGoal - c.me.yaw);
+        // (Never faster to see than the most the game turns in a think --
+        // a quarter of a second's, at yaw_speed * 2 degrees a second -- over
+        // that think: a turn begun before the last is shown is shown later.)
+        const int fastest = (c.m.yawSpeed > 0 ? c.m.yawSpeed : 0) * 2 * 65536 / 4 / 360;
+        const int rate = c.m.turnRate < fastest ? c.m.turnRate : fastest;
+        const int step = (rate * ms + kAiThinkMs - 1) / kAiThinkMs;
+        if (left >= -step && left <= step)
+        {
+            c.me.yaw = c.m.yawGoal;
+            c.m.turning = false;
             return;
-        // (The game's monsteryawspeedfix: yaw_speed * 2 degrees a second.)
-        const int most = static_cast<int>((static_cast<std::int64_t>(c.m.yawSpeed) * 2 * 65536 * ms) / (360 * 1000));
-        const int turn = diff > most ? most : (diff < -most ? -most : diff);
-        c.me.yaw = static_cast<std::uint16_t>(c.me.yaw + turn);
+        }
+        c.me.yaw = static_cast<std::uint16_t>(c.me.yaw + (left > 0 ? step : -step));
     }
 
     // ------------------------------------------------------------ the clips
@@ -3737,7 +3768,6 @@ namespace hldata
     /// MonsterThink: ten times a second.
     inline void aiMonsterThink(AiCtx &c)
     {
-        c.m.turning = false;
         // (Where its eyes are: what it can see of the map, and whoever
         // looks at it, go by that.)
         {
@@ -3855,7 +3885,10 @@ namespace hldata
             aiMonsterThink(c);
             HL_DIAG_ONLY({
                 const AiTask *task = aiGetTask(c);
-                HL_DIAG(monster, diag::Monster{index, c.me.pos, c.me.yaw, c.m.state, c.m.idealState,
+                // (Its yaw as the game's is after the think: the turn shown
+                // over the next frames is done there.)
+                HL_DIAG(monster, diag::Monster{index, c.me.pos, aiYaw(c), c.m.state,
+                                               c.m.idealState,
                                                c.m.schedule != nullptr ? c.m.schedule->name : nullptr,
                                                task != nullptr ? c.m.scheduleIndex : -1, task != nullptr ? static_cast<int>(task->task) : -1,
                                                c.m.conditions, c.m.enemy, c.m.activity, c.me.clip, c.me.health,
