@@ -5,8 +5,10 @@
 
 #if HL_OVL_COUNT > 0
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
+#include <filesystem.h>
 #include <nds/arm9/cache.h>
 #endif
 
@@ -41,6 +43,12 @@ extern "C"
 }
 #endif
 
+#if HL_OVL_COUNT > 0 && defined(HL_OVL_FROM_ROM)
+// Each overlay's sum (OverlaySums.cpp): read through this declaration alone,
+// so that nothing is compiled with the placeholder's values in place of it.
+extern "C" const std::uint32_t hlOvlSums[HL_OVL_COUNT];
+#endif
+
 namespace hlrt::ovl
 {
 #if HL_OVL_COUNT > 0
@@ -68,7 +76,9 @@ namespace hlrt::ovl
 #undef HL_OVL_REGION_BOUNDS
         };
 
-        // The pack's table (tools/ovl.py: PACK), kept from init.
+        // The pack's table (tools/ovl.py: PACK), kept from init; or, read
+        // from the ROM's own overlay table, the same made from the program's
+        // own word on each (its file's size checked).
         struct Entry
         {
             char name[16];
@@ -76,7 +86,15 @@ namespace hlrt::ovl
         };
         static_assert(sizeof(Entry) == 48, "tools/ovl.py: PACK_ENTRY");
         Entry table[HL_OVL_COUNT];
+#ifdef HL_OVL_FROM_ROM
+        // Each overlay's own file in the ROM (by its number in the table:
+        // the id of its file in the FAT), open for good; -1 for one with
+        // nothing on the card.
+        int fds[HL_OVL_COUNT];
+        bool ready = false; // (init found them all)
+#else
         int fd = -1;
+#endif
         Id inRegion[HL_OVL_REGION_COUNT];
         LeaveCheck leaveChecks[HL_OVL_COUNT];
 
@@ -98,6 +116,22 @@ namespace hlrt::ovl
 
         int index(Id id) { return static_cast<int>(id) - 1; }
 
+#ifdef HL_OVL_FROM_ROM
+        /// A file of the ROM's FAT, by its id, as open() would give it.
+        /// (libnds's nitroFSOpenById, up to at least 2026-11, gives the
+        /// descriptor without NitroFS's mark in its top bits, which open()
+        /// adds: read, lseek and fstat would take it for a network socket.
+        /// The mark added here if it is not there.)
+        int openById(std::uint16_t id)
+        {
+            constexpr int kNitroDevice = 2; // (libnds: FD_TYPE_NITRO)
+            int f = nitroFSOpenById(id);
+            if (f >= 0 && (static_cast<std::uint32_t>(f) >> 28) == 0)
+                f |= kNitroDevice << 28;
+            return f;
+        }
+#endif
+
         [[noreturn]] void fail(const char *what, Id id)
         {
             hlOvlHalt(what, id == Id::None ? "" : kKnown[index(id)].name);
@@ -109,6 +143,48 @@ namespace hlrt::ovl
         const char *ignored = nullptr;
         if (why == nullptr)
             why = &ignored;
+#ifdef HL_OVL_FROM_ROM
+        (void)path;
+        for (int &f : fds)
+            f = -1;
+        for (int i = 0; i < HL_OVL_COUNT; ++i)
+        {
+            const Known &k = kKnown[i];
+            Entry &e = table[i];
+            std::memset(&e, 0, sizeof(e));
+            std::strncpy(e.name, k.name, sizeof(e.name) - 1);
+            e.region = k.region;
+            e.address = static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(k.start));
+            e.load = static_cast<std::uint32_t>(k.loadEnd - k.start);
+            e.bss = static_cast<std::uint32_t>(k.end - k.loadEnd);
+            e.sum = hlOvlSums[i];
+        }
+        // (Opened once, here at start-up: each handle is a little of the
+        // heap, and none is opened again.)
+#define HL_OVL_OPEN(I, file)                                                                                           \
+    {                                                                                                                  \
+        const int i = index(Id::I);                                                                                    \
+        fds[i] = openById(static_cast<std::uint16_t>(file));                                                           \
+        struct stat st;                                                                                                \
+        if (fds[i] < 0 || fstat(fds[i], &st) != 0 || static_cast<std::uint32_t>(st.st_size) != table[i].load)          \
+        {                                                                                                              \
+            *why = "the ROM's overlay table is not this program's (made without it?)";                                 \
+            for (int &f : fds)                                                                                         \
+            {                                                                                                          \
+                if (f >= 0)                                                                                            \
+                    close(f);                                                                                          \
+                f = -1;                                                                                                \
+            }                                                                                                          \
+            return false;                                                                                              \
+        }                                                                                                              \
+    }
+        HL_OVL_FILES(HL_OVL_OPEN)
+#undef HL_OVL_OPEN
+        for (Id &r : inRegion)
+            r = Id::None;
+        ready = true;
+        return true;
+#else
         fd = open(path != nullptr ? path : "nitro:/ovl/arm9.ovl", O_RDONLY);
         if (fd < 0)
         {
@@ -157,6 +233,7 @@ namespace hlrt::ovl
         for (Id &r : inRegion)
             r = Id::None;
         return true;
+#endif
     }
 
     namespace
@@ -174,8 +251,13 @@ namespace hlrt::ovl
                 return true;
             if (inInterrupt())
                 fail("An overlay was asked for from an interrupt:", id);
+#ifdef HL_OVL_FROM_ROM
+            if (!ready)
+                fail("No overlay table to load from:", id);
+#else
             if (fd < 0)
                 fail("No overlay pack to load from:", id);
+#endif
             if (there != Id::None && leaveChecks[index(there)] != nullptr && !leaveChecks[index(there)]())
             {
                 if (mayRefuse)
@@ -189,8 +271,13 @@ namespace hlrt::ovl
             const Entry &e = table[i];
             if (e.load != 0)
             {
-                if (lseek(fd, static_cast<off_t>(e.offset), SEEK_SET) != static_cast<off_t>(e.offset) ||
-                    read(fd, k.start, e.load) != static_cast<ssize_t>(e.load))
+#ifdef HL_OVL_FROM_ROM
+                const int from = fds[i]; // (its own file: from its start)
+#else
+                const int from = fd;
+#endif
+                if (lseek(from, static_cast<off_t>(e.offset), SEEK_SET) != static_cast<off_t>(e.offset) ||
+                    read(from, k.start, e.load) != static_cast<ssize_t>(e.load))
                     fail("An overlay could not be read from the card:", id);
                 DC_FlushRange(k.start, e.load);
             }

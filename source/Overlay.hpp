@@ -67,7 +67,9 @@ namespace hlrt::ovl
     /// Open the pack (nitro:/ovl/arm9.ovl, or `path`) for good and check it
     /// against the program: the same overlays, at the same addresses, of the
     /// same sizes, made with this program. False (and `why`) if not; nothing
-    /// may be loaded then.
+    /// may be loaded then. (HL_OVL_FROM_ROM: the overlays are the ROM's own
+    /// overlay table's files instead, opened by their ids in its FAT and
+    /// checked by their sizes; `path` is not used.)
     bool init(const char *path, const char **why);
 
     /// The phase that needs `id` begins: it is put in its region, whatever

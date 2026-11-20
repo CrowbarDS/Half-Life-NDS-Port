@@ -1495,6 +1495,19 @@ begins. BlocksDS has no overlays; these are the port's own
   it once for good and checks it against the program; a load is a seek and a
   read on that handle, no heap, then the caches made to agree, the zeroed
   data cleared and the sum checked. Never from an interrupt.
+- **Or the ROM's own overlay table** (`HLDS_OVL_ROM=1 ./make.sh`; to replace
+  the pack once a DSi and a DS flashcart have run it): the ARM9 overlay table
+  retail games have, after the ARM9 binary and ndstool's 12-byte footer, and
+  one file per overlay read from the card (`ovl/overlay_NNNN.bin`), which
+  ndstool makes the FAT's first files -- NitroFS's own come after them. A
+  zeroed-data overlay has no entry and no file. The files hold the loaded
+  bytes alone; their sums are stamped into the program after the link
+  (`hlOvlSums`, before its ID, which then covers them). The loader opens each
+  by its FAT id once, at start-up, and checks its size; a load is then as
+  the pack's. (libnds's `nitroFSOpenById` gives a descriptor without
+  NitroFS's mark in its top bits, which `open` adds; the loader adds it.)
+  `make.sh`'s `romcheck --mode rom` checks the table, the footer, each file
+  and its sum, and that NitroFS's files begin after the overlays'.
 - **Leave checks.** Before an overlay gives its region up, what it holds is
   let go of (or the load refused, or halted on).
 

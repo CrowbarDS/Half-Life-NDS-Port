@@ -57,6 +57,12 @@ profile += ['HLDS_DEV=1'] if os.environ.get('HLDS_DEV') else []
 # tools/icache_rank.py) sees what each function would cost from main memory.
 # arm9-report.sh --check fails on it, as it should.
 profile += ['HLDS_ITCM_OFF=1'] if os.environ.get('HLDS_ITCM_OFF') else []
+# HLDS_OVL_ROM=1 ./make.sh: the overlays (below) in the ROM's own ARM9
+# overlay table and its files, as retail games have them, not packed in
+# NitroFS (source/Overlay.arm.cpp). To become the only way once a DSi and a
+# DS flashcart have run it.
+OVL_ROM = bool(os.environ.get('HLDS_OVL_ROM'))
+profile += ['HL_OVL_FROM_ROM'] if OVL_ROM else []
 # HLDS_DEBUG=1 ./make.sh builds the full heap guard in (source/Guard.hpp): a
 # header and four bytes after every block, and small blocks held a while once
 # given back. Without it (the release) the blocks are the allocator's own,
@@ -116,6 +122,11 @@ OVL_SOURCES = ['source/render/ProfileViewBody.cpp']
 OVL_DIR = os.path.join('build', 'ld')
 OVL_PACK = os.path.join(OVL_DIR, 'arm9.ovl')
 OVL_MANIFEST = os.path.join(OVL_DIR, 'overlays.json')
+# (HLDS_OVL_ROM: the ROM's table, and a file for each overlay read from the
+# card, ndstool's names.)
+OVL_TABLE = os.path.join(OVL_DIR, 'y9.bin')
+OVL_FILES_DIR = os.path.join(OVL_DIR, 'ovl')
+OVL_FILES = [os.path.join(OVL_FILES_DIR, ovl.OVERLAY_FILE % i) for _o, i in ovl.files_of(ovl.Manifest(OVERLAYS))]
 os.makedirs(OVL_DIR, exist_ok=True)
 ovl._write_if_changed(OVL_MANIFEST, json.dumps(OVERLAYS, indent=1) + '\n')
 ovl.cmd_ld({'template': os.path.join(os.path.expandvars('${BLOCKSDS}'), 'sys', 'crts', 'ds_arm9.ld'),
@@ -190,14 +201,15 @@ arm9 = Arm9Binary(
         # stock specs: its *link: is the one used. The relocations kept, for
         # tools/ovl.py's check of what refers into an overlay.
         ['-specs=' + os.path.join(OVL_DIR, 'hl_arm9_link.specs'), '-Wl,--emit-relocs']),
-    # The program's ID (a hash of this ELF), stamped as it is linked: the
-    # families are built for this program alone, and say so
-    # (tools/program_id.py; source/game/FamilyApi.hpp). Then its overlays
-    # checked (tools/ovl.py), and packed for the ROM's NitroFS.
-    post_link=('python3 tools/arm9_post_link.py ' + OVL_MANIFEST,
+    # Its overlays checked (tools/ovl.py); then the program's ID (a hash of
+    # this ELF) stamped in: the families are built for this program alone,
+    # and say so (tools/program_id.py; source/game/FamilyApi.hpp); then the
+    # overlays written out -- packed for the ROM's NitroFS, or (HLDS_OVL_ROM)
+    # their sums stamped in first and the ROM's overlay table made.
+    post_link=('python3 tools/arm9_post_link.py %s %s' % ('rom' if OVL_ROM else 'pack', OVL_MANIFEST),
                ['tools/arm9_post_link.py', 'tools/program_id.py', 'tools/ovl.py', OVL_MANIFEST,
                 os.path.join(OVL_DIR, 'hl_arm9.ld'), os.path.join(OVL_DIR, 'hl_arm9_link.specs')],
-               [OVL_PACK]),
+               [OVL_TABLE] + OVL_FILES if OVL_ROM else [OVL_PACK]),
     link_last=OVL_SOURCES,
 )
 
@@ -266,8 +278,12 @@ nitrofs = NitroFS()
 for lib in families:
     nitrofs.add_arm9_dsl(lib)
 # The program's overlays (above), read from here as each phase begins
-# (source/Overlay.arm.cpp).
-nitrofs.add_file(OVL_PACK, 'ovl/arm9.ovl')
+# (source/Overlay.arm.cpp) -- unless they are in the ROM's own table.
+if not OVL_ROM:
+    nitrofs.add_file(OVL_PACK, 'ovl/arm9.ovl')
+elif os.path.isfile(os.path.join('build', 'nitrofs', 'ovl', 'arm9.ovl')):
+    # (A pack's build left its copy there, and ndstool takes all it finds.)
+    os.remove(os.path.join('build', 'nitrofs', 'ovl', 'arm9.ovl'))
 # The program the host sends consoles without the game by Download Play
 # (child/build.py: built after this one, whose ARM7 program it uses -- so it
 # is here from make.sh's second pass of this file on).
@@ -296,6 +312,10 @@ nds = NdsRom(
     # a homebrew so marked as able to draw for a 3DS's wide screen, offers
     # 16:10 for it, and swaps the wide TwlBg in (settings: Screen).
     game_info=('WHLD', '00', 'HOMEBREW', 0x57),
+    # (HLDS_OVL_ROM: the overlays as the ROM's own ARM9 overlay table.)
+    arm9_overlay_table=OVL_TABLE if OVL_ROM else None,
+    overlay_dir=OVL_FILES_DIR if OVL_ROM else None,
+    overlay_files=OVL_FILES if OVL_ROM else [],
 )
 nds.generate_nds()
 

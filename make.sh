@@ -62,8 +62,10 @@ PATH="${WONDERFUL_TOOLCHAIN}/toolchain/gcc-arm-none-eabi/bin:${PATH}" python too
 # ... and the parent again, now carrying the child to send (dlplay/child.nds).
 python build.py "$@"
 # Its ARM9 image without the overlays (tools/ovl.py): ndstool left them out.
+# (HLDS_OVL_ROM: and the ROM's own overlay table and files are the program's.)
 if [ -f half-life-nds-port.nds ]; then
-    python tools/ovl.py romcheck --rom half-life-nds-port.nds --elf build/arm9/arm9.elf
+    python tools/ovl.py romcheck --rom half-life-nds-port.nds --elf build/arm9/arm9.elf \
+        --manifest build/ld/overlays.json --mode "$([ -n "${HLDS_OVL_ROM:-}" ] && echo rom || echo pack)"
 fi
 # The ELFs of every build, by its name, for looking up a crash screen's
 # addresses afterwards (arm-none-eabi-addr2line -e build/elf/<name>/arm9.elf);
