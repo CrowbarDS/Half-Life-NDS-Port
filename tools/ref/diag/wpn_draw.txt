@@ -1,0 +1,10 @@
+# Taking out a gun with its trigger held all along: the pistol from the
+# crowbar, then the shotgun from the pistol. The first round of each says
+# how long the change took.
+# map c1a2
+# start 200 -801 -539 180
+cmd weapon_9mmhandgun
+60 0 0 180 0 a
+cmd weapon_shotgun
+70 0 0 180 0 a
+20 0 0 180 0

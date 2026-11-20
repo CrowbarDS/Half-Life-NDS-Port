@@ -2669,18 +2669,11 @@ static void testPick()
     inv.current = kWeaponCrowbar;
     const fx eye[3] = {0, 0, 0}, forward[3] = {kFxOne, 0, 0}, right[3] = {0, -kFxOne, 0}, up[3] = {0, 0, kFxOne};
     auto tick = [&](int pick) { return weaponsTick(logic, player, weapon, eye, forward, right, up, false, false, 33, false, pick); };
-    // The crowbar is put away before another weapon comes out: half a
-    // second of it, as in the game.
+    // The crowbar is put away as the other comes out, as in the game: no
+    // wait but the other's half a second (tools/ref/diag/wpn_draw.txt).
     std::uint32_t did = tick(kWeaponGlock);
-    check(!(did & kWeaponDrawn) && inv.current == kWeaponCrowbar && weapon.anim != nullptr &&
-              std::string(weapon.anim) == "holster",
-          "the crowbar is put away first");
-    weapon.anim = nullptr;
-    int waited = 33;
-    for (; waited < 2000 && !(did & kWeaponDrawn); waited += 33)
-        did = tick(0);
-    check((did & kWeaponDrawn) && inv.current == kWeaponGlock && waited >= 500 && waited <= 566,
-          "... and half a second on the other is in hand");
+    check((did & kWeaponDrawn) && inv.current == kWeaponGlock && weapon.cooldownMs == 500,
+          "the crowbar is put away as the other comes out, with no wait of its own");
     weapon = WeaponState();
     did = tick(kWeaponPython);
     check((did & kWeaponDrawn) && inv.current == kWeaponPython && weapon.cooldownMs == 500,

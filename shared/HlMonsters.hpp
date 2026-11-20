@@ -5488,6 +5488,7 @@ namespace hldata
         if (state.dentMs > 0 && (state.dentMs -= ms) <= 0 && w.actors != nullptr)
             decalAdd(*w.actors, kDecalDent, state.dentAt, state.dentNormal, 8, kMarkShot);
         // A weapon being put away: when it is, the other is taken out.
+        // (Nothing is now: what a save from before kept.)
         if (state.holsterMs > 0)
         {
             state.holsterMs -= ms;
@@ -5544,16 +5545,9 @@ namespace hldata
             if (other != inv.current)
             {
                 state.retryMs = 0;
-                if (inv.current == kWeaponCrowbar)
-                {
-                    // Put away first, as the game puts it away: half a
-                    // second, and then the other comes out.
-                    state.anim = "holster";
-                    state.holsterMs = 500;
-                    state.taking = other;
-                    state.reloadMs = 0;
-                    return did;
-                }
+                // (The one put away goes at once, the crowbar too: the game
+                // takes the other out as it puts it away, and waits only for
+                // that, half a second.)
                 inv.current = other;
                 state.cooldownMs = 500;
                 state.reloadMs = 0;
