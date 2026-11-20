@@ -4793,7 +4793,31 @@ namespace hldata
                 state.bits = angles[axis];
                 return;
             }
+            const bool rider = player.onGround && player.groundMover == static_cast<int>(record.brush);
+            const fx stood[3] = {player.origin[0], player.origin[1], player.origin[2]};
             logicPlaceBrushTurned(w, record.brush, state.base, angles);
+            const bool met = !rider && playerInsideBrush(w, player, record.brush);
+            if (rider || met)
+            {
+                // What it turns into, or carries, it carries round with it
+                // (the engine's SV_PushRotate): where the player was in its
+                // space as it stood, taken to where that is now.
+                std::uint16_t was[3] = {0, 0, 0};
+                was[axis] = before;
+                std::int32_t from[9], to[9];
+                anglesToAxes(was, from);
+                anglesToAxes(angles, to);
+                const fx *pivot = w.movers[record.brush].origin;
+                const fx d[3] = {player.origin[0] - pivot[0], player.origin[1] - pivot[1], player.origin[2] - pivot[2]};
+                fx local[3], delta[3];
+                for (int j = 0; j < 3; ++j)
+                    local[j] = static_cast<fx>((static_cast<std::int64_t>(d[0]) * from[j] + static_cast<std::int64_t>(d[1]) * from[3 + j] +
+                                                static_cast<std::int64_t>(d[2]) * from[6 + j]) >> kNormalShift);
+                for (int i = 0; i < 3; ++i)
+                    delta[i] = static_cast<fx>((static_cast<std::int64_t>(local[0]) * to[3 * i] + static_cast<std::int64_t>(local[1]) * to[3 * i + 1] +
+                                                static_cast<std::int64_t>(local[2]) * to[3 * i + 2]) >> kNormalShift) - d[i];
+                pushPlayer(w, player, record.brush, delta);
+            }
             if (playerInsideBrush(w, player, record.brush))
             {
                 // Blocked: it does not turn this frame, and its "dmg" crushes
@@ -4802,6 +4826,8 @@ namespace hldata
                 // a tenth of its degrees a second).
                 angles[axis] = before;
                 logicPlaceBrushTurned(w, record.brush, state.base, angles);
+                for (int a = 0; a < 3; ++a)
+                    player.origin[a] = stood[a]; // (put back, as the engine does)
                 if (record.damage > 0)
                     logicHurt(player, record.damage, 0, kDmgCrush);
                 if (record.flags & kLogicTouch)
@@ -4814,7 +4840,9 @@ namespace hldata
                 }
                 return;
             }
-            if ((record.flags & kLogicTouch) && player.touchedMover == static_cast<int>(record.brush))
+            // (One that hurts by its touch hurts whoever it meets: carried
+            // round by it, or walked into it.)
+            if ((record.flags & kLogicTouch) && (met || player.touchedMover == static_cast<int>(record.brush)))
             {
                 const fx speed = state.speed < 0 ? -state.speed : state.speed;
                 const int hurt = static_cast<int>((static_cast<std::int64_t>(speed) * 360 + 32768) / 65536 / 10);

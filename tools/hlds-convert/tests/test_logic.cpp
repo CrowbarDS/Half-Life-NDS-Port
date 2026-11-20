@@ -2739,27 +2739,39 @@ namespace
             check(highest, "... and the player is never pushed into it");
         }
         {
-            BoxRoom room;
-            // 1: a bar 60 long turning about (0, 0) at 90 a second, dmg 5;
-            //    the player stands in its sweep. 2: the same, marked to hurt
-            //    by its touch (32), and no dmg.
-            room.brushes = {brush("func_rotating", "\"spawnflags\" \"1\"\n\"speed\" \"90\"\n\"dmg\" \"5\"\n"
-                                                    "\"origin\" \"0 0 32\"\n",
-                                  -4, -4, 0, 64, 4, 64)};
-            Game g;
-            build(g, room);
-            check(g.ok, "wheel room");
-            if (!g.ok)
-                return;
-            g.player.origin[0] = fxFromInt(24);
-            g.player.origin[1] = fxFromInt(40);
-            g.player.origin[2] = fxFromInt(36);
-            g.player.health = 100;
-            g.player.inv.armor = 0;
-            for (int i = 0; i < 60; ++i)
-                g.frame(idle);
-            std::printf("test_logic: two seconds in a wheel's way (dmg 5): health %d\n", g.player.health);
-            check(g.player.health < 100 && (100 - g.player.health) % 5 == 0, "a wheel held up crushes by its dmg");
+            // A bar 60 long turning about (0, 0) at 90 a second, dmg 5, the
+            // player in its sweep: in the open it carries them round with it
+            // (the engine's SV_PushRotate), and hurts nobody; against a wall
+            // it cannot, and is held up, and crushes by its dmg.
+            for (const bool walled : {false, true})
+            {
+                BoxRoom room;
+                room.brushes = {brush("func_rotating", "\"spawnflags\" \"1\"\n\"speed\" \"90\"\n\"dmg\" \"5\"\n"
+                                                        "\"origin\" \"0 0 32\"\n",
+                                      -4, -4, 0, 64, 4, 64)};
+                if (walled)
+                    room.brushes.push_back(brush("func_wall", "", -100, 56, 0, 100, 70, 100));
+                Game g;
+                build(g, room);
+                check(g.ok, "wheel room");
+                if (!g.ok)
+                    return;
+                g.player.origin[0] = fxFromInt(24);
+                g.player.origin[1] = fxFromInt(40);
+                g.player.origin[2] = fxFromInt(36);
+                g.player.health = 100;
+                g.player.inv.armor = 0;
+                const fx was[2] = {g.player.origin[0], g.player.origin[1]};
+                for (int i = 0; i < 60; ++i)
+                    g.frame(idle);
+                const bool moved = g.player.origin[0] != was[0] || g.player.origin[1] != was[1];
+                std::printf("test_logic: two seconds in a wheel's way (dmg 5)%s: health %d, moved %d\n",
+                            walled ? ", against a wall" : "", g.player.health, moved);
+                if (walled)
+                    check(g.player.health < 100 && (100 - g.player.health) % 5 == 0, "a wheel held up crushes by its dmg");
+                else
+                    check(g.player.health == 100 && moved, "a wheel in the open carries the player round, unhurt");
+            }
         }
         {
             BoxRoom room;
