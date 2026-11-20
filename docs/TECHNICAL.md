@@ -1902,10 +1902,9 @@ as a monster looks (2048), as the game's BuildRoute tries the straight line
 at any length; the plans made again on its way look no further than the
 walk's own reach (480, 720 on a DSi), which keeps their cost down. A grunt
 500 units from the player runs straight at him, as the game's does, not
-round by the nodes. Still apart: held up by a wall with no way round, the
-game's Move makes its route again once and fails the task at the next
-think; the port's gives it two seconds, counted only in the frames it
-tries to walk, so some ten.
+round by the nodes. Held up with no way round -- by another, the player
+or a wall -- it does as the game's Move: makes its route again once, and
+held up again at its next think, fails the task.
 A grunt holds its fire while a squadmate stands in the game's NoFriendlyFire
 volume, which leans the wrong way: its "ahead" comes from UTIL_VecToAngles
 and goes back through UTIL_MakeVectors, which read pitch the opposite way

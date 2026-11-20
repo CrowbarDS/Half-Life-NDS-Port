@@ -3786,18 +3786,6 @@ namespace hldata
             c.m.moveWaitFinished = c.ai.now + round.waitMs;
             return false;
         }
-        // (Held up at its nose by the world or the player: a way round is
-        // looked for as it stops, not every frame it stands there.)
-        if (blocker < 0 && c.m.moveBlockedMs > kAiThinkMs)
-        {
-            if (c.m.moveBlockedMs > 2000)
-            {
-                aiRemember(c, kMemoryMoveFailed);
-                aiTaskFail(c);
-                aiRouteClear(c);
-            }
-            return false;
-        }
         for (int k = 0; k < 3; ++k)
             round.apex[k] = aim[k];
         round.checked = checked;
@@ -3806,21 +3794,10 @@ namespace hldata
             return false;
         if (!found)
         {
-            // (A wall seen coming is gone round before it is reached
-            // (aiWallRound); one met at its nose with no way round is its
-            // planning's to mend -- walkTick plans again after a second of
-            // getting nowhere -- and the player steps aside. Only another
-            // in the way fails the move at once.)
-            if (blocker >= 0)
-            {
-                aiMoveNoWayRound(c);
-            }
-            else if (c.m.moveBlockedMs > 2000)
-            {
-                aiRemember(c, kMemoryMoveFailed);
-                aiTaskFail(c);
-                aiRouteClear(c);
-            }
+            // (Whatever is in the way -- another, the player or a wall met
+            // at its nose -- as the game's Move: the route made again once,
+            // and held up again at its next think, the task fails.)
+            aiMoveNoWayRound(c);
             return false;
         }
         round.detouring = true;
