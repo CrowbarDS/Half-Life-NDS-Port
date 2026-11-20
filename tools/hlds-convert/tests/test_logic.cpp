@@ -2308,7 +2308,7 @@ namespace
 
         // Set rolling along the floor at 200 a second: it stops within a
         // few units, and the same few whatever the frame rate.
-        const fx floor = fxFromInt(18) + kFxOne / 16; // (its centre, a crouched person's half-height up)
+        const fx floor = kFxOne / 16; // (a point, as the game moves it: just over the floor)
         const Thrown at30 = throwInRoom(g, kShotGrenade, false, floor, 33, 2000);
         const Thrown at60 = throwInRoom(g, kShotGrenade, false, floor, 16, 2000);
         const Thrown at20 = throwInRoom(g, kShotGrenade, false, floor, 50, 2000);

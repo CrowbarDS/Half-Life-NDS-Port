@@ -906,6 +906,63 @@ namespace hldata
         return true;
     }
 
+    /// A point moved from `start` to `end`: what the game moves anything 8
+    /// units across or less as (its hull 0 -- a grenade, a satchel, a piece
+    /// thrown out), as traceAll answers for a person. It stops where the
+    /// world as it is drawn is met, a 32nd of a unit short of it as the
+    /// engine stops; a brush entity is met as traceShotWall meets it. In
+    /// solid at the start, it goes nowhere (`startSolid`).
+    [[gnu::noinline]] inline Trace tracePoint(const MoveWorld &world, const fx *start, const fx *end)
+    {
+        Trace t;
+        t.allSolid = false;
+        for (int i = 0; i < 3; ++i)
+            t.endPos[i] = end[i];
+        if (world.nodes != nullptr && pointContents(world, start) == kContentsSolid)
+        {
+            t.startSolid = t.allSolid = true;
+            t.fraction = 0;
+            for (int i = 0; i < 3; ++i)
+                t.endPos[i] = start[i];
+            return t;
+        }
+        fx at[3], normal[3];
+        int mover = -1;
+        if (!traceShotWall(world, start, end, at, normal, &mover))
+            return t;
+        // (Off it by a 32nd, along the way it faces: 128 of Q12.)
+        for (int i = 0; i < 3; ++i)
+        {
+            t.endPos[i] = at[i] + (normal[i] >> 5);
+            t.normal[i] = normal[i] << (kNormalShift - kFxShift);
+        }
+        // How far along: by the axis it went furthest on (a division, but
+        // only when something was met).
+        int axis = 0;
+        fx most = 0;
+        for (int i = 0; i < 3; ++i)
+        {
+            const fx d = end[i] - start[i] < 0 ? start[i] - end[i] : end[i] - start[i];
+            if (d > most)
+            {
+                most = d;
+                axis = i;
+            }
+        }
+        std::int64_t fraction =
+            most == 0 ? 0 : (static_cast<std::int64_t>(t.endPos[axis] - start[axis]) << kFractionShift) / (end[axis] - start[axis]);
+        fraction = fraction < 0 ? 0 : (fraction > kFractionOne ? kFractionOne : fraction);
+        t.fraction = static_cast<std::int32_t>(fraction);
+        if (t.fraction == 0)
+        {
+            for (int i = 0; i < 3; ++i)
+                t.endPos[i] = start[i];
+        }
+        t.hit = true;
+        t.mover = static_cast<std::int16_t>(mover);
+        return t;
+    }
+
     /// lineClear, with the brushes `seeThrough(brush)` says can be seen
     /// through (glass, a grate) not in the way: whether something behind
     /// them can be seen from `start`.

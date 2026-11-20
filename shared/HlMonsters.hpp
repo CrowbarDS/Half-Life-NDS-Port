@@ -1699,7 +1699,8 @@ namespace hldata
         /// on along where it now goes, nine tenths of what time is left (as
         /// the game's toss does), so it does not stick where it touched --
         /// which would make how far it rolls depend on the frame rate.
-        inline void tossOn(const MoveWorld &world, const Trace &t, const fx *velocity, int ms, fx *at)
+        /// `point`: it moves as a point (tracePoint), not a crouched person.
+        inline void tossOn(const MoveWorld &world, const Trace &t, const fx *velocity, int ms, fx *at, bool point = false)
         {
             const std::int64_t left = (static_cast<std::int64_t>(kFractionOne - t.fraction) * 58982) >> 16; // (0.9)
             fx to[3];
@@ -1711,7 +1712,7 @@ namespace hldata
             }
             if (to[0] == at[0] && to[1] == at[1] && to[2] == at[2])
                 return;
-            const Trace on = traceAll(world, true, at, to);
+            const Trace on = point ? tracePoint(world, at, to) : traceAll(world, true, at, to);
             if (on.startSolid)
                 return;
             for (int i = 0; i < 3; ++i)
@@ -2425,16 +2426,16 @@ namespace hldata
                     to[i] = shot.pos[i] + static_cast<fx>((static_cast<std::int64_t>(shot.velocity[i]) * ms) / 1000);
                 if (grenade)
                 {
-                    // It bounces: off what a crouched person could not pass
-                    // (near enough for something the size of a fist), hardly
-                    // at all, and rolls to a stop on a floor.
-                    const Trace t = traceAll(*w.world, true, shot.pos, to);
+                    // It bounces, hardly at all, and rolls to a stop on a
+                    // floor: a point, as the game moves anything this small,
+                    // off the world as it is drawn.
+                    const Trace t = tracePoint(*w.world, shot.pos, to);
                     if (!t.startSolid && t.fraction < kFractionOne)
                     {
                         const int met =
                             tossBounce(shot.velocity, t, gib ? kTossGib : (satchel ? kTossSatchel : kTossGrenade), ms,
                                        gravityOf(player));
-                        tossOn(*w.world, t, shot.velocity, ms, to);
+                        tossOn(*w.world, t, shot.velocity, ms, to, true);
                         if (!gib && met == kTossBounced && w.heard != nullptr && fxLength(shot.velocity) > fxFromInt(60))
                         {
                             // (One of its three knocks: a grenade's quiet, a

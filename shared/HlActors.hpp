@@ -258,7 +258,7 @@ namespace hldata
     /// above the floor it lies on, and it is drawn that much lower.
     inline constexpr bool shotMovesAsBox(int kind)
     {
-        return kind == kShotGrenade || kind == kShotGib || kind == kShotSatchel || kind == kShotSnark;
+        return kind == kShotSnark;
     }
     inline constexpr std::int32_t kStompLengthMask = 0xFFF;
     inline constexpr int kStompSpeedShift = 12;
