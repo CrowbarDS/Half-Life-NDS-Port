@@ -502,14 +502,25 @@ namespace
                                 toUnits(probe.pos[0]), toUnits(probe.pos[1]), toUnits(start), held,
                                 toUnits(g.player.origin[0]), toUnits(g.player.origin[1]), toUnits(g.player.origin[2]));
             }
+            // (The shafts' top one, *112, hangs over a drop, its top flush
+            // with the floor beside it: the player's box never meets it
+            // walking out over it, at a run or a walk -- in the game either,
+            // which drops down the shaft past it: tools/ref/diag's
+            // lad_shaft_top and lad_shaft_walk.)
+            if (l.mins[0] == fxFromInt(-355) && l.mins[1] == fxFromInt(-1656) && l.mins[2] == fxFromInt(1030))
+            {
+                check(!ok, "c1a2b's *112 is not taken hold of from the floor at its top, as in the game");
+                continue;
+            }
             ++tried;
             climbed += ok;
             if (!ok)
                 std::printf("test_monsters: c1a2b: the ladder at %.0f %.0f %.0f was not climbed\n",
                             toUnits(l.mins[0]), toUnits(l.mins[1]), toUnits(l.mins[2]));
         }
-        std::printf("test_monsters: c1a2b: %d of %d ladders climbed\n", climbed, tried);
-        check(tried >= 4 && climbed == tried, "every c1a2b ladder is taken hold of and climbed (up from its foot, or down from its top)");
+        std::printf("test_monsters: c1a2b: %d of %d ladders climbed (and *112, as the game, not from its top)\n", climbed,
+                    tried);
+        check(tried >= 4 && climbed == tried, "every other c1a2b ladder is taken hold of and climbed (up from its foot, or down from its top)");
     }
 
     /// The hazard course's hologram (a monster_generic of holo.mdl): its

@@ -1252,20 +1252,17 @@ namespace hldata
                     const LadderVolume &ladder = world.ladders[i];
                     if (!ladder.active)
                         continue;
-                    // (Not the game's to the unit: a hair below its foot,
-                    // and -- to take hold, not to stay on -- 8 above its top.
-                    // At a run a ladder whose top is just under a ledge, as
-                    // c1a2b's shafts have, is crossed before the drop
-                    // reaches it.)
-                    const fx below = fxFromInt(1);
-                    const fx above = s.onLadder ? 0 : fxFromInt(8);
+                    // Where the player's box meets it, as the game's
+                    // PM_Ladder has it -- no nearer. (One whose top is under
+                    // the floor beside it, as c1a2b's *112 is, is not taken
+                    // hold of by walking out over it, at a run or a walk, in
+                    // the game either: tools/ref/diag's lad_shaft_*.)
                     bool touching = true;
                     for (int a = 0; a < 3 && touching; ++a)
                     {
                         const fx half = (a == 2 ? detail::kPlayerHalfHeight[s.ducked ? 1 : 0]
                                                 : detail::kPlayerHalfWidth);
-                        touching = s.origin[a] + half >= ladder.mins[a] - (a == 2 ? below : 0) &&
-                                   s.origin[a] - half <= ladder.maxs[a] + (a == 2 ? above : 0);
+                        touching = s.origin[a] + half >= ladder.mins[a] && s.origin[a] - half <= ladder.maxs[a];
                     }
                     if (!touching || !onShape(i))
                         continue;
