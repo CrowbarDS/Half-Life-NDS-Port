@@ -123,6 +123,46 @@ namespace hlrt::DebugLog::Perf
             std::fprintf(log, "\n");
         }
 
+        // Where the divides and the roots come from (HwMath.s calls
+        // hlProfileSite, interrupts held off): the return address of each
+        // call, and how many. A table each, looked up by a hash of the
+        // address; one that finds no room in eight tries is counted lost.
+        struct Site
+        {
+            std::uint32_t at, count;
+        };
+        constexpr int kDivSites = 256, kRootSites = 64;
+        Site divSites[kDivSites], rootSites[kRootSites];
+        std::uint32_t divFits = 0, sitesLost = 0;
+
+        void writeSites(std::FILE *log, const char *what, Site *sites, int count)
+        {
+            constexpr int kShown = 40;
+            int top[kShown];
+            int shown = 0;
+            for (int i = 0; i < count; ++i)
+            {
+                const std::uint32_t n = sites[i].count;
+                if (n == 0 || (shown == kShown && n <= sites[top[shown - 1]].count))
+                    continue;
+                int at = shown < kShown ? shown++ : kShown - 1;
+                while (at > 0 && sites[top[at - 1]].count < n)
+                {
+                    top[at] = top[at - 1];
+                    --at;
+                }
+                top[at] = i;
+            }
+            std::fprintf(log, "%s: %d frames", what, framesIn);
+            if (sites == divSites)
+                std::fprintf(log, ", %lu fit 32 bits, %lu lost", static_cast<unsigned long>(divFits),
+                             static_cast<unsigned long>(sitesLost));
+            for (int k = 0; k < shown; ++k)
+                std::fprintf(log, ", %lx %lu", static_cast<unsigned long>(sites[top[k]].at),
+                             static_cast<unsigned long>(sites[top[k]].count));
+            std::fprintf(log, "\n");
+        }
+
         std::uint32_t toMicros(std::uint64_t ticks)
         {
             // The timer counts the 33.5 MHz bus clock.
@@ -166,6 +206,8 @@ namespace hlrt::DebugLog::Perf
                          static_cast<unsigned long>(keyReads), static_cast<unsigned long>(toMicros(keyLongest)),
                          static_cast<unsigned long>(toMicros(keysInWorstFrame)));
             writePieces(log);
+            writeSites(log, "divsites", divSites, kDivSites);
+            writeSites(log, "rootsites", rootSites, kRootSites);
             std::fclose(log);
         }
         {
@@ -174,6 +216,11 @@ namespace hlrt::DebugLog::Perf
                 n = 0;
             outside = 0;
             idle = 0;
+            for (Site &site : divSites)
+                site = Site{};
+            for (Site &site : rootSites)
+                site = Site{};
+            divFits = sitesLost = 0;
             leaveCriticalSection(saved);
         }
         think.answered = 0;
@@ -263,5 +310,34 @@ namespace hlrt::DebugLog::Perf
         ++framesIn;
     }
 } // namespace hlrt::DebugLog::Perf
+
+// HwMath.s, with interrupts held off, for each divide (kind 0; `wide` 0 if
+// both its numbers fit 32 bits) and each root (kind 1): `at`, the return
+// address of the call. (No divide here, nor anything that waits.)
+extern "C" void hlProfileSite(std::uint32_t at, int kind, std::uint32_t wide)
+{
+    using namespace hlrt::DebugLog::Perf;
+    if (kind == 0 && wide == 0)
+        ++divFits;
+    Site *const sites = kind == 0 ? divSites : rootSites;
+    const std::uint32_t mask = static_cast<std::uint32_t>(kind == 0 ? kDivSites : kRootSites) - 1;
+    const std::uint32_t hash = (at >> 1) * 2654435761u;
+    for (std::uint32_t k = 0; k < 8; ++k)
+    {
+        Site &site = sites[((hash >> 24) + k) & mask];
+        if (site.at == at)
+        {
+            ++site.count;
+            return;
+        }
+        if (site.at == 0)
+        {
+            site.at = at;
+            site.count = 1;
+            return;
+        }
+    }
+    ++sitesLost;
+}
 
 #endif

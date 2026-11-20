@@ -60,6 +60,19 @@ __wrap___aeabi_ldivmod:
     mrs     r4, cpsr
     orr     r12, r4, #0x80
     msr     cpsr_c, r12
+#ifdef HLDS_PROFILE
+    @ (... and where each comes from, interrupts held off: hlProfileSite,
+    @ DebugLog.cpp. Its third argument is 0 when both numbers fit 32 bits.)
+    push    {r0-r3}
+    eor     r12, r1, r0, asr #31
+    eor     r3, r3, r2, asr #31
+    orr     r2, r12, r3
+    mov     r0, lr
+    mov     r1, #0
+    ldr     r12, =hlProfileSite
+    blx     r12
+    pop     {r0-r3}
+#endif
     mov     r12, #0x04000000            @ (two instructions and no literal)
     add     r12, r12, #REG_DIV_NUMER
     stm     r12!, {r0-r3}               @ (r12 is left at the quotient)
@@ -106,6 +119,15 @@ hlHwSqrt64:
     mrs     r3, cpsr
     orr     r2, r3, #0x80
     msr     cpsr_c, r2
+#ifdef HLDS_PROFILE
+    push    {r0, r1, r3, lr}            @ (where from, as the divide's)
+    mov     r0, lr
+    mov     r1, #1
+    mov     r2, #0
+    ldr     r12, =hlProfileSite
+    blx     r12
+    pop     {r0, r1, r3, lr}
+#endif
     mov     r12, #0x04000000
     add     r12, r12, #REG_SQRT_PARAM
     stm     r12, {r0, r1}

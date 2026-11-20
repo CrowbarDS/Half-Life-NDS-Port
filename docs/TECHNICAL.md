@@ -620,7 +620,17 @@ Milestone 11, "levels of detail".
   with the top bit set. `tools/hwtest/divcontract/` holds quotients and
   remainders against the library's, word for word.
   A build with `HLDS_PROFILE` checks the hardware's sums against the slow
-  way at start-up and says so in `perf.txt`.
+  way at start-up and says so in `perf.txt`; and it notes where each divide
+  and root is asked for (the call's return address, interrupts held off, in
+  `hlProfileSite`), and how many divides had both numbers fitting 32 bits,
+  in `divsites:` and `rootsites:` lines after each `time:` line.
+  `tools/divsites.py perf.txt [map]` names them. c1a3a's fight on a DS
+  (2026-11-21, melonDS: the game's own counts) asked for 579 divides a
+  frame -- the box traces 174 (`traceBoxes`), a pushed crate's corner
+  shapes 139 (`boxTrace`), the tripmines' beams against everyone 72
+  (`beamReach`), the world's line traces 62 -- of which only 60 had both
+  numbers fitting 32 bits; and 176 roots, 128 of them the bones' turns
+  (`sampleTrack`).
   A 64-bit divide by a constant whose numerator fits 32 bits is done in 32
   bits, where the compiler makes it a multiply (the fine sines had eight
   trips to the divider each). Products of two 16-bit values -- a bone's
