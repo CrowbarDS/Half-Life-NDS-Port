@@ -21,9 +21,17 @@ section attribute (HL_OVL_CODE / HL_OVL_BSS, source/Overlay.hpp).
   ovl.py pack --elf E --manifest M --out F
         the overlays' bytes, one file (F, put in NitroFS as ovl/arm9.ovl) with
         a table at its head (see PACK below).
-  ovl.py romcheck --rom R --elf E
+  ovl.py rom --elf E --manifest M --table T --dir D
+        the overlays as a retail ROM has them: T, the ARM9 overlay table
+        (ndstool -y9), and D/overlay_NNNN.bin, one file each (ndstool -y),
+        the overlay's loaded bytes and nothing else (see TABLE below).
+  ovl.py stamp --elf E --manifest M
+        each overlay's sum written into the program (hlOvlSums), in place:
+        what the loader checks a file read from the ROM's table against.
+  ovl.py romcheck --rom R --elf E [--manifest M --mode pack|rom]
         ndstool left the overlays out: the ROM's ARM9 image ends before the
-        first region.
+        first region. In rom mode, also the ROM's overlay table, its files
+        and their sums, against the program.
   ovl.py --self-test
 
 THE MANIFEST (JSON):
@@ -59,6 +67,15 @@ ID, u32 0, pad to 32; then per overlay 48 bytes: name[16] (NUL padded),
 u32 region, u32 address, u32 loaded bytes, u32 zeroed bytes, u32 offset in
 the file (512-aligned), u32 sum of its loaded words, u32 0, u32 0; then the
 overlays' bytes.
+
+TABLE (the ROM's ARM9 overlay table, as retail games have it; ndstool puts
+it after the ARM9 binary and a 12-byte footer, 0xDEC00621 0xAD8 0): per
+overlay that loads anything, 32 bytes of u32: its number (from 0, in the
+manifest's order), address, loaded bytes, zeroed bytes, 0, 0 (no static
+initialisers: R0), its file's id in the ROM's FAT (the same number: ndstool
+gives the overlay files the first ids), 0. A zeroed-data overlay has nothing
+on the card: no entry, no file. The files hold the loaded bytes alone; the
+program carries their sums (hlOvlSums, stamped after the link).
 """
 import fnmatch
 import json
@@ -73,6 +90,10 @@ PACK_ENTRY = 48
 PACK_ALIGN = 512
 OVERLAY_FLAGS = 0x200007     # ndstool leaves PT_LOAD segments with 0x200000 out
 OVERLAY_LMA = 0xB0000000     # where the overlays are "stored" in the ELF only
+TABLE_ENTRY = 32
+OVERLAY_FILE = 'overlay_%04u.bin'   # ndstool's name for an overlay file (overlay.h)
+FOOTER = (0xDEC00621, 0x00000AD8, 0)  # what ndstool -y9 writes after the ARM9 binary
+SUMS_SYMBOL = 'hlOvlSums'
 
 # ------------------------------------------------------------------ the manifest
 
@@ -274,8 +295,17 @@ def make_header(manifest, source):
     lines += ['    X(%s, %d) \\' % (r.name, r.index) for r in manifest.regions]
     lines += ['', '// X(Id, name, Region, loads)', '#define HL_OVL_OVERLAYS(X) \\']
     lines += ['    X(%s, %s, %s, %d) \\' % (o.id, o.name, o.region.name, 1 if o.loads else 0) for o in manifest.overlays]
-    lines += ['', '#define HL_OVL_COUNT %d' % len(manifest.overlays), '#define HL_OVL_REGION_COUNT %d' % len(manifest.regions), '']
+    lines += ['', '// X(Id, file): the overlays read from the card, and their number in the', '// ROM\'s overlay table (the id of their file in its FAT)', '#define HL_OVL_FILES(X) \\']
+    lines += ['    X(%s, %d) \\' % (o.id, f) for o, f in files_of(manifest)]
+    lines += ['', '#define HL_OVL_COUNT %d' % len(manifest.overlays), '#define HL_OVL_REGION_COUNT %d' % len(manifest.regions),
+              '#define HL_OVL_FILE_COUNT %d' % len(files_of(manifest)), '']
     return '\n'.join(lines)
+
+
+def files_of(manifest):
+    """(overlay, number in the ROM's table) for each overlay that loads
+    anything, in the manifest's order."""
+    return [(o, i) for i, o in enumerate(o for o in manifest.overlays if o.loads)]
 
 
 def cmd_ld(args):
@@ -686,12 +716,199 @@ def cmd_pack(args):
         print('ovl.py pack: %-12s region %s at %08x: %6d bytes loaded, %6d zeroed' % (o.name, o.region.name, start, load, bss))
     return 0
 
+# ------------------------------------------------------------------ rom: the ROM's own overlay table
+
+
+def overlay_bytes(elf, o, start, load):
+    """The loaded bytes of overlay `o`, as the link made them."""
+    if not (o.loads and load):
+        return b''
+    sec = elf.section('.ovl.%s' % o.name)
+    if sec is None or sec['addr'] != start:
+        raise ValueError('no section .ovl.%s at %08x' % (o.name, start))
+    data = elf.bytes_of(sec)[:load]
+    if len(data) != load:
+        raise ValueError('.ovl.%s holds %d bytes, %d expected' % (o.name, len(data), load))
+    return data
+
+
+def make_table(elf, manifest):
+    """(the ARM9 overlay table, [each overlay file's bytes]): TABLE above."""
+    number = dict((o.name, i) for o, i in files_of(manifest))
+    entries, files = [], []
+    for o, start, load, bss in overlay_sizes(elf, manifest):
+        if not o.loads:
+            continue
+        data = overlay_bytes(elf, o, start, load)
+        i = number[o.name]
+        entries.append(struct.pack('<8I', i, start, len(data), bss, 0, 0, i, 0))
+        files.append(data)
+    return b''.join(entries), files
+
+
+def read_table(data):
+    out = []
+    for at in range(0, len(data) - len(data) % TABLE_ENTRY, TABLE_ENTRY):
+        n, addr, load, bss, sinit, sinit_end, file_id, reserved = struct.unpack_from('<8I', data, at)
+        out.append({'id': n, 'addr': addr, 'load': load, 'bss': bss, 'sinit': (sinit, sinit_end),
+                    'file': file_id, 'reserved': reserved})
+    return out
+
+
+def sums_of(elf, manifest):
+    """What hlOvlSums holds: each overlay's word sum, in the manifest's order
+    (0 for one that loads nothing)."""
+    return [word_sum(overlay_bytes(elf, o, start, load)) for o, start, load, _bss in overlay_sizes(elf, manifest)]
+
+
+def stamp_sums(data, manifest):
+    """The program's ELF `data` with hlOvlSums written in."""
+    elf = Elf(data)
+    sums = sums_of(elf, manifest)
+    at, size = program_id_module().symbol_offset(data, SUMS_SYMBOL)
+    if size != 4 * len(sums):
+        raise ValueError('%s is %d bytes, %d expected (%d overlays)' % (SUMS_SYMBOL, size, 4 * len(sums), len(sums)))
+    out = bytearray(data)
+    struct.pack_into('<%dI' % len(sums), out, at, *sums)
+    return bytes(out)
+
+
+def program_id_module():
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import program_id
+    return program_id
+
+
+def _write_bytes_if_changed(path, data):
+    try:
+        with open(path, 'rb') as f:
+            if f.read() == data:
+                return False
+    except OSError:
+        pass
+    with open(path, 'wb') as f:
+        f.write(data)
+    return True
+
+
+def cmd_rom(args):
+    manifest = load_manifest(args['manifest'])
+    with open(args['elf'], 'rb') as f:
+        elf = Elf(f.read())
+    table, files = make_table(elf, manifest)
+    out_dir = args['dir']
+    os.makedirs(out_dir, exist_ok=True)
+    os.makedirs(os.path.dirname(os.path.abspath(args['table'])), exist_ok=True)
+    _write_bytes_if_changed(args['table'], table)
+    wanted = set()
+    for i, data in enumerate(files):
+        name = OVERLAY_FILE % i
+        wanted.add(name)
+        _write_bytes_if_changed(os.path.join(out_dir, name), data)
+    # (One left from a build with more overlays would be put in the ROM.)
+    for name in os.listdir(out_dir):
+        if re.fullmatch(r'overlay_\d{4}\.bin', name) and name not in wanted:
+            os.remove(os.path.join(out_dir, name))
+    # (The build counts them made by this step, each time.)
+    for path in [args['table']] + [os.path.join(out_dir, n) for n in sorted(wanted)]:
+        os.utime(path)
+    for (o, i), data in zip(files_of(manifest), files):
+        print('ovl.py rom: %-12s overlay %d at %08x: %6d bytes loaded'
+              % (o.name, i, elf.value('__ovl_%s_start' % o.name), len(data)))
+    return 0
+
+
+def cmd_stamp(args):
+    manifest = load_manifest(args['manifest'])
+    with open(args['elf'], 'rb') as f:
+        data = f.read()
+    out = stamp_sums(data, manifest)
+    if out != data:
+        with open(args['elf'], 'wb') as f:
+            f.write(out)
+    return 0
+
 # ------------------------------------------------------------------ romcheck
+
+
+def check_rom_table(rom, elf, manifest):
+    """What is wrong with the ROM's overlay table and files, against the
+    program (`rom`: the whole .nds); empty if nothing."""
+    errors = []
+    u32 = lambda at: struct.unpack_from('<I', rom, at)[0]  # noqa: E731
+    arm9_off, arm9_ram, arm9_size = u32(0x20), u32(0x28), u32(0x2C)
+    arm7_off = u32(0x30)
+    fnt_off, fat_off, fat_size = u32(0x40), u32(0x48), u32(0x4C)
+    ovt_off, ovt_size = u32(0x50), u32(0x54)
+    table, files = make_table(elf, manifest)
+    n = len(files)
+    if u32(0x58) or u32(0x5C):
+        errors.append('the ROM has an ARM7 overlay table')
+    if ovt_size != len(table):
+        errors.append('the ARM9 overlay table is %d bytes, %d expected (%d overlays)' % (ovt_size, len(table), n))
+        return errors
+    if n == 0:
+        return errors if ovt_off == 0 else errors + ['an empty overlay table at %08x' % ovt_off]
+    # The footer: right after the ARM9 binary (whose size the header rounds
+    # up to 4), the table right after it.
+    footer = struct.unpack_from('<3I', rom, ovt_off - 12)
+    if footer != FOOTER:
+        errors.append('no ARM9 footer before the overlay table (%s)' % ' '.join('%08x' % w for w in footer))
+    if not (arm9_off + arm9_size - 3 <= ovt_off - 12 <= arm9_off + arm9_size):
+        errors.append('the overlay table (%08x) is not right after the ARM9 binary (%08x..%08x)'
+                      % (ovt_off, arm9_off, arm9_off + arm9_size))
+    if ovt_off + ovt_size > arm7_off:
+        errors.append('the overlay table runs into the ARM7 binary')
+    if rom[ovt_off:ovt_off + ovt_size] != table:
+        for want, got in zip(read_table(table), read_table(rom[ovt_off:ovt_off + ovt_size])):
+            if want != got:
+                errors.append('overlay %d: the ROM\'s entry %r, the program\'s %r' % (want['id'], got, want))
+    if fat_size < 8 * n:
+        errors.append('the FAT has %d files, fewer than the %d overlays' % (fat_size // 8, n))
+        return errors
+    # The files, against the program's bytes and its stamped sums.
+    sums = None
+    if SUMS_SYMBOL in elf.by_name:
+        at = elf.value(SUMS_SYMBOL)
+        if arm9_ram <= at < arm9_ram + arm9_size:
+            sums = struct.unpack_from('<%dI' % len(manifest.overlays), rom, arm9_off + (at - arm9_ram))
+    by_name = dict((o.name, k) for k, o in enumerate(manifest.overlays))
+    for (o, i), data in zip(files_of(manifest), files):
+        top, bottom = struct.unpack_from('<II', rom, fat_off + 8 * i)
+        got = rom[top:bottom]
+        if got != data:
+            errors.append('overlay %d (%s): the ROM\'s file (%d bytes at %08x) is not the program\'s (%d bytes)'
+                          % (i, o.name, len(got), top, len(data)))
+        if sums is not None and sums[by_name[o.name]] != word_sum(got):
+            errors.append('overlay %d (%s): the sum in the program (%08x) is not its file\'s (%08x)'
+                          % (i, o.name, sums[by_name[o.name]], word_sum(got)))
+    if sums is None:
+        errors.append('the program has no %s in its ARM9 image: the loader cannot check the files' % SUMS_SYMBOL)
+    # The ROM's own files come after: the root directory's first is number n.
+    if fnt_off and struct.unpack_from('<H', rom, fnt_off + 4)[0] != n:
+        errors.append('the file names table\'s first file is %d, not %d (after the overlays)'
+                      % (struct.unpack_from('<H', rom, fnt_off + 4)[0], n))
+    return errors
+
+
+def rom_layout(rom):
+    """A line for the log: where the NTR part ends, and the DSi's starts."""
+    unit = rom[0x12]
+    ntr_end = struct.unpack_from('<I', rom, 0x80)[0]
+    line = 'unit code %d, NTR part ends at %08x' % (unit, ntr_end)
+    if unit & 2 and len(rom) >= 0x1C4:
+        arm9i = struct.unpack_from('<I', rom, 0x1C0)[0]
+        line += ', DSi ARM9 at %08x' % arm9i
+        if arm9i and ntr_end > arm9i:
+            line += ' (OVERLAPS)'
+    return line
+
 
 
 def cmd_romcheck(args):
     with open(args['rom'], 'rb') as f:
-        head = f.read(0x40)
+        rom = f.read()
+    head = rom[:0x40]
     with open(args['elf'], 'rb') as f:
         elf = Elf(f.read())
     ram, size = struct.unpack_from('<II', head, 0x28)
@@ -705,6 +922,24 @@ def cmd_romcheck(args):
     if bad:
         print('ovl.py romcheck: the ROM\'s ARM9 image (%08x..%08x) reaches into %s: ndstool kept the overlays'
               % (ram, end, ', '.join(r['name'] for r in bad)), file=sys.stderr)
+        return 1
+    mode = args.get('mode', 'pack')
+    if mode not in ('pack', 'rom'):
+        raise ValueError('mode %r: pack or rom' % mode)
+    if mode == 'rom':
+        if 'manifest' not in args:
+            raise ValueError('rom mode needs --manifest')
+        errors = check_rom_table(rom, elf, load_manifest(args['manifest']))
+        if struct.unpack_from('<I', rom, 0x80)[0] > len(rom) or (rom[0x12] & 2 and 'OVERLAPS' in rom_layout(rom)):
+            errors.append('the NTR part runs past the DSi\'s: %s' % rom_layout(rom))
+        for e in errors:
+            print('ovl.py romcheck: ' + e, file=sys.stderr)
+        if errors:
+            return 1
+        print('ovl.py romcheck: overlay table of %d at %08x; %s'
+              % (struct.unpack_from('<I', rom, 0x54)[0] // TABLE_ENTRY, struct.unpack_from('<I', rom, 0x50)[0], rom_layout(rom)))
+    elif struct.unpack_from('<I', rom, 0x54)[0]:
+        print('ovl.py romcheck: the ROM has an overlay table, and the program reads a pack', file=sys.stderr)
         return 1
     return 0
 
@@ -757,6 +992,84 @@ SECTIONS
 _SPECS = """*link:
 %(blocksds_link) -T %:getenv(BLOCKSDS /sys/crts/ds_arm9.mem) -T %:getenv(BLOCKSDS /sys/crts/ds_arm9.ld) --gc-sections
 """
+
+
+def _tiny_elf():
+    """A made-up program for the self-test: overlays one (64 bytes, 32
+    zeroed) and two (32) at 0x2100000, buf (128 zeroed), and hlOvlSums (three
+    words of placeholder) at 0x2000100 in its .rodata."""
+    shnames = b'\0.ovl.one\0.ovl.two\0.rodata\0.symtab\0.strtab\0.shstrtab\0'
+    def at(name):
+        return shnames.index(b'.' + name.encode() + b'\0') if name else 0
+    payload = [bytes(range(64)), bytes(range(64, 96)), b'SUMS' * 3]
+    names = b'\0'
+    syms = [bytes(16)]
+
+    def sym(name, value, size, info, shndx):
+        nonlocal names
+        off = len(names)
+        names += name.encode() + b'\0'
+        syms.append(struct.pack('<IIIBBH', off, value, size, info, 0, shndx))
+    for name, start, load_end, end in (('one', 0x2100000, 0x2100040, 0x2100060), ('two', 0x2100000, 0x2100020, 0x2100020),
+                                      ('buf', 0x2100000, 0x2100000, 0x2100080)):
+        sym('__ovl_%s_start' % name, start, 0, 0x10, 0xFFF1)
+        sym('__ovl_%s_load_end' % name, load_end, 0, 0x10, 0xFFF1)
+        sym('__ovl_%s_end' % name, end, 0, 0x10, 0xFFF1)
+    sym(SUMS_SYMBOL, 0x2000100, 12, 0x11, 3)
+    head = 52
+    offs, body = [], bytearray(head)
+    for blob in payload + [b''.join(syms), names, shnames]:
+        offs.append(len(body))
+        body += blob
+        body += b'\0' * (-len(body) % 4)
+    sh_off = len(body)
+    sects = [bytes(40),
+             struct.pack('<10I', at('ovl.one'), 1, 7, 0x2100000, offs[0], 64, 0, 0, 4, 0),
+             struct.pack('<10I', at('ovl.two'), 1, 7, 0x2100000, offs[1], 32, 0, 0, 4, 0),
+             struct.pack('<10I', at('rodata'), 1, 2, 0x2000100, offs[2], 12, 0, 0, 4, 0),
+             struct.pack('<10I', at('symtab'), 2, 0, 0, offs[3], len(b''.join(syms)), 5, 1, 4, 16),
+             struct.pack('<10I', at('strtab'), 3, 0, 0, offs[4], len(names), 0, 0, 1, 0),
+             struct.pack('<10I', at('shstrtab'), 3, 0, 0, offs[5], len(shnames), 0, 0, 1, 0)]
+    body += b''.join(sects)
+    body[0:6] = b'\x7fELF\x01\x01'
+    struct.pack_into('<I', body, 0x20, sh_off)
+    struct.pack_into('<HHH', body, 0x2E, 40, len(sects), 6)
+    return bytes(body)
+
+
+def _tiny_rom(elf, manifest):
+    """A ROM laid out as ndstool -y9 -y lays it out, for `elf` (_tiny_elf):
+    header, ARM9 image (the program's .rodata at its address), footer,
+    table, ARM7, names table (root's first file after the overlays), FAT,
+    the overlay files."""
+    table, files = make_table(elf, manifest)
+    rom = bytearray(0x200)
+    arm9 = bytearray(0x200)
+    rodata = elf.section('.rodata')
+    arm9[0x100:0x10C] = elf.bytes_of(rodata)
+    arm9_off = len(rom)
+    rom += arm9
+    rom += struct.pack('<3I', *FOOTER)
+    ovt_off = len(rom)
+    rom += table
+    rom += b'\0' * (-len(rom) % 0x200)
+    arm7_off = len(rom)
+    rom += bytes(0x200)
+    fnt_off = len(rom)
+    rom += struct.pack('<IHH', 8, len(files), 1) + b'\0'
+    rom += b'\0' * (-len(rom) % 0x200)
+    fat_off = len(rom)
+    rom += bytes(8 * len(files))
+    for i, data in enumerate(files):
+        rom += b'\0' * (-len(rom) % 0x200)
+        struct.pack_into('<II', rom, fat_off + 8 * i, len(rom), len(rom) + len(data))
+        rom += data
+    struct.pack_into('<4I', rom, 0x20, arm9_off, 0x2000000, 0x2000000, len(arm9))
+    struct.pack_into('<I', rom, 0x30, arm7_off)
+    struct.pack_into('<4I', rom, 0x40, fnt_off, 13, fat_off, 8 * len(files))
+    struct.pack_into('<2I', rom, 0x50, ovt_off, len(table))
+    struct.pack_into('<I', rom, 0x80, len(rom))
+    return bytes(rom)
 
 
 def self_test():
@@ -845,6 +1158,40 @@ def self_test():
     expect(entries[0]['sum'] == word_sum(bytes(range(64))) and entries[2]['load'] == 0 and entries[2]['bss'] == 0x80,
            'its sum; a bss overlay loads nothing')
 
+    # The ROM's overlay table: the header's list, the table, the sums
+    # stamped, and a ROM checked against the program.
+    listed = hdr[hdr.index('#define HL_OVL_FILES(X)'):]
+    expect('X(One, 0)' in listed and 'X(Two, 1)' in listed and 'X(Buf,' not in listed and 'HL_OVL_FILE_COUNT 2' in hdr,
+           'the header numbers the overlays read from the card')
+    table, files = make_table(FakeElf(), m)
+    rows = read_table(table)
+    expect(len(rows) == 2 and [r['id'] for r in rows] == [0, 1] and [r['file'] for r in rows] == [0, 1],
+           'one entry per overlay read from the card, numbered as their files')
+    expect(rows[0]['addr'] == 0x2100000 and rows[0]['load'] == 64 and rows[0]['bss'] == 0x20 and rows[1]['load'] == 32
+           and rows[0]['sinit'] == (0, 0) and rows[0]['reserved'] == 0, 'an entry\'s address and sizes')
+    expect(files == [bytes(range(64)), bytes(range(32))], 'the files hold the loaded bytes alone')
+    elf_bytes = _tiny_elf()
+    stamped = stamp_sums(elf_bytes, m)
+    tiny = Elf(stamped)
+    at = tiny.section('.rodata')['offset']
+    expect(list(struct.unpack_from('<3I', stamped, at)) == [word_sum(bytes(range(64))), word_sum(bytes(range(64, 96))), 0],
+           'the sums are stamped into hlOvlSums, 0 for a bss overlay')
+    expect(stamp_sums(stamped, m) == stamped, 'stamping twice changes nothing')
+    rom = _tiny_rom(tiny, m)
+    expect(check_rom_table(rom, tiny, m) == [], 'a ROM made as ndstool makes it passes: %r' % check_rom_table(rom, tiny, m))
+    top = struct.unpack_from('<I', rom, struct.unpack_from('<I', rom, 0x48)[0] + 8)[0]
+    bad = bytearray(rom)
+    bad[top] ^= 0xFF
+    expect(any('two' in e for e in check_rom_table(bytes(bad), tiny, m)), 'a changed file is found')
+    bad = bytearray(rom)
+    struct.pack_into('<H', bad, struct.unpack_from('<I', rom, 0x40)[0] + 4, 0)
+    expect(any('first file' in e for e in check_rom_table(bytes(bad), tiny, m)), 'NitroFS\'s files must start after them')
+    bad = bytearray(rom)
+    struct.pack_into('<I', bad, struct.unpack_from('<I', rom, 0x50)[0] - 12, 0)
+    expect(any('footer' in e for e in check_rom_table(bytes(bad), tiny, m)), 'the footer is checked')
+    expect(any('sum' in e for e in check_rom_table(_tiny_rom(Elf(elf_bytes), m), Elf(elf_bytes), m)),
+           'a program whose sums were not stamped is found')
+
     for f in failures:
         print('ovl.py self-test FAILED: ' + f, file=sys.stderr)
     print('ovl.py self-test: %s' % ('ok' if not failures else '%d failed' % len(failures)))
@@ -853,11 +1200,11 @@ def self_test():
 # ------------------------------------------------------------------ main
 
 
-def parse_args(argv, wanted):
+def parse_args(argv, wanted, optional=()):
     out, i = {}, 0
     while i < len(argv):
         a = argv[i]
-        if not a.startswith('--') or a[2:] not in wanted or i + 1 >= len(argv):
+        if not a.startswith('--') or a[2:] not in tuple(wanted) + tuple(optional) or i + 1 >= len(argv):
             raise SystemExit('ovl.py: unexpected %r (wants %s)' % (a, ', '.join('--' + w for w in wanted)))
         out[a[2:]] = argv[i + 1]
         i += 2
@@ -881,8 +1228,12 @@ def main(argv):
             return cmd_check(parse_args(rest, ('elf', 'map', 'manifest')))
         if cmd == 'pack':
             return cmd_pack(parse_args(rest, ('elf', 'manifest', 'out')))
+        if cmd == 'rom':
+            return cmd_rom(parse_args(rest, ('elf', 'manifest', 'table', 'dir')))
+        if cmd == 'stamp':
+            return cmd_stamp(parse_args(rest, ('elf', 'manifest')))
         if cmd == 'romcheck':
-            return cmd_romcheck(parse_args(rest, ('rom', 'elf')))
+            return cmd_romcheck(parse_args(rest, ('rom', 'elf'), ('manifest', 'mode')))
     except ValueError as e:
         print('ovl.py %s: %s' % (cmd, e), file=sys.stderr)
         return 1
