@@ -2010,6 +2010,38 @@ namespace
         }
     }
 
+    /// A body of water that nothing names is a door in the game that nothing
+    /// ever touches (it is not solid): it stays where it is, with the player
+    /// in it (c1a4g's, which slid away from under them).
+    void testWaterStill()
+    {
+        BoxRoom room;
+        room.maxs[2] = 200;
+        BrushBox pool;
+        pool.className = "func_water";
+        pool.mins[0] = -128, pool.mins[1] = -128, pool.mins[2] = 0;
+        pool.maxs[0] = 128, pool.maxs[1] = 128, pool.maxs[2] = 120;
+        pool.keys = "\"skin\" \"-3\"\n\"speed\" \"100\"\n\"wait\" \"4\"\n";
+        room.brushes.push_back(pool);
+        Game g;
+        build(g, room);
+        check(g.ok, "unnamed pool room");
+        if (!g.ok)
+            return;
+        g.move.nodes = g.view.nodes;
+        g.move.leaves = g.view.leaves;
+        g.move.headNode = g.view.models[0].headNode;
+        const int water = g.recordOfModel(1);
+        check(water >= 0 && !(g.view.logic[water].flags & kLogicTouch), "a body of water is not opened by a touch");
+        const fx was[3] = {g.brushStates[0].pos[0], g.brushStates[0].pos[1], g.brushStates[0].pos[2]};
+        MoveCommand idle;
+        g.player.origin[0] = 0, g.player.origin[1] = 0, g.player.origin[2] = fxFromInt(60);
+        g.frame(idle, 60);
+        check(g.brushStates[0].pos[0] == was[0] && g.brushStates[0].pos[1] == was[1] && g.brushStates[0].pos[2] == was[2] &&
+                  g.player.waterLevel >= 2,
+              "... and stays where it is with the player in it");
+    }
+
     void testWater()
     {
         // A pool: a func_water filling the bottom 80 units of the room's east
@@ -2961,6 +2993,7 @@ int main()
     testBreakingAndPushing();
     testFrameClock();
     testWater();
+    testWaterStill();
     testCrouchedClimbAndSwim();
     testDrowning();
     testWaterJump();

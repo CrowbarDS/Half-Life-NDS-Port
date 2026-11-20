@@ -1732,8 +1732,11 @@ namespace hlds
                 if (spawnflags & kDoorUseOnly)
                     record.flags |= kLogicUseOnly;
                 // Walking into a door opens it only if nothing else is meant
-                // to: a door with a name waits to be told.
-                else if (!named)
+                // to: a door with a name waits to be told. And one of water
+                // or the like (a "skin" of contents) is not solid, so
+                // nothing ever touches it: it moves only when told (c1a4g's
+                // water, which would slide away from under the player).
+                else if (!named && numberKey(entity, "skin") == 0)
                     record.flags |= kLogicTouch;
                 record.netName = nameId(entity.value("netname"));
             }
