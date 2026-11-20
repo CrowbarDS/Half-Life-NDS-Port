@@ -1807,8 +1807,37 @@ a swing that meets nothing made again a tenth of a second on, a whole blow
 after a second's rest and half of one on the heels of the last, three thuds
 on flesh and two rings on a wall -- as loud as what the wall is made of lets
 them be, with that material's own sound -- the dent a fifth of a second after
-the blow, the hand left as its last swing left it, and put away before
-another weapon comes out (`shared/HlMonsters.hpp`, `crowbarBlow`).
+the blow, and the hand left as its last swing left it
+(`shared/HlMonsters.hpp`, `crowbarBlow`). Another weapon comes out as it is
+put away, as the game's does: half a second in all.
+
+### Frame by frame
+
+`tools/ref/diag.sh` plays a scenario in the real game, under a diagnostic
+build of the game's code that logs what moves each frame, and in the port's
+own code on the host, and holds the two logs together (`tools/ref/README.md`
+says how). Pushed boxes, ladders, the weapons' rounds and spread, what is
+thrown and fired, blasts, the player's hurts and pushes, and turning brushes
+have been brought to the game's this way. What is still apart, and why:
+
+- **Half-second waits finish one frame early.** Taking out a weapon, a hand
+  grenade's throw: the game counts these down in floats, by each command's
+  own length (16 or 17 ms), and what is left of half a second after thirty
+  frames is a hair over nothing, so it fires on the thirty-first. The port
+  counts whole milliseconds and fires on the thirtieth. Not followed: it is
+  rounding, not a rule, and at the console's 30 a second it is a tick either
+  way.
+- **A projectile's thinks come one of its steps early.** The game moves
+  what is thrown or fired once in the very frame it is let go; the port
+  first in the frame after, its weapons running after its projectiles. Both
+  count a rocket's thinks and a grenade's fuse from the launch, so the
+  port's come a step sooner in the thing's own flight: a rocket turns a
+  frame earlier along the same path (and still meets the wall on the game's
+  frame).
+- **The player starts a unit higher in the game.** Its player is put at a
+  spawn point's height plus one; the port's at the spawn point. Left out on
+  purpose: it changes where every match's players start, so it waits for
+  the next change to the match protocol (`kNetVersion`), to go in with it.
 
 ## The pass's budget
 
