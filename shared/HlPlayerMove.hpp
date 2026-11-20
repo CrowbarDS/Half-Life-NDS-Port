@@ -1643,9 +1643,48 @@ namespace hldata
 
     /// Advance the player by one time step. `dt` is Q16 seconds; the game runs
     /// it at a fixed 30 Hz (kPlayerTick).
-    inline void playerMove(PlayerState &state, const MoveCommand &cmd, const MoveWorld &world,
+    namespace detail
+    {
+        /// How fast sideways the move's angles roll their most (8 degrees:
+        /// the game's sv_rollspeed, with sv_rollangle 2, four times over).
+        inline constexpr fx kRollSpeed = fxFromInt(200);
+
+        /// The game's roll of the move's angles (PM_CheckParamters:
+        /// PM_CalcRoll, four times over): up to 8 degrees as the player goes
+        /// sideways, by how fast at the move's start, which tilts the view's
+        /// right. A walk flattens it away; a climb and a swim use the view's
+        /// own axes, and a key sideways tilts with it -- on a ladder, a
+        /// sideways climb sinks.
+        inline void rollRight(const fx *velocity, MoveCommand &cmd)
+        {
+            const fx side = fxMul(velocity[0], cmd.rightXY[0]) + fxMul(velocity[1], cmd.rightXY[1]);
+            // A 25th of a degree a unit a second: 65536 / (25 x 360) turns
+            // a unit, 7457 / 2^22 of one in Q12.
+            const fx limited = side > kRollSpeed ? kRollSpeed : side < -kRollSpeed ? -kRollSpeed : side;
+            const auto turns = static_cast<std::int32_t>((static_cast<std::int64_t>(limited) * 7457) >> 22);
+            if (turns == 0)
+                return;
+            fx sine, cosine;
+            fxSinCos(static_cast<std::uint16_t>(turns), sine, cosine);
+            // Right turned about forward: cos x right - sin x up, up being
+            // right x forward (the view's up, unrolled).
+            const fx *r = cmd.viewRight, *f = cmd.viewForward;
+            const fx up[3] = {fxMul(r[1], f[2]) - fxMul(r[2], f[1]), fxMul(r[2], f[0]) - fxMul(r[0], f[2]),
+                              fxMul(r[0], f[1]) - fxMul(r[1], f[0])};
+            fx rolled[3];
+            for (int a = 0; a < 3; ++a)
+                rolled[a] = fxMul(cosine, r[a]) - fxMul(sine, up[a]);
+            for (int a = 0; a < 3; ++a)
+                cmd.viewRight[a] = rolled[a];
+        }
+    } // namespace detail
+
+    inline void playerMove(PlayerState &state, const MoveCommand &asked, const MoveWorld &world,
                            std::int32_t dt)
     {
+        // (The keys' axes as the game's move has them: rolled.)
+        MoveCommand cmd = asked;
+        detail::rollRight(state.velocity, cmd);
         detail::Mover m{state, world, dt};
         // (A landing is known by the end of the move: in the air before,
         // on the ground after, and how fast it was coming down.)
