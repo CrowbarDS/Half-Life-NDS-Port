@@ -24,6 +24,15 @@
 // its log's ccmd row says, given that log and such a row (the engine's own
 // commands have none); else where the line stands: give <thing>,
 // weapon_<name>, god, impulse 101.
+//
+// The monsters (a scenario that keeps them: "# keep ...monster_..."): the
+// map's own node graph is the game's (<map>.nod beside the copy, which
+// diag.sh takes from the game's run), and their models are cooked from
+// HLDS_VALVE_DIR. Each is matched to the game's (mstart rows: its class and
+// where it started), its thinks are set to fall in the frames the game's
+// did, and the random numbers it draws are the game's, in the order the
+// game drew each kind (low, high) of them -- what is left over, or missing,
+// is counted at the end.
 
 #include <algorithm>
 #include <array>
@@ -31,6 +40,8 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
+#include <deque>
+#include <map>
 #include <fstream>
 #include <memory>
 #include <sstream>
@@ -41,6 +52,7 @@
 #include "HlFrameClock.hpp"
 #include "HlView.hpp"
 #include "TestGame.hpp"
+#include "hlds/AtomicWrite.hpp"
 
 using namespace hldstest;
 
@@ -265,6 +277,45 @@ namespace
         const Game *game = nullptr;
         const std::vector<std::string> *names = nullptr;
     } now;
+
+    /// The monsters as the game's log has them, and how they are matched.
+    struct GameMonster
+    {
+        int id = 0;            ///< its entity
+        std::string cls;
+        double at[3] = {0, 0, 0};
+        int firstThink = 0;    ///< the scripted frame of its first think, 0 none
+        int actor = -1;        ///< the port's, once matched
+        /// Its draws, by kind ("L 0 9", "F 100 400": a float of time in ms).
+        std::map<std::string, std::deque<double>> draws;
+    };
+    struct
+    {
+        std::vector<GameMonster> game;
+        std::map<int, int> byActor; ///< actor -> index into `game`
+        int given = 0, own = 0;     ///< draws: the game's, the port's own
+    } mons;
+
+    std::string drawKey(bool ms, double low, double high)
+    {
+        char key[64];
+        if (ms)
+            std::snprintf(key, sizeof key, "F %ld %ld", std::lround(low * 1000), std::lround(high * 1000));
+        else
+            std::snprintf(key, sizeof key, "L %ld %ld", std::lround(low), std::lround(high));
+        return key;
+    }
+
+    /// The map's class name of an actor's kind.
+    const char *className(std::uint8_t kind)
+    {
+        for (const KindName &k : kKindNames)
+        {
+            if (static_cast<std::uint8_t>(k.kind) == kind && std::strncmp(k.name, "monster_", 8) == 0)
+                return k.name;
+        }
+        return "-";
+    }
 } // namespace
 
 int main(int argc, char **argv)
@@ -306,6 +357,39 @@ int main(int argc, char **argv)
                 for (int k = 0; k < 6; ++k)
                     v[k] = std::atof(field[5 + k].c_str());
                 gameTurning.push_back({field[4], v});
+                continue;
+            }
+            if (line.rfind("mstart,", 0) == 0 || line.rfind("mon,", 0) == 0 || line.rfind("rnd,", 0) == 0)
+            {
+                std::istringstream in(line);
+                std::vector<std::string> field;
+                for (std::string f; std::getline(in, f, ',');)
+                    field.push_back(f);
+                const int id = std::atoi(field[4].c_str());
+                auto it = std::find_if(mons.game.begin(), mons.game.end(), [&](const GameMonster &m) { return m.id == id; });
+                if (field[0] == "mstart")
+                {
+                    // mstart,frame,seq,t,id,cls,sx,sy,sz,start,first
+                    if (it == mons.game.end())
+                        it = mons.game.insert(mons.game.end(), GameMonster{});
+                    it->id = id;
+                    it->cls = field[5];
+                    for (int k = 0; k < 3; ++k)
+                        it->at[k] = std::atof(field[6 + k].c_str());
+                }
+                else if (it != mons.game.end() && field[0] == "mon")
+                {
+                    const int frame = std::atoi(field[1].c_str());
+                    if (frame > 0 && it->firstThink == 0)
+                        it->firstThink = frame;
+                }
+                else if (it != mons.game.end() && std::atoi(field[1].c_str()) > 0)
+                {
+                    // rnd,frame,seq,t,id,kind,lo,hi,value
+                    const bool ms = field[5] == "F";
+                    it->draws[drawKey(ms, std::atof(field[6].c_str()), std::atof(field[7].c_str()))].push_back(
+                        std::atof(field[8].c_str()));
+                }
                 continue;
             }
             const bool command = line.rfind("cmd,", 0) == 0;
@@ -366,7 +450,17 @@ int main(int argc, char **argv)
         std::fprintf(stderr, "diag_replay: %s: %s\n", argv[1], error.c_str());
         return 1;
     }
-    finish(g, &globals);
+    // The game's node graph of the map (diag.sh copies it beside the map),
+    // and the monsters' models, from the game's folder.
+    {
+        std::filesystem::path nod(argv[1]);
+        nod.replace_extension(".nod");
+        std::vector<std::uint8_t> bytes;
+        if (std::filesystem::exists(nod) && hlds::readFile(nod, bytes, error) &&
+            !hlds::parseNodGraph(bytes, g.nodGraph, error))
+            std::fprintf(stderr, "diag_replay: %s: %s\n", nod.string().c_str(), error.c_str());
+    }
+    finish(g, &globals, std::getenv("HLDS_VALVE_DIR"));
     if (!g.ok)
         return 1;
     // As tools/ref/play.sh starts the real game's player: god, impulse 101,
@@ -427,6 +521,82 @@ int main(int argc, char **argv)
     std::fprintf(out, "#cols shot frame seq t n seed sx sy sz ax ay az x y cx cy ex ey ez frac hit\n");
     std::fprintf(out, "#cols boom frame seq t x y z damage radius type by\n");
     std::fprintf(out, "#cols dmg frame seq t amount type by fx fy fz vx0 vy0 vz0 vx vy vz hp0 hp ap0 ap\n");
+    std::fprintf(out, "#cols mstart frame seq t id cls sx sy sz start first\n");
+    std::fprintf(out, "#cols mon frame seq t id ox oy oz yaw state ideal sched ti tid cond enemy act seq hp next\n");
+    std::fprintf(out, "#cols aiev frame seq t id what name a b\n");
+    std::fprintf(out, "#cols rnd frame seq t id kind lo hi value\n");
+    // The monsters: each matched to the game's of its class that started
+    // nearest (ids in the port's rows are its own actors').
+    for (int i = 0; i < g.actors.count; ++i)
+    {
+        const ActorState &actor = g.actorStates[i];
+        if (!actor.active || aiKindOf(actor.kind) == nullptr)
+            continue;
+        const char *cls = className(actor.kind);
+        std::fprintf(out, "mstart,0,0,0.0000,%d,%s,%.3f,%.3f,%.3f,0.0000,0.0000\n", i, cls, units(actor.pos[0]),
+                     units(actor.pos[1]), units(actor.pos[2]));
+        int best = -1;
+        double bestD = 64.0 * 64.0;
+        for (std::size_t n = 0; n < mons.game.size(); ++n)
+        {
+            const GameMonster &m = mons.game[n];
+            if (m.actor >= 0 || m.cls != cls)
+                continue;
+            const double dx = m.at[0] - units(actor.pos[0]), dy = m.at[1] - units(actor.pos[1]),
+                         dz = m.at[2] - units(actor.pos[2]);
+            if (dx * dx + dy * dy + dz * dz < bestD)
+            {
+                bestD = dx * dx + dy * dy + dz * dz;
+                best = static_cast<int>(n);
+            }
+        }
+        if (best >= 0)
+        {
+            mons.game[best].actor = i;
+            mons.byActor[i] = best;
+        }
+    }
+    diag::random = [](int actor, bool ms, int low, int high, int drawn) {
+        if (now.frame < 1)
+            return drawn;
+        int value = drawn;
+        bool given = false;
+        auto it = mons.byActor.find(actor);
+        if (it != mons.byActor.end())
+        {
+            auto &stream = mons.game[it->second].draws[drawKey(ms, ms ? low / 1000.0 : low, ms ? high / 1000.0 : high)];
+            if (!stream.empty())
+            {
+                value = static_cast<int>(std::lround(ms ? stream.front() * 1000.0 : stream.front()));
+                stream.pop_front();
+                given = true;
+            }
+        }
+        ++(given ? mons.given : mons.own);
+        if (ms)
+            std::fprintf(now.out, "rnd,%d,%d,%.4f,%d,F,%.6f,%.6f,%.6f\n", now.frame, now.frame, now.t, actor, low / 1000.0,
+                         high / 1000.0, value / 1000.0);
+        else
+            std::fprintf(now.out, "rnd,%d,%d,%.4f,%d,L,%d,%d,%d\n", now.frame, now.frame, now.t, actor, low, high, value);
+        return value;
+    };
+    diag::monster = [](const diag::Monster &m) {
+        if (now.frame < 1)
+            return;
+        // (The player is the game's entity 1.)
+        const int enemy = m.enemy == kAiPlayer ? 1 : m.enemy;
+        std::fprintf(now.out, "mon,%d,%d,%.4f,%d,%.3f,%.3f,%.3f,%.3f,%d,%d,%s,%d,%d,%08x,%d,%d,%d,%.2f,%.4f\n", now.frame,
+                     now.frame, now.t, m.index, units(m.pos[0]), units(m.pos[1]), units(m.pos[2]), m.yaw * 360.0 / 65536.0,
+                     m.state, m.ideal, m.schedule != nullptr ? m.schedule : "-", m.taskIndex, m.task,
+                     static_cast<unsigned>(m.conditions), enemy, m.activity, m.clip, static_cast<double>(m.health),
+                     now.t + m.thinkMs / 1000.0);
+    };
+    diag::aiEvent = [](int index, const char *what, const char *name, int a, int b) {
+        if (now.frame < 1)
+            return;
+        std::fprintf(now.out, "aiev,%d,%d,%.4f,%d,%s,%s,%d,%d\n", now.frame, now.frame, now.t, index, what,
+                     name != nullptr && name[0] ? name : "-", a, b);
+    };
     diag::ladder = [](const diag::Ladder &seen) {
         frameLadder.on = true;
         frameLadder.seen = seen;
@@ -606,6 +776,25 @@ int main(int argc, char **argv)
                 }
             }
         }
+        // The monsters' thinks, set to fall in the frames the game's first
+        // did (they have thought since the map began, from a moment the two
+        // sides do not share).
+        if (f == 1 && step == 1)
+        {
+            for (const GameMonster &gm : mons.game)
+            {
+                AiMonster *m = gm.actor >= 0 ? aiOf(g.actors, gm.actor) : nullptr;
+                if (m == nullptr || !m->started || gm.firstThink < 1)
+                    continue;
+                // (This frame's tick takes `ms` off, and each after its own:
+                // at the first think's frame it comes to 0 or less.)
+                FrameClock ahead = clock;
+                std::int32_t sum = ms;
+                for (int k = 2; k < gm.firstThink; ++k)
+                    sum += ahead.ms(1);
+                m->thinkMs = sum + 1;
+            }
+        }
         g.logic.useHeld.value = useHeld;
         logicTick(g.logic, g.player, ms);
         g.logic.viewTurn = 0;
@@ -756,6 +945,19 @@ int main(int argc, char **argv)
         }
     }
     std::fprintf(out, "END,%d,%d,%.4f\n", scripted, scripted, timeMs / 1000.0);
+    if (!mons.game.empty())
+    {
+        int matched = 0, left = 0;
+        for (const GameMonster &m : mons.game)
+        {
+            matched += m.actor >= 0 ? 1 : 0;
+            for (const auto &[key, stream] : m.draws)
+                left += static_cast<int>(stream.size());
+        }
+        std::printf("monsters: %d of the game's %zu matched; draws: %d the game's, %d the port's own, %d of the game's "
+                    "not drawn\n",
+                    matched, mons.game.size(), mons.given, mons.own, left);
+    }
     std::fclose(out);
     std::printf("%s: %d frames\n", argv[3], scripted);
     return 0;

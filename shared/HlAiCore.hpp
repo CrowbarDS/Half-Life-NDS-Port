@@ -1619,6 +1619,8 @@ namespace hldata
     /// ChangeSchedule
     inline void aiChangeSchedule(AiCtx &c, const AiSchedule *schedule)
     {
+        HL_DIAG(aiEvent, c.index, "sched", schedule != nullptr ? schedule->name : nullptr,
+                static_cast<int>(c.m.conditions), 0);
         c.m.schedule = schedule;
         c.m.scheduleIndex = 0;
         c.m.taskStatus = kTaskStatusNew;
@@ -2654,6 +2656,11 @@ namespace hldata
                 const AiSchedule *next;
                 if (aiHas(c, kCondTaskFailed) && c.m.state == c.m.idealState)
                 {
+                    HL_DIAG_ONLY({
+                        const AiTask *failed = aiGetTask(c);
+                        HL_DIAG(aiEvent, c.index, "fail", c.m.schedule != nullptr ? c.m.schedule->name : nullptr,
+                                failed != nullptr ? static_cast<int>(failed->task) : -1, c.m.scheduleIndex);
+                    })
                     next = aiScheduleOfType(c, c.m.failSchedule != kSchedNone ? c.m.failSchedule : kSchedFail);
                 }
                 else
@@ -2670,6 +2677,7 @@ namespace hldata
                 if (task == nullptr)
                     break;
                 c.m.taskStatus = kTaskStatusRunning; // TaskBegin
+                HL_DIAG(aiEvent, c.index, "task", nullptr, task->task, c.m.scheduleIndex);
                 aiStartTask(c, *task);
             }
             if (c.m.activity != c.m.idealActivity)
@@ -3169,7 +3177,10 @@ namespace hldata
                 continue;
             own = true;
             if (passed(event.frame))
+            {
+                HL_DIAG(aiEvent, c.index, "anim", nullptr, static_cast<int>(event.target), 0);
                 c.kind.animEvent(c, static_cast<int>(event.target));
+            }
         }
         // (A model cooked before its own events were kept: the kind's list.)
         if (!own && !aiModelHasActivities(*model))
@@ -3177,7 +3188,10 @@ namespace hldata
             for (const AiClipEvent *e = c.kind.clipEvents; e != nullptr && e->clip != nullptr; ++e)
             {
                 if (nameHash(e->clip) == clip.name && passed(e->frame))
+                {
+                    HL_DIAG(aiEvent, c.index, "anim", nullptr, e->event, 0);
                     c.kind.animEvent(c, e->event);
+                }
             }
         }
     }
@@ -3767,6 +3781,8 @@ namespace hldata
         if (m == nullptr || kind == nullptr)
             return;
         AiCtx c = aiCtx(w, player, index, *m, *kind);
+        // (Its random numbers, for the comparison with the real game: HlDiag.hpp.)
+        HL_DIAG_ONLY(const diag::ThinkerScope thinking(index);)
         if (m->maxHealth == 0)
             aiInit(c);
         if (c.me.ai == kAiDead && !c.m.inAir)
@@ -3837,6 +3853,14 @@ namespace hldata
             if (m->thinkMs <= 0)
                 m->thinkMs = kAiThinkMs;
             aiMonsterThink(c);
+            HL_DIAG_ONLY({
+                const AiTask *task = aiGetTask(c);
+                HL_DIAG(monster, diag::Monster{index, c.me.pos, c.me.yaw, c.m.state, c.m.idealState,
+                                               c.m.schedule != nullptr ? c.m.schedule->name : nullptr,
+                                               task != nullptr ? c.m.scheduleIndex : -1, task != nullptr ? static_cast<int>(task->task) : -1,
+                                               c.m.conditions, c.m.enemy, c.m.activity, c.me.clip, c.me.health,
+                                               m->thinkMs});
+            })
         }
     }
 

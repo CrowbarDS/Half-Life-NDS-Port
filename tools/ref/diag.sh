@@ -8,6 +8,7 @@
 #   build/ref/diag/<name>.bsp       the map exactly as the game had it (start
 #                                   moved, entities stripped), for the port's
 #                                   replay (diag_replay) to cook the same
+#   build/ref/diag/<name>.nod       the node graph the game made of it
 #
 # The scenario's head says where:
 #   # map c1a2
@@ -43,6 +44,8 @@ OUT="$ROOT/build/ref/diag"
 mkdir -p "$OUT"
 port() {
     local replay="$ROOT/build/convert/diag_replay"
+    # (The monsters' models are cooked from the game's own folder.)
+    export HLDS_VALVE_DIR="${HLDS_VALVE_DIR:-$HL/valve}"
     [ -x "$replay" ] || { echo "no $replay: build the converter (cmake --build build/convert --target diag_replay)" >&2; exit 1; }
     # (Each frame as long as the game's command was: its log.)
     "$replay" "$OUT/$NAME.bsp" "$SCEN" "$OUT/${NAME}_ds.csv" 120 "$OUT/${NAME}_pc.csv" || exit 1
@@ -78,5 +81,9 @@ if ! grep -q '^END,' "$LOG" 2>/dev/null; then
     exit 1
 fi
 cp "$LOG" "$OUT/${NAME}_pc.csv"
+# The node graph the game made of the copy (it makes one whenever the map is
+# newer than its graph), for the port's monsters to find their ways by.
+rm -f "$OUT/$NAME.nod"
+[ -f "$HL/hlds_ref/maps/graphs/$MAP.nod" ] && cp "$HL/hlds_ref/maps/graphs/$MAP.nod" "$OUT/$NAME.nod"
 echo "$OUT/${NAME}_pc.csv: $(grep -c '^pl,' "$OUT/${NAME}_pc.csv") commands"
 port

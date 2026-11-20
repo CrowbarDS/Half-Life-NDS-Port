@@ -1,0 +1,12 @@
+# A zombie and the player, nothing else: c1a1b's only free one, 240 units
+# off and out of its sight. The player walks up (heard); it turns, sees
+# them, comes and claws (nothing hurts the player); then the player backs
+# away and it follows.
+# map c1a1b
+# start 892 -796 -44 286
+# keep func_.*|monster_zombie|info_node.*
+60 0 0 286 0      # stand a second
+30 400 0 286 0    # walk towards it: heard
+240 0 0 286 0     # stand: it comes and claws
+60 -400 0 286 0   # back away
+120 0 0 286 0     # stand

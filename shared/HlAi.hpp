@@ -883,16 +883,25 @@ namespace hldata
         a.seed = a.seed * 1664525u + 1013904223u;
         return a.seed >> 8;
     }
-    /// RANDOM_LONG(low, high)
-    inline int aiRandomLong(ActorWorld &a, int low, int high)
+    inline int aiRandomIn(ActorWorld &a, int low, int high)
     {
         if (high <= low)
             return low;
         return low + static_cast<int>(aiRandom(a) % static_cast<std::uint32_t>(high - low + 1));
     }
+    /// RANDOM_LONG(low, high)
+    inline int aiRandomLong(ActorWorld &a, int low, int high)
+    {
+        const int drawn = aiRandomIn(a, low, high);
+        // (The comparison with the real game gives its own draw: HlDiag.hpp.)
+        HL_DIAG_ONLY(if (diag::random != nullptr && diag::thinker >= 0) return diag::random(diag::thinker, false, low, high, drawn);)
+        return drawn;
+    }
     /// RANDOM_FLOAT(low, high), for times: in ms.
     inline int aiRandomMs(ActorWorld &a, int lowMs, int highMs)
     {
-        return aiRandomLong(a, lowMs, highMs);
+        const int drawn = aiRandomIn(a, lowMs, highMs);
+        HL_DIAG_ONLY(if (diag::random != nullptr && diag::thinker >= 0) return diag::random(diag::thinker, true, lowMs, highMs, drawn);)
+        return drawn;
     }
 } // namespace hldata

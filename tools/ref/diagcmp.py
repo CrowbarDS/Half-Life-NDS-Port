@@ -16,6 +16,7 @@ does the same. Box speeds are worked out from where they went.
 """
 import argparse
 import csv
+import difflib
 import math
 import os
 import sys
@@ -338,6 +339,85 @@ def hurts(pc, ds):
         print(f'  {"":<14}{said(d)}')
 
 
+def monsters(pc, ds, pos):
+    """The monsters, each paired with the port's of its class that started
+    nearest (mstart rows): their AI's events as two sequences, aligned in
+    order (a frame or so apart is the same event: the game's monsters think
+    after the player's move, the port's before it), the first that differs;
+    and where they are at each think, on the frames both thought."""
+    starts_pc, starts_ds = pc.get('mstart', []), ds.get('mstart', [])
+    if not starts_pc or not starts_ds:
+        return
+    pairs, used = [], set()
+    for m in starts_pc:
+        best, best_d = None, 64.0
+        for n in starts_ds:
+            if n['id'] in used or n['cls'] != m['cls']:
+                continue
+            d = math.dist(vec(m, ('sx', 'sy', 'sz')), vec(n, ('sx', 'sy', 'sz')))
+            if d < best_d:
+                best, best_d = n, d
+        if best is not None:
+            used.add(best['id'])
+            pairs.append((m, best))
+
+    def events(rows, mid):
+        # (A monster's thinking: its schedules, tasks, failures, and the
+        # events of its clips, without the sounds -- 1000 and over -- that
+        # the port plays apart from them.)
+        out = []
+        for r in rows:
+            if r['id'] != mid or r['what'] not in ('sched', 'task', 'fail', 'anim'):
+                continue
+            if r['what'] == 'anim' and int(r['a']) >= 1000:
+                continue
+            key = r['what'] + ' ' + (r['name'] if r['what'] in ('sched', 'fail') else r['a'])
+            out.append((int(r['frame']), key))
+        return out
+
+    for m, n in pairs:
+        ev_pc, ev_ds = events(pc.get('aiev', []), m['id']), events(ds.get('aiev', []), n['id'])
+        print(f' {m["cls"]} {m["id"]} / {n["id"]} (real game / port): {len(ev_pc)} / {len(ev_ds)} events')
+        # (Aligned as a diff: an event one side has and the other has not --
+        # often a wait begun before the script, at a moment the two sides do
+        # not share -- leaves the rest paired.)
+        ops = difflib.SequenceMatcher(None, [e[1] for e in ev_pc], [e[1] for e in ev_ds], autojunk=False).get_opcodes()
+        late = [ev_ds[j1 + i][0] - ev_pc[i1 + i][0] for tag, i1, i2, j1, j2 in ops if tag == 'equal' for i in range(i2 - i1)]
+        if late:
+            print(f'  {"paired":<14}{len(late)}, the port later by {min(late)}..{max(late)} frames'
+                  f' (mostly {max(set(late), key=late.count)})')
+        apart = [(tag, i1, i2, j1, j2) for tag, i1, i2, j1, j2 in ops if tag != 'equal']
+        for tag, i1, i2, j1, j2 in apart[:4]:
+            def show(ev, a, b):
+                if a == b:
+                    return 'none'
+                more = f' (+{b - a - 1})' if b - a > 1 else ''
+                return f'frame {ev[a][0]} {ev[a][1]}{more}'
+            print(f'  {"apart":<14}{show(ev_pc, i1, i2)} / {show(ev_ds, j1, j2)}')
+        if len(apart) > 4:
+            print(f'  {"":<14}... and {len(apart) - 4} more')
+        if not apart:
+            print(f'  {"apart":<14}none')
+        # (Its thinks taken in order: the game's float time makes one now
+        # and then seven frames after the last, not six.)
+        th_pc = [r for r in pc.get('mon', []) if r['id'] == m['id']]
+        th_ds = [r for r in ds.get('mon', []) if r['id'] == n['id']]
+        k = min(len(th_pc), len(th_ds))
+        offset = [int(th_ds[i]['frame']) - int(th_pc[i]['frame']) for i in range(k)]
+        print(f'  {"thinks":<14}{len(th_pc)} / {len(th_ds)}, frames apart {min(offset, default=0)}..{max(offset, default=0)}')
+        far = [(int(th_pc[i]['frame']), math.dist(vec(th_pc[i], ('ox', 'oy', 'oz')), vec(th_ds[i], ('ox', 'oy', 'oz'))))
+               for i in range(k)]
+        off = [x for x in far if x[1] > pos]
+        if off:
+            worst = max(far, key=lambda x: x[1])
+            print(f'  {"where":<14}apart from think at frame {off[0][0]} ({off[0][1]:.2f} u), worst {worst[1]:.2f} at {worst[0]}')
+        elif k:
+            print(f'  {"where":<14}same within {pos:g} u')
+        draws_pc = sum(1 for r in pc.get('rnd', []) if r['id'] == m['id'])
+        draws_ds = sum(1 for r in ds.get('rnd', []) if r['id'] == n['id'])
+        print(f'  {"random draws":<14}{draws_pc} / {draws_ds}')
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('name')
@@ -396,6 +476,7 @@ def main():
     projectiles(pc, ds, a.pos, a.vel, table)
     hurts(pc, ds)
     turning(pc, ds)
+    monsters(pc, ds, a.pos)
 
     box_pc, box_ds = boxes_per_frame(pc.get('box', [])), boxes_per_frame(ds.get('box', []))
     moved = []

@@ -67,6 +67,43 @@ namespace hldata::diag
         int health0, health, armor0, armor;
     };
     inline void (*hurt)(const Hurt &) = nullptr;
+
+    /// The monster whose tick is running (aiTick), its actor: the random
+    /// numbers drawn meanwhile are its own. -1 none.
+    inline int thinker = -1;
+    struct ThinkerScope
+    {
+        int previous;
+        explicit ThinkerScope(int index) : previous(thinker) { thinker = index; }
+        ~ThinkerScope() { thinker = previous; }
+    };
+    /// A draw of the monsters' random numbers while one ticks: RANDOM_LONG
+    /// (`ms` false), or a RANDOM_FLOAT of time in ms; `drawn` what the port's
+    /// own numbers gave. What is used is what this returns (the real game's
+    /// draw, where the replay has it).
+    inline int (*random)(int actor, bool ms, int low, int high, int drawn) = nullptr;
+
+    /// A monster at the end of a think (aiMonsterThink): as the game's
+    /// MonsterThink leaves it.
+    struct Monster
+    {
+        int index;
+        const std::int32_t *pos; ///< its feet, Q12
+        std::uint16_t yaw;       ///< 65536ths of a turn
+        int state, ideal;
+        const char *schedule;    ///< its name, or null
+        int taskIndex, task;     ///< -1 no task
+        std::uint32_t conditions;
+        int enemy;               ///< an actor, kAiPlayer (-2), or kAiNone (-1)
+        int activity, clip, health;
+        int thinkMs;             ///< until its next think
+    };
+    inline void (*monster)(const Monster &) = nullptr;
+    /// Something a monster's AI did, as the game's diagnostic log has it:
+    /// "sched" (name; a: the conditions that ended the last), "task" (a: its
+    /// id, b: its index), "fail" (name; a: the task's id, b: its index),
+    /// "anim" (a: the event).
+    inline void (*aiEvent)(int index, const char *what, const char *name, int a, int b) = nullptr;
 } // namespace hldata::diag
 
 #define HL_DIAG(hook, ...)                                                                                             \
