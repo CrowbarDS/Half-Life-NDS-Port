@@ -96,7 +96,16 @@ the host, through its own game code, into a log of the same form.
   and where each ends; and writes both side by side to
   `build/ref/diag/<name>_cmp.csv`. (The real game moves its boxes after the
   player in a frame, the port before: a box's place at the end of a frame is
-  read from each log accordingly.)
+  read from each log accordingly.) On a ladder it says on which frames each
+  side climbed and which ladder, and holds the face each found (its normal),
+  solid underfoot, and the climb asked for against each other (`lad_*`).
+- **The console's pace.** `DIAG_VBLANKS=2` plays the port's side two of the
+  game's frames at a time, as the console's 30 a second does, compared on
+  every second frame.
+- **A start in the air** is not one in the game, which drops the player to
+  the floor before the script begins; and one inside a brush leaves the
+  game's player stuck where the port's gets out: a scenario starts on the
+  floor, in the open.
 - **Building the SDK fork**: next to this repository, 32-bit (the Steam game
   is), with `gcc-multilib`, `g++-multilib` and `libsdl2-dev:i386`:
 

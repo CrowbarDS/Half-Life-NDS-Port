@@ -21,6 +21,8 @@
 # build/ref/diag/<name>_ds.csv, and tools/ref/diagcmp.py holds the two together.
 # DIAG_PORT_ONLY=1: only that, against the game's log of the last run (for
 # trying a change to the port).
+# DIAG_VBLANKS=2: the port at the console's pace, the game's frames taken two
+# at a time (diag_replay), compared on every second frame.
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 HL="${HL_DIR:-$HOME/.steam/debian-installation/steamapps/common/Half-Life}"

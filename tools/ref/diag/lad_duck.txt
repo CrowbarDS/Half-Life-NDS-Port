@@ -1,0 +1,6 @@
+# Climb c1a2b's box ladder *23 crouched (a third as fast).
+# map c1a2b
+# start 1160 118 100 180
+30 0 0 180 0
+120 400 0 180 -30 d# crouched, walk in and climb
+60 0 0 180 0 d

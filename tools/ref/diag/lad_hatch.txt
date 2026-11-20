@@ -1,0 +1,6 @@
+# c1a2's hatch ladder *93 (faces y, x 120..204, y -782..-776, z -440..-288):
+# from halfway up, up and out over its top.
+# map c1a2
+# start 162 -798 -380 90
+30 0 0 90 0
+300 400 0 90 -30

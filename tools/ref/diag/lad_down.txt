@@ -1,0 +1,9 @@
+# On c1a2b's box ladder *23 (climbed from +x: a func_wall fills its -x side;
+# x 1138..1140, y 88..148, z 64..294): up a little, then down looking down
+# (forward), then down looking up (back).
+# map c1a2b
+# start 1160 118 100 180
+30 0 0 180 0      # stand at its foot
+40 400 0 180 -30  # climb a little
+60 400 0 180 60   # forward, looking down
+60 -400 0 180 -30 # back, looking up

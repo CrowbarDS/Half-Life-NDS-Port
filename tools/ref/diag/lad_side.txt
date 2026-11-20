@@ -1,0 +1,9 @@
+# Sideways on c1a2b's box ladder *23 (climbed from +x), once up it: right,
+# left, then forward turned 45 degrees.
+# map c1a2b
+# start 1160 118 100 180
+30 0 0 180 0
+40 400 0 180 -30  # climb a little
+60 0 400 180 0    # right
+60 0 -400 180 0   # left
+40 400 0 225 0    # forward, turned 45

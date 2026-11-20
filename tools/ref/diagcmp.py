@@ -63,6 +63,80 @@ def f(r, k):
     return float(r[k])
 
 
+def spans(frs):
+    """Frames as runs: [3, 4, 5, 9] -> '3..5, 9'."""
+    out = []
+    for fr in frs:
+        if out and fr == out[-1][1] + 1:
+            out[-1][1] = fr
+        else:
+            out.append([fr, fr])
+    return ', '.join(f'{a}..{b}' if a != b else f'{a}' for a, b in out) or '-'
+
+
+def ladders(pc, ds, pl_pc, pl_ds, frames, table):
+    """The ladder: on it or not (mt 5, the game's fly), which, and what its
+    move made of it (the lad rows): the face's normal, solid underfoot, the
+    climb speeds the keys asked for."""
+    if not frames or 'mt' not in pl_pc[frames[0]] or 'mt' not in pl_ds[frames[0]]:
+        return
+    on_pc = [fr for fr in frames if pl_pc[fr]['mt'] == '5']
+    on_ds = [fr for fr in frames if pl_ds[fr]['mt'] == '5']
+    touch_pc = [fr for fr in frames if pl_pc[fr]['lad'] != '-']
+    touch_ds = [fr for fr in frames if pl_ds[fr]['lad'] != '-']
+    if not (on_pc or on_ds or touch_pc or touch_ds):
+        return
+    print(' ladder (real game / port):')
+    print(f'  {"climbing":<14}frames {spans(on_pc)} / {spans(on_ds)}')
+    print(f'  {"touching":<14}frames {spans(touch_pc)} / {spans(touch_ds)}')
+    which = [fr for fr in frames if pl_pc[fr]['lad'] != pl_ds[fr]['lad']]
+    if which:
+        print(f'  {"which":<14}differs on {len(which)} frames, first {which[0]} '
+              f'({pl_pc[which[0]]["lad"]} / {pl_ds[which[0]]["lad"]})')
+    for fr in frames:
+        table[fr]['pc_mt'] = pl_pc[fr]['mt']
+        table[fr]['ds_mt'] = pl_ds[fr]['mt']
+    lad_pc, lad_ds = last_per_frame(pc.get('lad', [])), last_per_frame(ds.get('lad', []))
+    both = [fr for fr in frames if fr in lad_pc and fr in lad_ds]
+    if not both:
+        return
+    hit = [fr for fr in both if lad_pc[fr]['hit'] != lad_ds[fr]['hit']]
+    if hit:
+        print(f'  {"face found":<14}differs on {len(hit)} frames, first {hit[0]} '
+              f'({lad_pc[hit[0]]["hit"]} / {lad_ds[hit[0]]["hit"]})')
+    angles = []
+    for fr in both:
+        if lad_pc[fr]['hit'] != '1' or lad_ds[fr]['hit'] != '1':
+            continue
+        n_pc = [f(lad_pc[fr], k) for k in ('nx', 'ny', 'nz')]
+        n_ds = [f(lad_ds[fr], k) for k in ('nx', 'ny', 'nz')]
+        dot = max(-1.0, min(1.0, sum(x * y for x, y in zip(n_pc, n_ds))))
+        angles.append((fr, math.degrees(math.acos(dot)), n_pc, n_ds))
+        table[fr]['pc_n'] = ' '.join(f'{v:.3f}' for v in n_pc)
+        table[fr]['ds_n'] = ' '.join(f'{v:.3f}' for v in n_ds)
+    if angles:
+        apart = [a for a in angles if a[1] > 1.0]
+        if apart:
+            fr, deg, n_pc, n_ds = apart[0]
+            worst = max(angles, key=lambda a: a[1])
+            print(f'  {"normal":<14}apart on {len(apart)} frames, from {fr} by {deg:.1f} deg '
+                  f'({" ".join(f"{v:.2f}" for v in n_pc)} / {" ".join(f"{v:.2f}" for v in n_ds)}), '
+                  f'worst {worst[1]:.1f} at {worst[0]}')
+        else:
+            print(f'  {"normal":<14}same within 1 deg on {len(angles)} frames')
+    for key in ('onfloor',):
+        apart = [fr for fr in both if lad_pc[fr][key] != lad_ds[fr][key]]
+        if apart:
+            print(f'  {key:<14}differs on {len(apart)} frames: {spans(apart)}')
+        else:
+            print(f'  {key:<14}same')
+    for key in ('fwd', 'right'):
+        apart = [fr for fr in both if abs(f(lad_pc[fr], key) - f(lad_ds[fr], key)) > 0.5]
+        if apart:
+            print(f'  {key:<14}differs on {len(apart)} frames, first {apart[0]} '
+                  f'({lad_pc[apart[0]][key]} / {lad_ds[apart[0]][key]})')
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('name')
@@ -114,6 +188,8 @@ def main():
                   f'({pl_pc[apart[0]][key]} / {pl_ds[apart[0]][key]})')
         else:
             print(f'  {key:<14}same')
+
+    ladders(pc, ds, pl_pc, pl_ds, frames, table)
 
     box_pc, box_ds = boxes_per_frame(pc.get('box', [])), boxes_per_frame(ds.get('box', []))
     moved = []

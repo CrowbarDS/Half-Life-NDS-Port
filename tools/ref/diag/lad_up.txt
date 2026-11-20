@@ -1,0 +1,7 @@
+# Climb c1a2b's box ladder *23 (climbed from +x: a func_wall fills its -x side; x 1138..1140, y 88..148, z 64..294)
+# looking a little up, then hang on with no keys.
+# map c1a2b
+# start 1160 118 100 180
+30 0 0 180 0      # stand at its foot
+240 400 0 180 -30 # climb, looking up
+60 0 0 180 0      # hang on

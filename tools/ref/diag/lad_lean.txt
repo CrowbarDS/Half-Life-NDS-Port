@@ -1,0 +1,10 @@
+# c1a4e's leaning ladder *2 up the pipe under the fan's silo, into the bent
+# *7 above it, then down again; and a jump off the leaning one.
+# map c1a4e
+# start 1504 36 -2000 270
+30 0 0 270 0
+300 400 0 270 -30  # up
+200 -400 0 270 -30 # down
+30 0 0 270 0
+1 0 0 270 0 j      # jump off
+60 0 0 270 0

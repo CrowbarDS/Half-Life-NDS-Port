@@ -1,0 +1,13 @@
+# Forward on c1a2b's box ladder *23 (climbed from +x) at every pitch from
+# straight down to straight up, once up it.
+# map c1a2b
+# start 1160 118 100 180
+30 0 0 180 0
+40 400 0 180 -30  # climb a little
+15 400 0 180 89
+15 400 0 180 60
+15 400 0 180 30
+15 400 0 180 0
+15 400 0 180 -30
+15 400 0 180 -60
+15 400 0 180 -89

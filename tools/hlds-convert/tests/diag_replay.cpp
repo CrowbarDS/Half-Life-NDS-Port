@@ -19,6 +19,7 @@
 // What the port has no counterpart for is 0.
 
 #include <cmath>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -105,6 +106,33 @@ namespace
         }
         return names;
     }
+
+    /// Ladder `i`'s BSP model ("*N"), found by its bounds (the converter's
+    /// are the model's, rounded out to whole units).
+    std::string ladderName(const Game &g, int i)
+    {
+        const LadderVolume &ladder = g.move.ladders[i];
+        for (std::size_t m = 1; m < g.bsp.models.size(); ++m)
+        {
+            const BspModel &model = g.bsp.models[m];
+            bool same = true;
+            for (int a = 0; a < 3 && same; ++a)
+            {
+                same = static_cast<fx>(std::floor(model.mins[a])) == ladder.mins[a] / kFxOne &&
+                       static_cast<fx>(std::ceil(model.maxs[a])) == ladder.maxs[a] / kFxOne;
+            }
+            if (same)
+                return "*" + std::to_string(m);
+        }
+        return "?";
+    }
+
+    /// What the frame's move made of a ladder (hldata::diag::ladder).
+    struct
+    {
+        bool on = false;
+        diag::Ladder seen{};
+    } frameLadder;
 } // namespace
 
 int main(int argc, char **argv)
@@ -172,10 +200,15 @@ int main(int argc, char **argv)
     }
     std::fprintf(out, "#diag port 1\n");
     std::fprintf(out, "#cols cmd frame seq t sframe msec fwd side up pitch yaw buttons impulse seed\n");
-    std::fprintf(out, "#cols pl frame seq t ox oy oz vx vy vz pitch yaw punchp punchy og duck ground water\n");
+    std::fprintf(out, "#cols pl frame seq t ox oy oz vx vy vz pitch yaw punchp punchy og duck ground water mt lad\n");
     std::fprintf(out, "#cols phys frame seq t sframe ft\n");
     std::fprintf(out, "#cols box frame seq t id cx cy cz vx vy vz og ground water\n");
     std::fprintf(out, "#cols touch frame seq t id who push result tvx tvy bvx0 bvy0 bvx bvy\n");
+    std::fprintf(out, "#cols lad frame seq t id hit frac nx ny nz onfloor fwd right\n");
+    diag::ladder = [](const diag::Ladder &seen) {
+        frameLadder.on = true;
+        frameLadder.seen = seen;
+    };
 
     const auto groundName = [&](const PlayerState &p) -> std::string {
         if (!p.onGround)
@@ -195,6 +228,13 @@ int main(int argc, char **argv)
     }();
     std::size_t spanAt = 0;
     int spanLeft = spans[0].frames;
+    // DIAG_VBLANKS=2: the console's pace (about 30 a second), the real
+    // game's frames taken two at a time -- their lengths added, their
+    // buttons both -- and only every second frame logged.
+    const char *pace = std::getenv("DIAG_VBLANKS");
+    const int step = pace != nullptr && std::atoi(pace) > 1 ? std::atoi(pace) : 1;
+    int heldButtons = 0, heldMs = 0;
+    std::int32_t heldDt = 0;
     for (int f = 1 - settle; f <= scripted; ++f, ++frameAll)
     {
         Span span;
@@ -214,11 +254,24 @@ int main(int argc, char **argv)
         // them (the real game's physics steps a sixtieth exactly). The
         // player's: the command's length, in the real game whole
         // milliseconds, if known; else a vblank's.
-        const int ms = clock.ms(1);
+        int ms = clock.ms(1);
         const bool fromGame = f >= 1 && f < static_cast<int>(gameMs.size()) && gameMs[f] > 0;
-        const std::int32_t dt =
+        std::int32_t dt =
             fromGame ? static_cast<std::int32_t>((static_cast<std::int64_t>(gameMs[f]) << 16) / 1000) : kVblankTime;
         timeMs += ms;
+        if (f >= 1 && step > 1)
+        {
+            heldButtons |= span.buttons;
+            heldDt += dt;
+            heldMs += ms;
+            if (f % step != 0)
+                continue;
+            span.buttons = heldButtons;
+            dt = heldDt;
+            ms = heldMs;
+            heldButtons = heldMs = 0;
+            heldDt = 0;
+        }
         const double t = timeMs / 1000.0;
         const bool useHeld = (span.buttons & kInUse) != 0;
 
@@ -279,6 +332,7 @@ int main(int argc, char **argv)
         for (int a = 0; a < 3; ++a)
             cmd.viewForward[a] = forward[a];
         cmd.viewRight[0] = sy, cmd.viewRight[1] = -cy, cmd.viewRight[2] = 0;
+        frameLadder.on = false;
         playerMove(g.player, cmd, g.move, dt);
         if (pulled >= 0)
             logicPull(g.logic, g.player, pulled, ms);
@@ -298,10 +352,21 @@ int main(int argc, char **argv)
                          units(g.states[boxes[n]].travel[1]));
         }
         const PlayerState &p = g.player;
-        std::fprintf(out, "pl,%d,%d,%.4f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.4f,%.4f,0,0,%d,%d,%s,%d\n", f, f, t,
+        const std::string ladder = frameLadder.on ? ladderName(g, frameLadder.seen.index) : "-";
+        // (mt: the game's movetype, 5 on a ladder, 3 walking.)
+        std::fprintf(out, "pl,%d,%d,%.4f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.4f,%.4f,0,0,%d,%d,%s,%d,%d,%s\n", f, f, t,
                      units(p.origin[0]), units(p.origin[1]), units(p.origin[2]), units(p.velocity[0]),
                      units(p.velocity[1]), units(p.velocity[2]), span.pitch, span.yaw, p.onGround ? 1 : 0,
-                     p.ducked ? 1 : 0, groundName(p).c_str(), p.waterLevel);
+                     p.ducked ? 1 : 0, groundName(p).c_str(), p.waterLevel, p.onLadder ? 5 : 3, ladder.c_str());
+        if (frameLadder.on)
+        {
+            // (No fraction: the port finds the face without the game's trace.)
+            const diag::Ladder &l = frameLadder.seen;
+            constexpr double kOne = 1 << 30;
+            std::fprintf(out, "lad,%d,%d,%.4f,%s,%d,0,%.4f,%.4f,%.4f,%d,%.1f,%.1f\n", f, f, t, ladder.c_str(),
+                         l.hit ? 1 : 0, l.normal[0] / kOne, l.normal[1] / kOne, l.normal[2] / kOne, l.onFloor ? 1 : 0,
+                         units(l.forward), units(l.right));
+        }
         std::fprintf(out, "phys,%d,%d,%.4f,%d,%.5f\n", f, f, t, frameAll, ms / 1000.0);
         for (int r : boxes)
         {

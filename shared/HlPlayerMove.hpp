@@ -24,6 +24,7 @@
 // code the console runs. Sine and cosine are not available here (the DS's
 // tables live in libnds), so the caller hands in the view's horizontal axes.
 
+#include "HlDiag.hpp"
 #include "HlDsp.hpp"
 #include "HlFields.hpp"
 #include "HlMovers.hpp"
@@ -1381,6 +1382,11 @@ namespace hldata
             {
                 std::int32_t normal[3], up[3];
                 ladderNormal(index, normal, up);
+                // (Crouched, a third as fast; stepping off at the foot, below,
+                // is not.)
+                const fx climb = s.ducked ? fxMul(kClimbSpeed, kDuckSpeedScale) : kClimbSpeed;
+                HL_DIAG(ladder, diag::Ladder{index, true, {normal[0], normal[1], normal[2]}, s.onGround,
+                                             climb * cmd.forward, climb * cmd.side});
                 if (cmd.jump)
                 {
                     for (int a = 0; a < 3; ++a)
@@ -1398,9 +1404,6 @@ namespace hldata
                     s.velocity[0] = s.velocity[1] = s.velocity[2] = 0;
                     return true;
                 }
-                // (Crouched, a third as fast; stepping off at the foot, below,
-                // is not.)
-                const fx climb = s.ducked ? fxMul(kClimbSpeed, kDuckSpeedScale) : kClimbSpeed;
                 fx wish[3];
                 for (int a = 0; a < 3; ++a)
                 {

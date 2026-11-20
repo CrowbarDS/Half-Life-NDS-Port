@@ -1,0 +1,8 @@
+# Jump off c1a2b's box ladder *23 (climbed from +x), facing it.
+# map c1a2b
+# start 1160 118 100 180
+30 0 0 180 0
+40 400 0 180 -30  # climb a little
+10 0 0 180 0      # hang on
+1 0 0 180 0 j     # jump off
+90 0 0 180 0

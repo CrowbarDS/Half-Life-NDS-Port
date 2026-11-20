@@ -1,0 +1,8 @@
+# At the foot of c1a2b's box ladder *23, on the floor: step back off it.
+# map c1a2b
+# start 1157 118 100 180
+30 0 0 180 0
+30 400 0 180 -30  # take hold, a little up
+60 0 0 180 0      # hang
+30 -400 0 180 0   # back off it (on the floor: pushed away)
+60 0 0 180 0
