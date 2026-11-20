@@ -613,6 +613,7 @@ namespace hldata
     inline bool fights(std::uint8_t kind);
     /// What a shot, a blow or a blast can hurt: what fights, and people.
     inline bool canBeHurt(std::uint8_t kind);
+    inline fx aiEyeOf(std::uint8_t kind);
     inline void targetBox(const ActorState &actor, fx *mins, fx *maxs);
     /// Blood where something that bleeds was hurt at `at`: a puff of its
     /// colour, and a mark on the wall or floor behind it along `dir` (null:
@@ -625,24 +626,70 @@ namespace hldata
     /// distance (all of `damage` at the middle, none at the edge), and breaks
     /// what breaks. `except` is a monster it leaves alone (its own maker),
     /// or -1.
+    namespace detail
+    {
+        /// What of a blast from `src` reaches a box `mins`..`maxs` along the
+        /// line to `target` in it: `damage` less as far as where the line
+        /// comes into the box (none from inside it), none at `radius`, none
+        /// through the world. (One copy: a blast is rare.)
+        [[gnu::noinline]] inline int blastShare(const MoveWorld &world, const fx *src, const fx *mins, const fx *maxs,
+                                                const fx *target, int damage, int radius)
+        {
+            const std::int64_t enter = lineIntoBox(src, target, mins, maxs);
+            fx at[3];
+            for (int k = 0; k < 3; ++k)
+                at[k] = enter < 0 ? target[k]
+                                  : src[k] + static_cast<fx>((static_cast<std::int64_t>(target[k] - src[k]) * enter) >>
+                                                             kFractionShift);
+            const fx d[3] = {at[0] - src[0], at[1] - src[1], at[2] - src[2]};
+            const int distance = fxToInt(fxLength(d));
+            if (distance >= radius || !lineClear(world, src, at))
+                return 0;
+            return (damage * (radius - distance)) / radius;
+        }
+    } // namespace detail
+
     inline void radiusDamage(LogicWorld &w, PlayerState &player, const fx *origin, int damage, int radius,
                              int except, std::uint32_t type = kDmgBlast, std::int16_t attacker = kAiPlayer)
     {
         HL_DIAG(boom, diag::Boom{origin, damage, radius, type});
         ActorWorld &a = *w.actors;
-        auto share = [&](const fx *at) -> int
+        // RadiusDamage's: from a unit above where it went off (a grenade
+        // lying on the floor), along the line to what it may hurt -- to
+        // `target`, its chest -- as far as where that line comes into its
+        // box `mins`..`maxs` (no way at all from inside it), and not through
+        // the world: all of `damage` there, none at `radius`. Not into or out
+        // of the water: a blast under water reaches only what is wet (`dry`
+        // not), one in the air nothing wholly under (`under`).
+        const fx src[3] = {origin[0], origin[1], origin[2] + kFxOne};
+        const bool wet = pointContents(*w.world, origin) == kContentsWater;
+        auto share = [&](const fx *mins, const fx *maxs, const fx *target, bool dry, bool under) -> int
         {
-            const fx d[3] = {at[0] - origin[0], at[1] - origin[1], at[2] - origin[2]};
-            const int distance = fxToInt(fxLength(d));
-            if (distance >= radius || !lineClear(*w.world, origin, at))
+            if (wet ? dry : under)
                 return 0;
-            return (damage * (radius - distance)) / radius;
+            return detail::blastShare(*w.world, src, mins, maxs, target, damage, radius);
+        };
+        // ... a monster's: its box, its chest a quarter of the way from its
+        // middle to its eyes (BodyTarget), wet as its feet and eyes are.
+        auto shareActor = [&](const ActorState &actor, const fx *mins, const fx *maxs, const fx *middle) -> int
+        {
+            const fx eye = actor.pos[2] + aiEyeOf(actor.kind);
+            const fx chest[3] = {middle[0], middle[1], middle[2] + (eye - middle[2]) / 4};
+            const fx feet[3] = {actor.pos[0], actor.pos[1], mins[2] + kFxOne};
+            const fx eyes[3] = {actor.pos[0], actor.pos[1], eye};
+            return share(mins, maxs, chest, !isLiquid(pointContents(*w.world, feet)),
+                         isLiquid(pointContents(*w.world, eyes)));
         };
         // A tripmine the player put down, caught in it, goes too (a moment
-        // after, as any mine does).
+        // after, as any mine does). (Its box: 16 across.)
         for (Projectile &shot : a.shots)
         {
-            if (shot.active && shot.kind == kShotMine && shot.sprite != 2 && share(shot.pos) > 0)
+            if (!shot.active || shot.kind != kShotMine || shot.sprite == 2)
+                continue;
+            const fx mins[3] = {shot.pos[0] - fxFromInt(8), shot.pos[1] - fxFromInt(8), shot.pos[2] - fxFromInt(8)};
+            const fx maxs[3] = {shot.pos[0] + fxFromInt(8), shot.pos[1] + fxFromInt(8), shot.pos[2] + fxFromInt(8)};
+            const bool mineWet = isLiquid(pointContents(*w.world, shot.pos));
+            if (share(mins, maxs, shot.pos, !mineWet, mineWet) > 0)
             {
                 shot.sprite = 2;
                 shot.leftMs = 100 + static_cast<int>(detail::chance(a) % 200);
@@ -650,7 +697,13 @@ namespace hldata
         }
         if (player.health > 0)
         {
-            const int hurt = share(player.origin);
+            // The player's box, and their chest: the middle and four fifths of
+            // the way to the eye (the game's 0.5 to 1.1 of it, at random).
+            const fx feet = player.ducked ? kCrouchedFeet : kStandingFeet;
+            const fx mins[3] = {player.origin[0] - fxFromInt(16), player.origin[1] - fxFromInt(16), player.origin[2] - feet};
+            const fx maxs[3] = {player.origin[0] + fxFromInt(16), player.origin[1] + fxFromInt(16), player.origin[2] + feet};
+            const fx chest[3] = {player.origin[0], player.origin[1], player.origin[2] + player.viewHeight * 4 / 5};
+            const int hurt = share(mins, maxs, chest, player.waterLevel == 0, player.waterLevel == 3);
             if (hurt > 0)
             {
                 // (From the blast's middle: the player is thrown away from it.)
@@ -672,17 +725,17 @@ namespace hldata
                 // game's rule: a blast of more than what is left of it).
                 if (actorThinks(actor.kind))
                 {
-                    const int hurt = share(middle);
+                    const int hurt = shareActor(actor, mins, maxs, middle);
                     if (hurt > 0)
                         monsterHurt(w, i, hurt, false, kHitBody, type, attacker, origin);
                 }
-                else if ((isGrunt(actor.kind) || isPerson(actor.kind)) && share(middle) >= 40)
+                else if ((isGrunt(actor.kind) || isPerson(actor.kind)) && shareActor(actor, mins, maxs, middle) >= 40)
                 {
                     gibBurst(w, i);
                 }
                 continue;
             }
-            const int hurt = share(middle);
+            const int hurt = shareActor(actor, mins, maxs, middle);
             if (hurt > 0)
             {
                 monsterHurt(w, i, hurt, false, kHitBody, type, attacker, origin);

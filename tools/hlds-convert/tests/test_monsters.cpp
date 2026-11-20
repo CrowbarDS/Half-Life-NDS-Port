@@ -697,6 +697,37 @@ namespace
 
     /// What is taken far past dead comes apart: the body is gone, the
     /// game's pieces fly, fall and lie, and are gone in their turn.
+    /// RadiusDamage's reach to the player: as far as where the line from a
+    /// unit above the blast to their chest comes into their box -- all of it
+    /// from inside the box (tools/ref/diag/wpn_knock.txt: 100 of 100).
+    void testBlastReach(const char *dir)
+    {
+        auto game = load(dir, "c1a1a");
+        if (!game)
+            return;
+        Game &g = *game;
+        for (int i = 0; i < g.actors.count; ++i)
+            g.actors.states[i].active = false;
+        for (int n = 0; n < 4; ++n)
+            tickStill(g);
+        auto blast = [&](fx up) {
+            g.player.health = 100;
+            g.player.inv.armor = 0;
+            for (fx &v : g.player.velocity)
+                v = 0;
+            const fx at[3] = {g.player.origin[0], g.player.origin[1], g.player.origin[2] + up};
+            radiusDamage(g.logic, g.player, at, 100, 250, -1);
+            return 100 - g.player.health;
+        };
+        // (At the feet, inside the box: no way at all.)
+        const int feet = blast(-kStandingFeet + fxFromInt(4));
+        check(feet == 100, "a blast at the player's feet, inside their box, hurts in full");
+        // 40 above the top of the head: 41 to the box's top, from a unit up.
+        const int above = blast(kStandingFeet + fxFromInt(40));
+        std::printf("test_monsters: a blast at the feet takes %d, 40 above the head %d\n", feet, above);
+        check(above == 100 * (250 - 41) / 250, "... one above the head as far as the top of the box");
+    }
+
     void testGibs(const char *dir)
     {
         auto game = load(dir, "c1a1a");
@@ -2841,6 +2872,7 @@ int main()
         testHeadShot(dir);
         testGuns(dir);
         testGibs(dir);
+        testBlastReach(dir);
         testWideHull(dir);
         testMiniturret(dir);
         testSentries(dir);
