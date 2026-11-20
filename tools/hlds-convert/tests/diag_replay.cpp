@@ -268,9 +268,18 @@ namespace
 
     /// What the hooks hear (shots, blasts, hurts) is written as it happens,
     /// filed under the frame being played.
+    /// A round fired, until its landing is known.
+    struct Round
+    {
+        bool pending = false;
+        fx from[3], aim[3], dir[3];
+        int range, n, drawX, drawY, cone;
+    };
+
     struct
     {
         FILE *out = nullptr;
+        Round round;
         int frame = 0;
         double t = 0;
         std::uint32_t seed = 0;
@@ -607,25 +616,43 @@ int main(int argc, char **argv)
     now.out = out;
     now.game = &g;
     now.names = &names;
+    // A round: what the gun says as it fires, written once the port's own
+    // code has said where it stopped (a monster, a brush, the world).
     diag::shot = [](const diag::Shot &shot) {
         if (now.frame < 1)
             return;
-        // Where it goes: the world's and the brushes' (no monsters here).
-        fx end[3];
+        Round &r = now.round;
+        r.pending = true;
         for (int a = 0; a < 3; ++a)
-            end[a] = shot.from[a] + shot.dir[a] * shot.range;
-        const Shot met = traceShot(now.game->move, shot.from, end);
-        const double frac = static_cast<double>(met.fraction) / kFractionOne;
+        {
+            r.from[a] = shot.from[a];
+            r.aim[a] = shot.aim[a];
+            r.dir[a] = shot.dir[a];
+        }
+        r.range = shot.range;
+        r.n = shot.n;
+        r.drawX = shot.drawX;
+        r.drawY = shot.drawY;
+        r.cone = shot.cone;
+    };
+    diag::landed = [](const diag::Landed &landed) {
+        Round &r = now.round;
+        if (!r.pending || now.frame < 1)
+            return;
+        r.pending = false;
+        const double frac = static_cast<double>(landed.fraction) / kFractionOne;
         double e[3];
         for (int a = 0; a < 3; ++a)
-            e[a] = units(shot.from[a]) + (units(end[a]) - units(shot.from[a])) * frac;
-        const char *hit = met.fraction >= kFractionOne ? "-"
-                          : met.mover >= 0 ? (*now.names)[met.mover].c_str() : "world";
+            e[a] = units(r.from[a]) + units(r.dir[a]) * r.range * frac;
+        std::string hit = "-";
+        if (landed.actor >= 0)
+            hit = className(now.game->actorStates[landed.actor].kind);
+        else if (frac < 1.0)
+            hit = landed.mover >= 0 ? (*now.names)[landed.mover] : "world";
         std::fprintf(now.out, "shot,%d,%d,%.4f,%d,%u,%.3f,%.3f,%.3f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.3f,%.3f,%.3f,%.5f,%s\n",
-                     now.frame, now.frame, now.t, shot.n, now.seed, units(shot.from[0]), units(shot.from[1]),
-                     units(shot.from[2]), units(shot.aim[0]), units(shot.aim[1]), units(shot.aim[2]),
-                     shot.drawX / 65536.0, shot.drawY / 65536.0, shot.cone / 4096.0, shot.cone / 4096.0, e[0], e[1],
-                     e[2], frac, hit);
+                     now.frame, now.frame, now.t, r.n, now.seed, units(r.from[0]), units(r.from[1]), units(r.from[2]),
+                     units(r.aim[0]), units(r.aim[1]), units(r.aim[2]), r.drawX / 65536.0, r.drawY / 65536.0,
+                     r.cone / 4096.0, r.cone / 4096.0, e[0], e[1], e[2], frac, hit.c_str());
     };
     diag::boom = [](const diag::Boom &boom) {
         if (now.frame < 1)

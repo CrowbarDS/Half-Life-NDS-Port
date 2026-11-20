@@ -43,6 +43,15 @@ namespace hldata::diag
         int cone;
     };
     inline void (*shot)(const Shot &) = nullptr;
+    /// ... and where that round stopped (fireLine): `fraction` of the way
+    /// (kFractionOne whole), on actor `actor` (-1 none), or else on brush
+    /// `mover` (-1: the world, or nothing).
+    struct Landed
+    {
+        std::int64_t fraction;
+        int actor, mover;
+    };
+    inline void (*landed)(const Landed &) = nullptr;
 
     /// A blast (radiusDamage): at `at` (Q12), `damage` at its middle, as far
     /// as `radius`, of the kind `type` (kDmg*).

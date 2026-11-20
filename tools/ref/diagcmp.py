@@ -218,8 +218,18 @@ def shots(pc, ds, pos):
         ways = max(angle([f(p, 'ex') - f(p, 'sx'), f(p, 'ey') - f(p, 'sy'), f(p, 'ez') - f(p, 'sz')],
                          [f(d, 'ex') - f(d, 'sx'), f(d, 'ey') - f(d, 'sy'), f(d, 'ez') - f(d, 'sz')]) for p, d in level)
         print(f'  {"way gone":<14}apart by up to {ways:.3f} deg on those')
-    hits = [(p['hit'], d['hit']) for p, d in rounds if p['hit'] != d['hit']]
-    print(f'  {"hit":<14}{"same" if not hits else f"differs on {len(hits)} rounds (first {hits[0][0]} / {hits[0][1]})"}')
+    # (A monster is its model in the game's rows, its class in the port's:
+    # models/headcrab.mdl and monster_headcrab are the one thing.)
+    def what(name):
+        if name.startswith('models/') and name.endswith('.mdl'):
+            return 'monster ' + name[len('models/'):-len('.mdl')]
+        if name.startswith('monster_'):
+            return 'monster ' + name[len('monster_'):]
+        return name
+    hits = [(p['hit'], d['hit'], p['frame']) for p, d in rounds if what(p['hit']) != what(d['hit'])]
+    flesh = sum(1 for p, d in rounds if what(p['hit']).startswith('monster ') and what(p['hit']) == what(d['hit']))
+    print(f'  {"hit":<14}{"same" if not hits else f"differs on {len(hits)} rounds (first {hits[0][0]} / {hits[0][1]} at frame {hits[0][2]})"}'
+          + (f'; {flesh} in a monster on both' if flesh else ''))
 
 
 def flights(rows):

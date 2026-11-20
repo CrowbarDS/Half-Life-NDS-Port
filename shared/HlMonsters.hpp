@@ -4535,6 +4535,8 @@ namespace hldata
         if (struck >= 0)
         {
             // Where it landed, what bleeds bleeds (people red, the aliens
+        // (The player's round, for the comparison with the real game: HlDiag.hpp.)
+        HL_DIAG_ONLY(if (from < 0 && bullet) HL_DIAG(landed, diag::Landed{nearest, struck, struck >= 0 ? -1 : shot.mover});)
             // yellow) -- and on the wall or the floor behind it, if there
             // is one near: more of it for the blow that kills.
             const std::uint8_t kind = a->states[struck].kind;

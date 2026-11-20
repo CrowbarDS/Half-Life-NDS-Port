@@ -1,0 +1,13 @@
+# The pistol at headcrabs as they come: c1a1b's two by the zombie's corner
+# (the zombie left out). The player walks up (heard), aims down at them and
+# holds the trigger (a shot every 0.3 s) while they leap; where each round
+# goes and what it meets -- a crab in the air, or the floor past it.
+# map c1a1b
+# start 892 -796 -44 286
+# keep func_.*|monster_headcrab|info_node.*
+cmd weapon_9mmhandgun
+60 0 0 286 0      # stand a second, the pistol taken out
+30 400 0 286 0    # walk towards them: heard
+30 0 0 286 15     # aim down at where they come from
+240 0 0 286 15 a  # fire while they leap
+60 0 0 286 0      # stand

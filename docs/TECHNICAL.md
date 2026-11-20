@@ -1853,6 +1853,10 @@ have been brought to the game's this way. What is still apart, and why:
   think to fall where the game's first did, and gives it the game's own
   random draws, but not what it was in the middle of: the comparison
   reports such an event as one side's alone and pairs the rest.
+- **A round goes through what has died.** In the game a dead monster's body
+  still stops a bullet and takes its damage (a headcrab's 5 goes to -3, then
+  -11); the port's rounds pass what is dying or dead (`fireLine`), on to the
+  floor behind. Found by `mon_hitscan`; not yet followed.
 
 The monsters (`mon_*` scenarios) brought the port's to the game's in two
 places: a turn is the game's monsteryawspeedfix one, done in the think
