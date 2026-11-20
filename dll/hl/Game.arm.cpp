@@ -1108,6 +1108,35 @@ namespace hlrt
                 viewKick(player.view, -ai_.punch[0], ai_.punch[1], ai_.punch[2]);
                 ai_.punch[0] = ai_.punch[1] = ai_.punch[2] = 0;
             }
+        }
+        // At a train's controls: a press of forward or back is its speed, and
+        // the player's feet stay where they are. Stepping aside or jumping
+        // lets go (trainControl).
+        {
+            const int forward = player.noclip ? 0 : input.moveForward;
+            const int step = forward != 0 && forward != trainForward_ ? forward : 0;
+            trainForward_ = forward;
+            if (trainDriven(logic) >= 0)
+            {
+                trainControl(logic, player.state, step, input.moveSide != 0, input.jump);
+                if (trainDriven(logic) >= 0)
+                {
+                    input.moveForward = 0;
+                    player.state.velocity[0] = player.state.velocity[1] = 0;
+                }
+            }
+        }
+        player.frame(vblanks);
+        // The box being pulled takes the speed of this frame's move, as the
+        // game's PlayerUse does after the move: it then goes before the next.
+        if (pulled >= 0)
+            logicPull(logic, player.state, pulled, ms);
+        // The weapon in hand, after the move, as the game's are (its
+        // PostThink): a round is fired from where the player now is, and what
+        // a weapon does to the player (the gauss's kick) moves them next.
+        if (!player.noclip)
+        {
+            const DebugLog::Perf::Scope scope(DebugLog::Section::Logic);
             const fx eye[3] = {player.state.origin[0], player.state.origin[1],
                                player.state.origin[2] + player.state.viewHeight};
             const bool alive = player.state.health > 0;
@@ -1134,8 +1163,13 @@ namespace hlrt
             logic.noAutoaim.value = logic.matchAutoaim.value >= 0 ? logic.matchAutoaim.value == 0 : !autoaim;
             if (manning)
                 tankControl(logic, player.state, camera.yaw, camera.pitch, alive && input.attack, ms);
-            const std::uint32_t did = netDid = weaponsTick(logic, player.state, weapon_, eye, camera.forward,
-                                                  camera.right, camera.up, alive && input.attack && !manning,
+            // Aimed where the player looks: the view without what the picture
+            // alone adds (a kick, the lean). The game's kick is its client's,
+            // and its rounds go straight on.
+            hldata::fx aimForward[3], aimRight[3], aimUp[3];
+            viewBasis(camera.yaw, static_cast<std::uint16_t>(camera.pitch), aimForward, aimRight, aimUp);
+            const std::uint32_t did = netDid = weaponsTick(logic, player.state, weapon_, eye, aimForward,
+                                                  aimRight, aimUp, alive && input.attack && !manning,
                                                   false, ms, alive && input.second && !manning, alive && !manning ? pick : 0,
                                                   alive && input.reloadPressed && !manning, ++shotSeed_);
             // What has broken: its pieces, each a patch of the thing's
@@ -1202,7 +1236,10 @@ namespace hlrt
             {
                 static std::uint32_t chance = 7;
                 chance = chance * 1664525u + 1013904223u;
-                const fx kick = (did & kWeaponSecondary) ? 10 * kViewDegree : weaponKick(inHand_, chance >> 8);
+                // (Ten degrees for the MP5's grenade and both barrels; the
+                // other second triggers kick as the first.)
+                const bool heavy = (did & kWeaponSecondary) && (inHand_ == kWeaponMp5 || inHand_ == kWeaponShotgun);
+                const fx kick = heavy ? 10 * kViewDegree : weaponKick(inHand_, chance >> 8);
                 viewKick(player.view, kick);
                 // (A Rumble Pak: as hard as the gun kicks -- the .357 most.)
                 const int degrees = (kick < 0 ? -kick : kick) >> kFxShift;
@@ -1238,28 +1275,6 @@ namespace hlrt
             weapon_.anim = nullptr;
             actors.got = 0;
         }
-        // At a train's controls: a press of forward or back is its speed, and
-        // the player's feet stay where they are. Stepping aside or jumping
-        // lets go (trainControl).
-        {
-            const int forward = player.noclip ? 0 : input.moveForward;
-            const int step = forward != 0 && forward != trainForward_ ? forward : 0;
-            trainForward_ = forward;
-            if (trainDriven(logic) >= 0)
-            {
-                trainControl(logic, player.state, step, input.moveSide != 0, input.jump);
-                if (trainDriven(logic) >= 0)
-                {
-                    input.moveForward = 0;
-                    player.state.velocity[0] = player.state.velocity[1] = 0;
-                }
-            }
-        }
-        player.frame(vblanks);
-        // The box being pulled takes the speed of this frame's move, as the
-        // game's PlayerUse does after the move: it then goes before the next.
-        if (pulled >= 0)
-            logicPull(logic, player.state, pulled, ms);
         cameraView();
         // A game between consoles: what this player did goes out, what the
         // others did comes in (HlNetGame.hpp). And a player just put back

@@ -206,7 +206,7 @@ namespace hldata
         case 7:  return 2 * kViewDegree;  // the crossbow
         case 11: return 5 * kViewDegree;  // the RPG
         case 12: return 2 * kViewDegree;  // the gauss
-        case 14: return 1 * kViewDegree;  // the hornetgun
+        case 14: return -static_cast<fx>(chance % 3) * kViewDegree; // the hornetgun: 0 to 2 down
         default: return 0;
         }
     }

@@ -1,0 +1,10 @@
+# The MP5 fired while running down c1a2's corridor and while strafing: where
+# each round starts from (the game fires after the player's move).
+# map c1a2
+# start 200 -801 -539 180
+cmd weapon_9mmAR
+60 0 0 180 0
+10 400 0 180 0
+20 400 0 180 0 a
+20 0 400 180 0 a
+40 0 0 180 0

@@ -44,6 +44,9 @@ namespace
         check(weaponKick(2, 0) == 2 * kViewDegree && weaponKick(3, 0) == 5 * kViewDegree && weaponKick(6, 0) == 10 * kViewDegree &&
                   weaponKick(1, 0) == 0 && weaponKick(5, 0) == -2 * kViewDegree && weaponKick(5, 4 * 4096) == 2 * kViewDegree,
               "each weapon kicks as the game's does: the .357 hardest, the MP5 either way, the crowbar not at all");
+        check(weaponKick(14, 0) == 0 && weaponKick(14, 1) == -kViewDegree && weaponKick(14, 2) == -2 * kViewDegree &&
+                  weaponKick(12, 0) == 2 * kViewDegree,
+              "... the hornetgun none to two degrees down, the gauss two up");
     }
 
     void testWalk()

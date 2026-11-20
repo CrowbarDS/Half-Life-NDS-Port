@@ -525,7 +525,7 @@ int main(int argc, char **argv)
         const fx touchV[2] = {g.player.touchVelocity[0], g.player.touchVelocity[1]};
 
         // Game::frame's order (dll/hl/Game.arm.cpp): the logic (boxes
-        // move), USE, the monsters, the weapons, then the player's move.
+        // move), USE, the monsters, the player's move, then the weapons.
         g.logic.useHeld.value = useHeld;
         logicTick(g.logic, g.player, ms);
         g.logic.viewTurn = 0;
@@ -539,21 +539,6 @@ int main(int argc, char **argv)
         }
         monstersTick(g.logic, g.player, ms);
         g.drain();
-        {
-            const bool alive = g.player.health > 0;
-            const bool reloadPressed = (span.buttons & kInReload) && !(lastButtons & kInReload);
-            lastButtons = span.buttons;
-            // (The command's seed: the game's, if its log is given; else
-            // counted, as the console does.)
-            const std::uint32_t seed = now.seed != 0 ? now.seed : static_cast<std::uint32_t>(frameAll);
-            weaponsTick(g.logic, g.player, weapon, eye, forward, right, up, alive && (span.buttons & kInAttack), false,
-                        ms, alive && (span.buttons & kInAttack2), alive ? picked : 0, alive && reloadPressed, seed);
-            picked = 0;
-            weapon.anim = nullptr;
-            g.actors.got = 0;
-            g.logic.brokeCount = 0;
-            g.drain();
-        }
 
         MoveCommand cmd;
         cmd.forward = span.forward > 0 ? 1 : span.forward < 0 ? -1 : 0;
@@ -575,6 +560,24 @@ int main(int argc, char **argv)
         playerMove(g.player, cmd, g.move, dt);
         if (pulled >= 0)
             logicPull(g.logic, g.player, pulled, ms);
+        // The weapons, after the move (Game::frame's order, the game's
+        // PostThink): fired from where the player now is.
+        {
+            const fx eyeNow[3] = {g.player.origin[0], g.player.origin[1], g.player.origin[2] + g.player.viewHeight};
+            const bool alive = g.player.health > 0;
+            const bool reloadPressed = (span.buttons & kInReload) && !(lastButtons & kInReload);
+            lastButtons = span.buttons;
+            // (The command's seed: the game's, if its log is given; else
+            // counted, as the console does.)
+            const std::uint32_t seed = now.seed != 0 ? now.seed : static_cast<std::uint32_t>(frameAll);
+            weaponsTick(g.logic, g.player, weapon, eyeNow, forward, right, up, alive && (span.buttons & kInAttack), false,
+                        ms, alive && (span.buttons & kInAttack2), alive ? picked : 0, alive && reloadPressed, seed);
+            picked = 0;
+            weapon.anim = nullptr;
+            g.actors.got = 0;
+            g.logic.brokeCount = 0;
+            g.drain();
+        }
 
         if (f < 1)
             continue;
