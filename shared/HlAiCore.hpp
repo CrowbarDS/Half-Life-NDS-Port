@@ -523,6 +523,7 @@ namespace hldata
             for (int k = 0; k < 3; ++k)
                 c.m.moveGoal[k] = to[k];
         }
+        HL_DIAG(route, c.index, c.m.moveGoal, goal);
         c.m.moveBlockedMs = 0;
         c.m.moveAsked = false;
         c.m.round.detouring = c.m.round.asking = false;

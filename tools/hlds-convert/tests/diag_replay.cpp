@@ -613,6 +613,14 @@ int main(int argc, char **argv)
                      static_cast<unsigned>(m.conditions), enemy, m.activity, m.clip, static_cast<double>(m.health),
                      now.t + m.thinkMs / 1000.0);
     };
+    // (A route: its goal, as the game's row has it after its first step --
+    // the port's has no steps of its own.)
+    diag::route = [](int index, const std::int32_t *goal, int goalType) {
+        if (now.frame < 1)
+            return;
+        std::fprintf(now.out, "aiev,%d,%d,%.4f,%d,route,>%.1f %.1f %.1f,0,%d\n", now.frame, now.frame, now.t, index,
+                     units(goal[0]), units(goal[1]), units(goal[2]), goalType);
+    };
     diag::aiEvent = [](int index, const char *what, const char *name, int a, int b) {
         if (now.frame < 1)
             return;

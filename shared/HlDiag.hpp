@@ -119,6 +119,8 @@ namespace hldata::diag
     /// id, b: its index), "fail" (name; a: the task's id, b: its index),
     /// "anim" (a: the event).
     inline void (*aiEvent)(int index, const char *what, const char *name, int a, int b) = nullptr;
+    /// A route made (aiRouteNew): where it goes (Q12), and what for (kMoveGoal*).
+    inline void (*route)(int index, const std::int32_t *goal, int goalType) = nullptr;
 } // namespace hldata::diag
 
 #define HL_DIAG(hook, ...)                                                                                             \
