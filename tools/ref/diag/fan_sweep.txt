@@ -1,0 +1,11 @@
+# c1a4g's fan *1 (turning about the vertical at 500, its blades a little
+# above the floor, dmg 200): walk west into it, nothing keeping the player
+# from harm. The blades stop the player, or sweep them along; one blocked by
+# them crushes for 200.
+# map c1a4g
+# start -760 -1212 -2440 180
+# keep func_.*
+cmd god
+30 0 0 180 0
+60 120 0 180 0
+60 0 0 180 0

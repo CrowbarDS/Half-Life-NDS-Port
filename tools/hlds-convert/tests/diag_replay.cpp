@@ -26,6 +26,7 @@
 // weapon_<name>, god, impulse 101.
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <cstdio>
@@ -161,14 +162,55 @@ namespace
     }
 
     /// The BSP's model number ("*N") of each brush, found by its bounds at
-    /// rest: the level keeps no number of its own.
+    /// rest -- one that turns, by its pivot, its entity's "origin": the level
+    /// keeps no number of its own.
     std::vector<std::string> brushNames(const Game &g)
     {
         std::vector<std::string> names(g.view.brushCount);
+        // (The entities' models and origins, from the map's text.)
+        std::vector<std::pair<std::string, std::array<double, 3>>> pivots;
+        {
+            const std::string &text = g.bsp.entities;
+            std::size_t at = 0;
+            while ((at = text.find('{', at)) != std::string::npos)
+            {
+                const std::size_t end = text.find('}', at);
+                const std::string entity = text.substr(at, end - at);
+                at = end;
+                auto value = [&](const char *key) -> std::string {
+                    const std::string quoted = std::string("\"") + key + "\" \"";
+                    const std::size_t k = entity.find(quoted);
+                    if (k == std::string::npos)
+                        return "";
+                    const std::size_t from = k + quoted.size();
+                    return entity.substr(from, entity.find('"', from) - from);
+                };
+                const std::string model = value("model"), origin = value("origin");
+                std::array<double, 3> o{};
+                if (!model.empty() && model[0] == '*' &&
+                    std::sscanf(origin.c_str(), "%lf %lf %lf", &o[0], &o[1], &o[2]) == 3)
+                    pivots.push_back({model, o});
+            }
+        }
         for (std::uint32_t b = 0; b < g.view.brushCount; ++b)
         {
             const Brush &brush = g.view.brushes[b];
             names[b] = "?";
+            if (brush.flags & kBrushHasPivot)
+            {
+                for (const auto &[model, o] : pivots)
+                {
+                    if (std::lround(o[0]) == std::lround(units(brush.origin[0])) &&
+                        std::lround(o[1]) == std::lround(units(brush.origin[1])) &&
+                        std::lround(o[2]) == std::lround(units(brush.origin[2])))
+                    {
+                        names[b] = model;
+                        break;
+                    }
+                }
+                if (names[b] != "?")
+                    continue;
+            }
             for (std::size_t m = 1; m < g.bsp.models.size(); ++m)
             {
                 const BspModel &model = g.bsp.models[m];
@@ -244,6 +286,7 @@ int main(int argc, char **argv)
     // and the console commands it ran, when.
     std::vector<int> gameMs;
     std::vector<std::uint32_t> gameSeed;
+    std::vector<std::pair<std::string, std::array<double, 6>>> gameTurning;
     if (argc > 5)
     {
         std::ifstream log(argv[5]);
@@ -251,6 +294,20 @@ int main(int argc, char **argv)
         std::vector<Order> ran;
         while (std::getline(log, line))
         {
+            if (line.rfind("rot,1,", 0) == 0)
+            {
+                // rot,frame,seq,t,id,ax,ay,az,wx,wy,wz: the turning brushes
+                // as the game had them before its first frame's physics.
+                std::istringstream in(line);
+                std::string field[11];
+                for (std::string &f : field)
+                    std::getline(in, f, ',');
+                std::array<double, 6> v{};
+                for (int k = 0; k < 6; ++k)
+                    v[k] = std::atof(field[5 + k].c_str());
+                gameTurning.push_back({field[4], v});
+                continue;
+            }
             const bool command = line.rfind("cmd,", 0) == 0;
             if (line.rfind("ccmd,", 0) == 0)
             {
@@ -364,6 +421,7 @@ int main(int argc, char **argv)
     std::fprintf(out, "#cols touch frame seq t id who push result tvx tvy bvx0 bvy0 bvx bvy\n");
     std::fprintf(out, "#cols lad frame seq t id hit frac nx ny nz onfloor fwd right\n");
     std::fprintf(out, "#cols ccmd frame seq t text\n");
+    std::fprintf(out, "#cols rot frame seq t id ax ay az wx wy wz\n");
     std::fprintf(out, "#cols wpn frame seq t cls clip ammo1 ammo2 next1 next2 idle reload\n");
     std::fprintf(out, "#cols proj frame seq t id cls sub ox oy oz vx vy vz mt og water\n");
     std::fprintf(out, "#cols shot frame seq t n seed sx sy sz ax ay az x y cx cy ex ey ez frac hit\n");
@@ -526,6 +584,28 @@ int main(int argc, char **argv)
 
         // Game::frame's order (dll/hl/Game.arm.cpp): the logic (boxes
         // move), USE, the monsters, the player's move, then the weapons.
+        // The turning brushes as the game had them at its first frame: they
+        // have turned since each map began, from a moment the two sides do
+        // not share.
+        if (f == 1)
+        {
+            for (std::uint32_t r = 0; r < g.view.logicCount; ++r)
+            {
+                const LogicRecord &record = g.view.logic[r];
+                if (record.kind != static_cast<std::uint8_t>(LogicKind::Rotating) || record.brush == kNoBrush)
+                    continue;
+                for (const auto &[id, v] : gameTurning)
+                {
+                    if (id != names[record.brush])
+                        continue;
+                    const int axis = static_cast<int>(record.extra[0] % 3);
+                    LogicState &state = g.states[r];
+                    state.bits = static_cast<std::uint16_t>(std::lround(v[axis] * 65536.0 / 360.0));
+                    state.speed = static_cast<fx>(std::lround(v[3 + axis] * 65536.0 / 360.0));
+                    g.brushStates[record.brush].angles[axis] = static_cast<std::uint16_t>(state.bits);
+                }
+            }
+        }
         g.logic.useHeld.value = useHeld;
         logicTick(g.logic, g.player, ms);
         g.logic.viewTurn = 0;
@@ -622,6 +702,19 @@ int main(int argc, char **argv)
             std::fprintf(out, "box,%d,%d,%.4f,%s,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%s,0\n", f, f, t,
                          names[record.brush].c_str(), c[0], c[1], c[2], units(s.travel[0]), units(s.travel[1]),
                          units(s.travel[2]), s.bits != 0 ? 1 : 0, s.bits == 1 ? "world" : s.bits == 2 ? "mover" : "-");
+        }
+        // The turning brushes: their angles and speeds, in degrees.
+        for (std::uint32_t r = 0; r < g.view.logicCount; ++r)
+        {
+            const LogicRecord &record = g.view.logic[r];
+            if (record.kind != static_cast<std::uint8_t>(LogicKind::Rotating) || record.brush == kNoBrush)
+                continue;
+            const int axis = static_cast<int>(record.extra[0] % 3);
+            double a[3] = {0, 0, 0}, w[3] = {0, 0, 0};
+            a[axis] = static_cast<std::uint16_t>(g.states[r].bits) * 360.0 / 65536.0;
+            w[axis] = g.states[r].speed * 360.0 / 65536.0;
+            std::fprintf(out, "rot,%d,%d,%.4f,%s,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", f, f, t, names[record.brush].c_str(),
+                         a[0], a[1], a[2], w[0], w[1], w[2]);
         }
         // The weapon in hand (no clip: -1, as the game's).
         if (p.inv.current != kWeaponNone)

@@ -297,6 +297,27 @@ def projectiles(pc, ds, pos, vel, table):
                   f'damage {float(p["damage"]):g} / {float(d["damage"]):g}, radius {float(p["radius"]):g} / {float(d["radius"]):g}')
 
 
+def turning(pc, ds):
+    """The turning brushes (the rot rows): how far apart their angles are.
+    The port's row of a frame is after its turn that frame, the game's
+    before: the game's frame N + 1 is held against the port's N."""
+    r_pc, r_ds = boxes_per_frame(pc.get('rot', [])), boxes_per_frame(ds.get('rot', []))
+    for rid in sorted(set(r_pc) & set(r_ds)):
+        a, b = r_pc[rid], r_ds[rid]
+        worst, at, n = 0.0, None, 0
+        for fr in sorted(b):
+            if fr + 1 not in a:
+                continue
+            n += 1
+            for k in ('ax', 'ay', 'az'):
+                d = (f(a[fr + 1], k) - f(b[fr], k) + 180.0) % 360.0 - 180.0
+                if abs(d) > worst:
+                    worst, at = abs(d), fr
+        speed = f(a[min(a)], 'wx') or f(a[min(a)], 'wy') or f(a[min(a)], 'wz')
+        print(f' turning {rid} (real game / port): angle {"same within 0.5 deg" if worst <= 0.5 else f"apart by up to {worst:.2f} deg, at {at}"}'
+              f' over {n} frames; turning at {speed:g} deg/s')
+
+
 def hurts(pc, ds):
     """The player hurt (the dmg rows), in order: how much, and the push."""
     h_pc, h_ds = pc.get('dmg', []), ds.get('dmg', [])
@@ -374,6 +395,7 @@ def main():
     shots(pc, ds, a.pos)
     projectiles(pc, ds, a.pos, a.vel, table)
     hurts(pc, ds)
+    turning(pc, ds)
 
     box_pc, box_ds = boxes_per_frame(pc.get('box', [])), boxes_per_frame(ds.get('box', []))
     moved = []

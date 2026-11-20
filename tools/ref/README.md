@@ -113,6 +113,11 @@ the host, through its own game code, into a log of the same form.
   the rounds went, and pairs what was thrown or fired by kind, in the order
   they appeared: where each was let go, from which of its frames the paths
   part, where each came to rest, and the blasts and the hurts (`wpn_*`).
+- **Turning brushes.** A fan has been turning since its map began, from a
+  moment the two sides do not share: the replay sets each `func_rotating`
+  to the angle and speed the game's log has for it on the first frame, and
+  both logs then have it every frame (`rot`), held together by diagcmp
+  (`fan_*`).
 - **The console's pace.** `DIAG_VBLANKS=2` plays the port's side two of the
   game's frames at a time, as the console's 30 a second does, compared on
   every second frame.

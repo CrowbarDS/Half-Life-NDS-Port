@@ -1,0 +1,12 @@
+# c1a2b's fan *20 (turning about its pivot at 1204 46 315, dmg 50): up the
+# box ladder *23 as lad_side goes, then on, turned 45 degrees, into the fan,
+# with nothing keeping the player from harm. The game's player is stopped by
+# the blades, and hurt when one is blocked by them.
+# map c1a2b
+# start 1160 118 100 180
+cmd god
+30 0 0 180 0
+40 400 0 180 -30  # climb a little
+60 0 400 180 0    # right
+60 0 -400 180 0   # left
+160 400 0 225 0   # forward, turned 45, into the fan
