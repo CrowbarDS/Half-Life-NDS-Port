@@ -500,6 +500,16 @@ int main(int argc, char **argv)
         }
         else if (weaponNamed(verb) != kWeaponNone)
             picked = weaponNamed(verb);
+        else if (verb == "diag_fire")
+        {
+            // (A map's target fired as its own trigger would: the fork's
+            // diag_fire, dlls/client.cpp.)
+            const std::uint16_t id = nameIdOfHash(g.view.nameHashes, g.view.nameCount, nameHash(arg.c_str()));
+            if (id != 0)
+                logicFire(g.logic, g.player, id, -1, kUseToggle, 0);
+            else
+                std::fprintf(stderr, "diag_replay: no target '%s'\n", arg.c_str());
+        }
         else
             std::fprintf(stderr, "diag_replay: '%s' not played on this side\n", text.c_str());
     };

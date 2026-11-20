@@ -1,0 +1,9 @@
+# c1a1c's crab makers fired (hcrabber, the trigger the lift sets off), the
+# lift left where it is, the player well away: where each maker's crabs
+# fall, and how far the push carries them -- the port's test_ai holds that
+# none stays under its maker.
+# map c1a1c
+# start -88 -3168 -208 270
+# keep func_.*|trigger_.*|multi_manager|monstermaker|path_corner|info_node.*
+cmd diag_fire hcrabber
+2400 0 0 270 0    # forty seconds: every maker has made its crabs
