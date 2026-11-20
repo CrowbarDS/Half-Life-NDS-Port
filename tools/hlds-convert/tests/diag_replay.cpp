@@ -556,26 +556,29 @@ int main(int argc, char **argv)
             mons.byActor[i] = best;
         }
     }
-    diag::random = [](int actor, bool ms, int low, int high, int drawn) {
+    diag::random = [](int actor, diag::RandomKind kind, int low, int high, int drawn) {
         if (now.frame < 1)
             return drawn;
+        // (A float's in the game's units: seconds, or units for a Q12.)
+        const bool real = kind != diag::kRandomLong;
+        const double unit = kind == diag::kRandomMs ? 1000.0 : kind == diag::kRandomFx ? 4096.0 : 1.0;
         int value = drawn;
         bool given = false;
         auto it = mons.byActor.find(actor);
         if (it != mons.byActor.end())
         {
-            auto &stream = mons.game[it->second].draws[drawKey(ms, ms ? low / 1000.0 : low, ms ? high / 1000.0 : high)];
+            auto &stream = mons.game[it->second].draws[drawKey(real, low / unit, high / unit)];
             if (!stream.empty())
             {
-                value = static_cast<int>(std::lround(ms ? stream.front() * 1000.0 : stream.front()));
+                value = static_cast<int>(std::lround(stream.front() * unit));
                 stream.pop_front();
                 given = true;
             }
         }
         ++(given ? mons.given : mons.own);
-        if (ms)
-            std::fprintf(now.out, "rnd,%d,%d,%.4f,%d,F,%.6f,%.6f,%.6f\n", now.frame, now.frame, now.t, actor, low / 1000.0,
-                         high / 1000.0, value / 1000.0);
+        if (real)
+            std::fprintf(now.out, "rnd,%d,%d,%.4f,%d,F,%.6f,%.6f,%.6f\n", now.frame, now.frame, now.t, actor, low / unit,
+                         high / unit, value / unit);
         else
             std::fprintf(now.out, "rnd,%d,%d,%.4f,%d,L,%d,%d,%d\n", now.frame, now.frame, now.t, actor, low, high, value);
         return value;

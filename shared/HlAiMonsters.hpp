@@ -205,9 +205,8 @@ namespace hldata
 
         inline void prescheduleThink(AiCtx &c)
         {
-            // (A fiftieth of a chance each think, in a fight: RANDOM_FLOAT(0,
-            // 5) < 0.1.)
-            if (c.m.state == kStateCombat && aiRandomLong(c.a, 0, 49) == 0)
+            // (A fiftieth of a chance each think, in a fight.)
+            if (c.m.state == kStateCombat && aiRandomFloat(c.a, 0, fxFromInt(5)) < kFxOne / 10 + 1) // RANDOM_FLOAT(0, 5) < 0.1
                 sound(c, kAiSoundIdle);
         }
 

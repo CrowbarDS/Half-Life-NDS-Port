@@ -955,9 +955,9 @@ namespace hldata
             else
                 aiClear(c, kCondEnemyFacingMe);
             // (A little ahead of where it is going.)
-            const int lead = aiRandomLong(c.a, 0, 50); // RANDOM_FLOAT(-0.05, 0), in thousandths
+            const fx back = aiRandomFloat(c.a, -kFxOne / 20, 0); // RANDOM_FLOAT(-0.05, 0)
             for (int k = 0; k < 3; ++k)
-                c.m.enemyLkp[k] += static_cast<fx>((static_cast<std::int64_t>(t.velocity[k]) * lead) / 1000);
+                c.m.enemyLkp[k] -= fxMul(t.velocity[k], back);
         }
         else if (!aiHas(c, kCondEnemyOccluded | kCondSeeEnemy) && dist <= fxFromInt(256))
         {

@@ -1,0 +1,12 @@
+# Headcrabs and the player: c1a1b's two by the zombie's corner (the zombie
+# left out), 300 units off and out of their sight. The player walks up
+# (heard); they turn, see them, leap and bite (nothing hurts the player);
+# then the player backs away and they follow.
+# map c1a1b
+# start 892 -796 -44 286
+# keep func_.*|monster_headcrab|info_node.*
+60 0 0 286 0      # stand a second
+30 400 0 286 0    # walk towards them: heard
+300 0 0 286 0     # stand: they leap and bite
+60 -400 0 286 0   # back away
+120 0 0 286 0     # stand

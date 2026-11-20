@@ -899,14 +899,21 @@ namespace hldata
     {
         const int drawn = aiRandomIn(a, low, high);
         // (The comparison with the real game gives its own draw: HlDiag.hpp.)
-        HL_DIAG_ONLY(if (diag::random != nullptr && diag::thinker >= 0) return diag::random(diag::thinker, false, low, high, drawn);)
+        HL_DIAG_ONLY(if (diag::random != nullptr && diag::thinker >= 0) return diag::random(diag::thinker, diag::kRandomLong, low, high, drawn);)
         return drawn;
     }
     /// RANDOM_FLOAT(low, high), for times: in ms.
     inline int aiRandomMs(ActorWorld &a, int lowMs, int highMs)
     {
         const int drawn = aiRandomIn(a, lowMs, highMs);
-        HL_DIAG_ONLY(if (diag::random != nullptr && diag::thinker >= 0) return diag::random(diag::thinker, true, lowMs, highMs, drawn);)
+        HL_DIAG_ONLY(if (diag::random != nullptr && diag::thinker >= 0) return diag::random(diag::thinker, diag::kRandomMs, lowMs, highMs, drawn);)
+        return drawn;
+    }
+    /// RANDOM_FLOAT(low, high), Q12.
+    inline fx aiRandomFloat(ActorWorld &a, fx low, fx high)
+    {
+        const int drawn = aiRandomIn(a, low, high);
+        HL_DIAG_ONLY(if (diag::random != nullptr && diag::thinker >= 0) return diag::random(diag::thinker, diag::kRandomFx, low, high, drawn);)
         return drawn;
     }
 } // namespace hldata

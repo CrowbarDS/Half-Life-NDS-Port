@@ -78,10 +78,16 @@ namespace hldata::diag
         ~ThinkerScope() { thinker = previous; }
     };
     /// A draw of the monsters' random numbers while one ticks: RANDOM_LONG
-    /// (`ms` false), or a RANDOM_FLOAT of time in ms; `drawn` what the port's
-    /// own numbers gave. What is used is what this returns (the real game's
-    /// draw, where the replay has it).
-    inline int (*random)(int actor, bool ms, int low, int high, int drawn) = nullptr;
+    /// (kRandomLong), or a RANDOM_FLOAT -- of time in ms (kRandomMs), or Q12
+    /// (kRandomFx); `drawn` what the port's own numbers gave. What is used is
+    /// what this returns (the real game's draw, where the replay has it).
+    enum RandomKind : int
+    {
+        kRandomLong,
+        kRandomMs,
+        kRandomFx,
+    };
+    inline int (*random)(int actor, RandomKind kind, int low, int high, int drawn) = nullptr;
 
     /// A monster at the end of a think (aiMonsterThink): as the game's
     /// MonsterThink leaves it.
