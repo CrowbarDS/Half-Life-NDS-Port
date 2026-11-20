@@ -957,10 +957,13 @@ namespace hldata
                 aiSet(c, kCondEnemyFacingMe);
             else
                 aiClear(c, kCondEnemyFacingMe);
-            // (A little ahead of where it is going.)
-            const fx back = aiRandomFloat(c.a, -kFxOne / 20, 0); // RANDOM_FLOAT(-0.05, 0)
-            for (int k = 0; k < 3; ++k)
-                c.m.enemyLkp[k] -= fxMul(t.velocity[k], back);
+            // (A little ahead of where it is going -- if it is going.)
+            if (t.velocity[0] != 0 || t.velocity[1] != 0 || t.velocity[2] != 0)
+            {
+                const fx back = aiRandomFloat(c.a, -kFxOne / 20, 0); // RANDOM_FLOAT(-0.05, 0)
+                for (int k = 0; k < 3; ++k)
+                    c.m.enemyLkp[k] -= fxMul(t.velocity[k], back);
+            }
         }
         else if (!aiHas(c, kCondEnemyOccluded | kCondSeeEnemy) && dist <= fxFromInt(256))
         {
