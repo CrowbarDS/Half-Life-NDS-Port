@@ -3267,24 +3267,148 @@ namespace hldata
 
     /// In the air (a leap, a hop): it falls, and lands; and a touch that is
     /// set finds what it runs into.
+    /// SV_FlyMove: on along its velocity for `ms`, and where it meets
+    /// something, on again along it -- the velocity with what goes into each
+    /// plane met taken off (ClipVelocity, overbounce 1) -- four times at
+    /// most; stopped where that would turn it back. Bit 1 of what it gives:
+    /// a floor met while coming down (or up against nothing: stuck); bit 2:
+    /// it began in something solid. `onHead`: what it came down on, if that
+    /// is someone's box.
+    HL_COLD int aiFlyMove(AiCtx &c, bool small, fx feet, int ms, Trace &onHead)
+    {
+        int met = 0;
+        onHead = Trace();
+        onHead.box = -1;
+        const fx primal[3] = {c.me.velocity[0], c.me.velocity[1], c.me.velocity[2]};
+        fx original[3] = {primal[0], primal[1], primal[2]};
+        std::int32_t planes[5][3];
+        int planeCount = 0;
+        std::int64_t left = kFractionOne; // (of `ms`)
+        for (int bump = 0; bump < 4; ++bump)
+        {
+            fx *v = c.me.velocity;
+            if (v[0] == 0 && v[1] == 0 && v[2] == 0)
+                break;
+            const fx from[3] = {c.me.pos[0], c.me.pos[1], c.me.pos[2] + feet};
+            fx to[3];
+            for (int k = 0; k < 3; ++k)
+                to[k] = from[k] + static_cast<fx>(((static_cast<std::int64_t>(v[k]) * ms / 1000) * left) >> kFractionShift);
+            const Trace t = detail::walkerTrace(*c.w.world, &c.a, c.index, small, from, to);
+            if (t.allSolid || t.startSolid)
+            {
+                v[0] = v[1] = v[2] = 0;
+                return met | 2 | 1;
+            }
+            if (t.fraction > 0)
+            {
+                c.me.pos[0] = t.endPos[0];
+                c.me.pos[1] = t.endPos[1];
+                c.me.pos[2] = t.endPos[2] - feet;
+                for (int k = 0; k < 3; ++k)
+                    original[k] = v[k];
+                planeCount = 0;
+            }
+            if (t.fraction >= kFractionOne)
+                break;
+            if (t.normal[2] > kFloorNormalZ)
+            {
+                if (t.box >= 0)
+                    onHead = t;
+                else if (v[2] <= 0)
+                    met |= 1;
+            }
+            left -= (left * t.fraction) >> kFractionShift;
+            if (planeCount >= 5)
+            {
+                v[0] = v[1] = v[2] = 0;
+                break;
+            }
+            for (int k = 0; k < 3; ++k)
+                planes[planeCount][k] = t.normal[k];
+            ++planeCount;
+            // (Along every plane met: or, between two, along where they meet.)
+            auto clip = [](const fx *in, const std::int32_t *normal, fx *out) {
+                std::int64_t into = 0;
+                for (int k = 0; k < 3; ++k)
+                    into += static_cast<std::int64_t>(in[k]) * normal[k];
+                into >>= kNormalShift;
+                for (int k = 0; k < 3; ++k)
+                {
+                    out[k] = in[k] - static_cast<fx>((into * normal[k]) >> kNormalShift);
+                    if (out[k] > -410 && out[k] < 410) // (STOP_EPSILON: 0.1)
+                        out[k] = 0;
+                }
+            };
+            auto dot = [](const fx *a, const std::int32_t *n) {
+                std::int64_t d = 0;
+                for (int k = 0; k < 3; ++k)
+                    d += static_cast<std::int64_t>(a[k]) * n[k];
+                return d;
+            };
+            int i = 0;
+            fx along[3] = {0, 0, 0};
+            for (; i < planeCount; ++i)
+            {
+                clip(original, planes[i], along);
+                int j = 0;
+                for (; j < planeCount; ++j)
+                {
+                    if (j != i && dot(along, planes[j]) < 0)
+                        break;
+                }
+                if (j == planeCount)
+                    break;
+            }
+            if (i != planeCount)
+            {
+                for (int k = 0; k < 3; ++k)
+                    v[k] = along[k];
+            }
+            else if (planeCount == 2)
+            {
+                const std::int32_t *p0 = planes[0], *p1 = planes[1];
+                std::int64_t dir[3] = {
+                    (static_cast<std::int64_t>(p0[1]) * p1[2] - static_cast<std::int64_t>(p0[2]) * p1[1]) >> kNormalShift,
+                    (static_cast<std::int64_t>(p0[2]) * p1[0] - static_cast<std::int64_t>(p0[0]) * p1[2]) >> kNormalShift,
+                    (static_cast<std::int64_t>(p0[0]) * p1[1] - static_cast<std::int64_t>(p0[1]) * p1[0]) >> kNormalShift};
+                std::int64_t d = 0;
+                for (int k = 0; k < 3; ++k)
+                    d += dir[k] * v[k];
+                d >>= kNormalShift;
+                for (int k = 0; k < 3; ++k)
+                    v[k] = static_cast<fx>((dir[k] * d) >> kNormalShift);
+            }
+            else
+            {
+                v[0] = v[1] = v[2] = 0;
+                break;
+            }
+            // (Turned back on the way it set out: it stops.)
+            std::int64_t ahead = 0;
+            for (int k = 0; k < 3; ++k)
+                ahead += static_cast<std::int64_t>(v[k]) * primal[k];
+            if (ahead <= 0)
+            {
+                v[0] = v[1] = v[2] = 0;
+                break;
+            }
+        }
+        return met;
+    }
+
+    /// In the air (a leap, a hop): it falls -- gravity first, then the move
+    /// (SV_Physics_Step's SV_AddGravity, then SV_FlyMove), so along what it
+    /// meets -- and lands, going on as far as the floor lets it
+    /// (aiSlideTick); and a touch that is set finds what it runs into.
     inline void aiAirTick(AiCtx &c, int ms)
     {
         const bool small = monsterHull(c.me.kind) == kWalkCrouched;
         const fx feet = small ? kCrouchedFeet : kStandingFeet;
-        const fx from[3] = {c.me.pos[0], c.me.pos[1], c.me.pos[2] + feet};
-        fx to[3];
-        for (int k = 0; k < 3; ++k)
-            to[k] = from[k] + static_cast<fx>((static_cast<std::int64_t>(c.me.velocity[k]) * ms) / 1000);
         c.me.velocity[2] -= static_cast<fx>((static_cast<std::int64_t>(gravityOf(c.player)) * ms) / 1000);
-        const Trace t = detail::walkerTrace(*c.w.world, &c.a, c.index, small, from, to);
-        bool landed = false;
         const fx was[3] = {c.me.pos[0], c.me.pos[1], c.me.pos[2]};
-        if (!t.startSolid)
-        {
-            c.me.pos[0] = t.endPos[0];
-            c.me.pos[1] = t.endPos[1];
-            c.me.pos[2] = t.endPos[2] - feet;
-        }
+        Trace onHead;
+        const int met = aiFlyMove(c, small, feet, ms, onHead);
+        bool landed = (met & 1) != 0;
         // (The player's box stops it too, as the engine's does: no further
         // across, and down it comes.)
         {
@@ -3302,13 +3426,12 @@ namespace hldata
             }
         }
 #ifndef HLDS_CHILD
-        if (!t.startSolid && t.fraction < kFractionOne && t.box >= 0 && t.normal[2] > kFloorNormalZ &&
-            t.box < c.w.world->boxCount)
+        if (onHead.box >= 0 && onHead.box < c.w.world->boxCount)
         {
             // On someone's head: not a floor (the game's SV_CheckBottom asks
             // the world alone). Off it, outwards from their middle, and on
             // down.
-            const SolidBox &under = c.w.world->boxes[t.box];
+            const SolidBox &under = c.w.world->boxes[onHead.box];
             fx out[3] = {c.me.pos[0] - (under.mins[0] + under.maxs[0]) / 2,
                          c.me.pos[1] - (under.mins[1] + under.maxs[1]) / 2, 0};
             const fx length = fxLength(out);
@@ -3327,21 +3450,7 @@ namespace hldata
             if (c.me.velocity[2] < 0)
                 c.me.velocity[2] = 0;
         }
-        else
 #endif
-        if (t.startSolid || t.fraction < kFractionOne)
-        {
-            if (t.startSolid || t.normal[2] > kFloorNormalZ)
-            {
-                landed = c.me.velocity[2] <= 0 || t.startSolid;
-            }
-            else
-            {
-                c.me.velocity[0] = c.me.velocity[1] = 0;
-                if (c.me.velocity[2] > 0)
-                    c.me.velocity[2] = 0;
-            }
-        }
         if (c.m.touchArmed && c.kind.touch != nullptr)
         {
             fx mins[3], maxs[3];
@@ -3362,10 +3471,52 @@ namespace hldata
         }
         if (landed)
         {
+            // (On the ground, with what it had across: it goes on, slowing,
+            // as the engine's step monsters do.)
             c.m.inAir = false;
-            c.me.velocity[0] = c.me.velocity[1] = c.me.velocity[2] = 0;
+            c.me.velocity[2] = 0;
+            c.m.landSlide = c.me.velocity[0] != 0 || c.me.velocity[1] != 0;
             if (c.me.ai == kAiLeap)
                 c.me.ai = kAiChase;
+        }
+    }
+
+    /// On the ground with some speed left (a landing): the engine's friction
+    /// for a step monster (sv_friction 4, sv_stopspeed 100), then on along
+    /// what it meets; off an edge, it falls again.
+    HL_COLD void aiSlideTick(AiCtx &c, int ms)
+    {
+        fx *v = c.me.velocity;
+        const fx flat[3] = {v[0], v[1], 0};
+        const std::int64_t speed = fxLength(flat);
+        if (speed == 0)
+        {
+            c.m.landSlide = false;
+            return;
+        }
+        const std::int64_t control = speed < fxFromInt(100) ? fxFromInt(100) : speed;
+        std::int64_t slower = speed - control * 4 * ms / 1000;
+        if (slower <= 0)
+        {
+            v[0] = v[1] = 0;
+            c.m.landSlide = false;
+            return;
+        }
+        v[0] = static_cast<fx>(v[0] * slower / speed);
+        v[1] = static_cast<fx>(v[1] * slower / speed);
+        v[2] = 0;
+        const bool small = monsterHull(c.me.kind) == kWalkCrouched;
+        const fx feet = small ? kCrouchedFeet : kStandingFeet;
+        Trace onHead;
+        aiFlyMove(c, small, feet, ms, onHead);
+        // (Nothing under it now: it falls.)
+        const fx from[3] = {c.me.pos[0], c.me.pos[1], c.me.pos[2] + feet};
+        const fx below[3] = {from[0], from[1], from[2] - fxFromInt(2)};
+        const Trace ground = detail::walkerTrace(*c.w.world, &c.a, c.index, small, from, below);
+        if (!ground.startSolid && ground.fraction >= kFractionOne)
+        {
+            c.m.landSlide = false;
+            c.m.inAir = true;
         }
     }
 
@@ -3913,6 +4064,8 @@ namespace hldata
             const AiSpentScope spent(2);
             if (m->inAir && !roped)
                 aiAirTick(c, ms);
+            else if (m->landSlide && !roped)
+                aiSlideTick(c, ms);
             // (Turned after it moves: a think clears `turning`, and the
             // frame after one would otherwise not turn while it walks.)
             if (!roped)

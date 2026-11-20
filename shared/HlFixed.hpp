@@ -81,6 +81,15 @@ extern "C" std::uint32_t hlHwSqrt64(std::uint64_t value); // source/HwMath.s
 #define HL_WARM inline
 #endif
 #endif
+// HL_COLD: Thumb code in main memory, a third smaller than ARM: what runs
+// seldom and for few (a monster in the air), in a file built as ARM.
+#ifndef HL_COLD
+#if defined(__arm__) && defined(HL_HW_MATH)
+#define HL_COLD inline __attribute__((target("thumb")))
+#else
+#define HL_COLD inline
+#endif
+#endif
 
 namespace hldata
 {

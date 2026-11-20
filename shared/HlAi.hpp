@@ -508,6 +508,7 @@ namespace hldata
         std::int16_t leaf = 0; ///< where its eyes are, for the PVS
         // In the air (a leap, a hop): its velocity is ActorState's.
         bool inAir = false;
+        bool landSlide = false; ///< landed with speed across: it slides to a stop (aiSlideTick)
         bool touchArmed = false; ///< a headcrab's LeapTouch is set
         // A squad (CSquadMonster).
         std::int16_t squadLeader = kAiNone;

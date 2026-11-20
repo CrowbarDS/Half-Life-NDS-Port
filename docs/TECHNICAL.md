@@ -1866,7 +1866,15 @@ whole degrees cut toward zero (`fxVecToYawTurns`); and a clip's events --
 a bite, a leap -- are given at the think, for the tenth of a second of the
 clip ahead (the game's DispatchAnimEvents), with whether the clip ends in
 it, not as its frames pass. (A kind that thinks its own way still gives
-them as they pass.)
+them as they pass.) A monster in the air (a leap, a hop) falls as the
+engine's step monsters do: gravity, then the move, sliding along what it
+meets (SV_FlyMove), and on landing it goes on, slowing to a stop, rather
+than stopping dead -- a headcrab's leap lands where the game's does.
+
+Still apart there: the engine traces a monster narrower than its hull --
+a headcrab, 24 units across, in the 32-unit crouching hull -- with the hull
+set at its least corner, not about its middle, so in the game its box runs
+4 units further one way than the other; the port's is about its middle.
 
 ## The pass's budget
 

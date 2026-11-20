@@ -128,23 +128,30 @@ namespace hldata
         {
             if (event != kJumpAttack)
                 return;
+            // (A unit up first, off the ground -- the jump is worked out from
+            // there: HC_AE_JUMPATTACK.)
+            c.me.pos[2] += kFxOne;
             fx jump[3];
             AiTarget t;
             if (aiTargetOf(c.w, c.player, c.m.enemy, t))
             {
                 // Up fast enough to reach its eyes (16 at the least), and
                 // across in the time that takes; no more than 650 in all.
-                int gravity = fxToInt(gravityOf(c.player));
-                if (gravity <= 1)
-                    gravity = 1;
-                int height = fxToInt(t.eye[2] - c.me.pos[2]);
-                if (height < 16)
-                    height = 16;
-                const int speed = static_cast<int>(isqrt64(static_cast<std::uint64_t>(2) * gravity * height));
+                // (In Q12 all through, as the game's floats: a speed of
+                // whole units comes up short, and lands it short.)
+                std::int64_t gravity = gravityOf(c.player);
+                if (gravity <= kFxOne)
+                    gravity = kFxOne;
+                std::int64_t height = t.eye[2] - c.me.pos[2];
+                if (height < fxFromInt(16))
+                    height = fxFromInt(16);
+                // speed = sqrt(2 g h): g and h Q12, so 2 g h is Q24 and its root Q12.
+                const std::int64_t speed = static_cast<std::int64_t>(isqrt64(static_cast<std::uint64_t>(2 * gravity * height)));
+                // Across, in the time it takes to rise: d / (speed / g) = d g / speed.
                 for (int k = 0; k < 2; ++k)
-                    jump[k] = static_cast<fx>((static_cast<std::int64_t>(t.eye[k] - c.me.pos[k]) * gravity) /
+                    jump[k] = static_cast<fx>(static_cast<std::int64_t>(t.eye[k] - c.me.pos[k]) * gravity /
                                               (speed > 0 ? speed : 1));
-                jump[2] = fxFromInt(speed);
+                jump[2] = static_cast<fx>(speed);
                 const fx length = fxLength(jump);
                 if (length > fxFromInt(650))
                 {
