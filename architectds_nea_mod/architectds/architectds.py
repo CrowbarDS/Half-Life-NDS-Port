@@ -416,7 +416,7 @@ class GenericBinary():
             '  command = ${post} $in $out\n'
             '\n'
             'rule ndstool\n'
-            '  command = ${NDSTOOL} -c $out -7 ${arm7elf} -9 ${arm9elf} -b ${game_icon} ${game_full_title} ${ndstool_nitrofs_flags} ${ndstool_title_id} ${ndstool_unit_code} ${ndstool_game_info}\n'
+            '  command = ${NDSTOOL} -c $out -7 ${arm7elf} -9 ${arm9elf} -b ${game_icon} ${game_full_title} ${ndstool_nitrofs_flags} ${ndstool_title_id} ${ndstool_unit_code} ${ndstool_game_info} ${ndstool_overlay_flags}\n'
             '\n'
             'rule grit\n'
             '  command = ${GRIT} ${in_path_img} ${options} -o ${grit_out_path}\n'
@@ -2847,7 +2847,10 @@ class NdsRom(GenericBinary):
                  game_icon='${BLOCKSDS}/sys/icon.gif',
                  title_id='',
                  unit_code=-1,
-                 game_info=None):
+                 game_info=None,
+                 arm9_overlay_table=None,
+                 overlay_dir=None,
+                 overlay_files=[]):
         '''
         Constructor of NDS ROM build rules.
 
@@ -2875,6 +2878,11 @@ class NdsRom(GenericBinary):
         - 'game_info': (game code, maker code, header title, ROM version): the
           header's own fields (ndstool -g). The code is 4 characters, the maker
           2, the title up to 12; the version is a number (0-255).
+        - 'arm9_overlay_table', 'overlay_dir', 'overlay_files': the ROM's own
+          ARM9 overlay table, as retail games have it (ndstool -y9), and the
+          directory holding its files (ndstool -y: overlay_NNNN.bin, which
+          become the FAT's first files); 'overlay_files' lists them, for the
+          ROM to be made again when one changes. All three or none.
         '''
 
         super().__init__(None)
@@ -2889,6 +2897,11 @@ class NdsRom(GenericBinary):
         self.title_id = title_id
         self.unit_code = unit_code
         self.game_info = game_info
+        if (arm9_overlay_table is None) != (overlay_dir is None):
+            raise ValueError('NdsRom: an overlay table and its directory go together')
+        self.arm9_overlay_table = arm9_overlay_table
+        self.overlay_dir = overlay_dir
+        self.overlay_files = list(overlay_files)
 
         self.arm9 = None
         self.nitrofs = None
@@ -2964,8 +2977,15 @@ class NdsRom(GenericBinary):
         else:
             game_info_flag = ''
 
+        if self.arm9_overlay_table is not None:
+            overlay_flags = f'-y9 {self.arm9_overlay_table} -y {self.overlay_dir}'
+            overlay_deps = ' ' + ' '.join([self.arm9_overlay_table] + self.overlay_files)
+        else:
+            overlay_flags = ''
+            overlay_deps = ''
+
         self.print(
-            f'build {self.nds_path}: ndstool {self.arm7.elf_path} {self.arm9.elf_path} {nitrodir_paths} {flag_dep}\n'
+            f'build {self.nds_path}: ndstool {self.arm7.elf_path} {self.arm9.elf_path} {nitrodir_paths}{overlay_deps} {flag_dep}\n'
             f'  arm7elf = {self.arm7.elf_path}\n'
             f'  arm9elf = {self.arm9.elf_path}\n'
             f'  game_icon = {self.game_icon}\n'
@@ -2974,6 +2994,7 @@ class NdsRom(GenericBinary):
             f'  ndstool_title_id = {title_id_flag}\n'
             f'  ndstool_unit_code = {unit_code_flag}\n'
             f'  ndstool_game_info = {game_info_flag}\n'
+            f'  ndstool_overlay_flags = {overlay_flags}\n'
             '\n'
         )
 
