@@ -3830,6 +3830,16 @@ namespace hldata
         AiMoveRound &round = c.m.round;
         fx dest[3];
         aiMoveDest(c, dest);
+        // (Move turns it towards its way first; then MoveExecute goes at the
+        // stride of the clip it is playing: until the clip of going is the
+        // one -- SetActivity, at its next think -- it asks for it, and stands.)
+        if (c.m.activity != c.m.movementActivity)
+        {
+            aiMakeIdealYaw(c, dest);
+            aiChangeYaw(c);
+            c.m.idealActivity = c.m.movementActivity;
+            return;
+        }
         fx speed = c.m.groundSpeed > 0 ? c.m.groundSpeed : fxFromInt(100);
         const fx far = aiDist2D(dest, c.me.pos);
         // At the goal: what a fifth of a second of its pace leaves.

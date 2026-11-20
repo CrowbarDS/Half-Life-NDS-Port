@@ -1,0 +1,11 @@
+# c1a3a's first squad (three soldiers, the leader in his beret) and the
+# player, 500 units north of the leader and out of his sight: one shot into
+# the floor is heard; the squad wakes, signals, takes cover, fires (nothing
+# hurts the player) and comes, for thirty seconds.
+# map c1a3a
+# start 968 -1828 36 270
+# keep func_.*|monster_human_grunt|info_node.*
+cmd weapon_9mmhandgun
+60 0 0 270 0      # stand a second, the pistol taken out
+10 0 0 270 60 a   # a shot into the floor: heard
+1800 0 0 270 0    # thirty seconds

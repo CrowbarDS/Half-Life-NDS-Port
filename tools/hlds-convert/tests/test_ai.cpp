@@ -809,6 +809,10 @@ namespace
         AiMonster &m = mind(g, index);
         AiCtx c = aiCtx(g.logic, g.player, index, m, *aiKindOf(g.actors.states[index].kind));
         g.actors.ai->now += ms;
+        // (The clip of going, asked for by the move: what a think's
+        // MaintainSchedule sets, here at once.)
+        if (m.activity != m.idealActivity)
+            aiSetActivity(c, m.idealActivity);
         aiMoveTick(c, ms);
         aiTurnTick(c, ms);
         actorPlaceBox(g.actors, index);
@@ -882,6 +886,9 @@ namespace
         aiRouteClear(c);
         aiClear(c, kCondTaskFailed);
         aiMoveToLocation(c, kActWalk, 2000, to);
+        // (Already walking: what is measured is being held up, not the
+        // think it takes to set off -- aiMoveTick waits for its clip.)
+        aiSetActivity(c, m.movementActivity);
         int inRow = 0;
         for (int t = 0; t < ms; t += 33)
         {
