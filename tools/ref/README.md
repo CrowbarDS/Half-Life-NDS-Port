@@ -91,6 +91,8 @@ the host, through its own game code, into a log of the same form.
   then plays the scenario in the console's order of things each frame (the
   logic and its boxes, USE, the monsters, the player's move, then the
   weapons), a sixtieth of a second each, into `build/ref/diag/<name>_ds.csv`.
+  It plays at the skill level the game's log says it ran at (`#skill`; the
+  game's own default, easy, unless the console set another).
 - **Weapons.** Both players start as `play.sh` starts the game's: nothing
   hurts them (`god`), they have what `impulse 101` gives, the crowbar in
   hand. A scenario's `cmd` lines (`cmd weapon_rpg`, `cmd give ammo_357`,

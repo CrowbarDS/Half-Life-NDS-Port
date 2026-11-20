@@ -347,13 +347,24 @@ int main(int argc, char **argv)
     std::vector<int> gameMs;
     std::vector<std::uint32_t> gameSeed;
     std::vector<std::pair<std::string, std::array<double, 6>>> gameTurning;
+    // How hard the game was: played the same here. (A log without it was
+    // the game's default, easy; with no log at all, the port's, medium.)
+    int gameSkill = kSkillMedium;
     if (argc > 5)
     {
         std::ifstream log(argv[5]);
         std::string line;
         std::vector<Order> ran;
+        gameSkill = kSkillEasy;
         while (std::getline(log, line))
         {
+            if (line.rfind("#skill ", 0) == 0)
+            {
+                const int level = std::atoi(line.c_str() + 7);
+                if (level >= kSkillEasy && level <= kSkillHard)
+                    gameSkill = level;
+                continue;
+            }
             if (line.rfind("rot,1,", 0) == 0)
             {
                 // rot,frame,seq,t,id,ax,ay,az,wx,wy,wz: the turning brushes
@@ -469,6 +480,7 @@ int main(int argc, char **argv)
             !hlds::parseNodGraph(bytes, g.nodGraph, error))
             std::fprintf(stderr, "diag_replay: %s: %s\n", nod.string().c_str(), error.c_str());
     }
+    globals.set(kGlobalSkill, gameSkill);
     finish(g, &globals, std::getenv("HLDS_VALVE_DIR"));
     if (!g.ok)
         return 1;
