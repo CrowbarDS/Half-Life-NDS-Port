@@ -1008,7 +1008,7 @@ namespace hldata
         if (distance < fxFromInt(4))
             return kWalkMoved;
         if (idealYaw != nullptr)
-            *idealYaw = fxAtan2Turns(d[1], d[0]);
+            *idealYaw = fxVecToYawTurns(d[1], d[0]); // (MakeIdealYaw's whole degrees)
         else
             detail::faceTo(actor, d[0], d[1], ms, 65536); // a turn a second
         fx step = static_cast<fx>((static_cast<std::int64_t>(speed) * ms) / 1000);

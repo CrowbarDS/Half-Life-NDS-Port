@@ -311,4 +311,70 @@ namespace hldata
         default: sine = static_cast<std::int32_t>(-c); cosine = static_cast<std::int32_t>(s);  break;
         }
     }
+
+    namespace detail
+    {
+        /// The sine of each whole degree of a quarter turn, Q30: the lines
+        /// fxVecToYawTurns holds a way against, exactly.
+        inline constexpr std::int32_t kSineDegree[91] = {
+            0, 18739379, 37473049, 56195305, 74900443, 93582766, 112236583, 130856211,
+            149435979, 167970228, 186453311, 204879599, 223243478, 241539355, 259761657, 277904834,
+            295963357, 313931728, 331804471, 349576144, 367241333, 384794656, 402230767, 419544355,
+            436730145, 453782903, 470697435, 487468587, 504091252, 520560366, 536870912, 553017922,
+            568996477, 584801711, 600428808, 615873009, 631129609, 646193961, 661061475, 675727625,
+            690187940, 704438018, 718473518, 732290163, 745883746, 759250125, 772385229, 785285058,
+            797945680, 810363241, 822533958, 834454122, 846120104, 857528349, 868675383, 879557810,
+            890172315, 900515665, 910584710, 920376381, 929887697, 939115760, 948057759, 956710970,
+            965072759, 973140576, 980911966, 988384560, 995556083, 1002424350, 1008987269, 1015242840,
+            1021189159, 1026824413, 1032146887, 1037154959, 1041847103, 1046221891, 1050277989, 1054014162,
+            1057429273, 1060522280, 1063292242, 1065738315, 1067859754, 1069655912, 1071126243, 1072270298,
+            1073087729, 1073578288, 1073741824,
+        };
+    } // namespace detail
+
+    /// The engine's VecToYaw: the way (y, x) points as atan2's degrees made
+    /// an int -- cut toward zero, a turn added below 0 -- in 65536ths; (0, 0)
+    /// gives 0. A monster's ideal yaw is whole degrees in the game: this.
+    ///
+    /// fxAtan2Turns is good to a tenth of a degree, so the whole degree is
+    /// read from it unless it lies within 0.15 of one; there, which side of
+    /// that degree's line (y, x) is on is told exactly, by the sign of a
+    /// cross product with it (kSineDegree). (Called, not inlined: the
+    /// walkers that ask for it are in ITCM, which has no room for it.)
+    HL_WARM __attribute__((noinline)) constexpr std::uint16_t fxVecToYawTurns(fx y, fx x)
+    {
+        if (x == 0 && y == 0)
+            return 0;
+        // (Cut toward zero: below 180 the degree under it, above it the
+        // degree over it. q is the angle in degrees, Q16.)
+        const bool up = y >= 0;
+        const std::uint32_t q = static_cast<std::uint32_t>(fxAtan2Turns(y, x)) * 360u;
+        const int whole = static_cast<int>(q >> 16);
+        const std::uint32_t part = q & 0xFFFFu;
+        constexpr std::uint32_t kDoubt = 9830; // 0.15 degree, Q16
+        // Which side of the line of degree b (y, x) is: above 0 anticlockwise
+        // of it, below 0 clockwise, 0 on it.
+        const auto side = [&](int b) {
+            const int at = ((b % 360) + 360) % 360;
+            const int within = at % 90; // (the quarter's sine and cosine, turned)
+            const std::int64_t s0 = detail::kSineDegree[within], c0 = detail::kSineDegree[90 - within];
+            const int quarter = at / 90;
+            const std::int64_t sine = quarter == 0 ? s0 : quarter == 1 ? c0 : quarter == 2 ? -s0 : -c0;
+            const std::int64_t cosine = quarter == 0 ? c0 : quarter == 1 ? -s0 : quarter == 2 ? -c0 : s0;
+            return cosine * y - sine * x;
+        };
+        int deg;
+        if (part > kDoubt && part < 65536u - kDoubt)
+            deg = up ? whole : whole + 1;
+        else
+        {
+            // (The degree in doubt: `whole` near the bottom of one, `whole + 1`
+            // near its top.)
+            const int b = part <= kDoubt ? whole : whole + 1;
+            const std::int64_t at = side(b);
+            deg = up ? (at >= 0 ? b : b - 1) : (at <= 0 ? b : b + 1);
+        }
+        deg = ((deg % 360) + 360) % 360;
+        return static_cast<std::uint16_t>((deg * 65536 + 180) / 360);
+    }
 } // namespace hldata

@@ -1841,6 +1841,24 @@ have been brought to the game's this way. What is still apart, and why:
   spawn point's height plus one; the port's at the spawn point. Left out on
   purpose: it changes where every match's players start, so it waits for
   the next change to the match protocol (`kNetVersion`), to go in with it.
+- **A monster's think now and then comes a frame later in the game.** Its
+  `nextthink = time + 0.1` is a float on frames of a sixtieth, so once in a
+  while the tenth of a second is seven frames, not six; the port's clock of
+  whole milliseconds makes it six every time. Not followed, for the
+  half-second waits' reason. The comparison pairs thinks in order, not by
+  frame.
+- **What a monster began before the scenario.** The two sides load the map
+  at moments they do not share, and an idle monster's waits (IdleStand's
+  wait, say) run out at different frames. The replay sets each monster's
+  think to fall where the game's first did, and gives it the game's own
+  random draws, but not what it was in the middle of: the comparison
+  reports such an event as one side's alone and pairs the rest.
+
+The monsters (`mon_*` scenarios) brought the port's to the game's in two
+places: a turn is the game's monsteryawspeedfix one, done in the think
+that asks for it, so a facing task ends in that think (the port shows it
+over the frames that follow); and an ideal yaw is the engine's VecToYaw,
+whole degrees cut toward zero (`fxVecToYawTurns`).
 
 ## The pass's budget
 

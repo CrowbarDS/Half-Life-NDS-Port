@@ -10,6 +10,7 @@
 // stronger for each of it; a barnacle hauls up and eats a scientist, and
 // kills the player at its mouth.
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -1493,8 +1494,50 @@ namespace
     }
 } // namespace
 
+namespace
+{
+    /// fxVecToYawTurns against the engine's VecToYaw, worked in doubles: the
+    /// whole degree, cut toward zero. (Only a way within a few thousandths
+    /// of a degree of a whole one may come out the other side of it: the
+    /// lines it is held against are as good as 65536ths of a turn.)
+    void testVecToYaw()
+    {
+        std::uint32_t seed = 12345;
+        int wrong = 0, near = 0;
+        for (int n = 0; n < 200000; ++n)
+        {
+            seed = seed * 1664525u + 1013904223u;
+            const fx x = static_cast<fx>(static_cast<std::int32_t>(seed) >> 9);
+            seed = seed * 1664525u + 1013904223u;
+            fx y = static_cast<fx>(static_cast<std::int32_t>(seed) >> 9);
+            if (n % 7 == 0) // (some right on a whole degree, or nearly)
+            {
+                const double a = std::floor(std::atan2(y, x) * 180.0 / M_PI) * M_PI / 180.0;
+                y = static_cast<fx>(std::lround(std::tan(a) * x)) + (n % 3) - 1;
+            }
+            const double deg = std::atan2(static_cast<double>(y), static_cast<double>(x)) * 180.0 / M_PI;
+            int yaw = static_cast<int>(deg);
+            if (yaw < 0)
+                yaw += 360;
+            const int want = (yaw * 65536 + 180) / 360;
+            if (fxVecToYawTurns(y, x) != want)
+            {
+                if (std::fabs(deg - std::round(deg)) < 0.005)
+                    ++near;
+                else
+                    ++wrong;
+            }
+        }
+        std::printf("VecToYaw: %d wrong, %d on a whole degree's line\n", wrong, near);
+        check(wrong == 0, "fxVecToYawTurns is the engine's VecToYaw");
+        check(fxVecToYawTurns(0, 0) == 0 && fxVecToYawTurns(0, -4096) == 32768 && fxVecToYawTurns(-1, 4096 * 100) == 0,
+              "VecToYaw at 0, 180 and just under 0");
+    }
+} // namespace
+
 int main()
 {
+    testVecToYaw();
     testTable();
     testSounds();
     testSquadLeave();

@@ -291,7 +291,7 @@ namespace hldata
             c.m.idealYaw = c.me.yaw;
             return;
         }
-        c.m.idealYaw = fxAtan2Turns(dy, dx);
+        c.m.idealYaw = fxVecToYawTurns(dy, dx); // (UTIL_VecToYaw: whole degrees)
     }
     /// Its yaw as the game's is: where the turn under way takes it (the
     /// game's turns at once, in the think; this one is shown over the frames
