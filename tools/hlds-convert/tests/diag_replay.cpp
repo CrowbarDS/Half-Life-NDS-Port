@@ -783,7 +783,7 @@ int main(int argc, char **argv)
         const fx touchV[2] = {g.player.touchVelocity[0], g.player.touchVelocity[1]};
 
         // Game::frame's order (dll/hl/Game.arm.cpp): the logic (boxes
-        // move), USE, the monsters, the player's move, then the weapons.
+        // move), USE, the player's move, the weapons, then the monsters.
         // The turning brushes as the game had them at its first frame: they
         // have turned since each map began, from a moment the two sides do
         // not share.
@@ -836,9 +836,6 @@ int main(int argc, char **argv)
             if (target >= 0 && g.logic.records[target].kind == static_cast<std::uint8_t>(LogicKind::Pushable))
                 pulled = target;
         }
-        monstersTick(g.logic, g.player, ms);
-        g.drain();
-
         MoveCommand cmd;
         cmd.forward = span.forward > 0 ? 1 : span.forward < 0 ? -1 : 0;
         cmd.side = span.side > 0 ? 1 : span.side < 0 ? -1 : 0;
@@ -877,6 +874,36 @@ int main(int argc, char **argv)
             g.logic.brokeCount = 0;
             g.drain();
         }
+        if (f >= 1)
+        {
+            // What has been thrown or fired, before the frame's physics moves it
+            // (as the game's log has it, at its StartFrame): a thing let go this
+            // frame where it was let go.
+            for (int n = 0; n < kMaxProjectiles; ++n)
+            {
+                const Projectile &shot = g.actors.shots[n];
+                const char *sub = "-";
+                const char *cls = shot.active ? thrownClass(shot, sub) : nullptr;
+                if (cls == nullptr)
+                {
+                    slotWas[n] = false;
+                    continue;
+                }
+                if (!slotWas[n])
+                    ++slotUse[n];
+                slotWas[n] = true;
+                std::fprintf(out, "proj,%d,%d,%.4f,%d,%s,%s,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,0,0,0\n", f, f, t,
+                             1000 + n * 100 + slotUse[n] % 100, cls, sub, units(shot.pos[0]), units(shot.pos[1]),
+                             // (One that moves as a box: where its feet are, the game's origin.)
+                             units(shot.pos[2] - (shotMovesAsBox(shot.kind) ? kCrouchedFeet : 0)), units(shot.velocity[0]),
+                             units(shot.velocity[1]), units(shot.velocity[2]));
+            }
+        }
+        // The monsters, and what is thrown or fired, after the player's move
+        // and weapons (Game::frame's order, the game's: each command, then
+        // the entities' thinks).
+        monstersTick(g.logic, g.player, ms);
+        g.drain();
 
         if (f < 1)
             continue;
@@ -952,26 +979,6 @@ int main(int argc, char **argv)
                          clip != nullptr ? *clip : me.inv.current == kWeaponRpg ? ((arsenal.have & kArsenalRpgLoaded) ? 1 : 0) : -1,
                          ammo1, ammo2, weapon.cooldownMs / 1000.0, weapon.secondMs / 1000.0, weapon.idleMs / 1000.0,
                          weapon.reloadMs > 0 || weapon.loading != 0 ? 1 : 0);
-        }
-        // What has been thrown or fired.
-        for (int n = 0; n < kMaxProjectiles; ++n)
-        {
-            const Projectile &shot = g.actors.shots[n];
-            const char *sub = "-";
-            const char *cls = shot.active ? thrownClass(shot, sub) : nullptr;
-            if (cls == nullptr)
-            {
-                slotWas[n] = false;
-                continue;
-            }
-            if (!slotWas[n])
-                ++slotUse[n];
-            slotWas[n] = true;
-            std::fprintf(out, "proj,%d,%d,%.4f,%d,%s,%s,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,0,0,0\n", f, f, t,
-                         1000 + n * 100 + slotUse[n] % 100, cls, sub, units(shot.pos[0]), units(shot.pos[1]),
-                         // (One that moves as a box: where its feet are, the game's origin.)
-                         units(shot.pos[2] - (shotMovesAsBox(shot.kind) ? kCrouchedFeet : 0)), units(shot.velocity[0]),
-                         units(shot.velocity[1]), units(shot.velocity[2]));
         }
     }
     std::fprintf(out, "END,%d,%d,%.4f\n", scripted, scripted, timeMs / 1000.0);

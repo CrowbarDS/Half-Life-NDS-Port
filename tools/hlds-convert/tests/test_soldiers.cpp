@@ -850,7 +850,10 @@ namespace
         // little to either side: it comes down near, not on them.)
         check(thrownAt >= 1100 && thrownAt <= 2400, "the grenade leaves his hand on the throw's own frame");
         check(nearest < 160, "... and comes down by them");
-        check(offAt - thrownAt >= 3400 && offAt - thrownAt <= 3600 && g.player.health < 1000,
+        // (Its fuse is looked at by its thinks, a tenth of a second apart
+        // from the frame after it is thrown: off at the first at or after
+        // 3.5 s -- a tick of these 33 ms later at most.)
+        check(offAt - thrownAt >= 3400 && offAt - thrownAt <= 3600 + 33 && g.player.health < 1000,
               "... to go off three and a half seconds after");
         check(mind(g, index)->time1 > g.ai.now + 1000 && !mind(g, index)->flag1,
               "and he has not another for them inside six seconds");

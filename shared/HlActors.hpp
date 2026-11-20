@@ -547,6 +547,7 @@ namespace hldata
     }
 
     struct AiWorld; // (HlAi.hpp)
+    inline void aiShotBorn(AiWorld &ai, int slot); // (HlAi.hpp)
 
     /// The actors of the loaded map and the models they are made of.
     struct ActorWorld
@@ -1606,6 +1607,10 @@ namespace hldata
             if (shot.active)
                 continue;
             shot.active = true;
+            // (Let go this frame: its timers start with the next. Kept by
+            // the monsters' world, which a save leaves out: HlAi.hpp.)
+            if (a.ai != nullptr)
+                aiShotBorn(*a.ai, i);
             shot.kind = kind;
             shot.sprite = 0xFFFF;
             for (int i = 0; i < 3; ++i)

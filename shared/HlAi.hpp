@@ -553,7 +553,13 @@ namespace hldata
         int speechCount = 0;
         /// Where the people's talk table starts in it (LevelView::talkAt).
         int talkAt = kTalkTableAt;
+        /// The projectiles let go this frame, a bit for each slot: moved by
+        /// it, their fuses and thinks counted from the next (the game's
+        /// nextthink = time + ...). Not saved: each frame's.
+        std::uint32_t shotsBorn = 0;
     };
+    static_assert(kMaxProjectiles <= 32, "AiWorld::shotsBorn has a bit for each projectile");
+    inline void aiShotBorn(AiWorld &ai, int slot) { ai.shotsBorn |= 1u << slot; }
 
     struct AiCtx;
 

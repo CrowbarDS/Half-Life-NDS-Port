@@ -1882,6 +1882,12 @@ namespace hldata
             {
                 if (!shot.active)
                     continue;
+                // (Let go this frame: moved by it, but its fuse and thinks
+                // counted from the next -- the game's nextthink = time + ...)
+                const std::uint32_t bit = 1u << (&shot - a.shots);
+                const int timed = a.ai != nullptr && (a.ai->shotsBorn & bit) ? 0 : ms;
+                if (a.ai != nullptr)
+                    a.ai->shotsBorn &= ~bit;
                 if (shot.kind == kShotStomp || shot.kind == kShotMommaSpit)
                 {
                     // (The bosses': theirs to move. Without them, none is made.)
@@ -1897,7 +1903,7 @@ namespace hldata
                     continue; // (the nihilanth's own: HlAliens.hpp)
                 // (An armed mine keeps its beam's length there, not a time.)
                 if (!(shot.kind == kShotMine && shot.sprite == 1))
-                    shot.leftMs -= ms;
+                    shot.leftMs -= timed;
                 const bool gib = shot.kind == kShotGib;
                 if (shot.kind == kShotBolt)
                 {
@@ -2202,7 +2208,7 @@ namespace hldata
                         }
                         // (A think each tenth after the one that lit it: the
                         // clock come down to a tenth this tick, not left one.)
-                        else if ((shot.leftMs + ms - 1) / 100 != (shot.leftMs - 1) / 100)
+                        else if ((shot.leftMs + timed - 1) / 100 != (shot.leftMs - 1) / 100)
                             rocketThink(w, shot, shot.kind == kShotRocket);
                     }
                     else if (shot.sprite == 0 || foe)
@@ -2504,7 +2510,7 @@ namespace hldata
                         explodeAt(w, player, shot.pos, kGrenadeBlast, true, true, true, grenadeSmoke(kGrenadeBlast), true, met);
                         grenadeDebris(w, shot.pos);
                     }
-                    else if ((shot.leftMs + ms) / 200 != shot.leftMs / 200)
+                    else if ((shot.leftMs + timed) / 200 != shot.leftMs / 200)
                     {
                         // (Danger, five times a second, half a second ahead,
                         // as loud as it is fast: DangerSoundThink.)
@@ -2556,7 +2562,7 @@ namespace hldata
                         shot.pos[i] = t.startSolid ? shot.pos[i] : to[i];
                     // In the water, half as fast at each of its thinks, ten
                     // a second (TumbleThink): its fuse is counted in them.
-                    if (shot.kind == kShotGrenade && (shot.leftMs + ms) / 100 != shot.leftMs / 100 &&
+                    if (shot.kind == kShotGrenade && (shot.leftMs + timed) / 100 != shot.leftMs / 100 &&
                         isLiquid(pointContents(*w.world, shot.pos)))
                     {
                         for (fx &v : shot.velocity)
@@ -2574,7 +2580,7 @@ namespace hldata
                             shot.sprite = 0xFFFE;
                             aiSound(a, kSoundDanger, shot.pos, kGrenadeBlast * 10 / 4, 300);
                         }
-                        if (shot.leftMs < 1000 && (shot.leftMs + ms) / 100 != shot.leftMs / 100)
+                        if (shot.leftMs < 1000 && (shot.leftMs + timed) / 100 != shot.leftMs / 100)
                         {
                             fx ahead[3];
                             for (int i = 0; i < 3; ++i)
@@ -4529,14 +4535,14 @@ namespace hldata
                 struckGroup = group;
             }
         }
+        // (The player's round, for the comparison with the real game: HlDiag.hpp.)
+        HL_DIAG_ONLY(if (from < 0 && bullet) HL_DIAG(landed, diag::Landed{nearest, struck, struck >= 0 ? -1 : shot.mover});)
         // (Where it got to, for whoever draws it: a beam's end.)
         for (int i = 0; reached != nullptr && i < 3; ++i)
             reached[i] = eye[i] + static_cast<fx>((static_cast<std::int64_t>(end[i] - eye[i]) * nearest) >> kFractionShift);
         if (struck >= 0)
         {
             // Where it landed, what bleeds bleeds (people red, the aliens
-        // (The player's round, for the comparison with the real game: HlDiag.hpp.)
-        HL_DIAG_ONLY(if (from < 0 && bullet) HL_DIAG(landed, diag::Landed{nearest, struck, struck >= 0 ? -1 : shot.mover});)
             // yellow) -- and on the wall or the floor behind it, if there
             // is one near: more of it for the blow that kills.
             const std::uint8_t kind = a->states[struck].kind;

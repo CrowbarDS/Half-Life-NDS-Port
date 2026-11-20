@@ -1830,13 +1830,6 @@ have been brought to the game's this way. What is still apart, and why:
   counts whole milliseconds and fires on the thirtieth. Not followed: it is
   rounding, not a rule, and at the console's 30 a second it is a tick either
   way.
-- **A projectile's thinks come one of its steps early.** The game moves
-  what is thrown or fired once in the very frame it is let go; the port
-  first in the frame after, its weapons running after its projectiles. Both
-  count a rocket's thinks and a grenade's fuse from the launch, so the
-  port's come a step sooner in the thing's own flight: a rocket turns a
-  frame earlier along the same path (and still meets the wall on the game's
-  frame).
 - **The player starts a unit higher in the game.** Its player is put at a
   spawn point's height plus one; the port's at the spawn point. Left out on
   purpose: it changes where every match's players start, so it waits for
@@ -1857,6 +1850,13 @@ have been brought to the game's this way. What is still apart, and why:
   still stops a bullet and takes its damage (a headcrab's 5 goes to -3, then
   -11); the port's rounds pass what is dying or dead (`fireLine`), on to the
   floor behind. Found by `mon_hitscan`; not yet followed.
+
+A frame runs in the game's order: the player's move and weapons first,
+then the monsters and what is thrown or fired (the game's server runs each
+player's command, then its entities' thinks). So a monster hears and sees
+where the player is now, and a grenade or a rocket let go this frame moves
+in it -- its fuse and thinks counted from the next, as the game's
+`nextthink = time + ...`.
 
 The monsters (`mon_*` scenarios) brought the port's to the game's in two
 places: a turn is the game's monsteryawspeedfix one, done in the think

@@ -1085,30 +1085,6 @@ namespace hlrt
             hudDraw.setLamp(lamp.on, lampPercent(lamp), suit);
             hudDraw.setHurt(player.view.flash, player.view.pain);
         }
-        if (!player.noclip)
-        {
-            const DebugLog::Perf::Scope scope(DebugLog::Section::Logic);
-            {
-                const DebugLog::Perf::Scope monsters(DebugLog::Section::Monsters);
-#ifdef HLDS_PROFILE
-                hldata::aiClock = DebugLog::Perf::now;
-#endif
-                monstersTick(logic, player.state, ms);
-#ifdef HLDS_PROFILE
-                DebugLog::Perf::add(DebugLog::Section::AiLook, hldata::aiSpent[0]);
-                DebugLog::Perf::add(DebugLog::Section::AiSched, hldata::aiSpent[1]);
-                DebugLog::Perf::add(DebugLog::Section::AiMove, hldata::aiSpent[2]);
-                hldata::aiSpent[0] = hldata::aiSpent[1] = hldata::aiSpent[2] = 0;
-#endif
-            }
-            // A monster's blow to the player's view (its punchangle: the
-            // game's pitch is down, the view's up).
-            if (ai_.punch[0] != 0 || ai_.punch[1] != 0 || ai_.punch[2] != 0)
-            {
-                viewKick(player.view, -ai_.punch[0], ai_.punch[1], ai_.punch[2]);
-                ai_.punch[0] = ai_.punch[1] = ai_.punch[2] = 0;
-            }
-        }
         // At a train's controls: a press of forward or back is its speed, and
         // the player's feet stay where they are. Stepping aside or jumping
         // lets go (trainControl).
@@ -1274,6 +1250,35 @@ namespace hlrt
             }
             weapon_.anim = nullptr;
             actors.got = 0;
+        }
+        // The monsters, and what else moves of itself (what is thrown or
+        // fired, pieces, corpses), after the player's move and weapons -- as
+        // the game's server runs each player's command first, then its
+        // entities' thinks: they hear and see where the player is now, and a
+        // round or a grenade let go this frame moves in it.
+        if (!player.noclip)
+        {
+            const DebugLog::Perf::Scope scope(DebugLog::Section::Logic);
+            {
+                const DebugLog::Perf::Scope monsters(DebugLog::Section::Monsters);
+#ifdef HLDS_PROFILE
+                hldata::aiClock = DebugLog::Perf::now;
+#endif
+                monstersTick(logic, player.state, ms);
+#ifdef HLDS_PROFILE
+                DebugLog::Perf::add(DebugLog::Section::AiLook, hldata::aiSpent[0]);
+                DebugLog::Perf::add(DebugLog::Section::AiSched, hldata::aiSpent[1]);
+                DebugLog::Perf::add(DebugLog::Section::AiMove, hldata::aiSpent[2]);
+                hldata::aiSpent[0] = hldata::aiSpent[1] = hldata::aiSpent[2] = 0;
+#endif
+            }
+            // A monster's blow to the player's view (its punchangle: the
+            // game's pitch is down, the view's up).
+            if (ai_.punch[0] != 0 || ai_.punch[1] != 0 || ai_.punch[2] != 0)
+            {
+                viewKick(player.view, -ai_.punch[0], ai_.punch[1], ai_.punch[2]);
+                ai_.punch[0] = ai_.punch[1] = ai_.punch[2] = 0;
+            }
         }
         cameraView();
         // A game between consoles: what this player did goes out, what the
