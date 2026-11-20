@@ -1091,7 +1091,9 @@ namespace hldata
         const fx d[3] = {actor.goal[0] - actor.pos[0], actor.goal[1] - actor.pos[1], 0};
         const fx distance = fxLength(d);
         // Arrived at a node: on to the next when it next plans, which is now.
-        if (actor.goalNode >= 0 && distance < fxFromInt(20))
+        // (Within MONSTER_CUT_CORNER_DIST, as the game's ShouldAdvanceRoute:
+        // a corner cut any wider can take it into the wall the way turns by.)
+        if (actor.goalNode >= 0 && distance <= fxFromInt(8))
         {
             actor.fromNode = actor.goalNode;
             actor.goalNode = -1;

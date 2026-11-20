@@ -1891,10 +1891,12 @@ was when that think began -- within 8 units of its goal
 (MONSTER_CUT_CORNER_DIST) and nearer than a fifth of a second of its pace
 -- and the walk goes right onto the goal, not a few units short. A soldier
 sent to cover (`mon_squad`) stops on the game's spot, and its next
-schedule starts at the think the game's does. Still apart: on its way the
-game stops on each waypoint and loses a think there (a think's move goes
-no further than the waypoint it began with), where the port's walk turns
-20 units before a node and goes on.
+schedule starts at the think the game's does. On its way it heads for the
+next path node once within 8 units of the last (MONSTER_CUT_CORNER_DIST,
+the game's ShouldAdvanceRoute): a wider corner cut can take it into the
+wall the way turns by. Still apart: the game stops on each waypoint and
+loses a think there (a think's move goes no further than the waypoint it
+began with), where the port's walk goes straight on.
 A route's first plan looks for a straight walk along the whole way, as far
 as a monster looks (2048), as the game's BuildRoute tries the straight line
 at any length; the plans made again on its way look no further than the
