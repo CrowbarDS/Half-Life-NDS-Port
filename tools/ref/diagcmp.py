@@ -137,6 +137,178 @@ def ladders(pc, ds, pl_pc, pl_ds, frames, table):
                   f'({lad_pc[apart[0]][key]} / {lad_ds[apart[0]][key]})')
 
 
+def vec(r, keys):
+    return [f(r, k) for k in keys]
+
+
+def angle(a, b):
+    """Degrees between two vectors (0 if either is nothing)."""
+    la, lb = math.hypot(*a), math.hypot(*b)
+    if la == 0 or lb == 0:
+        return 0.0
+    dot = max(-1.0, min(1.0, sum(x * y for x, y in zip(a, b)) / (la * lb)))
+    return math.degrees(math.acos(dot))
+
+
+def weapons(pc, ds, frames):
+    """The weapon in hand (the wpn rows): when each is taken out, and its
+    clip and ammo."""
+    w_pc, w_ds = last_per_frame(pc.get('wpn', [])), last_per_frame(ds.get('wpn', []))
+    both = [fr for fr in frames if fr in w_pc and fr in w_ds]
+    if not both:
+        return
+    print(' weapon (real game / port):')
+    for side, w in (('real game', w_pc), ('port', w_ds)):
+        held, last = [], None
+        for fr in frames:
+            if fr in w and w[fr]['cls'] != last:
+                last = w[fr]['cls']
+                held.append(f'{last} {fr}')
+        print(f'  {"in hand, " + side:<24}{", ".join(held)}')
+    for key in ('clip', 'ammo1', 'ammo2'):
+        apart = [fr for fr in both if w_pc[fr]['cls'] == w_ds[fr]['cls'] and w_pc[fr][key] != w_ds[fr][key]]
+        if apart:
+            print(f'  {key:<14}differs on {len(apart)} frames: {spans(apart)} '
+                  f'(first {w_pc[apart[0]][key]} / {w_ds[apart[0]][key]})')
+        else:
+            print(f'  {key:<14}same')
+
+
+def shots(pc, ds, pos):
+    """The rounds fired (the shot rows), volley by volley: when, from
+    where, aimed which way, the cone and the spread drawn, what was hit."""
+    def volleys(rows):
+        out = {}
+        for r in rows:
+            out.setdefault(int(r['frame']), []).append(r)
+        return [out[fr] for fr in sorted(out)]
+    v_pc, v_ds = volleys(pc.get('shot', [])), volleys(ds.get('shot', []))
+    if not v_pc and not v_ds:
+        return
+    print(' shots (real game / port):')
+    print(f'  {"volleys":<14}{len(v_pc)} / {len(v_ds)}, frames {" ".join(v[0]["frame"] for v in v_pc) or "-"}'
+          f' / {" ".join(v[0]["frame"] for v in v_ds) or "-"}')
+    print(f'  {"rounds each":<14}{" ".join(str(len(v)) for v in v_pc) or "-"} / {" ".join(str(len(v)) for v in v_ds) or "-"}')
+    pairs = list(zip(v_pc, v_ds))
+    if not pairs:
+        return
+    src = max(math.dist(vec(p[0], ('sx', 'sy', 'sz')), vec(d[0], ('sx', 'sy', 'sz'))) for p, d in pairs)
+    aim = max(angle(vec(p[0], ('ax', 'ay', 'az')), vec(d[0], ('ax', 'ay', 'az'))) for p, d in pairs)
+    print(f'  {"from":<14}{"same within " + format(pos, "g") + " u" if src <= pos else f"apart by up to {src:.3f} u"}')
+    print(f'  {"aimed":<14}{"same within 0.1 deg" if aim <= 0.1 else f"apart by up to {aim:.2f} deg"}')
+    cones = sorted({(p[0]['cx'], d[0]['cx']) for p, d in pairs})
+    print(f'  {"cone":<14}{", ".join(f"{float(c):.4f} / {float(e):.4f}" for c, e in cones)}')
+    rounds = [(p, d) for vp, vd in pairs for p, d in zip(vp, vd)]
+    draws = max(max(abs(f(p, 'x') - f(d, 'x')), abs(f(p, 'y') - f(d, 'y'))) for p, d in rounds)
+    print(f'  {"spread drawn":<14}{"the same" if draws < 0.002 else f"apart by up to {draws:.3f} (of -1..1)"}')
+    for side, rs in (('real game', [p for p, _ in rounds]), ('port', [d for _, d in rounds])):
+        n = len(rs)
+        mx = sum(abs(f(r, 'x')) for r in rs) / n
+        my = sum(abs(f(r, 'y')) for r in rs) / n
+        print(f'  {"  " + side:<14}mean |x| {mx:.3f}, |y| {my:.3f} over {n}')
+    ways = max(angle([f(p, 'ex') - f(p, 'sx'), f(p, 'ey') - f(p, 'sy'), f(p, 'ez') - f(p, 'sz')],
+                     [f(d, 'ex') - f(d, 'sx'), f(d, 'ey') - f(d, 'sy'), f(d, 'ez') - f(d, 'sz')]) for p, d in rounds)
+    print(f'  {"way gone":<14}apart by up to {ways:.2f} deg')
+    hits = [(p['hit'], d['hit']) for p, d in rounds if p['hit'] != d['hit']]
+    print(f'  {"hit":<14}{"same" if not hits else f"differs on {len(hits)} rounds (first {hits[0][0]} / {hits[0][1]})"}')
+
+
+def flights(rows):
+    """Each thing thrown or fired, by its id and the frame it appeared: a
+    list of its rows, frame by frame."""
+    out, seen = [], {}
+    for r in rows:
+        key, fr = r['id'], int(r['frame'])
+        cur = seen.get(key)
+        if cur is None or fr > int(cur[-1]['frame']) + 1:
+            cur = []
+            seen[key] = cur
+            out.append(cur)
+        if int(cur[-1]['frame']) == fr if cur else False:
+            cur[-1] = r
+        else:
+            cur.append(r)
+    return out
+
+
+def projectiles(pc, ds, pos, vel, table):
+    """What was thrown or fired (the proj rows), paired by kind in the order
+    they appeared, and compared row by row from their first (each side's
+    first row is where it was let go). Then the blasts, in order."""
+    f_pc, f_ds = flights(pc.get('proj', [])), flights(ds.get('proj', []))
+    if f_pc or f_ds:
+        kinds = []
+        for fl in f_pc + f_ds:
+            k = (fl[0]['cls'], fl[0]['sub'])
+            if k not in kinds:
+                kinds.append(k)
+        for cls, sub in kinds:
+            a = [fl for fl in f_pc if (fl[0]['cls'], fl[0]['sub']) == (cls, sub)]
+            b = [fl for fl in f_ds if (fl[0]['cls'], fl[0]['sub']) == (cls, sub)]
+            print(f' {cls} {sub} (real game / port): {len(a)} / {len(b)}')
+            for i, (p, d) in enumerate(zip(a, b)):
+                tag = f'{cls}{i + 1}'
+                print(f'  #{i + 1:<13}from frame {p[0]["frame"]} / {d[0]["frame"]}, last {p[-1]["frame"]} / {d[-1]["frame"]}')
+                n = min(len(p), len(d))
+                at = math.dist(vec(p[0], ('ox', 'oy', 'oz')), vec(d[0], ('ox', 'oy', 'oz')))
+                sp = math.dist(vec(p[0], ('vx', 'vy', 'vz')), vec(d[0], ('vx', 'vy', 'vz')))
+                print(f'  {"let go":<14}{at:.3f} u apart, speed {sp:.3f} u/s apart '
+                      f'({" ".join(p[0][k] for k in ("vx", "vy", "vz"))} / {" ".join(d[0][k] for k in ("vx", "vy", "vz"))})')
+                apart = next((k for k in range(n) if math.dist(vec(p[k], ('ox', 'oy', 'oz')), vec(d[k], ('ox', 'oy', 'oz'))) > pos), None)
+                if apart is None:
+                    print(f'  {"path":<14}same within {pos:g} u for {n} frames')
+                else:
+                    print(f'  {"path":<14}apart from its frame {apart} (frame {p[apart]["frame"]} / {d[apart]["frame"]}): '
+                          f'{" ".join(p[apart][k] for k in ("ox", "oy", "oz"))} / {" ".join(d[apart][k] for k in ("ox", "oy", "oz"))}')
+                def rest(fl):
+                    # (Where it stops going anywhere: a bolt in a wall keeps
+                    # its speed on the port's side.)
+                    for k in range(1, len(fl)):
+                        if all(math.dist(vec(fl[j], ('ox', 'oy', 'oz')), vec(fl[k], ('ox', 'oy', 'oz'))) < 0.01
+                               for j in range(k, len(fl))):
+                            return fl[k]
+                    return None
+                rp, rd = rest(p), rest(d)
+                if rp or rd:
+                    def where(r):
+                        return f'frame {r["frame"]} at {" ".join(r[k] for k in ("ox", "oy", "oz"))}' if r else 'never'
+                    print(f'  {"at rest":<14}{where(rp)} / {where(rd)}')
+                for k in range(n):
+                    fr = int(p[0]['frame']) + k
+                    if fr in table:
+                        for key in ('ox', 'oy', 'oz'):
+                            table[fr][f'pc_{tag}_{key}'] = p[k][key]
+                            table[fr][f'ds_{tag}_{key}'] = d[k][key]
+    b_pc, b_ds = pc.get('boom', []), ds.get('boom', [])
+    if b_pc or b_ds:
+        print(f' blasts (real game / port): {len(b_pc)} / {len(b_ds)}')
+        for i, (p, d) in enumerate(zip(b_pc, b_ds)):
+            at = math.dist(vec(p, ('x', 'y', 'z')), vec(d, ('x', 'y', 'z')))
+            print(f'  #{i + 1:<13}frame {p["frame"]} / {d["frame"]}, {at:.3f} u apart '
+                  f'({p["x"]} {p["y"]} {p["z"]} / {d["x"]} {d["y"]} {d["z"]}), '
+                  f'damage {float(p["damage"]):g} / {float(d["damage"]):g}, radius {float(p["radius"]):g} / {float(d["radius"]):g}')
+
+
+def hurts(pc, ds):
+    """The player hurt (the dmg rows), in order: how much, and the push."""
+    h_pc, h_ds = pc.get('dmg', []), ds.get('dmg', [])
+    if not h_pc and not h_ds:
+        return
+    print(f' player hurt (real game / port): {len(h_pc)} / {len(h_ds)}')
+    for i in range(max(len(h_pc), len(h_ds))):
+        p = h_pc[i] if i < len(h_pc) else None
+        d = h_ds[i] if i < len(h_ds) else None
+        def said(r):
+            if r is None:
+                return '-'
+            push = [f(r, k) - f(r, k + '0') for k in ('vx', 'vy', 'vz')]
+            return (f'frame {r["frame"]} {float(r["amount"]):g} of type {r["type"]}, '
+                    f'health {float(r["hp0"]):g}->{float(r["hp"]):g}, armour {float(r["ap0"]):g}->{float(r["ap"]):g}, '
+                    f'push {" ".join(f"{v:.1f}" for v in push)}')
+        print(f'  #{i + 1:<13}{said(p)}')
+        print(f'  {"":<14}{said(d)}')
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('name')
@@ -190,6 +362,10 @@ def main():
             print(f'  {key:<14}same')
 
     ladders(pc, ds, pl_pc, pl_ds, frames, table)
+    weapons(pc, ds, frames)
+    shots(pc, ds, a.pos)
+    projectiles(pc, ds, a.pos, a.vel, table)
+    hurts(pc, ds)
 
     box_pc, box_ds = boxes_per_frame(pc.get('box', [])), boxes_per_frame(ds.get('box', []))
     moved = []

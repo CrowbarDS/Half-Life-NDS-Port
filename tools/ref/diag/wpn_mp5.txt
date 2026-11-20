@@ -1,0 +1,10 @@
+# The MP5 down c1a2's corridor: half a second of its rounds, then a grenade
+# from its launcher, which goes off at the far wall.
+# map c1a2
+# start 200 -801 -539 180
+cmd weapon_9mmAR
+60 0 0 180 0
+30 0 0 180 0 a
+30 0 0 180 0
+4 0 0 180 0 b
+120 0 0 180 0

@@ -1,0 +1,7 @@
+# A tripmine put on c1a2's corridor wall, 33 units to the north.
+# map c1a2
+# start 200 -801 -539 90
+cmd weapon_tripmine
+60 0 0 90 0
+4 0 0 90 0 a
+120 0 0 90 0

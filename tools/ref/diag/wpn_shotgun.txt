@@ -1,0 +1,10 @@
+# The shotgun down c1a2's corridor at its far wall: one shot of its first
+# trigger (6 pellets), then one of its second (both barrels, 12).
+# map c1a2
+# start 200 -801 -539 180
+cmd weapon_shotgun
+60 0 0 180 0
+4 0 0 180 0 a
+60 0 0 180 0
+4 0 0 180 0 b
+90 0 0 180 0

@@ -1,0 +1,8 @@
+# A hand grenade thrown 30 degrees up down c1a2's corridor (over the crate),
+# the pin held half a second; left to land and go off.
+# map c1a2
+# start 200 -801 -539 180
+cmd weapon_handgrenade
+60 0 0 180 -30
+30 0 0 180 -30 a
+240 0 0 180 -30

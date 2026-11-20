@@ -39,6 +39,25 @@ namespace hldata
         return static_cast<int>((static_cast<std::int64_t>(degrees) * 2) / 45);
     }
 
+    /// The way a view at `yaw` and `pitch` (turns, 65536 to the circle; the
+    /// pitch up positive) looks, and its right and up: unit, Q12. The
+    /// camera's, with no lean.
+    inline void viewBasis(std::uint16_t yaw, std::uint16_t pitch, fx *forward, fx *right, fx *up)
+    {
+        fx sy, cy, sp, cp;
+        fxSinCos(yaw, sy, cy);
+        fxSinCos(pitch, sp, cp);
+        forward[0] = fxMul(cp, cy);
+        forward[1] = fxMul(cp, sy);
+        forward[2] = sp;
+        right[0] = sy;
+        right[1] = -cy;
+        right[2] = 0;
+        up[0] = -fxMul(sp, cy);
+        up[1] = -fxMul(sp, sy);
+        up[2] = cp;
+    }
+
     /// A kick: added to what is still dying away of the last.
     inline void viewKick(ViewState &view, fx pitch, fx yaw = 0, fx roll = 0)
     {

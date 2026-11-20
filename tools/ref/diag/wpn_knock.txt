@@ -1,0 +1,9 @@
+# A hand grenade dropped at the player's feet in c1a2's corridor, nothing
+# keeping them from harm: how much it hurts, and how far it throws them.
+# map c1a2
+# start 200 -801 -539 180
+cmd weapon_handgrenade
+60 0 0 180 89
+cmd god
+5 0 0 180 89 a
+300 0 0 180 89

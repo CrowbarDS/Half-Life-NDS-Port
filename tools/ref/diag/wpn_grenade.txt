@@ -1,0 +1,9 @@
+# A hand grenade thrown level from c1a2's floor: the pin held half a second,
+# let go, and the grenade left to bounce, roll and go off (three seconds
+# from the pin). Nothing hurts the player.
+# map c1a2
+# start 200 -801 -539 180
+cmd weapon_handgrenade
+60 0 0 180 0
+30 0 0 180 0 a
+240 0 0 180 0

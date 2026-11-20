@@ -1,0 +1,8 @@
+# A rocket down c1a2's corridor at the far wall, the laser on (it steers at
+# its dot).
+# map c1a2
+# start 200 -801 -539 180
+cmd weapon_rpg
+60 0 0 180 0
+4 0 0 180 0 a
+150 0 0 180 0

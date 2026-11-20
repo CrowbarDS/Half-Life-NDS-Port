@@ -89,8 +89,18 @@ the host, through its own game code, into a log of the same form.
 - **The port's side.** `build/convert/diag_replay` (built with the
   converter) cooks that same map, stands the player still for two seconds,
   then plays the scenario in the console's order of things each frame (the
-  logic and its boxes, USE, the monsters, then the player's move), a
-  sixtieth of a second each, into `build/ref/diag/<name>_ds.csv`.
+  logic and its boxes, USE, the monsters, the weapons, then the player's
+  move), a sixtieth of a second each, into `build/ref/diag/<name>_ds.csv`.
+- **Weapons.** Both players start as `play.sh` starts the game's: nothing
+  hurts them (`god`), they have what `impulse 101` gives, the crowbar in
+  hand. A scenario's `cmd` lines (`cmd weapon_rpg`, `cmd give ammo_357`,
+  `cmd god` to be hurt again) are run on the port's side on the frame the
+  game's log says it ran them. Each frame's random seed is the game's. Both
+  logs then have the weapon in hand (`wpn`), each round fired (`shot`: from
+  where, which way, the spread drawn and the cone), what was thrown or
+  fired (`proj`), each blast (`boom`) and each hurt to the player (`dmg`,
+  with the push it gave). The aim is the view's, without its kick: there
+  are no monsters for the aim to bend to (`sv_aim 0` on the game's side).
 - **Holding them together.** `diagcmp.py <name>` says, for the player and
   each box that moved, from which frame the two part, by how much at worst,
   and where each ends; and writes both side by side to
@@ -99,6 +109,10 @@ the host, through its own game code, into a log of the same form.
   read from each log accordingly.) On a ladder it says on which frames each
   side climbed and which ladder, and holds the face each found (its normal),
   solid underfoot, and the climb asked for against each other (`lad_*`).
+  For weapons it says when each was taken out, which frames fired and how
+  the rounds went, and pairs what was thrown or fired by kind, in the order
+  they appeared: where each was let go, from which of its frames the paths
+  part, where each came to rest, and the blasts and the hurts (`wpn_*`).
 - **The console's pace.** `DIAG_VBLANKS=2` plays the port's side two of the
   game's frames at a time, as the console's 30 a second does, compared on
   every second frame.

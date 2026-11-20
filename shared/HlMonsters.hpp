@@ -627,6 +627,7 @@ namespace hldata
     inline void radiusDamage(LogicWorld &w, PlayerState &player, const fx *origin, int damage, int radius,
                              int except, std::uint32_t type = kDmgBlast, std::int16_t attacker = kAiPlayer)
     {
+        HL_DIAG(boom, diag::Boom{origin, damage, radius, type});
         ActorWorld &a = *w.actors;
         auto share = [&](const fx *at) -> int
         {
@@ -6357,13 +6358,19 @@ namespace hldata
             for (int n = 0; n < pellets; ++n)
             {
                 fx dir[3] = {aimed[0], aimed[1], aimed[2]};
+                // (The draws: -4096..4096 each way.)
+                HL_DIAG_ONLY(int drawX = 0, drawY = 0;)
                 if (cone != 0)
                 {
-                    const int x = (static_cast<int>(chance() % 4097) + static_cast<int>(chance() % 4097) - 4096) * cone / 4096;
-                    const int y = (static_cast<int>(chance() % 4097) + static_cast<int>(chance() % 4097) - 4096) * cone / 4096;
+                    const int rx = static_cast<int>(chance() % 4097) + static_cast<int>(chance() % 4097) - 4096;
+                    const int ry = static_cast<int>(chance() % 4097) + static_cast<int>(chance() % 4097) - 4096;
+                    HL_DIAG_ONLY(drawX = rx, drawY = ry;)
+                    const int x = rx * cone / 4096;
+                    const int y = ry * cone / 4096;
                     for (int i = 0; i < 3; ++i)
                         dir[i] = aimed[i] + ((right[i] * x + up[i] * y) >> kFxShift);
                 }
+                HL_DIAG(shot, diag::Shot{eye, aimed, dir, gun.range, n + 1, drawX, drawY, cone});
                 hit = fireLine(w, player, eye, dir, gun.range, gun.damage, true, true, nullptr, -1, nullptr, kDmgGeneric,
                                pellets > 1) ||
                       hit;

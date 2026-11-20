@@ -1,0 +1,8 @@
+# The gauss's second trigger held a second, charging, then let go facing
+# c1a2's crate *4: the shot's kick throws the player back down the corridor.
+# map c1a2
+# start 200 -801 -539 0
+cmd weapon_gauss
+60 0 0 0 0
+60 0 0 0 0 b
+90 0 0 0 0

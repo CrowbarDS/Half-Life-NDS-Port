@@ -1,0 +1,9 @@
+# A satchel thrown down c1a2's corridor, left to slide to a stop, then set off.
+# map c1a2
+# start 200 -801 -539 180
+cmd weapon_satchel
+60 0 0 180 0
+4 0 0 180 0 a
+180 0 0 180 0
+4 0 0 180 0 a
+60 0 0 180 0

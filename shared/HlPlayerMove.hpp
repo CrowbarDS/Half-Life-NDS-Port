@@ -409,6 +409,42 @@ namespace hldata
         }
     }
 
+#if !defined(__NDS__)
+    namespace detail
+    {
+        /// A hurt as diag::hurt is told of it: the player as they were at
+        /// the start of playerTakeDamage and as they are at its end.
+        struct HurtDiag
+        {
+            const PlayerState &player;
+            diag::Hurt seen{};
+            HurtDiag(const PlayerState &p, std::int32_t amount, std::uint32_t type, const fx *from) : player(p)
+            {
+                seen.amount = amount;
+                seen.type = type;
+                seen.known = from != nullptr;
+                for (int a = 0; a < 3; ++a)
+                {
+                    seen.from[a] = from != nullptr ? from[a] : 0;
+                    seen.velocity0[a] = p.velocity[a];
+                }
+                seen.health0 = p.health;
+                seen.armor0 = p.inv.armor;
+            }
+            ~HurtDiag()
+            {
+                if (diag::hurt == nullptr)
+                    return;
+                for (int a = 0; a < 3; ++a)
+                    seen.velocity[a] = player.velocity[a];
+                seen.health = player.health;
+                seen.armor = player.inv.armor;
+                diag::hurt(seen);
+            }
+        };
+    } // namespace detail
+#endif
+
     /// CBasePlayer::TakeDamage: `amount` of the kind `type` (kDmg*). The
     /// armour takes four fifths of what is not a fall or drowning, being worn
     /// down by half of that; the rest, rounded down, is health. Then the
@@ -419,6 +455,7 @@ namespace hldata
     inline std::int32_t playerTakeDamage(PlayerState &player, std::int32_t amount, std::uint32_t type = kDmgGeneric,
                                          const fx *from = nullptr, std::uint8_t kinds = 0)
     {
+        HL_DIAG_ONLY(const detail::HurtDiag hurtDiag(player, amount, type, from);)
         if (amount <= 0 || godMode(player) || player.health <= 0)
             return 0;
         player.hurt += amount;

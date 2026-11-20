@@ -1,0 +1,10 @@
+# The hornetgun down c1a2's corridor: one hornet of its first trigger (it
+# looks for something to sting), then one of its second (straight, fast).
+# map c1a2
+# start 200 -801 -539 180
+cmd weapon_hornetgun
+60 0 0 180 0
+4 0 0 180 0 a
+60 0 0 180 0
+4 0 0 180 0 b
+120 0 0 180 0

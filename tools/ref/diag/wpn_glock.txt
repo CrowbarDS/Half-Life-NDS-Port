@@ -1,0 +1,10 @@
+# The pistol at c1a2's wall: taken out, then held on its first trigger (a
+# shot every 0.3 s, the narrow cone), then its second (every 0.2 s, wide).
+# map c1a2
+# start 200 -801 -539 180
+cmd weapon_9mmhandgun
+60 0 0 180 0
+40 0 0 180 0 a
+20 0 0 180 0
+40 0 0 180 0 b
+30 0 0 180 0

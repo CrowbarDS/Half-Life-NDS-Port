@@ -68,6 +68,7 @@ python3 "$ROOT/tools/ref/place.py" "$HL/valve/maps/$MAP.bsp" "$OUT/$NAME.bsp" $A
 # when the config is read.)
 export REF_CFG="diag_script $SCEN
 cl_cmdrate 100
+sv_aim 0
 host_framerate ${DIAG_STEP:-0.0166667}
 bind F11 \"diag_log $NAME; diag_go\""
 export REF_UNTIL="DIAG: log closed"

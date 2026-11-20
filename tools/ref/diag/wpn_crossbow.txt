@@ -1,0 +1,7 @@
+# A crossbow bolt down c1a2's corridor into the far wall.
+# map c1a2
+# start 200 -801 -539 180
+cmd weapon_crossbow
+60 0 0 180 0
+4 0 0 180 0 a
+90 0 0 180 0
