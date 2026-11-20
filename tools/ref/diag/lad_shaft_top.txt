@@ -1,0 +1,8 @@
+# c1a2b's shaft ladder *112 (x -355..-353, y -1656..-1624, z 1030..1229),
+# from the floor at its top: run west over the shaft (does the drop reach
+# the ladder before the player is across?).
+# map c1a2b
+# start -313 -1640 1272 180
+30 0 0 180 0
+60 400 0 180 0    # run out over it
+60 0 0 180 0

@@ -18,6 +18,7 @@
 // units: whole units Q12 -> float, angles in degrees, the game's buttons.
 // What the port has no counterpart for is 0.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <cstdio>
@@ -324,6 +325,10 @@ int main(int argc, char **argv)
         MoveCommand cmd;
         cmd.forward = span.forward > 0 ? 1 : span.forward < 0 ? -1 : 0;
         cmd.side = span.side > 0 ? 1 : span.side < 0 ? -1 : 0;
+        // (The console's keys are on or off, at a run or at its walk -- the
+        // game's walk, 120: a speed of that or less is the walk.)
+        cmd.walk = std::max(std::fabs(span.forward), std::fabs(span.side)) <= 120.0f &&
+                   (span.forward != 0 || span.side != 0);
         cmd.jump = (span.buttons & kInJump) != 0;
         cmd.duck = (span.buttons & kInDuck) != 0;
         cmd.use = useHeld;

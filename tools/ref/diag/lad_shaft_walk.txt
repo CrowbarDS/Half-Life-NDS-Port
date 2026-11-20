@@ -1,0 +1,7 @@
+# c1a2b's shaft ladder *112 (x -355..-353, y -1656..-1624, z 1030..1229),
+# from the floor at its top: walk west over the shaft (the walk, 120).
+# map c1a2b
+# start -313 -1640 1272 180
+30 0 0 180 0
+90 120 0 180 0    # walk out over it
+60 0 0 180 0
