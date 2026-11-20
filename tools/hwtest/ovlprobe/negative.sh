@@ -4,13 +4,15 @@
 #   ungated  the program calls into an overlay without its gate   (R1)
 #   ctor     a static constructor in an overlay                   (R0)
 #   big      an overlay larger than the one its region is sized by (link)
+#   notable  a program that reads the ROM's overlay table, in a ROM made
+#            without one (romcheck)
 set -u
 cd "$(dirname "$0")"
 export BLOCKSDS="${HLDS_BLOCKSDS:-/opt/blocksds/hl-known-good}"
 fail=0
 check() {
     local neg=$1 want=$2 out
-    out=$(make -j2 NEG="$neg" 2>&1)
+    out=$(make -j2 NEG="$neg" ${3:+OVL_MODE=$3} 2>&1)
     if [ $? -eq 0 ]; then
         echo "negative.sh: NEG=$neg was built: it must not be"; fail=1
     elif ! grep -q -- "$want" <<<"$out"; then
@@ -22,4 +24,5 @@ check() {
 check ungated 'R1 '
 check ctor 'R0 one: .init_array'
 check big 'overlay one is larger than two'
+check notable 'overlay table is 0 bytes' rom
 exit $fail

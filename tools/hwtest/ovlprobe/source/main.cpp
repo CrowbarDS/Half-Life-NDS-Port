@@ -3,6 +3,11 @@
 //
 // What it says on the top screen, each a PASS or a FAIL:
 //   pack     the pack is found (nitro:/ovl/arm9.ovl) and is this program's
+//   table    (OVL_MODE=rom) the ROM's own overlay table: how many the
+//            header says, and each overlay's file found by its id and of its
+//            size
+//   path     (OVL_MODE=rom) a file of NitroFS's own, read by its name: the
+//            ids after the overlays' still found
 //   one/two  each answers as itself once loaded: code, constants
 //   swaps    1000 swaps, every answer right -- a stale instruction cache
 //            would answer as the overlay before
@@ -96,7 +101,22 @@ int main(int, char **)
     }
     const char *why = nullptr;
     const bool packed = hlrt::ovl::init(nullptr, &why);
+#ifdef HL_OVL_FROM_ROM
+    char what[64];
+    std::snprintf(what, sizeof(what), "(%lu in the header)",
+                  static_cast<unsigned long>(__NDSHeader->arm9overlaySize / 32));
+    result("table", packed, packed ? what : why);
+    {
+        FILE *f = std::fopen("nitro:/probe.txt", "rb");
+        char text[32] = {};
+        const bool read = f != nullptr && std::fgets(text, sizeof(text), f) != nullptr;
+        if (f != nullptr)
+            std::fclose(f);
+        result("path", read && std::strncmp(text, "read by its name", 16) == 0);
+    }
+#else
     result("pack", packed, packed ? "" : why);
+#endif
     if (!packed)
         waitForever();
 

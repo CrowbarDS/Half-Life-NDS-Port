@@ -356,11 +356,19 @@ installed BlocksDS one with the region put in (`ovl.py ld`), the link is
 checked (`ovl.py check`), the overlays packed into NitroFS (`ovl.py pack`),
 and the ROM checked to hold none of them in its ARM9 image (`ovl.py
 romcheck`). `make`, then run `hl_ovlprobe.nds`; `./negative.sh` builds what
-must be refused.
+must be refused. `make OVL_MODE=rom` builds `hl_ovlprobe_rom.nds` instead,
+with the overlays in the ROM's own ARM9 overlay table and its files, as
+retail games have them (`ovl.py rom`, ndstool `-y9` and `-y`; the sums
+stamped into the program by `ovl.py stamp`), and a file of NitroFS's own.
 
 On the top screen, each a PASS or a FAIL:
 
 - **pack**: the pack is found (`nitro:/ovl/arm9.ovl`) and is the program's.
+- **table** (`OVL_MODE=rom`, in place of pack): each overlay's file is found
+  by its id in the ROM's FAT and is of its size; how many overlays the
+  header's table holds.
+- **path** (`OVL_MODE=rom`): a file of NitroFS's own, read by its name: its
+  id, after the overlays', still found.
 - **one, two**: each answers as itself once loaded.
 - **swaps**: 1000 loads, one then the other, every answer right. A stale
   instruction cache answers as the overlay before.
@@ -380,9 +388,19 @@ Then A calls `two` through its gate with `one` loaded: it must stop on
 | melonDS, DS mode, BlocksDS v1.25.0's script | PASS | PASS | 0 wrong | PASS | 0 bytes | 351 ticks | — | 6.1 MB/s | |
 | DSi, TWiLight Menu++, from SD (2026-11-19) | PASS | PASS | 0 wrong | PASS | 0 bytes | 921 ticks | PASS | 2.3 MB/s | halts, names `two` |
 
+`OVL_MODE=rom` (the ROM's own overlay table), where **table** and **path**
+stand in for pack:
+
+| Where | table | path | one, two | swaps | zeroed | heap | irq | twl | loads |
+|---|---|---|---|---|---|---|---|---|---|
+| melonDS, DS mode (2026-11-20) | PASS, 2 in the header | PASS | PASS | 0 wrong | PASS | 0 bytes | 353 ticks | — | 6.0 MB/s |
+| melonDS, DSi mode | PASS, 2 in the header | PASS | PASS | 0 wrong | PASS | 0 bytes | 322 ticks | PASS | 6.6 MB/s |
+
 `negative.sh` (2026-11-19): a call into an overlay outside a gate (R1), a
 static constructor in an overlay (R0), and an overlay larger than its
-region's sizer (the link's assertion) are each refused. No DS with a
+region's sizer (the link's assertion) are each refused; and (2026-11-20) a
+program that reads the ROM's overlay table, in a ROM made without one
+(`romcheck`). No DS with a
 flashcart was at hand: the DS's card read is checked in melonDS only.
 
 On the console the loads read at 2.3 MB/s (928 ms for 1000 loads of 2.1 KB):

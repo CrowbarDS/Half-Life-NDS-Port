@@ -11,7 +11,9 @@ ARM_NONE_EABI_PATH	?= $(WONDERFUL_TOOLCHAIN)/toolchain/gcc-arm-none-eabi/bin/
 # User config
 # ===========
 
-NAME		:= hl_ovlprobe$(if $(NEG),_neg_$(NEG))
+# OVL=rom: the overlays in the ROM's own ARM9 overlay table (ndstool -y9 and
+# -y, as retail games have them), not packed in NitroFS.
+NAME		:= hl_ovlprobe$(if $(NEG),_neg_$(NEG))$(if $(filter rom,$(OVL_MODE)),_rom)
 
 GAME_TITLE	:= HL overlay probe
 GAME_SUBTITLE	:= Built with BlocksDS
@@ -38,12 +40,13 @@ GFXDIRS		:=
 BINDIRS		:=
 AUDIODIRS	:=
 # List of folders to combine into the root of NitroFS:
-NITROFSDIR	:= build/nitrofs$(if $(NEG),_$(NEG))
+NITROFSDIR	:= build/nitrofs$(if $(NEG),_$(NEG))$(if $(filter rom,$(OVL_MODE)),_rom)
 
 # Defines passed to all files
 # ---------------------------
 
-DEFINES		:= $(if $(NEG),-DNEG_$(shell echo $(NEG) | tr a-z A-Z))
+DEFINES		:= $(if $(NEG),-DNEG_$(shell echo $(NEG) | tr a-z A-Z)) \
+		   $(if $(filter rom,$(OVL_MODE)),-DHL_OVL_FROM_ROM)
 
 # Libraries
 # ---------
@@ -162,6 +165,19 @@ OVL_SPECS	:= $(OVLDIR)/hl_arm9_link.specs
 OVL_LIST	:= $(OVLDIR)/OverlayList.gen.hpp
 OVL_PACK	:= $(NITROFSDIR)/ovl/arm9.ovl
 LDFLAGS		+= -specs=$(OVL_SPECS) -Wl,--emit-relocs
+# (OVL_MODE=rom: the ROM's overlay table and its files instead of the pack,
+# and a file of NitroFS's own, read by its name: its id comes after theirs.)
+OVL_TABLE	:= build/$(NAME)_ovl/y9.bin
+OVL_FILES	:= build/$(NAME)_ovl/files
+ifeq ($(OVL_MODE),rom)
+OVL_OUT		:= $(OVL_TABLE) $(NITROFSDIR)/probe.txt
+# (NEG=notable: a program that reads the table, in a ROM made without it,
+# which romcheck must refuse.)
+OVL_NDSTOOL	:= $(if $(filter notable,$(NEG)),,-y9 $(OVL_TABLE) -y $(OVL_FILES))
+OVL_ROMCHECK	:= --manifest overlays.json --mode rom
+else
+OVL_OUT		:= $(OVL_PACK)
+endif
 
 # Intermediate build files
 # ------------------------
@@ -183,8 +199,9 @@ OBJS_SOURCES	:= $(addsuffix .o,$(addprefix $(BUILDDIR)/,$(SOURCES_S))) \
 		   $(addsuffix .o,$(addprefix $(BUILDDIR)/,$(SOURCES_C))) \
 		   $(addsuffix .o,$(addprefix $(BUILDDIR)/,$(SOURCES_CPP)))
 
-# (The loader is the game's own.)
-OBJS_SOURCES	+= $(BUILDDIR)/hl/Overlay.arm.cpp.o
+# (The loader is the game's own; and the overlays' sums, stamped after the
+# link, OVL_MODE=rom.)
+OBJS_SOURCES	+= $(BUILDDIR)/hl/Overlay.arm.cpp.o $(BUILDDIR)/hl/OverlaySums.cpp.o
 
 # The overlays' objects last: an inline function the program also uses then
 # keeps the program's copy, not one in an overlay.
@@ -209,7 +226,7 @@ ifneq ($(SOURCES_AUDIO),)
 endif
 
 # Make the NDS ROM depend on the filesystem only if it is needed
-$(ROM): $(OVL_PACK)
+$(ROM): $(OVL_OUT)
 endif
 
 # Combine the title strings
@@ -219,14 +236,14 @@ else
     GAME_FULL_TITLE := $(GAME_TITLE);$(GAME_SUBTITLE);$(GAME_AUTHOR)
 endif
 
-$(ROM): $(ELF) $(OVL_PACK)
+$(ROM): $(ELF) $(OVL_OUT)
 	@echo "  NDSTOOL $@"
 	$(V)$(BLOCKSDS)/tools/ndstool/ndstool -c $@ \
 		-7 $(ARM7ELF) -9 $(ELF) \
 		-b $(GAME_ICON) "$(GAME_FULL_TITLE)" \
-		$(NDSTOOL_ARGS)
+		$(NDSTOOL_ARGS) $(OVL_NDSTOOL)
 	@echo "  OVL     romcheck"
-	$(V)$(OVL) romcheck --rom $@ --elf $(ELF)
+	$(V)$(OVL) romcheck --rom $@ --elf $(ELF) $(OVL_ROMCHECK)
 
 # The link, then what it made of the overlays checked (the link fails on
 # what tools/ovl.py refuses).
@@ -235,11 +252,23 @@ $(ELF): $(OBJS) $(OVL_SPECS)
 	$(V)$(LD) -o $@ $(OBJS) $(LDFLAGS)
 	@echo "  OVL     check"
 	$(V)$(OVL) check --elf $@ --map $(MAP) --manifest overlays.json || (rm -f $@; false)
+ifeq ($(OVL_MODE),rom)
+	@echo "  OVL     stamp"
+	$(V)$(OVL) stamp --elf $@ --manifest overlays.json || (rm -f $@; false)
+endif
 
 $(OVL_PACK): $(ELF)
 	@echo "  OVL     pack"
 	@$(MKDIR) -p $(@D)
 	$(V)$(OVL) pack --elf $(ELF) --manifest overlays.json --out $@
+
+$(OVL_TABLE): $(ELF)
+	@echo "  OVL     rom"
+	$(V)$(OVL) rom --elf $(ELF) --manifest overlays.json --table $@ --dir $(OVL_FILES)
+
+$(NITROFSDIR)/probe.txt:
+	@$(MKDIR) -p $(@D)
+	@echo "read by its name" > $@
 
 $(OVL_SPECS) $(OVL_LIST) &: overlays.json $(HLROOT)/tools/ovl.py
 	@echo "  OVL     ld"
@@ -252,6 +281,11 @@ $(BUILDDIR)/hl/Overlay.arm.cpp.o: $(HLROOT)/source/Overlay.arm.cpp $(OVL_LIST)
 	@echo "  CXX     $<"
 	@$(MKDIR) -p $(@D)
 	$(V)$(CXX) $(CXXFLAGS) -MMD -MP -marm -c -o $@ $<
+
+$(BUILDDIR)/hl/OverlaySums.cpp.o: $(HLROOT)/source/OverlaySums.cpp $(OVL_LIST)
+	@echo "  CXX     $<"
+	@$(MKDIR) -p $(@D)
+	$(V)$(CXX) $(CXXFLAGS) -MMD -MP -c -o $@ $<
 
 $(DUMP): $(ELF)
 	@echo "  OBJDUMP   $@"
