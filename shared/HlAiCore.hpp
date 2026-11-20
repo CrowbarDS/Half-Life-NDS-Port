@@ -3095,7 +3095,11 @@ namespace hldata
         {
             if (c.player.health <= 0)
                 return;
-            playerHurt(c.player, amount, c.me.pos, type);
+            // (From the monster's middle, as the game pushes the player away
+            // from it.)
+            fx middle[3];
+            aiCenter(c, middle);
+            playerHurt(c.player, amount, middle, type);
             c.a.got |= kGotHurt;
             return;
         }

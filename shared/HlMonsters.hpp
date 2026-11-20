@@ -653,7 +653,8 @@ namespace hldata
             const int hurt = share(player.origin);
             if (hurt > 0)
             {
-                playerHurt(player, hurt, nullptr, kDmgBlast);
+                // (From the blast's middle: the player is thrown away from it.)
+                playerHurt(player, hurt, origin, kDmgBlast);
                 a.got |= kGotHurt;
             }
         }

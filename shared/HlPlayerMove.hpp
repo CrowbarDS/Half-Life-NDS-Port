@@ -484,6 +484,22 @@ namespace hldata
         }
         const std::int32_t before = player.health;
         const std::int32_t lost = taken10 / 10; // (floor: the cast the game calls critical)
+        // The push (CBaseMonster::TakeDamage's): away from where it came
+        // from, taken 10 lower so that the body goes up a little, at five
+        // times the health it costs -- ten crouched, the game's force being
+        // by the box's size -- and at most 1000. None from nowhere (a fall,
+        // the water, a trigger), none on a ladder. Before the death: a blow
+        // that kills throws the body too.
+        if (from != nullptr && !player.onLadder && lost > 0)
+        {
+            std::int32_t force = lost * (player.ducked ? 10 : 5);
+            force = force > 1000 ? 1000 : force;
+            const fx way[3] = {from[0] - player.origin[0], from[1] - player.origin[1],
+                               from[2] - fxFromInt(10) - player.origin[2]};
+            const fx length = fxLength(way);
+            for (int a = 0; a < 3 && length > 0; ++a)
+                player.velocity[a] -= static_cast<fx>(static_cast<std::int64_t>(way[a]) * fxFromInt(force) / length);
+        }
         player.health -= lost;
         if (player.health <= 0)
         {

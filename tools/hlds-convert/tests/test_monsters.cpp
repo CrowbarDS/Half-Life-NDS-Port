@@ -132,6 +132,32 @@ namespace
         p = fresh(10, 0);
         playerTakeDamage(p, 11, kDmgAlwaysGib);
         check(p.gib.value == 1, "... and always, by what always does it (a barnacle's)");
+        // The push: away from where it came from, taken 10 lower, at five
+        // times the health it cost (tools/ref/diag/wpn_knock.txt: 70 after
+        // the armour, thrown up at 350).
+        {
+            const fx below[3] = {0, 0, fxFromInt(-30)};
+            p = fresh(100, 0);
+            playerTakeDamage(p, 70, kDmgBlast, below);
+            check(p.velocity[0] == 0 && p.velocity[1] == 0 && p.velocity[2] == fxFromInt(350),
+                  "a blast below throws the player up, at five times the health it cost");
+            const fx aside[3] = {fxFromInt(100), 0, fxFromInt(10)};
+            p = fresh(100, 0);
+            p.ducked = true;
+            playerTakeDamage(p, 40, kDmgSlash, aside);
+            check(p.velocity[0] == fxFromInt(-400) && p.velocity[2] == 0,
+                  "... a blow from the side, level 10 above, straight away, twice as hard crouched");
+            p = fresh(100, 0);
+            playerTakeDamage(p, 300, kDmgBlast, below);
+            check(p.velocity[2] == fxFromInt(1000), "... at most 1000, and a blow that kills throws the body");
+            p = fresh(100, 0);
+            p.onLadder = true;
+            playerTakeDamage(p, 50, kDmgBlast, below);
+            const PlayerState none = p;
+            p = fresh(100, 0);
+            playerTakeDamage(p, 50, kDmgFall);
+            check(none.velocity[2] == 0 && p.velocity[2] == 0, "... none on a ladder, none from nowhere (a fall)");
+        }
     }
 
     void testSums()
@@ -1455,10 +1481,18 @@ namespace
         std::string lastClip;
         g.drain();
         std::fill(g.timesHeard.begin(), g.timesHeard.end(), 0);
+        // (Kept where they stand: the zombie's blows push them, as the
+        // game's do, out of the crowbar's reach.)
+        const fx stand[3] = {g.player.origin[0], g.player.origin[1], g.player.origin[2]};
         for (int n = 0; n < 900 && actor.ai < kAiDying; ++n)
         {
             tick(g, 2);
             g.player.health = 100;
+            for (int k = 0; k < 3; ++k)
+            {
+                g.player.origin[k] = stand[k];
+                g.player.velocity[k] = 0;
+            }
             const fx eye[3] = {g.player.origin[0], g.player.origin[1],
                                g.player.origin[2] + g.player.viewHeight};
             // (Level, as someone standing swings: the game's zombie slashes
@@ -1778,10 +1812,17 @@ namespace
             right[1] = static_cast<fx>((static_cast<std::int64_t>(-forward[0]) << kFxShift) / flat);
             right[2] = 0;
         };
+        // (The player kept where they stand, too: a blast pushes them, as
+        // the game's does.)
+        fx standing[3] = {g.player.origin[0], g.player.origin[1], g.player.origin[2]};
         auto hold = [&]()
         {
             for (int k = 0; k < 3; ++k)
+            {
                 actor.pos[k] = home[k];
+                g.player.origin[k] = standing[k];
+                g.player.velocity[k] = 0;
+            }
             g.player.health = 100;
         };
         auto fresh = [&](int health)
@@ -1992,10 +2033,17 @@ namespace
             right[2] = 0;
         };
         const fx up[3] = {0, 0, kFxOne};
+        // (The player kept where they stand, too: a blast pushes them, as
+        // the game's does.)
+        fx standing[3] = {g.player.origin[0], g.player.origin[1], g.player.origin[2]};
         auto hold = [&]()
         {
             for (int k = 0; k < 3; ++k)
+            {
                 actor.pos[k] = home[k];
+                g.player.origin[k] = standing[k];
+                g.player.velocity[k] = 0;
+            }
             g.player.health = 100;
         };
         fx eye[3], forward[3], right[3];
@@ -2137,9 +2185,10 @@ namespace
               "a tripmine is put down; the last, so none is held");
         if (mine == nullptr)
             return;
-        // (The player out of its way.)
+        // (The player out of its way, and kept there.)
         const fx mineAt[3] = {mine->pos[0], mine->pos[1], mine->pos[2]};
         g.player.origin[0] += fxFromInt(48);
+        standing[0] = g.player.origin[0];
         for (int frame = 0; frame < 30 * 3; ++frame)
         {
             hold();
