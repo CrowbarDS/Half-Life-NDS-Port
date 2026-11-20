@@ -393,7 +393,7 @@ int main(int argc, char **argv)
         std::fprintf(now.out, "shot,%d,%d,%.4f,%d,%u,%.3f,%.3f,%.3f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.3f,%.3f,%.3f,%.5f,%s\n",
                      now.frame, now.frame, now.t, shot.n, now.seed, units(shot.from[0]), units(shot.from[1]),
                      units(shot.from[2]), units(shot.aim[0]), units(shot.aim[1]), units(shot.aim[2]),
-                     shot.drawX / 4096.0, shot.drawY / 4096.0, shot.cone / 4096.0, shot.cone / 4096.0, e[0], e[1],
+                     shot.drawX / 65536.0, shot.drawY / 65536.0, shot.cone / 4096.0, shot.cone / 4096.0, e[0], e[1],
                      e[2], frac, hit);
     };
     diag::boom = [](const diag::Boom &boom) {
@@ -543,8 +543,11 @@ int main(int argc, char **argv)
             const bool alive = g.player.health > 0;
             const bool reloadPressed = (span.buttons & kInReload) && !(lastButtons & kInReload);
             lastButtons = span.buttons;
+            // (The command's seed: the game's, if its log is given; else
+            // counted, as the console does.)
+            const std::uint32_t seed = now.seed != 0 ? now.seed : static_cast<std::uint32_t>(frameAll);
             weaponsTick(g.logic, g.player, weapon, eye, forward, right, up, alive && (span.buttons & kInAttack), false,
-                        ms, alive && (span.buttons & kInAttack2), alive ? picked : 0, alive && reloadPressed);
+                        ms, alive && (span.buttons & kInAttack2), alive ? picked : 0, alive && reloadPressed, seed);
             picked = 0;
             weapon.anim = nullptr;
             g.actors.got = 0;

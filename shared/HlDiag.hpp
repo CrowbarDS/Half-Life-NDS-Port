@@ -29,8 +29,8 @@ namespace hldata::diag
     /// One round of the player's gun, about to be fired (weaponsTick): from
     /// `from` along `dir` (unit, Q12, the spread in it), as far as `range`;
     /// `aim` the way it was aimed before the spread; `n` which of the shot's
-    /// rounds (from 1); the spread drawn, -4096..4096 each way, and the
-    /// gun's cone (4096ths: the way goes off by draw * cone / 4096 / 4096 of
+    /// rounds (from 1); the spread drawn, -65536..65534 each way, and the
+    /// gun's cone (4096ths: the way goes off by draw / 65536 * cone / 4096 of
     /// the view's right and up).
     struct Shot
     {

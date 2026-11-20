@@ -199,16 +199,24 @@ def shots(pc, ds, pos):
     cones = sorted({(p[0]['cx'], d[0]['cx']) for p, d in pairs})
     print(f'  {"cone":<14}{", ".join(f"{float(c):.4f} / {float(e):.4f}" for c, e in cones)}')
     rounds = [(p, d) for vp, vd in pairs for p, d in zip(vp, vd)]
-    draws = max(max(abs(f(p, 'x') - f(d, 'x')), abs(f(p, 'y') - f(d, 'y'))) for p, d in rounds)
-    print(f'  {"spread drawn":<14}{"the same" if draws < 0.002 else f"apart by up to {draws:.3f} (of -1..1)"}')
+    # (The spread is drawn from the command's seed: only rounds fired on the
+    # same frame on both sides can be drawn the same.)
+    level = [(p, d) for p, d in rounds if p['frame'] == d['frame']]
+    late = len([1 for vp, vd in pairs if vp[0]['frame'] != vd[0]['frame']])
+    if level:
+        draws = max(max(abs(f(p, 'x') - f(d, 'x')), abs(f(p, 'y') - f(d, 'y'))) for p, d in level)
+        said = 'the same' if draws < 0.002 else f'apart by up to {draws:.3f} (of -1..1)'
+        print(f'  {"spread drawn":<14}{said} on the {len(level)} rounds fired on the same frame'
+              + (f' ({late} volley{"s" if late > 1 else ""} on another)' if late else ''))
     for side, rs in (('real game', [p for p, _ in rounds]), ('port', [d for _, d in rounds])):
         n = len(rs)
         mx = sum(abs(f(r, 'x')) for r in rs) / n
         my = sum(abs(f(r, 'y')) for r in rs) / n
         print(f'  {"  " + side:<14}mean |x| {mx:.3f}, |y| {my:.3f} over {n}')
-    ways = max(angle([f(p, 'ex') - f(p, 'sx'), f(p, 'ey') - f(p, 'sy'), f(p, 'ez') - f(p, 'sz')],
-                     [f(d, 'ex') - f(d, 'sx'), f(d, 'ey') - f(d, 'sy'), f(d, 'ez') - f(d, 'sz')]) for p, d in rounds)
-    print(f'  {"way gone":<14}apart by up to {ways:.2f} deg')
+    if level:
+        ways = max(angle([f(p, 'ex') - f(p, 'sx'), f(p, 'ey') - f(p, 'sy'), f(p, 'ez') - f(p, 'sz')],
+                         [f(d, 'ex') - f(d, 'sx'), f(d, 'ey') - f(d, 'sy'), f(d, 'ez') - f(d, 'sz')]) for p, d in level)
+        print(f'  {"way gone":<14}apart by up to {ways:.3f} deg on those')
     hits = [(p['hit'], d['hit']) for p, d in rounds if p['hit'] != d['hit']]
     print(f'  {"hit":<14}{"same" if not hits else f"differs on {len(hits)} rounds (first {hits[0][0]} / {hits[0][1]})"}')
 

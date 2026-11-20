@@ -1137,7 +1137,7 @@ namespace hlrt
             const std::uint32_t did = netDid = weaponsTick(logic, player.state, weapon_, eye, camera.forward,
                                                   camera.right, camera.up, alive && input.attack && !manning,
                                                   false, ms, alive && input.second && !manning, alive && !manning ? pick : 0,
-                                                  alive && input.reloadPressed && !manning);
+                                                  alive && input.reloadPressed && !manning, ++shotSeed_);
             // What has broken: its pieces, each a patch of the thing's
             // own texture, thrown from where it was -- along the blow that
             // broke it, at 200, for one that flies that way.

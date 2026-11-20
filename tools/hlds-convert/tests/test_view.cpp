@@ -11,6 +11,7 @@
 #include <memory>
 #include <string>
 
+#include "HlSharedRandom.hpp"
 #include "HlView.hpp"
 #include "TestGame.hpp"
 
@@ -913,8 +914,48 @@ void testBloodAndSteps()
     }
 }
 
+namespace
+{
+    /// The game's spread, drawn as it draws it: rounds the real game fired
+    /// (tools/ref/diag.sh's shotgun, its logged seed, round and draws).
+    void testSharedSpread()
+    {
+        struct Round
+        {
+            std::uint32_t seed;
+            int n;
+            double x, y;
+        };
+        const Round rounds[] = {{773, 1, 0.61771, -0.07773}, {773, 6, -0.03058, -0.04060},
+                                {837, 1, 0.09013, -0.57930}, {837, 12, -0.14891, -0.87567},
+                                {804, 1, 0.34521, 0.42032}};
+        bool same = true;
+        for (const Round &r : rounds)
+        {
+            std::int32_t x, y;
+            sharedSpread(r.seed, r.n, x, y);
+            same = same && std::abs(x / 65536.0 - r.x) < 1e-5 && std::abs(y / 65536.0 - r.y) < 1e-5;
+        }
+        check(same, "a round's spread is the real game's for the same seed and round");
+        // Only the seed's low byte picks where the numbers start.
+        std::int32_t a, b, c, d;
+        sharedSpread(5, 1, a, b);
+        sharedSpread(5 + 256, 1, c, d);
+        check(a == c && b == d, "... and seeds 256 apart draw the same");
+        check(sharedRandomLong(42, 7, 7) == 7, "a whole number from nothing to choose is that number");
+        bool within = true;
+        for (std::uint32_t seed = 0; seed < 512; ++seed)
+        {
+            const int v = sharedRandomLong(seed, 0, 2);
+            within = within && v >= 0 && v <= 2;
+        }
+        check(within, "... and one of 0..2 is one of them");
+    }
+} // namespace
+
 int main()
 {
+    testSharedSpread();
     testBloodAndSteps();
     testKick();
     testWalk();

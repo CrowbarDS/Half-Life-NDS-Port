@@ -31,6 +31,7 @@
 #include "HlLogic.hpp"
 #include "HlMaterial.hpp"
 #include "HlAi.hpp"
+#include "HlSharedRandom.hpp"
 
 namespace hldata
 {
@@ -4083,7 +4084,7 @@ namespace hldata
         std::int32_t cooldownMs = 0; ///< until it can be used again
         std::int32_t secondMs = 0;   ///< ... and its other fire
         std::int32_t reloadMs = 0;   ///< left of a reload under way
-        std::uint32_t seed = 777;    ///< where the shotgun's pellets go
+        std::uint32_t seed = 777;    ///< the weapon's own chances (sounds, idles)
         /// The clip the hand should start, said by weaponsTick as it
         /// happens (null: none this tick). Whoever draws the hand plays it
         /// and sets this back to null.
@@ -5417,7 +5418,7 @@ namespace hldata
 
     namespace detail
     {
-        inline std::uint32_t weaponsTickBody(LogicWorld &w, PlayerState &player, WeaponState &state,
+        inline std::uint32_t weaponsTickBody(LogicWorld &w, PlayerState &player, WeaponState &state, std::uint32_t shotSeed,
                                              const fx *eye, const fx *forward, const fx *right, const fx *up,
                                              bool attack, bool next, int ms, bool second, int pick, bool reload);
     }
@@ -5442,14 +5443,19 @@ namespace hldata
         }
     }
 
+    /// The weapon in hand, a tick: `attack`, `second` the triggers, `next`
+    /// the next weapon, `pick` one asked for by name, `reload` a reload.
+    /// `shotSeed`: the tick's command's random_seed, as the game's engine
+    /// gives each command one more -- its rounds' spread is drawn from it
+    /// (HlSharedRandom.hpp); the console counts its ticks.
     inline std::uint32_t weaponsTick(LogicWorld &w, PlayerState &player, WeaponState &state,
                                      const fx *eye, const fx *forward, const fx *right, const fx *up,
                                      bool attack, bool next, int ms, bool second = false, int pick = 0,
-                                     bool reload = false)
+                                     bool reload = false, std::uint32_t shotSeed = 0)
     {
         const std::uint8_t held = player.inv.current;
-        const std::uint32_t did =
-            detail::weaponsTickBody(w, player, state, eye, forward, right, up, attack, next, ms, second, pick, reload);
+        const std::uint32_t did = detail::weaponsTickBody(w, player, state, shotSeed, eye, forward, right, up, attack,
+                                                          next, ms, second, pick, reload);
         // (Not fired: where it would go, for the crosshair -- as the game's
         // guns look at each idle moment.)
         if (!(did & kWeaponFired))
@@ -5467,7 +5473,7 @@ namespace hldata
     }
 
     inline std::uint32_t detail::weaponsTickBody(LogicWorld &w, PlayerState &player, WeaponState &state,
-                                                 const fx *eye, const fx *forward, const fx *right, const fx *up,
+                                                 std::uint32_t shotSeed, const fx *eye, const fx *forward, const fx *right, const fx *up,
                                                  bool attack, bool next, int ms, bool second, int pick, bool reload)
     {
         Inventory &inv = player.inv;
@@ -6358,15 +6364,16 @@ namespace hldata
             for (int n = 0; n < pellets; ++n)
             {
                 fx dir[3] = {aimed[0], aimed[1], aimed[2]};
-                // (The draws: -4096..4096 each way.)
-                HL_DIAG_ONLY(int drawX = 0, drawY = 0;)
+                // (The game's draws for this round of this command: each
+                // way -65536..65534, as much as the cone either side.)
+                HL_DIAG_ONLY(std::int32_t drawX = 0, drawY = 0;)
                 if (cone != 0)
                 {
-                    const int rx = static_cast<int>(chance() % 4097) + static_cast<int>(chance() % 4097) - 4096;
-                    const int ry = static_cast<int>(chance() % 4097) + static_cast<int>(chance() % 4097) - 4096;
+                    std::int32_t rx, ry;
+                    sharedSpread(shotSeed, n + 1, rx, ry);
                     HL_DIAG_ONLY(drawX = rx, drawY = ry;)
-                    const int x = rx * cone / 4096;
-                    const int y = ry * cone / 4096;
+                    const int x = (rx * cone) >> 16;
+                    const int y = (ry * cone) >> 16;
                     for (int i = 0; i < 3; ++i)
                         dir[i] = aimed[i] + ((right[i] * x + up[i] * y) >> kFxShift);
                 }

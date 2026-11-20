@@ -210,6 +210,9 @@ namespace hlrt
         /// Put in hand the model of the weapon the player has out.
         void takeInHand();
         hldata::WeaponState weapon_;
+        /// The weapons' command seed (weaponsTick): one more each tick, as
+        /// the game's engine counts its commands. (Not in a save.)
+        std::uint32_t shotSeed_ = 0;
         int inHand_ = -1; ///< the weapon `held` is the model of
         bool radio_ = false; ///< ... and it is the satchels' radio
         std::int16_t thrown_[6] = {-1, -1, -1, -1, -1, -1}; ///< thrownModel
