@@ -235,6 +235,11 @@ namespace
     /// goes on upright), each a ladder of its own and each face going on
     /// from the last. Climbed from the foot to the top, on a ladder all the
     /// way, never lurching sideways.
+    /// (To its top, not over it: the leaning faces bring the player to half
+    /// a unit from the upright one's, and just above its top the game's line
+    /// to its middle meets its top first -- which carries them across it, as
+    /// the game does. c1a4e's real bend is held against the game's by
+    /// tools/ref/diag's lad_lean.)
     void testBent()
     {
         const float c30 = 0.96592583f, s30 = 0.25881905f, c15 = 0.99144486f, s15 = 0.13052619f;
@@ -252,12 +257,12 @@ namespace
             return;
         Game &g = *game;
         place(g, 0, (d1 + 10 - s30 * 40) / c30, 40);
-        const Climb c = climb(g, facing(0, -1), 45, nullptr);
+        const Climb c = climb(g, facing(0, -1), 39, nullptr);
         std::printf("test_ladders: a bent ladder: on one %d of %d ticks, rose %.1f to %.1f, sideways at worst %.2f "
                     "a tick\n",
                     c.onTicks, c.ticks, c.rose, units(g.player.origin[2]), c.worstSide);
         check(c.onTicks >= c.ticks - 2, "a bent ladder is held all the way up (let go of over its top)");
-        check(units(g.player.origin[2]) > 320, "... from leaning to upright, and over its top");
+        check(units(g.player.origin[2]) > 320, "... from leaning to upright, and up to its top");
         check(c.worstSide < 4, "... and never flung sideways where it bends");
     }
 

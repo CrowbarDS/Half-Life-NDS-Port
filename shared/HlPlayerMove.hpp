@@ -1347,9 +1347,42 @@ namespace hldata
                         return;
                     }
                 }
-                // How far outside the volume the player's centre is along each
-                // horizontal axis (negative: inside). The face they are in
-                // front of is the one they are furthest outside of.
+                // A box: the face a line from the player to its middle enters
+                // (the game's trace, PM_LadderMove's). Of the faces the player
+                // is outside of, the one the line crosses last: on each axis,
+                // how far outside (d) over how far to the middle (d and half
+                // the box) -- compared crosswise, with no divide. Its top or
+                // foot has no way up it (as a shaped one's).
+                {
+                    std::int64_t bestOut = 0, bestSpan = 1;
+                    int face = -1, side = 0;
+                    for (int a = 0; a < 3; ++a)
+                    {
+                        const fx out = s.origin[a] < ladder.mins[a]   ? ladder.mins[a] - s.origin[a]
+                                       : s.origin[a] > ladder.maxs[a] ? s.origin[a] - ladder.maxs[a]
+                                                                      : 0;
+                        if (out == 0)
+                            continue;
+                        const std::int64_t span = static_cast<std::int64_t>(out) + ((ladder.maxs[a] - ladder.mins[a]) >> 1);
+                        if (face < 0 || static_cast<std::int64_t>(out) * bestSpan > bestOut * span)
+                        {
+                            bestOut = out;
+                            bestSpan = span;
+                            face = a;
+                            side = s.origin[a] < ladder.mins[a] ? -1 : 1;
+                        }
+                    }
+                    if (face >= 0)
+                    {
+                        normal[0] = normal[1] = normal[2] = 0;
+                        normal[face] = side * kNormalOne;
+                        if (face == 2)
+                            up[2] = 0;
+                        return;
+                    }
+                }
+                // (Inside it -- where the game's line starts in it, and finds
+                // no face -- the side the player is nearest the outside of.)
                 fx best = -0x7FFFFFFF;
                 int axis = 0;
                 int sign = 1;
