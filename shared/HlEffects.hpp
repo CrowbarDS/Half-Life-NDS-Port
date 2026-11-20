@@ -91,7 +91,7 @@ namespace hldata
     /// leaves smoke, a third of a second later; with `showers`, none to
     /// three showers of sparks (a grenade's and an env_explosion's).
     inline void explodeAt(LogicWorld &w, PlayerState &player, const fx *at, int size, bool fireball, bool sound,
-                          bool hurts, int smoke, bool showers)
+                          bool hurts, int smoke, bool showers, const fx *pushFrom)
     {
         if (smoke > 0)
             smokeAt(w, at, smoke, 12, 300);
@@ -112,7 +112,7 @@ namespace hldata
             aiSound(*w.actors, kSoundCombat, at, kNormalExplosionVolume, 3000);
         }
         if (hurts && w.actors != nullptr)
-            radiusDamage(w, player, at, size, size * 5 / 2, -1);
+            radiusDamage(w, player, at, size, size * 5 / 2, -1, kDmgBlast, kAiPlayer, pushFrom);
         const fx d[3] = {player.origin[0] - at[0], player.origin[1] - at[1], player.origin[2] - at[2]};
         const int far = fxToInt(fxLength(d));
         if (far < 600)

@@ -2700,12 +2700,14 @@ static void testGunRules()
     int left = 0;
     for (const Projectile &shot : actors.shots)
         left = shot.active ? shot.leftMs : left;
-    check(left >= 1400 && left <= 1500, "the three seconds run from the pin, not from the throw");
+    // (To the think after the one that finds them run out: a tenth more,
+    // and the rest of the tenth it ran out in.)
+    check(left >= 1400 && left <= 1700, "the three seconds run from the pin, not from the throw");
     const int held = thrown(forward, 3100);
     left = -1;
     for (const Projectile &shot : actors.shots)
         left = shot.active ? shot.leftMs : left;
-    check(held == 0 && left <= 33 && inv.grenades == 4, "held three seconds, it goes off where it is");
+    check(held == 0 && left <= 200 && inv.grenades == 4, "held three seconds, it goes off where it is (two thinks on)");
     fresh(kWeaponGrenade);
     inv.grenades = 3;
     step(true);

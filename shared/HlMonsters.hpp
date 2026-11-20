@@ -588,7 +588,7 @@ namespace hldata
     inline bool lineEntersBox(const fx *from, const fx *to, const fx *mins, const fx *maxs, std::int64_t &enter);
     inline void shakeStart(LogicWorld &w, fx amplitude, int ms);
     inline void explodeAt(LogicWorld &w, PlayerState &player, const fx *at, int size, bool fireball, bool sound,
-                          bool hurts, int smoke, bool showers);
+                          bool hurts, int smoke, bool showers, const fx *pushFrom);
     /// What a grenade's blast throws up, a moment after it: one of three,
     /// at a little over half of full (CGrenade::Explode). Every grenade's:
     /// a hand grenade, the MP5's, a satchel, a tripmine, a rocket.
@@ -600,6 +600,37 @@ namespace hldata
         w.heard->add(static_cast<CommonSound>(static_cast<int>(CommonSound::Debris1) + static_cast<int>((w.actors->seed >> 12) % 3)),
                      at, 70, kRadiusLarge);
     }
+    namespace detail
+    {
+        /// Where a grenade's blast of `damage` is (CGrenade::Explode): off
+        /// the face it went off against, along that face's normal, by six
+        /// tenths of its damage over 24 (45.6 units for 100). The face: for
+        /// one that went off where it lay (Detonate), what is under it, 8
+        /// above to 32 below; for one that went off at what it met
+        /// (ExplodeTouch), along `velocity`, 32 back to 32 on. No face met,
+        /// where it is.
+        [[gnu::noinline]] inline void blastSpot(const MoveWorld &world, fx *pos, const fx *velocity, int damage)
+        {
+            fx from[3] = {pos[0], pos[1], pos[2] + fxFromInt(8)};
+            fx to[3] = {pos[0], pos[1], pos[2] - fxFromInt(32)};
+            const fx speed = velocity != nullptr ? fxLength(velocity) : 0;
+            if (speed > 0)
+            {
+                for (int i = 0; i < 3; ++i)
+                {
+                    const fx along = static_cast<fx>((static_cast<std::int64_t>(velocity[i]) * fxFromInt(32)) / speed);
+                    from[i] = pos[i] - along;
+                    to[i] = pos[i] + along;
+                }
+            }
+            const Trace t = tracePoint(world, from, to);
+            if (!t.hit || t.startSolid)
+                return;
+            const fx lift = fxFromInt(damage - 24) * 6 / 10;
+            for (int i = 0; i < 3; ++i)
+                pos[i] = t.endPos[i] + static_cast<fx>((static_cast<std::int64_t>(t.normal[i]) * lift) >> kNormalShift);
+        }
+    } // namespace detail
     inline void monsterHurt(LogicWorld &w, int index, int damage, bool bullet, int group = kHitBody,
                             std::uint32_t type = kDmgUnset, std::int16_t attacker = kAiPlayer,
                             const fx *from = nullptr);
@@ -649,8 +680,12 @@ namespace hldata
         }
     } // namespace detail
 
+    /// `pushFrom`: where the player is pushed away from, if not `origin` --
+    /// a grenade where it lay, its blast lifted off the floor (the game's
+    /// grenade is not moved there for its Center()).
     inline void radiusDamage(LogicWorld &w, PlayerState &player, const fx *origin, int damage, int radius,
-                             int except, std::uint32_t type = kDmgBlast, std::int16_t attacker = kAiPlayer)
+                             int except, std::uint32_t type = kDmgBlast, std::int16_t attacker = kAiPlayer,
+                             const fx *pushFrom = nullptr)
     {
         HL_DIAG(boom, diag::Boom{origin, damage, radius, type});
         ActorWorld &a = *w.actors;
@@ -706,8 +741,8 @@ namespace hldata
             const int hurt = share(mins, maxs, chest, player.waterLevel == 0, player.waterLevel == 3);
             if (hurt > 0)
             {
-                // (From the blast's middle: the player is thrown away from it.)
-                playerHurt(player, hurt, origin, kDmgBlast);
+                // (From the blast: the player is thrown away from it.)
+                playerHurt(player, hurt, pushFrom != nullptr ? pushFrom : origin, kDmgBlast);
                 a.got |= kGotHurt;
             }
         }
@@ -2215,7 +2250,9 @@ namespace hldata
                     {
                         // Off, where it met something: 100, to 250 units.
                         shot.active = false;
-                        explodeAt(w, player, shot.pos, 100, true, true, true, grenadeSmoke(100), true);
+                        const fx met[3] = {shot.pos[0], shot.pos[1], shot.pos[2]};
+                        blastSpot(*w.world, shot.pos, shot.velocity, 100);
+                        explodeAt(w, player, shot.pos, 100, true, true, true, grenadeSmoke(100), true, met);
                         grenadeDebris(w, shot.pos);
                         continue;
                     }
@@ -2401,7 +2438,9 @@ namespace hldata
                     if (met)
                     {
                         shot.active = false;
-                        explodeAt(w, player, shot.pos, kGrenadeBlast, true, true, true, grenadeSmoke(kGrenadeBlast), true);
+                        const fx met[3] = {shot.pos[0], shot.pos[1], shot.pos[2]};
+                        blastSpot(*w.world, shot.pos, shot.velocity, kGrenadeBlast);
+                        explodeAt(w, player, shot.pos, kGrenadeBlast, true, true, true, grenadeSmoke(kGrenadeBlast), true, met);
                         grenadeDebris(w, shot.pos);
                     }
                     else if ((shot.leftMs + ms) / 200 != shot.leftMs / 200)
@@ -2450,6 +2489,14 @@ namespace hldata
                     }
                     for (int i = 0; i < 3; ++i)
                         shot.pos[i] = t.startSolid ? shot.pos[i] : to[i];
+                    // In the water, half as fast at each of its thinks, ten
+                    // a second (TumbleThink): its fuse is counted in them.
+                    if (shot.kind == kShotGrenade && (shot.leftMs + ms) / 100 != shot.leftMs / 100 &&
+                        isLiquid(pointContents(*w.world, shot.pos)))
+                    {
+                        for (fx &v : shot.velocity)
+                            v /= 2;
+                    }
                     if (shot.kind == kShotGrenade && shot.leftMs > 0)
                     {
                         // What the monsters hear of it: once, louder than its
@@ -2478,7 +2525,9 @@ namespace hldata
                         if (shot.sprite == 1)
                         {
                             shot.active = false;
-                            explodeAt(w, player, shot.pos, kSatchelBlast, true, true, true, grenadeSmoke(kSatchelBlast), true);
+                            const fx lay[3] = {shot.pos[0], shot.pos[1], shot.pos[2]};
+                            blastSpot(*w.world, shot.pos, nullptr, kSatchelBlast);
+                            explodeAt(w, player, shot.pos, kSatchelBlast, true, true, true, grenadeSmoke(kSatchelBlast), true, lay);
                             grenadeDebris(w, shot.pos);
                         }
                         continue;
@@ -2488,12 +2537,14 @@ namespace hldata
                         shot.active = false;
                         if (gib)
                             continue; // (what was thrown out is simply gone)
+                        const fx lay[3] = {shot.pos[0], shot.pos[1], shot.pos[2]};
+                        blastSpot(*w.world, shot.pos, nullptr, kGrenadeBlast);
                         effectAdd(a, kEffectBurst, shot.pos, nullptr, 96, 450);
                         markBlast(a, *w.world, shot.pos, 48);
                         aiSound(a, kSoundCombat, shot.pos, kNormalExplosionVolume, 3000);
                         if (w.heard != nullptr)
                             w.heard->add(CommonSound::Explode, shot.pos, 127, 2000);
-                        radiusDamage(w, player, shot.pos, kGrenadeBlast, kGrenadeRadius, -1);
+                        radiusDamage(w, player, shot.pos, kGrenadeBlast, kGrenadeRadius, -1, kDmgBlast, kAiPlayer, lay);
                         grenadeDebris(w, shot.pos);
                         // (Felt, near to.)
                         const fx d[3] = {player.origin[0] - shot.pos[0], player.origin[1] - shot.pos[1],

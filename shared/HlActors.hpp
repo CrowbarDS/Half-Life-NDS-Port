@@ -1614,6 +1614,11 @@ namespace hldata
                 shot.velocity[i] = velocity[i];
             }
             shot.leftMs = ms;
+            // A timed grenade's fuse is looked at by its think, ten times a
+            // second from when it is let go, and it goes off at the think
+            // after the one that finds it run out (TumbleThink, Detonate).
+            if (kind == kShotGrenade)
+                shot.leftMs = ((ms > 0 ? (ms + 99) / 100 : 1) + 1) * 100;
             return &shot;
         }
         return nullptr;
