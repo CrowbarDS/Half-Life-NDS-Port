@@ -366,6 +366,15 @@ namespace hldata
         Unsaved<bool> flatFalls;
         Unsaved<bool> lampBanned;
         Unsaved<std::int8_t> matchAutoaim{-1};
+        /// The RPG's laser dot, while it is in hand with its laser on: what
+        /// the rockets in flight steer for (the game's laser_spot). Set by
+        /// weaponsTick each tick: not the game's state.
+        struct LaserSpot
+        {
+            bool on = false;
+            fx at[3] = {0, 0, 0};
+        };
+        Unsaved<LaserSpot> laser;
         std::int16_t struck[16] = {};
         int struckCount = 0;
         /// The boxes that can be pushed, as record indices: looked up once

@@ -1760,6 +1760,58 @@ namespace hldata
                 at[i] = on.endPos[i];
         }
 
+        /// A lit rocket's think, ten a second (CRpgRocket::FollowThink): it
+        /// turns to the laser's dot, if it can all but see it and it is
+        /// ahead (`steered`: the player's), else keeps the way it goes; and
+        /// for its first second after it was lit takes a fifth of what it
+        /// had and four fifths of its speed and 400 more that way, at most
+        /// 2000 (300 under water) -- after that, the same less a little,
+        /// and it goes off once slower than 1500 out of the water.
+        inline void rocketThink(LogicWorld &w, Projectile &shot, bool steered)
+        {
+            const fx speed = fxLength(shot.velocity);
+            fx target[3] = {0, 0, 0};
+            for (int i = 0; i < 3 && speed > 0; ++i)
+                target[i] = static_cast<fx>((static_cast<std::int64_t>(shot.velocity[i]) << kFxShift) / speed);
+            const LogicWorld::LaserSpot &spot = w.laser.value;
+            if (steered && spot.on && traceShot(*w.world, shot.pos, spot.at).fraction >= kFractionOne / 10 * 9)
+            {
+                const fx d[3] = {spot.at[0] - shot.pos[0], spot.at[1] - shot.pos[1], spot.at[2] - shot.pos[2]};
+                const fx far = fxLength(d);
+                if (far > 0)
+                {
+                    fx dir[3];
+                    std::int64_t dot = 0;
+                    for (int i = 0; i < 3; ++i)
+                    {
+                        dir[i] = static_cast<fx>((static_cast<std::int64_t>(d[i]) << kFxShift) / far);
+                        dot += static_cast<std::int64_t>(dir[i]) * target[i];
+                    }
+                    dot >>= kFxShift;
+                    // (Ahead, and off its way by less than the game's 4096.)
+                    if (dot > 0 && ((static_cast<std::int64_t>(far) * (kFxOne - dot)) >> kFxShift) < fxFromInt(4096))
+                    {
+                        for (int i = 0; i < 3; ++i)
+                            target[i] = dir[i];
+                    }
+                }
+            }
+            const bool under = isLiquid(pointContents(*w.world, shot.pos));
+            const int lit = 30000 - 400 - shot.leftMs; // (ms since it was lit)
+            const fx push = lit < 1000 ? fxMul(speed, 3277) + fxFromInt(400) : fxMul(speed, 3269); // (0.8, 0.798)
+            for (int i = 0; i < 3; ++i)
+                shot.velocity[i] = fxMul(shot.velocity[i], 819) + fxMul(target[i], push); // (0.2)
+            const fx now = fxLength(shot.velocity);
+            if (lit < 1000)
+            {
+                const fx most = fxFromInt(under ? 300 : 2000);
+                for (int i = 0; i < 3 && now > most; ++i)
+                    shot.velocity[i] = static_cast<fx>((static_cast<std::int64_t>(shot.velocity[i]) * most) / now);
+            }
+            else if (!under && now < fxFromInt(1500))
+                shot.leftMs = 0; // (off where it is)
+        }
+
         inline void projectilesTick(LogicWorld &w, PlayerState &player, int ms)
         {
             ActorWorld &a = *w.actors;
@@ -1889,7 +1941,11 @@ namespace hldata
                     }
                     else if (line.fraction < kFractionOne)
                     {
-                        // Into the wall, and stays there.
+                        // Into the wall, and stays there: 12 back along its
+                        // way, its point in it (BoltTouch).
+                        const fx speed = fxLength(shot.velocity);
+                        for (int i = 0; i < 3 && speed > 0; ++i)
+                            shot.pos[i] -= static_cast<fx>((static_cast<std::int64_t>(shot.velocity[i]) * fxFromInt(12)) / speed);
                         shot.sprite = 1;
                         shot.leftMs = 10000;
                         if (w.heard != nullptr)
@@ -2144,17 +2200,10 @@ namespace hldata
                                     w.heard->add(CommonSound::RocketFly, shot.pos, 127, 2000); // (attn 0.5)
                             }
                         }
-                        else
-                        {
-                            const fx speed = fxLength(shot.velocity);
-                            if (speed > 0 && speed < fxFromInt(2000))
-                            {
-                                const fx faster = speed + static_cast<fx>((static_cast<std::int64_t>(fxFromInt(1500)) * ms) / 1000);
-                                const fx to = faster > fxFromInt(2000) ? fxFromInt(2000) : faster;
-                                for (int i = 0; i < 3; ++i)
-                                    shot.velocity[i] = static_cast<fx>((static_cast<std::int64_t>(shot.velocity[i]) * to) / speed);
-                            }
-                        }
+                        // (A think each tenth after the one that lit it: the
+                        // clock come down to a tenth this tick, not left one.)
+                        else if ((shot.leftMs + ms - 1) / 100 != (shot.leftMs - 1) / 100)
+                            rocketThink(w, shot, shot.kind == kShotRocket);
                     }
                     else if (shot.sprite == 0 || foe)
                     {
@@ -4240,6 +4289,9 @@ namespace hldata
         /// The weapon these belong to (a kWeapon*): another in hand, by
         /// whatever means, and they start afresh.
         std::uint8_t minded = 0;
+        /// The hornetgun's fast hornets, each from one of eight places round
+        /// its end in turn (m_iFirePhase). (Not in a save: it starts again.)
+        Unsaved<std::uint8_t> hornetPhase;
     };
     inline constexpr int kGrenadeFuse = 3000;  ///< from the pin, as the game has it
     inline constexpr int kGrenadePull = 500;   ///< the pin takes this long: no throw sooner
@@ -5576,6 +5628,7 @@ namespace hldata
                                      bool reload = false, std::uint32_t shotSeed = 0)
     {
         const std::uint8_t held = player.inv.current;
+        w.laser.value.on = false; // (the RPG's, in hand, says it is there)
         const std::uint32_t did = detail::weaponsTickBody(w, player, state, shotSeed, eye, forward, right, up, attack,
                                                           next, ms, second, pick, reload);
         // (Not fired: where it would go, for the crosshair -- as the game's
@@ -6073,29 +6126,12 @@ namespace hldata
                 state.secondMs = 500;
                 say(CommonSound::Click, 100, 80);
             }
-            // The rockets in flight, while it is in hand and the laser on:
-            // turned towards the dot -- most of the way each tenth of a second.
-            if ((ars->have & kArsenalLaserOff) == 0 && w.actors != nullptr && w.world != nullptr)
+            // Its laser's dot, while it is on: what the rockets in flight
+            // steer for, at their thinks (projectilesTick).
+            if ((ars->have & kArsenalLaserOff) == 0 && w.world != nullptr)
             {
-                fx dot[3];
-                laserDot(*w.world, eye, forward, dot);
-                for (Projectile &shot : w.actors->shots)
-                {
-                    if (!shot.active || shot.kind != kShotRocket || shot.sprite != 1)
-                        continue;
-                    fx to[3] = {dot[0] - shot.pos[0], dot[1] - shot.pos[1], dot[2] - shot.pos[2]};
-                    const fx far = fxLength(to);
-                    const fx speed = fxLength(shot.velocity);
-                    if (far <= 0)
-                        continue;
-                    const int keep = ms >= 100 ? 0 : 1024 - (ms * 819) / 100; // (of 1024: 0.2 left a tenth on)
-                    for (int i = 0; i < 3; ++i)
-                    {
-                        const fx want = static_cast<fx>((static_cast<std::int64_t>(to[i]) * speed) / far);
-                        shot.velocity[i] = static_cast<fx>((static_cast<std::int64_t>(shot.velocity[i]) * keep +
-                                                            static_cast<std::int64_t>(want) * (1024 - keep)) >> 10);
-                    }
-                }
+                w.laser.value.on = true;
+                laserDot(*w.world, eye, forward, w.laser.value.at);
             }
             // A rocket put in, when the hand has done.
             if (state.loading == 1)
@@ -6125,11 +6161,17 @@ namespace hldata
                 }
                 if (w.actors == nullptr)
                     return did;
+                // From the gun's end, 30 degrees above the aim at 250 (the
+                // rocket's Spawn), and as fast as the player went that way.
+                const std::int64_t along = (static_cast<std::int64_t>(player.velocity[0]) * forward[0] +
+                                            static_cast<std::int64_t>(player.velocity[1]) * forward[1] +
+                                            static_cast<std::int64_t>(player.velocity[2]) * forward[2]) >> kFxShift;
                 fx from[3], velocity[3];
                 for (int i = 0; i < 3; ++i)
                 {
                     from[i] = eye[i] + forward[i] * 16 + right[i] * 8 - up[i] * 8;
-                    velocity[i] = forward[i] * 250 + player.velocity[i];
+                    const fx raised = static_cast<fx>((static_cast<std::int64_t>(forward[i]) * 3547 + static_cast<std::int64_t>(up[i]) * 2048) >> 12); // (cos and sin of 30)
+                    velocity[i] = raised * 250 + static_cast<fx>((static_cast<std::int64_t>(forward[i]) * along) >> kFxShift);
                 }
                 if (!launch(kShotRocket, from, velocity, 30000))
                     return did;
@@ -6225,8 +6267,10 @@ namespace hldata
                         break;
                     }
                 }
-                // ... and the gun's kick, which the player feels.
-                for (int i = 0; i < 3; ++i)
+                // ... and the gun's kick, which the player feels: up or
+                // down only in a match (the game's deathmatch pops them up;
+                // alone, it does not).
+                for (int i = 0; i < (w.sharing ? 3 : 2); ++i)
                     player.velocity[i] -= forward[i] * damage * 5;
                 // (As loud as it was charged: 0.5 + damage / 400 of full.)
                 say(CommonSound::GaussFire, 85 + static_cast<int>(chance() % 30), 64 + damage * 127 / 400);
@@ -6406,10 +6450,21 @@ namespace hldata
             if ((attack || second) && state.cooldownMs <= 0 && ars->hornets > 0 && w.actors != nullptr)
             {
                 const bool fast = !attack;
+                // (A fast one 8 off, round the gun's end in turn: up, up and
+                // right, right, ... up and left.)
+                static constexpr std::int8_t kRound[8][2] = {{1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}, {0, -1}, {1, -1}};
+                int offUp = 0, offRight = 0;
+                if (fast)
+                {
+                    const int phase = state.hornetPhase.value & 7;
+                    offUp = kRound[phase][0] * 8;
+                    offRight = kRound[phase][1] * 8;
+                    state.hornetPhase.value = static_cast<std::uint8_t>((phase + 1) & 7);
+                }
                 fx from[3], velocity[3];
                 for (int i = 0; i < 3; ++i)
                 {
-                    from[i] = eye[i] + forward[i] * 16 + right[i] * 8 - up[i] * 12;
+                    from[i] = eye[i] + forward[i] * 16 + right[i] * (8 + offRight) + up[i] * (offUp - 12);
                     velocity[i] = forward[i] * (fast ? 1200 : 300);
                 }
                 Projectile *shot = projectileAdd(*w.actors, kShotHornet, from, velocity, 4000);
@@ -6458,8 +6513,8 @@ namespace hldata
             say(sound, pitch, inv.current == kWeaponPython ? 102 + static_cast<int>(chance() % 13) : 127);
             if (inv.current == kWeaponCrossbow)
             {
-                // A bolt, not a round: from a little under the eye, at 2000
-                // (half that under water). No flash.
+                // A bolt, not a round: from 2 under the eye, at 2000 (half
+                // that under water). No flash.
                 state.cooldownMs = wait + (state.cooldownMs > -ms ? state.cooldownMs : -ms);
                 state.anim = *clip > 0 ? anim : "fire3";
                 state.idleMs = 10000 + static_cast<int>(chance() % 5000);
@@ -6469,7 +6524,7 @@ namespace hldata
                     const int speed = under ? 1000 : 2000;
                     for (int i = 0; i < 3; ++i)
                     {
-                        from[i] = eye[i] + forward[i] * 8 - up[i] * 2;
+                        from[i] = eye[i] - up[i] * 2;
                         velocity[i] = forward[i] * speed;
                     }
                     launch(kShotBolt, from, velocity, 10000);

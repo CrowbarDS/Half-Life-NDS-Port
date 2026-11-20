@@ -47,7 +47,7 @@ namespace hldata
     HL_FIELDS(BrushState, 6);
     HL_FIELDS(LogicState, 12);
     HL_FIELDS(LogicEvent, 6);
-    HL_FIELDS(LogicWorld, 79);
+    HL_FIELDS(LogicWorld, 80);
     HL_FIELDS(Hull, 4);
     HL_FIELDS(MoverHull, 11);
     HL_FIELDS(LadderVolume, 3);
@@ -61,7 +61,7 @@ namespace hldata
     HL_FIELDS(Inventory, 12);
     HL_FIELDS(PlayerState, 42);
     HL_FIELDS(ViewState, 8);
-    HL_FIELDS(WeaponState, 25);
+    HL_FIELDS(WeaponState, 26);
     HL_FIELDS(LampState, 2);
     HL_FIELDS(Arrival::Visitor, 8);
     HL_FIELDS(Arrival, 17);
