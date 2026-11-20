@@ -1886,6 +1886,15 @@ What the engine moves as a point (hull 0, for what is 8 units across or
 less) the port moves as one too: a roach, a leech and a snark their own
 ways, and a rat -- which has no size, and walks as a monster -- by the
 walk's point trace (`monsterIsPoint`).
+A move ends as the game's Move ends it: at a think, by where the monster
+was when that think began -- within 8 units of its goal
+(MONSTER_CUT_CORNER_DIST) and nearer than a fifth of a second of its pace
+-- and the walk goes right onto the goal, not a few units short. A soldier
+sent to cover (`mon_squad`) stops on the game's spot, and its next
+schedule starts at the think the game's does. Still apart: on its way the
+game stops on each waypoint and loses a think there (a think's move goes
+no further than the waypoint it began with), where the port's walk turns
+20 units before a node and goes on.
 
 ## The pass's budget
 

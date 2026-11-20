@@ -526,6 +526,7 @@ namespace hldata
         HL_DIAG(route, c.index, c.m.moveGoal, goal);
         c.m.moveBlockedMs = 0;
         c.m.moveAsked = false;
+        c.m.moveNear = false;
         c.m.round.detouring = c.m.round.asking = false;
         aiForgetMemory(c, kMemoryLookedRound);
         c.me.thinkMs = 0;
@@ -3842,17 +3843,8 @@ namespace hldata
             return;
         }
         fx speed = c.m.groundSpeed > 0 ? c.m.groundSpeed : fxFromInt(100);
-        const fx far = aiDist2D(dest, c.me.pos);
-        // At the goal: what a fifth of a second of its pace leaves.
-        fx near = speed / 5;
-        if (near < fxFromInt(8))
-            near = fxFromInt(8);
-        const fx dz = dest[2] - c.me.pos[2];
-        if (far < near && dz < fxFromInt(72) && dz > -fxFromInt(72))
-        {
-            aiMovementComplete(c);
-            return;
-        }
+        // (At the goal it goes no further -- the walk's step stops there --
+        // and its next think ends the move: aiMoveArrives.)
         // A way round being worked out: it stands, stopped, until it is.
         if (round.asking)
         {
@@ -3967,6 +3959,35 @@ namespace hldata
             }
         }
         aiHeldUp(c, blocker, 0, c.me.hasGoal ? c.me.goal : dest);
+    }
+
+    /// The game's Move at a think, on how far it was when it began -- where
+    /// it was at the last think: within MONSTER_CUT_CORNER_DIST (8), where
+    /// ShouldAdvanceRoute lets AdvanceRoute look, and nearer than a fifth of
+    /// a second of its pace, it is at its goal and the move ends.
+    HL_WARM __attribute__((noinline)) void aiMoveArrives(AiCtx &c)
+    {
+        if (c.m.movementGoal == kMoveGoalNone || (c.m.capability & kCapFly))
+        {
+            c.m.moveNear = false;
+            return;
+        }
+        if (c.m.moveNear)
+        {
+            // (... and, the move done, Move's Stop: the clip of standing.)
+            c.m.moveNear = false;
+            aiMovementComplete(c);
+            aiStop(c);
+            return;
+        }
+        fx dest[3];
+        aiMoveDest(c, dest);
+        const fx speed = c.m.groundSpeed > 0 ? c.m.groundSpeed : fxFromInt(100);
+        fx near = speed / 5;
+        if (near > fxFromInt(8))
+            near = fxFromInt(8);
+        const fx dz = dest[2] - c.me.pos[2];
+        c.m.moveNear = aiDist2D(dest, c.me.pos) < near && dz < fxFromInt(72) && dz > -fxFromInt(72);
     }
 
     /// MonsterThink: ten times a second.
@@ -4094,6 +4115,7 @@ namespace hldata
             if (m->thinkMs <= 0)
                 m->thinkMs = kAiThinkMs;
             aiMonsterThink(c);
+            aiMoveArrives(c);
             if (kind->think == nullptr)
                 aiAnimEventsAhead(c);
             HL_DIAG_ONLY({

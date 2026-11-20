@@ -1092,7 +1092,9 @@ namespace hldata
             actor.thinkMs = 0;
             return kWalkMoved;
         }
-        if (distance < fxFromInt(4))
+        // (Right onto it, as the game's UTIL_MoveToOrigin goes: whoever
+        // walks it says when it is near enough.)
+        if (distance <= 0)
             return kWalkMoved;
         if (idealYaw != nullptr)
             *idealYaw = fxVecToYawTurns(d[1], d[0]); // (MakeIdealYaw's whole degrees)

@@ -816,6 +816,10 @@ namespace
         aiMoveTick(c, ms);
         aiTurnTick(c, ms);
         actorPlaceBox(g.actors, index);
+        // (... and at a think, ten times a second, its Move sees whether it
+        // is at its goal.)
+        if (g.actors.ai->now / 100 != (g.actors.ai->now - ms) / 100)
+            aiMoveArrives(c);
     }
 
     /// A straight walk of `length` from actor `index` along one of the
@@ -908,7 +912,8 @@ namespace
             held.detoured = held.detoured || m.round.detouring;
             if (held.reactedAt < 0 && (wait > 0 || m.round.detouring))
                 held.reactedAt = t;
-            const bool still = a.pos[0] == was[0] && a.pos[1] == was[1];
+            // (On its goal it stands until its think sees it there: not held.)
+            const bool still = a.pos[0] == was[0] && a.pos[1] == was[1] && aiDist2D(a.pos, to) > 0;
             const bool going = m.activity == kActWalk || m.activity == kActRun;
             if (routed && still && m.movementGoal != kMoveGoalNone)
             {
