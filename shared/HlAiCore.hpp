@@ -585,8 +585,9 @@ namespace hldata
 
     /// Look: what it can see of what it has feelings about, within
     /// `distance` (m_flDistLook), sets SEE_* (and remembers what it saw for
-    /// BestVisibleEnemy).
-    HL_HOT void aiLook(AiCtx &c, int distance)
+    /// BestVisibleEnemy). (ARM, in main memory: the least missed of the
+    /// AI's for its size, out of the ITCM to make room -- docs/TECHNICAL.md.)
+    HL_WARM void aiLook(AiCtx &c, int distance)
     {
         aiClear(c, kCondSeeHate | kCondSeeDislike | kCondSeeEnemy | kCondSeeFear | kCondSeeNemesis | kCondSeeClient);
         c.m.seenCount = 0;

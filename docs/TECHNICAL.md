@@ -654,7 +654,10 @@ Milestone 11, "levels of detail".
   `ModelDraw::posed`: 23% of the misses, and in melonDS c1a3a's DS frame
   from 20.8 to 20.0 ms, c3a1's DSi frame from 8.1 to 7.9. A second round had
   no room and too little to gain (some 70 us a frame), and the rounds were
-  stopped there. `tools/arm9-report.sh` keeps a list of what must be in
+  stopped there. On 2026-11-20, with 16 bytes left, `aiLook` went back out
+  (460 bytes): of what is in ITCM it was the least missed for its size by
+  the first round's count (375 misses a byte, about 11 us a frame), to make
+  room before the next hot code, not in the middle of it. `tools/arm9-report.sh` keeps a list of what must be in
   ITCM (the traces, the hull check, the posing, a walk's step and tick, the
   world's walk, the models' draw): those were chosen by frame time on the
   console, and what of them a misses count would put out (ModelDraw::draw,
