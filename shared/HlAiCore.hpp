@@ -423,6 +423,7 @@ namespace hldata
         c.me.frozen = false;
         c.me.lastFrame = c.me.frame;
         c.m.seqFinished = false;
+        c.m.eventCheckMs = c.ai.now; // (ResetSequenceInfo)
         // (m_flGroundSpeed: how fast its own stride carries it.)
         const ModelClip &clip = model->clips[index];
         const fx stride = fxLength(clip.travel);
@@ -3185,46 +3186,83 @@ namespace hldata
         c.m.idealActivity = kActIdle;
     }
 
-    /// The model's own events for its clip passed this tick: HandleAnimEvent.
-    inline void aiAnimEvents(AiCtx &c)
+    /// The model's own events (HandleAnimEvent) of its clip whose frames
+    /// are in a window (Q8 frames):
+    /// `ahead`, a think's look ahead, [lo, hi) -- and from the clip's start
+    /// again up to hi past its end, for one that loops (GetAnimationEvent);
+    /// else as the frames pass, (lo, hi] -- round its end if hi < lo.
+    inline void aiGiveEvents(AiCtx &c, const ModelView &model, const ModelClip &clip, std::int32_t lo, std::int32_t hi,
+                             bool ahead, std::int32_t last, bool loops)
     {
-        const ModelView *model = actorModel(c.a, c.me);
-        if (model == nullptr || c.me.clip < 0 || c.kind.animEvent == nullptr)
-            return;
-        const ModelClip &clip = model->clips[c.me.clip];
-        const std::uint32_t before = c.me.lastFrame, now = c.me.frame;
-        const bool wrapped = now < before;
-        auto passed = [&](int frame)
-        {
-            const std::uint32_t at = static_cast<std::uint32_t>(frame) << 8;
-            return wrapped ? (at > before || at <= now)
-                           : ((before < at && at <= now) || (at == 0 && before == 0 && now > 0));
+        auto given = [&](int frame) {
+            const std::int32_t at = frame << 8;
+            if (ahead)
+                return last == 0 ? at < 256 : ((at >= lo && at < hi) || (loops && hi >= last && at < hi - last));
+            return hi < lo ? (at > lo || at <= hi) : ((lo < at && at <= hi) || (at == 0 && lo == 0 && hi > 0));
         };
         bool own = false;
         for (int e = 0; e < clip.eventCount; ++e)
         {
-            const ModelEvent &event = model->events[clip.firstEvent + e];
+            const ModelEvent &event = model.events[clip.firstEvent + e];
             if (event.kind != kEventMonster)
                 continue;
             own = true;
-            if (passed(event.frame))
+            if (given(event.frame))
             {
                 HL_DIAG(aiEvent, c.index, "anim", nullptr, static_cast<int>(event.target), 0);
                 c.kind.animEvent(c, static_cast<int>(event.target));
             }
         }
         // (A model cooked before its own events were kept: the kind's list.)
-        if (!own && !aiModelHasActivities(*model))
+        if (!own && !aiModelHasActivities(model))
         {
             for (const AiClipEvent *e = c.kind.clipEvents; e != nullptr && e->clip != nullptr; ++e)
             {
-                if (nameHash(e->clip) == clip.name && passed(e->frame))
+                if (nameHash(e->clip) == clip.name && given(e->frame))
                 {
                     HL_DIAG(aiEvent, c.index, "anim", nullptr, e->event, 0);
                     c.kind.animEvent(c, e->event);
                 }
             }
         }
+    }
+
+    /// Its clip's events as the frames pass (a kind that thinks its own way).
+    inline void aiAnimEvents(AiCtx &c)
+    {
+        const ModelView *model = actorModel(c.a, c.me);
+        if (model == nullptr || c.me.clip < 0 || c.kind.animEvent == nullptr)
+            return;
+        aiGiveEvents(c, *model, model->clips[c.me.clip], static_cast<std::int32_t>(c.me.lastFrame),
+                     static_cast<std::int32_t>(c.me.frame), false, 0, false);
+    }
+
+    /// DispatchAnimEvents(0.1), at a think: the events of its clip from where
+    /// the last look stopped to a tenth of a second ahead of where it is now
+    /// -- the game's are given that far ahead, not as the frames pass -- and
+    /// whether the clip is done within that tenth (m_fSequenceFinished).
+    inline void aiAnimEventsAhead(AiCtx &c)
+    {
+        const ModelView *model = actorModel(c.a, c.me);
+        if (model == nullptr || c.me.clip < 0)
+            return;
+        const ModelClip &clip = model->clips[c.me.clip];
+        // (In the clip's frames, Q8, as the actor's: fps is Q8 frames a
+        // second. Half again as fast while it is quickened.)
+        std::int32_t fps = clip.fps;
+        if (c.me.quickClip.value != 0 && c.me.quickClip.value == c.me.clip + 1)
+            fps += fps / 2;
+        // (Long unlooked -- asleep, say -- it is far back: all from the clip's
+        // first frame, as the game's is. A minute back is as far as that.)
+        const std::int32_t back = c.m.eventCheckMs - c.ai.now < -60000 ? -60000 : c.m.eventCheckMs - c.ai.now;
+        const std::int32_t now = static_cast<std::int32_t>(c.me.frame);
+        const std::int32_t lo = now + back * fps / 1000;
+        const std::int32_t hi = now + kAiThinkMs * fps / 1000;
+        c.m.eventCheckMs = c.ai.now + kAiThinkMs;
+        const std::int32_t last = clip.frameCount > 1 ? (clip.frameCount - 1) << 8 : 0;
+        c.m.seqFinished = last == 0 || hi >= last || hi <= 0;
+        if (c.kind.animEvent != nullptr)
+            aiGiveEvents(c, *model, clip, lo, hi, true, last, (clip.flags & kClipLoops) && !c.me.once);
     }
 
     /// In the air (a leap, a hop): it falls, and lands; and a touch that is
@@ -3842,10 +3880,15 @@ namespace hldata
             aiScriptReleased(c);
         }
         // What its clip has done: through it, or round it.
-        const bool wrapped = c.me.frame < c.me.lastFrame;
-        if (c.me.finished || wrapped)
-            m->seqFinished = true;
-        aiAnimEvents(c);
+        // (A kind that thinks its own way gives its clip's events as the
+        // frames pass; the others at each think, ahead: aiAnimEventsAhead.)
+        if (kind->think != nullptr)
+        {
+            const bool wrapped = c.me.frame < c.me.lastFrame;
+            if (c.me.finished || wrapped)
+                m->seqFinished = true;
+            aiAnimEvents(c);
+        }
         if (kind->frame != nullptr)
             kind->frame(c, ms);
         // (A soldier on a rope thinks -- he looks out, turns and shoots --
@@ -3883,6 +3926,8 @@ namespace hldata
             if (m->thinkMs <= 0)
                 m->thinkMs = kAiThinkMs;
             aiMonsterThink(c);
+            if (kind->think == nullptr)
+                aiAnimEventsAhead(c);
             HL_DIAG_ONLY({
                 const AiTask *task = aiGetTask(c);
                 // (Its yaw as the game's is after the think: the turn shown

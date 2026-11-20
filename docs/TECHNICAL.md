@@ -1858,11 +1858,15 @@ where the player is now, and a grenade or a rocket let go this frame moves
 in it -- its fuse and thinks counted from the next, as the game's
 `nextthink = time + ...`.
 
-The monsters (`mon_*` scenarios) brought the port's to the game's in two
+The monsters (`mon_*` scenarios) brought the port's to the game's in three
 places: a turn is the game's monsteryawspeedfix one, done in the think
 that asks for it, so a facing task ends in that think (the port shows it
-over the frames that follow); and an ideal yaw is the engine's VecToYaw,
-whole degrees cut toward zero (`fxVecToYawTurns`).
+over the frames that follow); an ideal yaw is the engine's VecToYaw,
+whole degrees cut toward zero (`fxVecToYawTurns`); and a clip's events --
+a bite, a leap -- are given at the think, for the tenth of a second of the
+clip ahead (the game's DispatchAnimEvents), with whether the clip ends in
+it, not as its frames pass. (A kind that thinks its own way still gives
+them as they pass.)
 
 ## The pass's budget
 

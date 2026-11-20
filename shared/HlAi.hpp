@@ -494,6 +494,9 @@ namespace hldata
         std::uint16_t yawGoal = 0;
         std::uint16_t turnRate = 0;
         std::int32_t lastYawMs = -1; ///< m_flLastYawTime (-1: never turned)
+        /// m_flLastEventCheck: up to when its clip's events have been given
+        /// (AiWorld::now, ms).
+        std::int32_t eventCheckMs = 0;
         int yawSpeed = 0;     ///< pev->yaw_speed, degrees
         // Time.
         std::int32_t thinkMs = 0;

@@ -21,7 +21,7 @@ namespace hldata
     HL_FIELDS(SoundEnt, 8);
     HL_FIELDS(AiTalk, 10);
     HL_FIELDS(AiMoveRound, 6);
-    HL_FIELDS(AiMonster, 69);
+    HL_FIELDS(AiMonster, 70);
 
     namespace detail
     {
