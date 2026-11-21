@@ -418,7 +418,7 @@ namespace hldata
         if (fromStart)
         {
             c.me.frame = 0;
-            c.me.frameRest.value = 0;
+            c.me.frameRest = 0;
         }
         c.me.clip = static_cast<std::int16_t>(index);
         c.me.once = !loops;

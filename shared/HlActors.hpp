@@ -84,8 +84,10 @@ namespace hldata
         std::int16_t restClip = -1; ///< the clip it goes back to when nothing directs it
         /// What its clip's advance left over below a Q8 frame, in thousandths
         /// (advanceClip): the pace kept exact, a think's worth of frames each
-        /// think. Not kept in a save: a load starts it again at none.
-        Unsaved<std::uint16_t> frameRest;
+        /// think. Kept in a save: without it a clip played on from a load is
+        /// a hair off, and an event on the edge of a think's window falls the
+        /// other side of it (test_savestate).
+        std::uint16_t frameRest = 0;
         std::uint32_t frame = 0; ///< Q8, in the clip's frames
         bool once = false;       ///< the clip is played to its end and held, loop or not
         bool finished = false;   ///< ... and has got there
@@ -1262,7 +1264,7 @@ namespace hldata
         if (actor.quickClip.value != 0 && actor.quickClip.value == actor.clip + 1)
             ms = ms * 3 / 2;
         bool finished = false;
-        actor.frame = advanceClip(clip, actor.frame, ms, finished, &actor.frameRest.value);
+        actor.frame = advanceClip(clip, actor.frame, ms, finished, &actor.frameRest);
         actor.finished = finished;
         if (finished || actor.quickClip.value != actor.clip + 1)
             actor.quickClip.value = 0;
