@@ -478,6 +478,24 @@ namespace hldata
 
     namespace detail
     {
+        /// Whether the line from `a` to `b` lies wholly beyond one of the
+        /// faces of the box `mins`..`maxs` -- both ends past it, an end on it
+        /// not -- and so cannot come into it. What lineEntersBox's slab test
+        /// says of such a line anyway, before its divides:
+        /// tools/hlds-convert/tests/test_divfree.cpp holds it to its old self,
+        /// bit for bit.
+        inline bool lineBeyondBox(const fx *a, const fx *b, const fx *mins, const fx *maxs)
+        {
+            for (int k = 0; k < 3; ++k)
+            {
+                const fx low = a[k] < b[k] ? a[k] : b[k];
+                const fx high = a[k] < b[k] ? b[k] : a[k];
+                if (high < mins[k] || low > maxs[k])
+                    return true;
+            }
+            return false;
+        }
+
         /// The boxes (the actors') in the way of a move from `start` to
         /// `end`: each grown by `growXY` across and `growZ` up and down, one
         /// pair of faces at a time; the nearer hit put into `best`.

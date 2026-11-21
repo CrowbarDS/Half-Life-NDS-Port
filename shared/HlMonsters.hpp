@@ -2748,6 +2748,9 @@ namespace hldata
     {
         std::int64_t leave = kFractionOne;
         enter = 0;
+        // (Wholly beyond a face: no divide to say so.)
+        if (detail::lineBeyondBox(from, to, mins, maxs))
+            return false;
         for (int k = 0; k < 3; ++k)
         {
             const fx d = to[k] - from[k];

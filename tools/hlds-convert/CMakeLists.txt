@@ -222,6 +222,7 @@ if(HLDS_BUILD_TESTS)
             test_movers
             test_physics
             test_dsp
+            test_divfree
             test_game_families
             test_save
             test_savefiles
