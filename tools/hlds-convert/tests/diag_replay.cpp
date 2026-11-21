@@ -49,6 +49,7 @@
 #include <vector>
 
 #include "HlCommands.hpp"
+#include "HlThink.hpp"
 #include "HlFrameClock.hpp"
 #include "HlView.hpp"
 #include "TestGame.hpp"
@@ -497,6 +498,25 @@ int main(int argc, char **argv)
     g.player.inv.current = kWeaponCrowbar;
     g.logic.noAutoaim.value = true;
     int picked = 0; // (a weapon_<name> asked for, for the next weapons tick)
+    // DIAG_DEFERRED: the monsters' long thinking (cover, a way to see the
+    // enemy, their walks' plans) asked of a worker and answered between
+    // frames, as the console's is -- every question waiting answered after
+    // each frame, a worker with all the time it wants: what is measured is
+    // how late the asking makes them, not the worker. "dsi": answers taken
+    // up the moment they are in (ThinkQueue::answersAtOnce), as a DSi does.
+    const char *deferredMode = std::getenv("DIAG_DEFERRED");
+    const bool deferred = deferredMode != nullptr && deferredMode[0] != '\0' && std::strcmp(deferredMode, "0") != 0;
+    std::vector<ThinkSlot> thinkSlots(static_cast<std::size_t>(g.actors.count));
+    ThinkQueue thinkQueue;
+    if (deferred)
+    {
+        thinkQueue.slots = thinkSlots.data();
+        thinkQueue.count = g.actors.count;
+        thinkQueue.deferred = true;
+        thinkQueue.answersAtOnce = std::strcmp(deferredMode, "dsi") == 0;
+        g.actors.think = &thinkQueue;
+        std::printf("diag_replay: thinking deferred%s\n", thinkQueue.answersAtOnce ? ", answers taken at once (a DSi)" : "");
+    }
     const auto run = [&](const std::string &text) {
         std::istringstream in(text);
         std::string verb, arg;
@@ -933,6 +953,12 @@ int main(int argc, char **argv)
         // and weapons (Game::frame's order, the game's: each command, then
         // the entities' thinks).
         monstersTick(g.logic, g.player, ms);
+        if (deferred)
+        {
+            while (thinkRunOne(g.logic))
+            {
+            }
+        }
         g.drain();
 
         if (f < 1)
@@ -1027,5 +1053,9 @@ int main(int argc, char **argv)
     }
     std::fclose(out);
     std::printf("%s: %d frames\n", argv[3], scripted);
+    if (deferred)
+        std::printf("diag_replay: answers taken %u, waited %u frames each, longest %u, dropped %u, gave up %u\n",
+                    thinkQueue.taken, thinkQueue.taken != 0 ? thinkQueue.takenFrames / thinkQueue.taken : 0u,
+                    thinkQueue.longest, thinkQueue.dropped, thinkQueue.gaveUp);
     return 0;
 }
