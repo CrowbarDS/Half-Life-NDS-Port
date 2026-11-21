@@ -114,9 +114,6 @@ namespace hlrt
             kMore,    ///< the buttons' other screen
             kResetKeys,
             kAutoaim,
-            kSkillEasy, ///< a new game's difficulty (kSkillEasy + its level - 1)
-            kSkillMedium,
-            kSkillHard,
             kAchievementsOpen,
             kPopups,       ///< the achievements' pop-ups (a setting)
             kAutosave,     ///< the game's own save (a setting)
@@ -259,11 +256,6 @@ namespace hlrt
         int lobbyCharacter = 0;
         const Row kHandRows[] = {{Kind::Button, kHandLeft, "LEFT HAND"}, {Kind::Button, kHandRight, "RIGHT HAND"}};
         const Row kConfirmRows[] = {{Kind::Button, kYes, "YES"}, {Kind::Button, kNo, "NO"}};
-        // A new game's difficulty, as the game's NEW GAME asks it.
-        const Row kSkillRows[] = {{Kind::Button, kSkillEasy, "EASY"},
-                                  {Kind::Button, kSkillMedium, "MEDIUM"},
-                                  {Kind::Button, kSkillHard, "DIFFICULT"},
-                                  {Kind::Button, kBack, "BACK"}};
         // NEW GAME, as the game's own dialog has it: how hard, then which
         // game -- the game itself, Uplink (only if it is on the card) -- or
         // not. (The Hazard Course is the title's own row.)
@@ -420,7 +412,6 @@ namespace hlrt
             case 7: count = static_cast<int>(sizeof(kMultiRows) / sizeof(kMultiRows[0])); return kMultiRows;
             case 9: count = foundCount + 1; return foundRows;
             case 11: count = static_cast<int>(sizeof(kNetPauseRows) / sizeof(kNetPauseRows[0])); return kNetPauseRows;
-            case 14: count = static_cast<int>(sizeof(kSkillRows) / sizeof(kSkillRows[0])); return kSkillRows;
             case 16: count = static_cast<int>(sizeof(kNewGameRows) / sizeof(kNewGameRows[0])); return kNewGameRows;
 #ifndef HLDS_CHILD
             case 27: count = hldata::kGameCount; return gameRows;
@@ -567,7 +558,7 @@ namespace hlrt
     bool Menu::big() const
     {
         return page_ == Page::Main || page_ == Page::Title || page_ == Page::Confirm || page_ == Page::Multiplayer ||
-               page_ == Page::NetPause || page_ == Page::Difficulty || page_ == Page::NewGame || page_ == Page::Hand ||
+               page_ == Page::NetPause || page_ == Page::NewGame || page_ == Page::Hand ||
                page_ == Page::NetDemo || page_ == Page::NetServe || page_ == Page::DemoChoice || page_ == Page::NetOnline ||
                page_ == Page::NetConnecting || page_ == Page::Game;
     }
@@ -707,7 +698,6 @@ namespace hlrt
                                 : (page_ == Page::Title       ? gameHeading()
                                    : page_ == Page::Game        ? "CHOOSE GAME"
                                    : page_ == Page::Multiplayer ? "MULTIPLAYER"
-                                   : page_ == Page::Difficulty  ? "DIFFICULTY"
                                    : page_ == Page::NewGame     ? "NEW GAME"
                                    : page_ == Page::Hand        ? "WHICH HAND?"
                                    : page_ == Page::NetDemo     ? "SEND DEMO"
@@ -4194,11 +4184,6 @@ namespace hlrt
             skill_ = skill_ % hldata::kSkillHard + 1;
             drawRow(row, false);
             break;
-        case kSkillEasy:
-        case kSkillMedium:
-        case kSkillHard:
-            skill_ = hldata::kSkillEasy + (item.id - kSkillEasy);
-            return Action::NewGame;
         case kContinue:
             if (saves_ != nullptr && saveMostRecent(*saves_) >= 0)
             {
@@ -4266,10 +4251,8 @@ namespace hlrt
                 outOfGame();
                 break;
             }
-            // (From how hard, back to which game; from which game, to where
-            // it was asked for.)
-            page_ = page_ == Page::Difficulty ? Page::NewGame
-                                              : (title_ ? Page::Title : (netGame.playing() || netGame.demo() != 0 ? Page::NetPause : Page::Main));
+            // (From which game, back to where it was asked for.)
+            page_ = title_ ? Page::Title : (netGame.playing() || netGame.demo() != 0 ? Page::NetPause : Page::Main);
             draw();
             break;
         case kMultiplayer:

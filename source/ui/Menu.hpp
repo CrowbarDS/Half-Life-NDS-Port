@@ -141,7 +141,6 @@ namespace hlrt
             NetJoin = 9,      ///< the games found
             NetLobby = 10,    ///< a sheet: a client waiting for the host to start (who is there)
             NetPause = 11,    ///< the pause menu of a game between consoles (which goes on)
-            Difficulty = 14,  ///< a new game's: EASY, MEDIUM, DIFFICULT
             Achievements = 15, ///< a sheet: those earned and those not, a chapter at a time
             NewGame = 16,     ///< which game: Half-Life, the Hazard Course, Uplink
             Profile = 17,     ///< a sheet: the player as the others see them, shown on the top screen
