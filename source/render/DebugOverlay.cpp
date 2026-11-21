@@ -90,13 +90,16 @@ namespace hlrt
             // When models in view were left out, or took more than their
             // share: how many of each kind -- A enemies, B people, C things
             // to pick up, D the rest -- and how many polygons over. (A is
-            // never to be anything but 0: HlDrawPlan.hpp.) Otherwise where
-            // the eye is.
-            if (modelDraw.cutOf(0) + modelDraw.cutOf(1) + modelDraw.cutOf(2) + modelDraw.cutOf(3) + modelDraw.grown() != 0)
+            // never to be anything but 0: HlDrawPlan.hpp.) And k: the marks
+            // in view not drawn. Otherwise where the eye is.
+            if (modelDraw.cutOf(0) + modelDraw.cutOf(1) + modelDraw.cutOf(2) + modelDraw.cutOf(3) + modelDraw.grown() +
+                    effectDraw.marksCut() !=
+                0)
             {
-                std::snprintf(line, sizeof(line), "cut A%d B%d C%d D%d +%d%s e%d", modelDraw.cutOf(0), modelDraw.cutOf(1),
-                              modelDraw.cutOf(2), modelDraw.cutOf(3), modelDraw.grown(), modelDraw.strained() ? " full" : "",
-                              effectDraw.refused());
+                std::snprintf(line, sizeof(line), "cut A%d B%d C%d D%d +%d%s e%d k%d", modelDraw.cutOf(0),
+                              modelDraw.cutOf(1), modelDraw.cutOf(2), modelDraw.cutOf(3),
+                              modelDraw.grown(), modelDraw.strained() ? " full" : "", effectDraw.refused(),
+                              effectDraw.marksCut());
                 break;
             }
             // (... or the world's: surfaces and brush entities in view with

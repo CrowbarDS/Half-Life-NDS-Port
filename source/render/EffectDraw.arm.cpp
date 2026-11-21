@@ -9,6 +9,7 @@
 #include "HlDsp.hpp"
 #include "HlSprite.hpp"
 #include "HlUi.hpp"
+#include "HlMarkPlan.hpp"
 #include "HlPolygonIds.hpp"
 #include "render/GlowLayer.hpp"
 #include "data/TextureCache.hpp"
@@ -896,71 +897,34 @@ namespace hlrt
     {
         NEA_Material *atlas = static_cast<NEA_Material *>(hudDraw.decalMaterial());
         ActorWorld &a = game.actors;
+        marksCut_ = 0;
         if (atlas == nullptr || player.noclip)
             return 0;
-        // The hardware's "draw where the depth is the same" (a polygon
-        // attribute NEA has no name for): a mark lies in its wall's plane,
-        // and is drawn where the wall is and nowhere else.
-        constexpr int kDepthEqual = 1 << 14;
-        // (How much of a mark is drawn over its wall at most, of 31: the
-        // rest is the wall's own light through it -- a mark in a dark
-        // corridor is dark, not as bright as it would be lit.)
-        constexpr int kDecalAlpha = 22;
+        // The hardware's "draw where the depth is the same": a mark lies in
+        // its wall's plane, and is drawn where the wall is and nowhere else.
+        constexpr int kDepthEqual = NEA_DEPTH_TEST_EQUAL;
         /// Under this cosine (45 degrees) a mark is pulled toward the eye.
         constexpr int kMarkSteep = 2896;
-        // No more of them than this much of the screen between them (in
-        // pixels, as they are seen: a stain on the floor far ahead covers a
-        // sliver of what it would face on): see-through things one on
-        // another are what the hardware runs out of time on.
-        // (A quarter less of both when an enemy has had to be made room for
-        // this frame: the stains give way before it does.)
-        // (... eased into and out of, an eighth of it a pass.)
+        // Which are drawn: HlMarkPlan.hpp. (A quarter less of the share and
+        // the count when an enemy has had to be made room for this frame:
+        // the stains give way before it does -- eased into and out of, an
+        // eighth of it a pass.)
         decalYield_ += modelDraw.strained() ? (decalYield_ < 8 ? 1 : 0) : (decalYield_ > 0 ? -1 : 0);
-        int kMostArea = isDSiMode() ? 30000 : 18000;
+        int share = isDSiMode() ? kMarkAreaDsi : kMarkAreaDs;
         int most = isDSiMode() ? kDecalPolygons : kDecalPolygons / 2;
-        kMostArea -= kMostArea * decalYield_ / 32;
+        share -= share * decalYield_ / 32;
         most -= most * decalYield_ / 32;
-        std::uint64_t shown = 0;
-        // (The last fifth of the room is drawn thinning out, so that a mark
-        // the room runs out for goes over a few frames, not at once.)
-        const int softArea = kMostArea - kMostArea / 5;
         const BrushState *brushes = game.brushStates();
-        int drawn = 0, area = 0;
-        bool bound = false;
-        NEA_Material *boundMaterial = nullptr;
-        // The nearest first: when not all of them are drawn, it is the far
-        // ones that are not.
-        std::uint8_t order[kMaxDecals];
-        std::int32_t away[kMaxDecals];
+        // Those facing the eye, in range and in the view.
+        MarkCandidate list[kMaxDecals];
+        std::int16_t cosineOf[kMaxDecals];
         int listed = 0;
         for (int i = 0; i < kMaxDecals; ++i)
         {
-            const Decal &one = a.decals[i];
-            if (!one.active)
+            Decal &decal = a.decals[i];
+            if (!decal.active)
                 continue;
-            const std::int32_t dx = fxToInt(one.at[0] - camera.pos[0]), dy = fxToInt(one.at[1] - camera.pos[1]),
-                               dz = fxToInt(one.at[2] - camera.pos[2]);
-            const std::int32_t far = (dx < 0 ? -dx : dx) + (dy < 0 ? -dy : dy) + (dz < 0 ? -dz : dz);
-            int at = listed++;
-            while (at > 0 && away[at - 1] > far)
-            {
-                order[at] = order[at - 1];
-                away[at] = away[at - 1];
-                --at;
-            }
-            order[at] = static_cast<std::uint8_t>(i);
-            away[at] = far;
-        }
-        for (int next = 0; next < listed; ++next)
-        {
-            Decal &decal = a.decals[order[next]];
-            const std::uint64_t bit = std::uint64_t(1) << order[next];
-            // (One shown the pass before keeps its place to the edge of the
-            // room; one new comes in only with a tenth of it to spare: at the
-            // edge, a mark does not come and go as the view turns.)
-            const int roomFor = (decalShown_ & bit) ? kMostArea : kMostArea - kMostArea / 10;
-            if (!decal.active || drawn >= most || area > roomFor)
-                continue;
+            const bool shown = (decalShown_ >> i) & 1;
             fx at[3] = {decal.at[0], decal.at[1], decal.at[2]};
             if (decal.brush >= 0)
             {
@@ -971,26 +935,58 @@ namespace hlrt
                     decal.active = false;
                     continue;
                 }
-                for (int i = 0; i < 3; ++i)
-                    at[i] += brushes[decal.brush].pos[i];
+                for (int k = 0; k < 3; ++k)
+                    at[k] += brushes[decal.brush].pos[k];
             }
-            // Facing the eye, near enough to be seen, and in the view.
             const std::int32_t d[3] = {fxToInt(camera.pos[0] - at[0]), fxToInt(camera.pos[1] - at[1]),
                                        fxToInt(camera.pos[2] - at[2])};
             const std::int32_t facing = d[0] * decal.normal[0] + d[1] * decal.normal[1] + d[2] * decal.normal[2];
-            const std::int32_t far = decal.half * 60 + 200;
-            if (facing <= 0 || d[0] > far || d[0] < -far || d[1] > far || d[1] < -far || d[2] > far || d[2] < -far)
+            if (facing <= 0)
                 continue;
-            // (How far, as the limit just above measures it: in the last
-            // quarter of the way to it, it thins out.)
             std::int32_t away = d[0] < 0 ? -d[0] : d[0];
             away = (d[1] < 0 ? -d[1] : d[1]) > away ? (d[1] < 0 ? -d[1] : d[1]) : away;
             away = (d[2] < 0 ? -d[2] : d[2]) > away ? (d[2] < 0 ? -d[2] : d[2]) : away;
+            if (!markInRange(away, decal.half, shown))
+                continue;
             const std::int16_t centre[3] = {static_cast<std::int16_t>(fxToInt(at[0] + decal.normal[0] * 2)),
                                             static_cast<std::int16_t>(fxToInt(at[1] + decal.normal[1] * 2)),
                                             static_cast<std::int16_t>(fxToInt(at[2] + decal.normal[2] * 2))};
             if (!worldDraw.ballVisible(centre, decal.half + 2))
                 continue;
+            // How square the eye meets its wall: `facing` is Q12 units, over
+            // the distance the cosine in 4096ths.
+            const fx toEye[3] = {fxFromInt(d[0]), fxFromInt(d[1]), fxFromInt(d[2])};
+            const std::int32_t distance = fxToInt(fxLength(toEye));
+            const int cosine = distance > 0 ? static_cast<int>(facing / distance) : 4096;
+            MarkCandidate &one = list[listed++];
+            one.slot = static_cast<std::uint8_t>(i);
+            one.shown = shown;
+            one.near = distance;
+            one.area = markArea(decal.half, distance, cosine, share);
+            cosineOf[i] = static_cast<std::int16_t>(cosine > 4096 ? 4096 : cosine);
+        }
+        std::uint64_t chosen = 0;
+        markChoose(list, listed, most, share, chosen);
+        std::uint64_t shown = 0;
+        int drawn = 0;
+        bool bound = false;
+        NEA_Material *boundMaterial = nullptr;
+        for (int next = 0; next < listed; ++next)
+        {
+            const int slot = list[next].slot;
+            if (!((chosen >> next) & 1))
+            {
+                ++marksCut_;
+                continue;
+            }
+            const Decal &decal = a.decals[slot];
+            const std::uint64_t bit = std::uint64_t(1) << slot;
+            fx at[3] = {decal.at[0], decal.at[1], decal.at[2]};
+            if (decal.brush >= 0)
+            {
+                for (int k = 0; k < 3; ++k)
+                    at[k] += brushes[decal.brush].pos[k];
+            }
             // (A sign is a sprite of the map's: its own texture.)
             const bool isSign = decal.picture == kDecalSign;
             const SpriteRef *signRef = isSign ? spriteCache.ref(decal.colour) : nullptr;
@@ -1007,32 +1003,9 @@ namespace hlrt
                 NEA_MaterialUse(wanted);
                 boundMaterial = wanted;
             }
-            // How square the eye meets its wall: `facing` is Q12 units, over
-            // the distance the cosine in 4096ths.
-            const fx toEye[3] = {fxFromInt(d[0]), fxFromInt(d[1]), fxFromInt(d[2])};
-            const std::int32_t distance = fxToInt(fxLength(toEye));
-            const int cosine = distance > 0 ? static_cast<int>(facing / distance) : 4096;
-            // (About how much of the screen it is: its width in pixels --
-            // 128 pixels to a unit at a unit's distance -- by its height, which
-            // is that as much less as it is seen edge-on; neither more than
-            // the screen.)
-            {
-                const std::int32_t depth = -(d[0] * camera.forward[0] + d[1] * camera.forward[1] + d[2] * camera.forward[2]) >> 12;
-                const int across = (decal.half * 2 * 128) / (depth < 8 ? 8 : depth);
-                const int wide = across > 256 ? 256 : across;
-                int high = static_cast<int>((static_cast<std::int64_t>(across) * cosine) >> 12);
-                high = high > 192 ? 192 : (high < 1 ? 1 : high);
-                area += wide * high;
-            }
-            // Its last three seconds it fades; and as it nears where it is no
-            // longer drawn, by distance or for want of room.
-            int alpha = decal.leftMs >= 3000 ? kDecalAlpha : 1 + (decal.leftMs * (kDecalAlpha - 1)) / 3000;
-            const std::int32_t thinFrom = far - far / 4;
-            if (away > thinFrom)
-                alpha = alpha * (far - away) / (far - thinFrom);
-            if (area > softArea)
-                alpha = alpha * (kMostArea - area) / (kMostArea - softArea);
-            alpha = alpha < 1 ? 1 : (alpha > 31 ? 31 : alpha);
+            const int cosine = cosineOf[slot];
+            // Its last three seconds it fades: nothing else thins it out.
+            const int alpha = markAlpha(decal.leftMs);
             // Seen at a low angle (under 45 degrees to its wall), the "same
             // depth" test eats a mark in patches -- a pixel there spans more
             // depth than the test allows, and the wall's depth across a big
@@ -1056,7 +1029,7 @@ namespace hlrt
                 pull = (2 * tangent + 4096) / 128;
                 pull = pull < 16 ? 16 : (pull > 2048 ? 2048 : pull);
             }
-            NEA_PolyFormat(alpha, kIdMarksFirst + order[next] % kIdMarksCount, static_cast<NEA_LightEnum>(0), NEA_CULL_NONE,
+            NEA_PolyFormat(alpha, kIdMarksFirst + slot % kIdMarksCount, static_cast<NEA_LightEnum>(0), NEA_CULL_NONE,
                            static_cast<NEA_OtherFormatEnum>(static_cast<int>(worldDraw.polygonMode()) |
                                                             (pull == 0 ? kDepthEqual : 0)));
             if (isSign)

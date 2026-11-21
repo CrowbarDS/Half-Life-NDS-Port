@@ -4,6 +4,7 @@
 // made here, and where rounds land in another. With HLDS_VALVE_DIR set, a
 // real fall in a real map, and rounds on its faces.
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -11,6 +12,7 @@
 #include <memory>
 #include <string>
 
+#include "HlMarkPlan.hpp"
 #include "HlSharedRandom.hpp"
 #include "HlView.hpp"
 #include "TestGame.hpp"
@@ -956,8 +958,69 @@ namespace
     }
 } // namespace
 
+// Which marks are drawn (HlMarkPlan.hpp): a stain beside the eye does not
+// leave the rest of a corridor's out; none thins out to nothing.
+void testMarkChoice()
+{
+    // A corridor along x, its wall at y = 40 facing the eye at the origin: a
+    // blood stain 30 ahead of the eye, and ten more farther along.
+    auto candidate = [](int slot, int x, int half, int share, bool shown) {
+        const double dist = std::sqrt(double(x) * x + 40.0 * 40.0);
+        MarkCandidate one;
+        one.slot = static_cast<std::uint8_t>(slot);
+        one.shown = shown;
+        one.near = static_cast<std::int32_t>(dist);
+        one.area = markArea(half, one.near, static_cast<int>(40.0 / dist * 4096), share);
+        return one;
+    };
+    for (const int share : {kMarkAreaDs, kMarkAreaDsi})
+    {
+        MarkCandidate list[11];
+        list[0] = candidate(0, 30, 20, share, false);
+        for (int i = 1; i < 11; ++i)
+            list[i] = candidate(i, 30 + i * 60, 20, share, false);
+        check(list[0].area <= share / 4, "a stain beside the eye counts a quarter of the share at most");
+        std::uint64_t drawn = 0;
+        check(markChoose(list, 11, 24, share, drawn) == 11 && drawn == 0x7FF,
+              "... and the corridor's other stains are all drawn with it");
+    }
+    {
+        // The edge of the share: one drawn the pass before keeps its place to
+        // the end of it, one new needs a tenth spare.
+        MarkCandidate list[2];
+        list[0].near = 10;
+        list[0].area = 9000;
+        list[1].near = 20;
+        list[1].area = 8500;
+        std::uint64_t drawn = 0;
+        list[1].shown = false;
+        check(markChoose(list, 2, 24, 18000, drawn) == 1 && drawn == 1, "a new mark needs a tenth of the share spare");
+        list[1].shown = true;
+        check(markChoose(list, 2, 24, 18000, drawn) == 2 && drawn == 3, "... one already shown keeps its place to its end");
+        // (One that does not fit leaves room for a smaller one after it.)
+        MarkCandidate three[3];
+        three[0].near = 1;
+        three[0].area = 9000;
+        three[1].near = 2;
+        three[1].area = 9000;
+        three[2].near = 3;
+        three[2].area = 100;
+        check(markChoose(three, 3, 24, 18000, drawn) == 2 && drawn == 5, "a smaller mark past one that does not fit is drawn");
+        check(markChoose(three, 3, 1, 18000, drawn) == 1 && drawn == 1, "no more than the count");
+    }
+    // Range: a hole goes at 680 units, a new one comes in a sixteenth nearer.
+    check(markRange(8) == 680 && markInRange(680, 8, true) && !markInRange(680, 8, false) &&
+              markInRange(680 - 680 / 16, 8, false),
+          "a mark at the end of its range stays, a new one comes in nearer");
+    // Alpha: the same however far; only its last three seconds fade.
+    check(markAlpha(40000) == kMarkAlpha && markAlpha(3000) == kMarkAlpha && markAlpha(1500) < kMarkAlpha &&
+              markAlpha(0) == 1,
+          "a mark is drawn as it is until its last three seconds");
+}
+
 int main()
 {
+    testMarkChoice();
     testSharedSpread();
     testBloodAndSteps();
     testKick();

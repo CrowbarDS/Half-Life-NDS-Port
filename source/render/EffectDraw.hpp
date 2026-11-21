@@ -96,6 +96,8 @@ namespace hlrt
     public:
         /// What this pass had in view and could not take (the list was full).
         int refused() const { return refused_; }
+        /// The marks this pass had in view and did not draw (no room).
+        int marksCut() const { return marksCut_; }
 
     private:
         void drawRecord(int index);
@@ -113,6 +115,7 @@ namespace hlrt
         /// How far the marks have given way to a frame short of room for its
         /// enemies (0..8 eighths of a quarter): a step a pass, not at once.
         int decalYield_ = 0;
+        int marksCut_ = 0;
     };
 
     extern EffectDraw effectDraw;
