@@ -171,9 +171,9 @@ namespace
         bad[4] = static_cast<std::uint8_t>(kLevelMinVersion - 1);
         bad[5] = 0;
         check(view.open(bad.data(), size) == LevelError::BadVersion, "a version older than this build reads");
-        bad[4] = 75; // before the common sounds were stored without their names
-        check(kLevelMinVersion == 76 && view.open(bad.data(), size) == LevelError::BadVersion && view.header == nullptr,
-              "a map of format 75 is refused, and nothing of it is read");
+        bad[4] = 79; // before a path link's length was in sixteenths of a unit
+        check(kLevelMinVersion == 80 && view.open(bad.data(), size) == LevelError::BadVersion && view.header == nullptr,
+              "a map of format 79 is refused, and nothing of it is read");
         bad = good;
         bad[38] = static_cast<std::uint8_t>(kLevelVersion + 1); // minReader
         bad[39] = 0;
