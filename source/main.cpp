@@ -56,6 +56,7 @@
 #include "render/ScreenFade.hpp"
 #include "render/TopText.hpp"
 #include "ui/Menu.hpp"
+#include "ui/UiText.hpp"
 #include "ui/TouchCanvas.hpp"
 
 namespace hlrt
@@ -1991,6 +1992,8 @@ int main(int argc, char *argv[])
     // whole (Guard.hpp). A photograph of it, and build/elf/<build>/, say
     // which line.
     hlrt::guard::install();
+    // (UiText.hpp: the thread its text may be asked for from.)
+    hlrt::ui::textInit();
     // Out of memory where nothing could say so (a string, a list: what the
     // program builds with new): said on the touch screen, as a map that
     // does not fit is, rather than the console switching itself off -- what
@@ -3017,6 +3020,8 @@ int main(int argc, char *argv[])
             }
         }
         hlrt::DebugLog::Perf::endFrame();
+        // (A debug build spoils the frame's UI text: none is kept past it.)
+        hlrt::ui::textFrameEnd();
         hlrt::DebugLog::Perf::logEvery(currentMap.c_str(), 512);
 #ifdef HLDS_PROFILE
         // (... and what the passes had room for, as often: a run that never

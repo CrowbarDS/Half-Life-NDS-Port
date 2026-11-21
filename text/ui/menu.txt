@@ -1,0 +1,24 @@
+# The menus' words that are seen during play as well as before it: the pause
+# menu, a match's pause, a question, NEW GAME (source/ui/Menu.cpp).
+@home resident
+
+Resume = RESUME
+QuickSave = QUICK SAVE
+SaveGame = SAVE GAME
+LoadGame = LOAD GAME
+NewGame = NEW GAME
+Options = OPTIONS
+Achievements = ACHIEVEMENTS
+Command = COMMAND
+QuitToMainMenu = QUIT TO MAIN MENU
+Chat = CHAT
+Spray = SPRAY
+Mic = MIC
+EndMatch = END MATCH
+LeaveGame = LEAVE GAME
+Yes = YES
+No = NO
+Difficulty = Difficulty
+PlayHalfLife = PLAY HALF-LIFE
+PlayUplink = PLAY UPLINK
+Cancel = CANCEL

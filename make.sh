@@ -50,6 +50,10 @@ cd "${SCRIPT_DIR}"
 python tools/dspsim/embed.py
 # The build's name (source/BuildId.gen.cpp), shown on the crash screen.
 BUILD_ID="$(python tools/buildid.py)"
+# The UI text (source/ui/UiText.gen.*: tools/uitext.py, from text/ui/), and
+# its rule held: what uiText gives is never kept (tools/uitext_check.py).
+python tools/uitext.py
+python tools/uitext_check.py
 
 python build.py "$@"
 # The Download Play child (child/build.py): the same code built again for a

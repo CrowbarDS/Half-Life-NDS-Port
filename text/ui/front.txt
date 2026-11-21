@@ -1,0 +1,29 @@
+# The menus' words seen only before play, with no map up: the title,
+# MULTIPLAYER and its pages, the demos, which hand (source/ui/Menu.cpp).
+@home resident
+
+Continue = CONTINUE
+NewGame = NEW GAME
+LoadGame = LOAD GAME
+HazardCourse = HAZARD COURSE
+Multiplayer = MULTIPLAYER
+Options = OPTIONS
+Achievements = ACHIEVEMENTS
+ChangeGame = CHANGE GAME
+Quit = QUIT
+Host = HOST
+Join = JOIN
+Online = ONLINE
+SendDemo = SEND DEMO
+Profile = PROFILE
+Back = BACK
+HostOnline = HOST ONLINE
+JoinOnline = JOIN ONLINE
+Cancel = CANCEL
+Uplink = UPLINK
+Restart = RESTART
+SendTheGame = SEND THE GAME
+Stop = STOP
+LeftHand = LEFT HAND
+RightHand = RIGHT HAND
+LookAgain = LOOK AGAIN

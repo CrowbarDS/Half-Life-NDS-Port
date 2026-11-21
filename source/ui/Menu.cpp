@@ -4,6 +4,7 @@
 #include <cstdlib>
 
 #include "ui/Menu.hpp"
+#include "ui/UiText.hpp"
 #include "HlNetNext.hpp"
 
 #include "HlCommands.hpp"
@@ -40,13 +41,15 @@ namespace hlrt
     {
         using namespace hldata;
 
-        enum class Kind
+        // (A row's kind and what it is, in a byte and two: the tables of
+        // rows are many.)
+        enum class Kind : std::uint8_t
         {
             Button,
             Value,  ///< shows a setting; a press changes it
             Slider,
         };
-        enum Id
+        enum Id : std::uint16_t
         {
             kResume,
             kEndMatch,
@@ -181,63 +184,63 @@ namespace hlrt
         {
             Kind kind;
             Id id;
-            const char *label;
+            ui::Label label; ///< (UiText.hpp: a line of the text tables, or one made here)
         };
-        const Row kMain[] = {{Kind::Button, kResume, "RESUME"},       {Kind::Button, kSave, "QUICK SAVE"},
-                             {Kind::Button, kSaveGame, "SAVE GAME"}, {Kind::Button, kLoadGame, "LOAD GAME"},
-                             {Kind::Button, kNewGame, "NEW GAME"},   {Kind::Button, kOptions, "OPTIONS"},
-                             {Kind::Button, kAchievementsOpen, "ACHIEVEMENTS"},
-                             {Kind::Button, kCommand, "COMMAND"},
-                             {Kind::Button, kLeave, "QUIT TO MAIN MENU"}};
+        const Row kMain[] = {{Kind::Button, kResume, ui::txt::menu::Resume},       {Kind::Button, kSave, ui::txt::menu::QuickSave},
+                             {Kind::Button, kSaveGame, ui::txt::menu::SaveGame}, {Kind::Button, kLoadGame, ui::txt::menu::LoadGame},
+                             {Kind::Button, kNewGame, ui::txt::menu::NewGame},   {Kind::Button, kOptions, ui::txt::menu::Options},
+                             {Kind::Button, kAchievementsOpen, ui::txt::menu::Achievements},
+                             {Kind::Button, kCommand, ui::txt::menu::Command},
+                             {Kind::Button, kLeave, ui::txt::menu::QuitToMainMenu}};
         // The title: CONTINUE where there is something to go on with, then
         // the game's own main menu; the Hazard Course where it is on the
         // card; QUIT where there is somewhere to go back to.
-        const Row kTitleRows[] = {{Kind::Button, kContinue, "CONTINUE"},
-                                  {Kind::Button, kNewGame, "NEW GAME"},
-                                  {Kind::Button, kLoadGame, "LOAD GAME"},
-                                  {Kind::Button, kGameTraining, "HAZARD COURSE"},
-                                  {Kind::Button, kMultiplayer, "MULTIPLAYER"},
-                                  {Kind::Button, kOptions, "OPTIONS"},
-                                  {Kind::Button, kAchievementsOpen, "ACHIEVEMENTS"},
+        const Row kTitleRows[] = {{Kind::Button, kContinue, ui::txt::front::Continue},
+                                  {Kind::Button, kNewGame, ui::txt::front::NewGame},
+                                  {Kind::Button, kLoadGame, ui::txt::front::LoadGame},
+                                  {Kind::Button, kGameTraining, ui::txt::front::HazardCourse},
+                                  {Kind::Button, kMultiplayer, ui::txt::front::Multiplayer},
+                                  {Kind::Button, kOptions, ui::txt::front::Options},
+                                  {Kind::Button, kAchievementsOpen, ui::txt::front::Achievements},
 #ifndef HLDS_CHILD
-                                  {Kind::Button, kChangeGame, "CHANGE GAME"},
+                                  {Kind::Button, kChangeGame, ui::txt::front::ChangeGame},
 #endif
-                                  {Kind::Button, kQuit, "QUIT"}};
+                                  {Kind::Button, kQuit, ui::txt::front::Quit}};
 #ifndef HLDS_CHILD
         // CHOOSE GAME (a DSi's): each game on the card, the one last played
         // first.
         Row gameRows[hldata::kGameCount];
 #endif
         // A game between consoles (source/net/NetGame.hpp).
-        const Row kMultiRows[] = {{Kind::Button, kNetHost, "HOST"},
-                                  {Kind::Button, kNetJoin, "JOIN"},
+        const Row kMultiRows[] = {{Kind::Button, kNetHost, ui::txt::front::Host},
+                                  {Kind::Button, kNetJoin, ui::txt::front::Join},
 #ifndef HLDS_CHILD
-                                  {Kind::Button, kNetOnline, "ONLINE"},
+                                  {Kind::Button, kNetOnline, ui::txt::front::Online},
 #endif
-                                  {Kind::Button, kSendDemo, "SEND DEMO"},
-                                  {Kind::Button, kProfile, "PROFILE"},
-                                  {Kind::Button, kOptions, "OPTIONS"},
-                                  {Kind::Button, kBack, "BACK"}};
+                                  {Kind::Button, kSendDemo, ui::txt::front::SendDemo},
+                                  {Kind::Button, kProfile, ui::txt::front::Profile},
+                                  {Kind::Button, kOptions, ui::txt::front::Options},
+                                  {Kind::Button, kBack, ui::txt::front::Back}};
 #ifndef HLDS_CHILD
         // ONLINE: the same lobby, through the relay (source/net/NetRelay.hpp).
-        const Row kOnlineRows[] = {{Kind::Button, kNetHostOnline, "HOST ONLINE"},
-                                   {Kind::Button, kNetJoinOnline, "JOIN ONLINE"},
-                                   {Kind::Button, kBack, "BACK"}};
-        const Row kConnectingRows[] = {{Kind::Button, kNetCancelConnect, "CANCEL"}};
+        const Row kOnlineRows[] = {{Kind::Button, kNetHostOnline, ui::txt::front::HostOnline},
+                                   {Kind::Button, kNetJoinOnline, ui::txt::front::JoinOnline},
+                                   {Kind::Button, kBack, ui::txt::front::Back}};
+        const Row kConnectingRows[] = {{Kind::Button, kNetCancelConnect, ui::txt::front::Cancel}};
 #endif
-        const Row kDemoRows[] = {{Kind::Button, kDemoUplink, "UPLINK"},
-                                 {Kind::Button, kDemoHazard, "HAZARD COURSE"},
-                                 {Kind::Button, kBack, "BACK"}};
-        const Row kDemoChoiceRows[] = {{Kind::Button, kDemoContinue, "CONTINUE"}, {Kind::Button, kDemoRestart, "RESTART"}};
-        const Row kServeRows[] = {{Kind::Button, kDemoSend, "SEND THE GAME"}, {Kind::Button, kStopDemo, "STOP"}};
+        const Row kDemoRows[] = {{Kind::Button, kDemoUplink, ui::txt::front::Uplink},
+                                 {Kind::Button, kDemoHazard, ui::txt::front::HazardCourse},
+                                 {Kind::Button, kBack, ui::txt::front::Back}};
+        const Row kDemoChoiceRows[] = {{Kind::Button, kDemoContinue, ui::txt::front::Continue}, {Kind::Button, kDemoRestart, ui::txt::front::Restart}};
+        const Row kServeRows[] = {{Kind::Button, kDemoSend, ui::txt::front::SendTheGame}, {Kind::Button, kStopDemo, ui::txt::front::Stop}};
         // (CHAT and SPRAY: never on a console sent the game.)
-        const Row kNetPauseRows[] = {{Kind::Button, kResume, "RESUME"},
+        const Row kNetPauseRows[] = {{Kind::Button, kResume, ui::txt::menu::Resume},
 #ifndef HLDS_CHILD
-                                     {Kind::Button, kChat, "CHAT"},     {Kind::Button, kSpray, "SPRAY"},
-                                     {Kind::Button, kMic, "MIC"},
+                                     {Kind::Button, kChat, ui::txt::menu::Chat},     {Kind::Button, kSpray, ui::txt::menu::Spray},
+                                     {Kind::Button, kMic, ui::txt::menu::Mic},
 #endif
-                                     {Kind::Button, kOptions, "OPTIONS"},
-                                     {Kind::Button, kEndMatch, "END MATCH"}, {Kind::Button, kLeave, "LEAVE GAME"}};
+                                     {Kind::Button, kOptions, ui::txt::menu::Options},
+                                     {Kind::Button, kEndMatch, ui::txt::menu::EndMatch}, {Kind::Button, kLeave, ui::txt::menu::LeaveGame}};
         // The games found: made when they are shown, then BACK.
         constexpr int kFoundListed = 4;
         Row foundRows[kFoundListed + 1];
@@ -254,15 +257,15 @@ namespace hlrt
         int lobbyModelTried = 0, lobbyModelColours = -1;
         bool lobbyWas = false;
         int lobbyCharacter = 0;
-        const Row kHandRows[] = {{Kind::Button, kHandLeft, "LEFT HAND"}, {Kind::Button, kHandRight, "RIGHT HAND"}};
-        const Row kConfirmRows[] = {{Kind::Button, kYes, "YES"}, {Kind::Button, kNo, "NO"}};
+        const Row kHandRows[] = {{Kind::Button, kHandLeft, ui::txt::front::LeftHand}, {Kind::Button, kHandRight, ui::txt::front::RightHand}};
+        const Row kConfirmRows[] = {{Kind::Button, kYes, ui::txt::menu::Yes}, {Kind::Button, kNo, ui::txt::menu::No}};
         // NEW GAME, as the game's own dialog has it: how hard, then which
         // game -- the game itself, Uplink (only if it is on the card) -- or
         // not. (The Hazard Course is the title's own row.)
-        const Row kNewGameRows[] = {{Kind::Value, kNewSkill, "Difficulty"},
-                                    {Kind::Button, kPlayGame, "PLAY HALF-LIFE"},
-                                    {Kind::Button, kGameUplink, "PLAY UPLINK"},
-                                    {Kind::Button, kBack, "CANCEL"}};
+        const Row kNewGameRows[] = {{Kind::Value, kNewSkill, ui::txt::menu::Difficulty},
+                                    {Kind::Button, kPlayGame, ui::txt::menu::PlayHalfLife},
+                                    {Kind::Button, kGameUplink, ui::txt::menu::PlayUplink},
+                                    {Kind::Button, kBack, ui::txt::menu::Cancel}};
         char question[40];
         const char *const kFirmName[kFirmActions] = {"off", "fire", "use", "jump", "alt fire"};
 
@@ -633,9 +636,9 @@ namespace hlrt
         for (int i = 0; i < foundCount; ++i)
             foundRows[i] = Row{Kind::Button, kNetFound, foundList[i].line};
 #ifdef HLDS_CHILD
-        foundRows[foundCount] = Row{Kind::Button, kBack, "LOOK AGAIN"};
+        foundRows[foundCount] = Row{Kind::Button, kBack, ui::txt::front::LookAgain};
 #else
-        foundRows[foundCount] = Row{Kind::Button, kBack, "BACK"};
+        foundRows[foundCount] = Row{Kind::Button, kBack, ui::txt::front::Back};
 #endif
         page_ = Page::NetJoin;
         draw();
@@ -2231,7 +2234,7 @@ namespace hlrt
                 const bool dead = nameLocked || (item.id == kFirmPress && !Input::pressureSeen()) ||
                                   (item.id == kQuality && !isDSiMode()) || (item.id == kVibration && !slot2::hasRumble()) ||
                                   (item.id == kProfSpray && logos.count() == 0) || hostDead(item.id) != nullptr;
-                drawText(band, small, x + 8, textY, item.label, inkFor(small, dead ? kUiGrey : kUiWhite));
+                drawText(band, small, x + 8, textY, item.label.text(), inkFor(small, dead ? kUiGrey : kUiWhite));
                 if (item.kind == Kind::Slider)
                 {
                     // The track, how far along, and the knob.
@@ -2255,7 +2258,7 @@ namespace hlrt
                         std::snprintf(value, sizeof(value), "%s", kSkillNames[(skill_ - 1) % 3]);
                     else
                         settingValue(item.id, n, value, sizeof(value));
-                    const int room = kSheetListWidth - 16 - textWidth(small, item.label);
+                    const int room = kSheetListWidth - 16 - textWidth(small, item.label.text());
                     const int wide = textWidth(small, value) < room ? textWidth(small, value) : room;
                     drawFitted(band, small, x + kSheetListWidth - 4 - wide, textY, value,
                                inkFor(small, dead ? kUiGrey : kUiOrange), room);
@@ -3910,14 +3913,14 @@ namespace hlrt
             const TileBox box = multiTile(row);
             // (The smaller letters for a word too wide for its tile.)
             const FontView &medium = touchCanvas.font(kFontMedium);
-            const FontView &font = textWidth(medium, item.label) <= box.w - 4 ? medium : touchCanvas.font(kFontSmall);
+            const FontView &font = textWidth(medium, item.label.text()) <= box.w - 4 ? medium : touchCanvas.font(kFontSmall);
             const bool dead = whyDead(item.id) != nullptr;
             canvas.button(box.x, box.y, box.w, box.h, down && !dead);
             if (row < kTiles)
                 drawTileIcon(canvas, box.x + (box.w - 24) / 2, box.y + 4, row, !dead);
             drawTextCentred(canvas, font, box.x + box.w / 2,
                             row < kTiles ? box.y + box.h - font.height() - 4 : box.y + (box.h - font.height()) / 2,
-                            item.label, inkFor(font, dead ? kUiGrey : (down ? kUiWhite : kUiOrange)));
+                            item.label.text(), inkFor(font, dead ? kUiGrey : (down ? kUiWhite : kUiOrange)));
             return;
         }
         if (page_ == Page::Hand)
@@ -3925,7 +3928,7 @@ namespace hlrt
             const TileBox box = handTile(row);
             const FontView &font = touchCanvas.font(kFontMedium);
             canvas.button(box.x, box.y, box.w, box.h, down);
-            drawTextCentred(canvas, font, box.x + box.w / 2, box.y + (box.h - font.height()) / 2, item.label,
+            drawTextCentred(canvas, font, box.x + box.w / 2, box.y + (box.h - font.height()) / 2, item.label.text(),
                             inkFor(font, down ? kUiWhite : kUiOrange));
             return;
         }
@@ -3971,16 +3974,16 @@ namespace hlrt
         case kNewSkill:
         {
             static const char *const kNames[] = {"easy", "medium", "difficult"};
-            std::snprintf(text, sizeof(text), "%s: %s", item.label, kNames[(skill_ - 1) % 3]);
+            std::snprintf(text, sizeof(text), "%s: %s", item.label.text(), kNames[(skill_ - 1) % 3]);
             break;
         }
 #ifndef HLDS_CHILD
         case kMic:
-            std::snprintf(text, sizeof(text), "%s: %s", item.label, voice::muted() ? "OFF" : "ON");
+            std::snprintf(text, sizeof(text), "%s: %s", item.label.text(), voice::muted() ? "OFF" : "ON");
             break;
 #endif
         default:
-            std::snprintf(text, sizeof(text), "%s", item.label);
+            std::snprintf(text, sizeof(text), "%s", item.label.text());
             break;
         }
         canvas.button(at.x, y, at.width, at.height, down && !dead);
