@@ -98,16 +98,9 @@ namespace hldata
     /// The layouts in the order the options go through them.
     inline constexpr std::uint8_t kControlsOrder[kControlsSchemes] = {kControlsClassic, kControlsModern,
                                                                       kControlsButtons, kControlsCustom};
-    /// A layout's name, for the options.
-    inline const char *controlsName(std::uint8_t scheme)
-    {
-        return scheme == kControlsModern   ? "modern"
-               : scheme == kControlsCustom  ? "custom"
-               : scheme == kControlsButtons ? "buttons only"
-                                            : "classic";
-    }
 
-    /// What a button can be made to do.
+    /// What a button can be made to do (the menu's names for them: text/ui/
+    /// options.txt, in this order).
     enum Action : std::uint8_t
     {
         kActionForward,
@@ -137,16 +130,6 @@ namespace hldata
     inline constexpr int kActionsBeforeLook = kActionLookUp;
     /// ... and before version 26.
     inline constexpr int kActionsBeforeTalk = kActionTalk;
-    /// Their names, for the options.
-    inline const char *actionName(int action)
-    {
-        static const char *const kNames[kActionCount] = {"Forward", "Back",   "Left",   "Right",       "Fire",
-                                                     "Alt fire", "Jump",  "Duck",   "Reload",      "Use",
-                                                     "Next weapon", "Weapon before", "Flashlight", "Walk",
-                                                     "Look up",  "Look down", "Turn left", "Turn right",
-                                                     "Talk"};
-        return action >= 0 && action < kActionCount ? kNames[action] : "";
-    }
     /// The buttons that may be given an action: all but Start.
     inline constexpr std::uint32_t kAssignable = 0xFFFu & ~(1u << 3);
 

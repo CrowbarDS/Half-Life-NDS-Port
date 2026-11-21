@@ -267,7 +267,12 @@ namespace hlrt
                                     {Kind::Button, kGameUplink, ui::txt::menu::PlayUplink},
                                     {Kind::Button, kBack, ui::txt::menu::Cancel}};
         char question[40];
-        const char *const kFirmName[kFirmActions] = {"off", "fire", "use", "jump", "alt fire"};
+        namespace opt = ui::txt::options;
+        using ui::TextRef;
+        using ui::uiText;
+        const TextRef kFirmName[kFirmActions] = {opt::Off, opt::FirmFire, opt::FirmUse, opt::FirmJump, opt::FirmAltFire};
+        /// "on" or "off", as most rows' values are.
+        const char *onOff(bool on) { return uiText(on ? opt::On : opt::Off); }
 
         // Where the rows are: the first page's are big and few, the
         // others' as many as the screen holds.
@@ -1065,46 +1070,59 @@ namespace hlrt
         // --- The settings: a category a page, each a list of rows.
 
         constexpr int kSettingsChapters = 6;
-        const char *const kSettingsChapterNames[kSettingsChapters] = {"SOUND",     "GRAPHICS", "CONTROLS",
-                                                                      "TOUCH AIM", "BUTTONS",  "OTHER"};
-        const Row kSoundRows[] = {{Kind::Value, kDsp, "Room effects"},  {Kind::Value, kOutput, "Output"},
-                                  {Kind::Value, kQuality, "Quality"},    {Kind::Slider, kMusic, "Music"},
-                                  {Kind::Slider, kEffects, "Effects"},   {Kind::Slider, kVoices, "Voices"},
-                                  {Kind::Slider, kAmbience, "Ambience"}, {Kind::Value, kFocus, "Dialogue focus"}};
-        const char *const kQualityName[hldata::kQualityChoices] = {"standard", "high"};
-        const char *const kRoomName[hldata::kRoomChoices] = {"off", "classic", "enhanced"};
-        const char *const kOutputName[hldata::kOutputChoices] = {"speakers", "headphones", "mono"};
-        const char *const kFocusName[hldata::kFocusChoices] = {"off", "light", "strong"};
-        const Row kGraphicsRows[] = {{Kind::Value, kFog, "Fog"},
-                                     {Kind::Slider, kFogStrength, "Fog strength"},
-                                     {Kind::Slider, kFogDistance, "Fog distance"},
-                                     {Kind::Value, kFogColour, "Fog colour"},
-                                     {Kind::Value, kModelDetail, "Model detail"},
-                                     {Kind::Value, kWorldDetail, "World detail"},
-                                     {Kind::Value, kModelLimit, "Models at once"},
-                                     {Kind::Value, kDrawDistance, "Draw distance"},
-                                     {Kind::Value, kScreen, "Screen"}};
-        const Row kControlRows[] = {{Kind::Value, kScheme, "Layout"},          {Kind::Value, kHand, "Stylus hand"},
-                                    {Kind::Value, kDuck, "Crouch"},            {Kind::Value, kWalk, "Walk"},
-                                    {Kind::Value, kJumpButton, "Jump button"}, {Kind::Value, kTapJump, "Double tap jump"},
-                                    {Kind::Value, kTapUse, "Tap to use"},      {Kind::Value, kPadSide, "Pad left/right"},
-                                    {Kind::Value, kPadUp, "Pad up/down"},
-                                    {Kind::Value, kAutoaim, "Autoaim"}};
-        const Row kTouchRows[] = {{Kind::Slider, kAimSpeed, "Aim speed"},
-                                  {Kind::Slider, kPitchSpeed, "Up/down speed"},
-                                  {Kind::Value, kInvert, "Invert up/down"},
-                                  {Kind::Slider, kFirmness, "Firmness"},
-                                  {Kind::Value, kFirmPress, "Firm press"}};
-        const Row kOtherRows[] = {{Kind::Value, kBob, "View bob"},
-                                  {Kind::Value, kReadout, "Debug readout"},
-                                  {Kind::Value, kPopups, "Achievement pop-ups"},
-                                  {Kind::Value, kAutosave, "Auto save"},
-                                  {Kind::Value, kHideMapName, "Hide map name"},
+        const TextRef kSettingsChapterNames[kSettingsChapters] = {opt::ChapterSound, opt::ChapterGraphics,
+                                                                  opt::ChapterControls, opt::ChapterTouch,
+                                                                  opt::ChapterButtons, opt::ChapterOther};
+        const Row kSoundRows[] = {{Kind::Value, kDsp, opt::RowRoomEffects},  {Kind::Value, kOutput, opt::RowOutput},
+                                  {Kind::Value, kQuality, opt::RowQuality},    {Kind::Slider, kMusic, opt::RowMusic},
+                                  {Kind::Slider, kEffects, opt::RowEffects},   {Kind::Slider, kVoices, opt::RowVoices},
+                                  {Kind::Slider, kAmbience, opt::RowAmbience}, {Kind::Value, kFocus, opt::RowFocus}};
+        const TextRef kQualityName[hldata::kQualityChoices] = {opt::QualityStandard, opt::QualityHigh};
+        const TextRef kRoomName[hldata::kRoomChoices] = {opt::Off, opt::RoomClassic, opt::RoomEnhanced};
+        const TextRef kOutputName[hldata::kOutputChoices] = {opt::OutputSpeakers, opt::OutputHeadphones, opt::OutputMono};
+        const TextRef kFocusName[hldata::kFocusChoices] = {opt::Off, opt::FocusLight, opt::FocusStrong};
+        const TextRef kFogTypeName[hldata::kFogTypes] = {opt::Off, opt::FogWhenNeeded, opt::FogAlways};
+        const TextRef kFogColourName[hldata::kFogColours] = {opt::FogBlack, opt::FogGrey, opt::FogBlue, opt::FogBrown,
+                                                             opt::FogGreen};
+        const TextRef kDetailName[hldata::kDetailLevels] = {opt::DetailLow, opt::DetailNormal, opt::DetailHigh};
+        const TextRef kDrawDistanceName[hldata::kDrawDistances] = {opt::DistanceFar, opt::DistanceMedium,
+                                                                   opt::DistanceNear};
+        const Row kGraphicsRows[] = {{Kind::Value, kFog, opt::RowFog},
+                                     {Kind::Slider, kFogStrength, opt::RowFogStrength},
+                                     {Kind::Slider, kFogDistance, opt::RowFogDistance},
+                                     {Kind::Value, kFogColour, opt::RowFogColour},
+                                     {Kind::Value, kModelDetail, opt::RowModelDetail},
+                                     {Kind::Value, kWorldDetail, opt::RowWorldDetail},
+                                     {Kind::Value, kModelLimit, opt::RowModelLimit},
+                                     {Kind::Value, kDrawDistance, opt::RowDrawDistance},
+                                     {Kind::Value, kScreen, opt::RowScreen}};
+        const Row kControlRows[] = {{Kind::Value, kScheme, opt::RowLayout},          {Kind::Value, kHand, opt::RowHand},
+                                    {Kind::Value, kDuck, opt::RowCrouch},            {Kind::Value, kWalk, opt::RowWalk},
+                                    {Kind::Value, kJumpButton, opt::RowJumpButton}, {Kind::Value, kTapJump, opt::RowTapJump},
+                                    {Kind::Value, kTapUse, opt::RowTapUse},          {Kind::Value, kPadSide, opt::RowPadSide},
+                                    {Kind::Value, kPadUp, opt::RowPadUp},
+                                    {Kind::Value, kAutoaim, opt::RowAutoaim}};
+        const Row kTouchRows[] = {{Kind::Slider, kAimSpeed, opt::RowAimSpeed},
+                                  {Kind::Slider, kPitchSpeed, opt::RowPitchSpeed},
+                                  {Kind::Value, kInvert, opt::RowInvert},
+                                  {Kind::Slider, kFirmness, opt::RowFirmness},
+                                  {Kind::Value, kFirmPress, opt::RowFirmPress}};
+        const Row kOtherRows[] = {{Kind::Value, kBob, opt::RowBob},
+                                  {Kind::Value, kReadout, opt::RowReadout},
+                                  {Kind::Value, kPopups, opt::RowPopups},
+                                  {Kind::Value, kAutosave, opt::RowAutosave},
+                                  {Kind::Value, kHideMapName, opt::RowHideMapName},
 #ifndef HLDS_CHILD
-                                  {Kind::Value, kVibration, "Vibration"},
+                                  {Kind::Value, kVibration, opt::RowVibration},
 #endif
-                                  {Kind::Value, kCheats, "Cheats"},
-                                  {Kind::Value, kKeyboard, "Keyboard"}};
+                                  {Kind::Value, kCheats, opt::RowCheats},
+                                  {Kind::Value, kKeyboard, opt::RowKeyboard}};
+        /// BUTTONS' rows: an action's name (HlControls.hpp's Action order).
+        const TextRef kActionName[kActionCount] = {
+            opt::ActionForward, opt::ActionBack,       opt::ActionLeft,       opt::ActionRight,      opt::ActionFire,
+            opt::ActionAltFire, opt::ActionJump,       opt::ActionDuck,       opt::ActionReload,     opt::ActionUse,
+            opt::ActionNextWeapon, opt::ActionPrevWeapon, opt::ActionLamp,   opt::ActionWalk,       opt::ActionLookUp,
+            opt::ActionLookDown, opt::ActionTurnLeft,  opt::ActionTurnRight,  opt::ActionTalk};
         /// Category `chapter`'s rows (BUTTONS: one an action, made here).
         const Row *settingsRows(int chapter, int &count)
         {
@@ -1117,7 +1135,7 @@ namespace hlrt
             case 3: count = static_cast<int>(sizeof(kTouchRows) / sizeof(kTouchRows[0])); return kTouchRows;
             case 4:
                 for (int a = 0; a < kActionCount; ++a)
-                    keyRows[a] = Row{Kind::Value, kKey, actionName(a)};
+                    keyRows[a] = Row{Kind::Value, kKey, kActionName[a]};
                 count = kActionCount;
                 return keyRows;
             default: count = static_cast<int>(sizeof(kOtherRows) / sizeof(kOtherRows[0])); return kOtherRows;
@@ -1517,68 +1535,75 @@ namespace hlrt
                 std::snprintf(out, size, "%s", logos.count() == 0 ? "none here" : logos.name(settings.spray % logos.count()));
                 break;
             case kProfSprayColour: std::snprintf(out, size, "%s", kSprayColourName[settings.sprayColour % kSprayColours]); break;
-            case kDsp: std::snprintf(out, size, "%s", kRoomName[settings.roomEffects]); break;
-            case kOutput: std::snprintf(out, size, "%s", kOutputName[settings.outputMode]); break;
-            case kFocus: std::snprintf(out, size, "%s", kFocusName[settings.dialogueFocus]); break;
+            case kDsp: std::snprintf(out, size, "%s", uiText(kRoomName[settings.roomEffects])); break;
+            case kOutput: std::snprintf(out, size, "%s", uiText(kOutputName[settings.outputMode])); break;
+            case kFocus: std::snprintf(out, size, "%s", uiText(kFocusName[settings.dialogueFocus])); break;
             case kQuality:
-                std::snprintf(out, size, "%s", isDSiMode() ? kQualityName[settings.soundQuality] : "standard (DS)");
+                std::snprintf(out, size, "%s", uiText(isDSiMode() ? kQualityName[settings.soundQuality] : opt::QualityDs));
                 break;
-            case kReadout: std::snprintf(out, size, "%s", settings.debugReadout ? "on" : "off"); break;
-            case kBob: std::snprintf(out, size, "%s", settings.viewBob ? "on" : "off"); break;
-            case kAutoaim: std::snprintf(out, size, "%s", settings.autoaim ? "on" : "off"); break;
-            case kPopups: std::snprintf(out, size, "%s", settings.achievementPopups ? "on" : "off"); break;
-            case kAutosave: std::snprintf(out, size, "%s", settings.autosave ? "on" : "off"); break;
-            case kHideMapName: std::snprintf(out, size, "%s", settings.hideMapName ? "on" : "off"); break;
+            case kReadout: std::snprintf(out, size, "%s", onOff(settings.debugReadout)); break;
+            case kBob: std::snprintf(out, size, "%s", onOff(settings.viewBob)); break;
+            case kAutoaim: std::snprintf(out, size, "%s", onOff(settings.autoaim)); break;
+            case kPopups: std::snprintf(out, size, "%s", onOff(settings.achievementPopups)); break;
+            case kAutosave: std::snprintf(out, size, "%s", onOff(settings.autosave)); break;
+            case kHideMapName: std::snprintf(out, size, "%s", onOff(settings.hideMapName)); break;
 #ifndef HLDS_CHILD
             case kVibration:
                 std::snprintf(out, size, "%s",
-                              !slot2::hasRumble()      ? "no Rumble Pak"
-                              : settings.vibration == 0 ? "off"
-                              : settings.vibration == 1 ? "light"
-                                                        : "strong");
+                              uiText(!slot2::hasRumble()      ? opt::NoRumblePak
+                                     : settings.vibration == 0 ? opt::Off
+                                     : settings.vibration == 1 ? opt::VibrationLight
+                                                               : opt::VibrationStrong));
                 break;
 #endif
-            case kCheats: std::snprintf(out, size, "%s", settings.cheats ? "on" : "off"); break;
+            case kCheats: std::snprintf(out, size, "%s", onOff(settings.cheats)); break;
             case kKeyboard:
-                std::snprintf(out, size, "%s", settings.keyboardLayout == hldata::kKeyboardAzerty ? "AZERTY" : "QWERTY");
+                std::snprintf(out, size, "%s", uiText(settings.keyboardLayout == hldata::kKeyboardAzerty ? opt::KeyboardAzerty : opt::KeyboardQwerty));
                 break;
-            case kFog: std::snprintf(out, size, "%s", kFogTypeName[settings.graphics.fog]); break;
-            case kFogColour: std::snprintf(out, size, "%s", kFogColourName[settings.graphics.fogColour]); break;
-            case kModelDetail: std::snprintf(out, size, "%s", kDetailName[settings.graphics.modelDetail]); break;
-            case kWorldDetail: std::snprintf(out, size, "%s", kDetailName[settings.graphics.worldDetail]); break;
+            case kFog: std::snprintf(out, size, "%s", uiText(kFogTypeName[settings.graphics.fog])); break;
+            case kFogColour: std::snprintf(out, size, "%s", uiText(kFogColourName[settings.graphics.fogColour])); break;
+            case kModelDetail: std::snprintf(out, size, "%s", uiText(kDetailName[settings.graphics.modelDetail])); break;
+            case kWorldDetail: std::snprintf(out, size, "%s", uiText(kDetailName[settings.graphics.worldDetail])); break;
             case kModelLimit:
                 if (settings.graphics.modelLimit == 0)
-                    std::snprintf(out, size, "auto");
+                    std::snprintf(out, size, "%s", uiText(opt::Auto));
                 else
                     std::snprintf(out, size, "%d", settings.graphics.modelLimit);
                 break;
-            case kDrawDistance: std::snprintf(out, size, "%s", kDrawDistanceName[settings.graphics.drawDistance]); break;
+            case kDrawDistance: std::snprintf(out, size, "%s", uiText(kDrawDistanceName[settings.graphics.drawDistance])); break;
             case kScreen:
                 if (settings.screenShape == hldata::kScreenAuto)
-                    std::snprintf(out, size, "auto (%s)", camera.wide ? "16:10" : "4:3");
+                    std::snprintf(out, size, uiText(opt::ScreenAuto), uiText(camera.wide ? opt::ScreenWide : opt::ScreenNarrow));
                 else
-                    std::snprintf(out, size, "%s", settings.screenShape == hldata::kScreenWide ? "16:10" : "4:3");
+                    std::snprintf(out, size, "%s",
+                                  uiText(settings.screenShape == hldata::kScreenWide ? opt::ScreenWide : opt::ScreenNarrow));
                 break;
             // (Which side of the touch screen its column of buttons is, and
             // which hand has the pad and the trigger.)
-            case kHand: std::snprintf(out, size, "%s", settings.leftHanded ? "left" : "right"); break;
-            case kScheme: std::snprintf(out, size, "%s", controlsName(settings.controlScheme)); break;
-            case kDuck: std::snprintf(out, size, "%s", settings.duckToggle ? "toggle" : "hold"); break;
-            case kWalk: std::snprintf(out, size, "%s", settings.walkToggle ? "toggle" : "hold"); break;
-            case kJumpButton: std::snprintf(out, size, "%s", settings.jumpWalks ? "walk" : "jump"); break;
-            case kTapUse: std::snprintf(out, size, "%s", settings.tapUse ? "on" : "off"); break;
+            case kHand: std::snprintf(out, size, "%s", uiText(settings.leftHanded ? opt::HandLeft : opt::HandRight)); break;
+            case kScheme:
+                std::snprintf(out, size, "%s",
+                              uiText(settings.controlScheme == hldata::kControlsModern    ? opt::LayoutModern
+                                     : settings.controlScheme == hldata::kControlsCustom  ? opt::LayoutCustom
+                                     : settings.controlScheme == hldata::kControlsButtons ? opt::LayoutButtons
+                                                                                          : opt::LayoutClassic));
+                break;
+            case kDuck: std::snprintf(out, size, "%s", uiText(settings.duckToggle ? opt::Toggle : opt::Hold)); break;
+            case kWalk: std::snprintf(out, size, "%s", uiText(settings.walkToggle ? opt::Toggle : opt::Hold)); break;
+            case kJumpButton: std::snprintf(out, size, "%s", uiText(settings.jumpWalks ? opt::JumpWalks : opt::JumpJumps)); break;
+            case kTapUse: std::snprintf(out, size, "%s", onOff(settings.tapUse)); break;
             case kTapJump:
                 // (Where nothing else jumps, it stays on: HlControls.hpp's tapJumps.)
                 std::snprintf(out, size, "%s",
-                              !hldata::jumpsOtherwise(settings.controls()) ? "on (no other jump)"
-                                                                           : (settings.tapJump ? "on" : "off"));
+                              !hldata::jumpsOtherwise(settings.controls()) ? uiText(opt::OnNoOtherJump)
+                                                                           : onOff(settings.tapJump));
                 break;
-            case kInvert: std::snprintf(out, size, "%s", settings.invertPitch ? "on" : "off"); break;
+            case kInvert: std::snprintf(out, size, "%s", onOff(settings.invertPitch)); break;
             case kFirmPress:
-                std::snprintf(out, size, "%s", Input::pressureSeen() ? kFirmName[settings.firmPress % kFirmActions] : "n/a here");
+                std::snprintf(out, size, "%s", uiText(Input::pressureSeen() ? kFirmName[settings.firmPress % kFirmActions] : opt::FirmNotHere));
                 break;
-            case kPadSide: std::snprintf(out, size, "%s", settings.padTurns ? "turn" : "sidestep"); break;
-            case kPadUp: std::snprintf(out, size, "%s", settings.padLooks ? "look" : "move"); break;
+            case kPadSide: std::snprintf(out, size, "%s", uiText(settings.padTurns ? opt::PadTurn : opt::PadSidestep)); break;
+            case kPadUp: std::snprintf(out, size, "%s", uiText(settings.padLooks ? opt::PadLook : opt::PadMove)); break;
             case kKey:
             {
                 // Its buttons (or the question, while asked).
@@ -1599,61 +1624,71 @@ namespace hlrt
             default: out[0] = '\0'; break;
             }
         }
-        /// What a setting does, for the box under the list.
-        const char *settingHelp(Id id)
+        /// What an OPTIONS row does: where its line of text/ui/options.txt
+        /// begins, or kNoLine (one lookup of u16s, not a call a row).
+        constexpr std::uint16_t kNoLine = 0xFFFF;
+        std::uint16_t optionsHelpLine(Id id)
         {
             switch (id)
             {
-            case kDsp:
-                return DspAudio::available()
-                           ? "The rooms heard: off, as the game has them, or richer from the DSi's sound processor."
-                           : "The rooms heard -- a tunnel, a chamber, under water -- as the game has them, or off.";
-            case kOutput: return "Speakers: a little narrower, for the console's own. Headphones: all of it. Mono: one.";
-            case kQuality:
-                return isDSiMode() ? "High: the sound made at the rate the DSi's speakers play it, 47.6 kHz. A little more work."
-                                   : "On a DSi: the sound made at the rate its speakers play it.";
-            case kMusic: return "How loud the music is.";
-            case kEffects: return "How loud the guns, the blows and the world are.";
-            case kVoices: return "How loud the people and the monsters speak.";
-            case kAmbience: return "How loud the hum and drip of a place is.";
-            case kFocus: return "While someone speaks, the music and the hum of a place are let down: off, a little, or more.";
-            case kFog: return "Fog, where the view ends: off, only where the map is too big to draw whole, or always.";
-            case kFogStrength: return "How thick the fog is.";
-            case kFogDistance: return "How near the fog begins.";
-            case kFogColour: return "The colour the far distance fades into.";
-            case kModelDetail: return "How much of the people and monsters is drawn.";
-            case kWorldDetail: return "How much of the walls is drawn far off.";
-            case kModelLimit: return "How many people and monsters are drawn at once: auto, or a number.";
-            case kDrawDistance: return "How far the world is drawn.";
-            case kScreen:
-                return "The top screen's shape. 16:10 is for a 3DS whose screen TWPatch made wide (TWiLight Menu++: "
-                       "Screen Aspect Ratio); auto follows the console.";
-            case kScheme: return "Which button does what: classic, modern, buttons only (no stylus), or your own (BUTTONS).";
-            case kHand: return "Which hand holds the stylus: the touch screen's buttons go to the other side.";
-            case kDuck: return "Crouch held down, or pressed once to crouch and again to stand.";
-            case kWalk: return "Walk held down, or pressed once to walk and again to run.";
-            case kJumpButton: return "What the jump button does: jump, or walk.";
-            case kTapJump: return "Two taps on the aim pad jump. Off, only the jump button does.";
-            case kTapUse: return "A quick tap on the aim pad is USE, in the modern layout. Off, USE's button does it.";
-            case kPadSide: return "What the pad's left and right do: step aside, or turn.";
-            case kPadUp: return "What the pad's up and down do: walk, or look up and down.";
-            case kAutoaim: return "The aim bends towards a monster near it, on EASY and MEDIUM, as the game's does.";
-            case kAimSpeed: return "How far the view turns across for a stroke of the stylus.";
-            case kPitchSpeed: return "How far the view turns up and down for a stroke of the stylus.";
-            case kInvert: return "The stylus moved down looks up.";
-            case kFirmness: return "How light a touch of the stylus is ignored.";
-            case kFirmPress: return "What pressing the stylus hard does, where the console can tell.";
-            case kBob: return "The view bobs with a walk and leans into a step aside, as the game's does.";
-            case kReadout: return "Numbers along the top of the touch screen: how fast, where, how much.";
-            case kPopups: return "An achievement earned is shown on the top screen as it is. Off, it is still earned.";
-            case kAutosave: return "The game saves at a map's save points and on arriving in a map. Off, only your own saves are made.";
-            case kHideMapName: return "The loading screen does not say which map is coming. A match's always says it.";
+            case kDsp: return opt::HelpRoomEffects.at;
+            case kQuality: return opt::HelpQualityDs.at;
+            case kOutput: return opt::HelpOutput.at;
+            case kMusic: return opt::HelpMusic.at;
+            case kEffects: return opt::HelpEffects.at;
+            case kVoices: return opt::HelpVoices.at;
+            case kAmbience: return opt::HelpAmbience.at;
+            case kFocus: return opt::HelpFocus.at;
+            case kFog: return opt::HelpFog.at;
+            case kFogStrength: return opt::HelpFogStrength.at;
+            case kFogDistance: return opt::HelpFogDistance.at;
+            case kFogColour: return opt::HelpFogColour.at;
+            case kModelDetail: return opt::HelpModelDetail.at;
+            case kWorldDetail: return opt::HelpWorldDetail.at;
+            case kModelLimit: return opt::HelpModelLimit.at;
+            case kDrawDistance: return opt::HelpDrawDistance.at;
+            case kScreen: return opt::HelpScreen.at;
+            case kScheme: return opt::HelpLayout.at;
+            case kHand: return opt::HelpHand.at;
+            case kDuck: return opt::HelpCrouch.at;
+            case kWalk: return opt::HelpWalk.at;
+            case kJumpButton: return opt::HelpJumpButton.at;
+            case kTapJump: return opt::HelpTapJump.at;
+            case kTapUse: return opt::HelpTapUse.at;
+            case kPadSide: return opt::HelpPadSide.at;
+            case kPadUp: return opt::HelpPadUp.at;
+            case kAutoaim: return opt::HelpAutoaim.at;
+            case kAimSpeed: return opt::HelpAimSpeed.at;
+            case kPitchSpeed: return opt::HelpPitchSpeed.at;
+            case kInvert: return opt::HelpInvert.at;
+            case kFirmness: return opt::HelpFirmness.at;
+            case kFirmPress: return opt::HelpFirmPress.at;
+            case kBob: return opt::HelpBob.at;
+            case kReadout: return opt::HelpReadout.at;
+            case kPopups: return opt::HelpPopups.at;
+            case kAutosave: return opt::HelpAutosave.at;
+            case kHideMapName: return opt::HelpHideMapName.at;
 #ifndef HLDS_CHILD
-            case kVibration: return "How hard a Rumble Pak in the GBA slot shakes when you are hit, shoot, land hard or the ground shakes.";
+            case kVibration: return opt::HelpVibration.at;
 #endif
-            case kCheats: return "Lets the COMMAND line's cheats work. On, Cheater is earned and no other achievement is until it is off.";
-            case kKeyboard: return "Where the letters are on the touch keyboard: QWERTY or AZERTY.";
-            case kKey: return "Touch an action, then press its button. START: leave it as it was.";
+            case kCheats: return opt::HelpCheats.at;
+            case kKeyboard: return opt::HelpKeyboard.at;
+            case kKey: return opt::HelpKey.at;
+            default: return kNoLine;
+            }
+        }
+        /// What a setting does, for the box under the list.
+        const char *settingHelp(Id id)
+        {
+            // (Two say what this console has.)
+            if (id == kDsp && DspAudio::available())
+                return uiText(opt::HelpRoomEffectsDsp);
+            if (id == kQuality && isDSiMode())
+                return uiText(opt::HelpQualityDsi);
+            if (const std::uint16_t line = optionsHelpLine(id); line != kNoLine)
+                return uiText(TextRef{&ui::kTextOptions, line});
+            switch (id)
+            {
 #ifdef HLDS_CHILD
             case kProfName: return "The name the others see in a match: this console's own.";
 #else
@@ -2116,7 +2151,7 @@ namespace hlrt
         }
         const int chapter = sheetChapter();
         const char *name = page_ == Page::Achievements ? hldata::kAchChapterNames[chapter]
-                           : page_ == Page::Settings   ? kSettingsChapterNames[chapter]
+                           : page_ == Page::Settings   ? uiText(kSettingsChapterNames[chapter])
                            : page_ == Page::Profile    ? "PROFILE"
                            : page_ == Page::NetHost    ? (chapter == kHostMatch ? "MATCH" : chapter == kHostPlayers ? "PLAYERS" : "NEXT MAP")
                            : page_ == Page::NetLobby   ? "LOBBY"
@@ -2598,22 +2633,19 @@ namespace hlrt
         {
             if (capturing_ >= 0)
             {
-                drawWrapped(canvas, small, x, y, g.line, 0, kLast, "Press its button now. START: leave it as it was.",
+                drawWrapped(canvas, small, x, y, g.line, 0, kLast, uiText(opt::PressItsButton),
                             inkFor(small, kUiOrange), kWidth);
                 return;
             }
             if (!chosen)
             {
-                drawWrapped(canvas, small, x, y, g.line, 0, kLast,
-                            "Touch a setting to change it, or to read what it does; drag a slider. Slide the list, or "
-                            "touch < >, for the other settings. RESET: this page's as they were at first.",
-                            inkFor(small, kUiGrey), kWidth);
+                drawWrapped(canvas, small, x, y, g.line, 0, kLast, uiText(opt::HelpSheet), inkFor(small, kUiGrey), kWidth);
                 return;
             }
             int count = 0;
             const Row &item = settingsRows(chapter, count)[sheetSelected_];
             const char *help = item.id == kFirmPress && !Input::pressureSeen()
-                                   ? "This console does not say how hard the stylus presses: not used here."
+                                   ? uiText(opt::HelpFirmPressNoSense)
                                    : settingHelp(item.id);
             drawWrapped(canvas, small, x, y, g.line, 0, item.id == kScheme ? 1 : kLast, help, inkFor(small, kUiWhite), kWidth);
             // (The layout: what the buttons then do, as much as there is room for.)
@@ -3195,7 +3227,7 @@ namespace hlrt
             {
                 char question[40];
                 std::snprintf(question, sizeof(question), "RESET %s?",
-                              page_ == Page::Profile ? "PROFILE" : kSettingsChapterNames[settingsChapter_]);
+                              page_ == Page::Profile ? "PROFILE" : uiText(kSettingsChapterNames[settingsChapter_]));
                 sheetAsk(kAskReset, question);
                 return Action::None;
             }

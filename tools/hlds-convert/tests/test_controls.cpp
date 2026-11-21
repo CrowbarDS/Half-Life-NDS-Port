@@ -681,9 +681,8 @@ namespace
         check(out.jump, "... L is the shift: L+X jumps");
         out = press(set, left, kButtonR, blank);
         check(out.attack, "... R fires");
-        check(jumpsOtherwise(set) && std::strcmp(controlsName(kControlsButtons), "buttons only") == 0 &&
-                  controlsLegend(set, 0) != nullptr && controlsLegend(set, 4) == nullptr,
-              "it jumps without the double tap, and has a name and a legend");
+        check(jumpsOtherwise(set) && controlsLegend(set, 0) != nullptr && controlsLegend(set, 4) == nullptr,
+              "it jumps without the double tap, and has a legend");
 
         // A custom layout's look buttons.
         ControlSettings custom;

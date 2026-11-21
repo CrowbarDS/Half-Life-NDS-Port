@@ -1,0 +1,185 @@
+# OPTIONS: the settings sheet's chapters, its rows, what their values are
+# called and what each one does (source/ui/Menu.cpp). Seen from the title and
+# from the pause menu alike.
+@home resident
+
+# The chapters, as the sheet's title has them.
+ChapterSound = SOUND
+ChapterGraphics = GRAPHICS
+ChapterControls = CONTROLS
+ChapterTouch = TOUCH AIM
+ChapterButtons = BUTTONS
+ChapterOther = OTHER
+
+# SOUND
+RowRoomEffects = Room effects
+RowOutput = Output
+RowQuality = Quality
+RowMusic = Music
+RowEffects = Effects
+RowVoices = Voices
+RowAmbience = Ambience
+RowFocus = Dialogue focus
+# GRAPHICS
+RowFog = Fog
+RowFogStrength = Fog strength
+RowFogDistance = Fog distance
+RowFogColour = Fog colour
+RowModelDetail = Model detail
+RowWorldDetail = World detail
+RowModelLimit = Models at once
+RowDrawDistance = Draw distance
+RowScreen = Screen
+# CONTROLS
+RowLayout = Layout
+RowHand = Stylus hand
+RowCrouch = Crouch
+RowWalk = Walk
+RowJumpButton = Jump button
+RowTapJump = Double tap jump
+RowTapUse = Tap to use
+RowPadSide = Pad left/right
+RowPadUp = Pad up/down
+RowAutoaim = Autoaim
+# TOUCH AIM
+RowAimSpeed = Aim speed
+RowPitchSpeed = Up/down speed
+RowInvert = Invert up/down
+RowFirmness = Firmness
+RowFirmPress = Firm press
+# OTHER
+RowBob = View bob
+RowReadout = Debug readout
+RowPopups = Achievement pop-ups
+RowAutosave = Auto save
+RowHideMapName = Hide map name
+RowVibration = Vibration
+RowCheats = Cheats
+RowKeyboard = Keyboard
+
+# BUTTONS: one row an action, in HlControls.hpp's Action order.
+ActionForward = Forward
+ActionBack = Back
+ActionLeft = Left
+ActionRight = Right
+ActionFire = Fire
+ActionAltFire = Alt fire
+ActionJump = Jump
+ActionDuck = Duck
+ActionReload = Reload
+ActionUse = Use
+ActionNextWeapon = Next weapon
+ActionPrevWeapon = Weapon before
+ActionLamp = Flashlight
+ActionWalk = Walk
+ActionLookUp = Look up
+ActionLookDown = Look down
+ActionTurnLeft = Turn left
+ActionTurnRight = Turn right
+ActionTalk = Talk
+
+# The values. Each list in the order of the setting's numbers.
+On = on
+Off = off
+OnNoOtherJump = on (no other jump)
+Hold = hold
+Toggle = toggle
+QualityStandard = standard
+QualityHigh = high
+QualityDs = standard (DS)
+RoomClassic = classic
+RoomEnhanced = enhanced
+OutputSpeakers = speakers
+OutputHeadphones = headphones
+OutputMono = mono
+FocusLight = light
+FocusStrong = strong
+FogWhenNeeded = when needed
+FogAlways = always
+FogBlack = black
+FogGrey = grey
+FogBlue = blue
+FogBrown = brown
+FogGreen = green
+DetailLow = low
+DetailNormal = normal
+DetailHigh = high
+DistanceFar = far
+DistanceMedium = medium
+DistanceNear = near
+Auto = auto
+# (The shape it follows: "auto (16:10)".)
+ScreenAuto = auto (%s)
+ScreenWide = 16:10
+ScreenNarrow = 4:3
+HandLeft = left
+HandRight = right
+LayoutClassic = classic
+LayoutModern = modern
+LayoutButtons = buttons only
+LayoutCustom = custom
+JumpWalks = walk
+JumpJumps = jump
+PadTurn = turn
+PadSidestep = sidestep
+PadLook = look
+PadMove = move
+FirmFire = fire
+FirmUse = use
+FirmJump = jump
+FirmAltFire = alt fire
+FirmNotHere = n/a here
+NoRumblePak = no Rumble Pak
+VibrationLight = light
+VibrationStrong = strong
+
+# What each row does, for the box under the list.
+HelpRoomEffectsDsp = The rooms heard: off, as the game has them, or richer from the DSi's sound processor.
+HelpRoomEffects = The rooms heard -- a tunnel, a chamber, under water -- as the game has them, or off.
+HelpOutput = Speakers: a little narrower, for the console's own. Headphones: all of it. Mono: one.
+HelpQualityDsi = High: the sound made at the rate the DSi's speakers play it, 47.6 kHz. A little more work.
+HelpQualityDs = On a DSi: the sound made at the rate its speakers play it.
+HelpMusic = How loud the music is.
+HelpEffects = How loud the guns, the blows and the world are.
+HelpVoices = How loud the people and the monsters speak.
+HelpAmbience = How loud the hum and drip of a place is.
+HelpFocus = While someone speaks, the music and the hum of a place are let down: off, a little, or more.
+HelpFog = Fog, where the view ends: off, only where the map is too big to draw whole, or always.
+HelpFogStrength = How thick the fog is.
+HelpFogDistance = How near the fog begins.
+HelpFogColour = The colour the far distance fades into.
+HelpModelDetail = How much of the people and monsters is drawn.
+HelpWorldDetail = How much of the walls is drawn far off.
+HelpModelLimit = How many people and monsters are drawn at once: auto, or a number.
+HelpDrawDistance = How far the world is drawn.
+HelpScreen = The top screen's shape. 16:10 is for a 3DS whose screen TWPatch made wide (TWiLight Menu++: Screen Aspect Ratio); auto follows the console.
+HelpLayout = Which button does what: classic, modern, buttons only (no stylus), or your own (BUTTONS).
+HelpHand = Which hand holds the stylus: the touch screen's buttons go to the other side.
+HelpCrouch = Crouch held down, or pressed once to crouch and again to stand.
+HelpWalk = Walk held down, or pressed once to walk and again to run.
+HelpJumpButton = What the jump button does: jump, or walk.
+HelpTapJump = Two taps on the aim pad jump. Off, only the jump button does.
+HelpTapUse = A quick tap on the aim pad is USE, in the modern layout. Off, USE's button does it.
+HelpPadSide = What the pad's left and right do: step aside, or turn.
+HelpPadUp = What the pad's up and down do: walk, or look up and down.
+HelpAutoaim = The aim bends towards a monster near it, on EASY and MEDIUM, as the game's does.
+HelpAimSpeed = How far the view turns across for a stroke of the stylus.
+HelpPitchSpeed = How far the view turns up and down for a stroke of the stylus.
+HelpInvert = The stylus moved down looks up.
+HelpFirmness = How light a touch of the stylus is ignored.
+HelpFirmPress = What pressing the stylus hard does, where the console can tell.
+HelpBob = The view bobs with a walk and leans into a step aside, as the game's does.
+HelpReadout = Numbers along the top of the touch screen: how fast, where, how much.
+HelpPopups = An achievement earned is shown on the top screen as it is. Off, it is still earned.
+HelpAutosave = The game saves at a map's save points and on arriving in a map. Off, only your own saves are made.
+HelpHideMapName = The loading screen does not say which map is coming. A match's always says it.
+HelpVibration = How hard a Rumble Pak in the GBA slot shakes when you are hit, shoot, land hard or the ground shakes.
+HelpCheats = Lets the COMMAND line's cheats work. On, Cheater is earned and no other achievement is until it is off.
+HelpKeyboard = Where the letters are on the touch keyboard: QWERTY or AZERTY.
+HelpKey = Touch an action, then press its button. START: leave it as it was.
+KeyboardQwerty = QWERTY
+KeyboardAzerty = AZERTY
+HelpFirmPressNoSense = This console does not say how hard the stylus presses: not used here.
+# The box under the list, while a button is asked for, and before a row is touched.
+PressItsButton = Press its button now. START: leave it as it was.
+HelpSheet = Touch a setting to change it, or to read what it does; drag a slider. Slide the list, or touch < >, for the other settings. RESET: this page's as they were at first.

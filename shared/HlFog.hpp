@@ -46,14 +46,11 @@ namespace hldata
         }
     };
 
-    /// The colours the fog may be (five bits each of red, green, blue), and
-    /// what the menu calls them.
+    /// The colours the fog may be (five bits each of red, green, blue). The
+    /// menu's names for them, and for the other graphics settings' values,
+    /// are in text/ui/options.txt.
     inline constexpr std::uint16_t kFogColour[kFogColours] = {
         0, 10 | 10 << 5 | 11 << 10, 6 | 9 << 5 | 14 << 10, 12 | 9 << 5 | 6 << 10, 5 | 10 << 5 | 6 << 10};
-    inline constexpr const char *const kFogColourName[kFogColours] = {"black", "grey", "blue", "brown", "green"};
-    inline constexpr const char *const kFogTypeName[kFogTypes] = {"off", "when needed", "always"};
-    inline constexpr const char *const kDetailName[kDetailLevels] = {"low", "normal", "high"};
-    inline constexpr const char *const kDrawDistanceName[kDrawDistances] = {"far", "medium", "near"};
 
     /// The hardware's 32 densities (0..127) for a fog of `strength` (0..10):
     /// none at its near edge, `strength` tenths of whole at its far one,
