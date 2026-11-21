@@ -349,6 +349,62 @@ def hurts(pc, ds):
         print(f'  {"":<14}{said(d)}')
 
 
+# The game's decal names (without "{" and number) as the port's families.
+MARK_FAMILY = {'smscorch': 'scorch', 'bproof': 'break', 'lambda': 'sign', 'mommablob': 'yblood',
+               'gargstomp': 'wall'}
+
+
+def marks(pc, ds):
+    """The marks left (the decal rows), by family: as many, the same places
+    and walls. The game's player bullets are marked by its client, not its
+    server: their marks are taken from the shot rows that stopped on the
+    world or a brush. Pictures and turns are not compared (each side draws
+    its own randoms)."""
+    m_pc = [dict(r, family=MARK_FAMILY.get(r['family'], r['family'])) for r in pc.get('decal', [])]
+    for r in pc.get('shot', []):
+        if float(r['frac']) < 1.0 and (r['hit'] == 'world' or r['hit'].startswith('*')):
+            m_pc.append({'frame': r['frame'], 'x': r['ex'], 'y': r['ey'], 'z': r['ez'], 'nx': 'nan', 'ny': 'nan',
+                         'nz': 'nan', 'family': 'shot', 'on': r['hit']})
+    # (A port's mark that took one of its family's place -- a row whose
+    # name ends in "m" -- is still one left there.)
+    m_ds = ds.get('decal', [])
+    moved = sum(1 for r in m_ds if r['name'].endswith('m'))
+    if not m_pc and not m_ds:
+        return
+    print(f' marks (real game / port): {len(m_pc)} / {len(m_ds)}' + (f' ({moved} of the port\'s in the place of one before)' if moved else ''))
+    for fam in sorted({r['family'] for r in m_pc} | {r['family'] for r in m_ds}):
+        a = [r for r in m_pc if r['family'] == fam]
+        b = [r for r in m_ds if r['family'] == fam]
+        left, pairs = list(b), []
+        for p in a:
+            best = None
+            for d in left:
+                if abs(int(d['frame']) - int(p['frame'])) > 6:
+                    continue
+                gap = math.dist(vec(p, ('x', 'y', 'z')), vec(d, ('x', 'y', 'z')))
+                if best is None or gap < best[0]:
+                    best = (gap, d)
+            if best is not None and best[0] < 64:
+                left.remove(best[1])
+                pairs.append((p, best[1], best[0]))
+        line = f'  {fam:<14}{len(a)} / {len(b)}'
+        if pairs:
+            gaps = [g for _, _, g in pairs]
+            turns = [angle(vec(p, ('nx', 'ny', 'nz')), vec(d, ('nx', 'ny', 'nz'))) for p, d, _ in pairs
+                     if p['nx'] != 'nan']
+            line += f', {len(pairs)} paired: {sum(gaps) / len(gaps):.2f} u apart on average, at most {max(gaps):.2f}'
+            if turns:
+                line += f'; walls up to {max(turns):.1f} deg apart'
+            walls = sum(1 for p, d, _ in pairs if (p['on'] == 'world') != (d['on'] == 'world'))
+            if walls:
+                line += f'; {walls} on a brush on one side only'
+        print(line)
+        for p in [r for r in a if all(r is not q for q, _, _ in pairs)][:4]:
+            print(f'  {"":<14}game only: frame {p["frame"]} at {p["x"]} {p["y"]} {p["z"]} on {p["on"]}')
+        for d in left[:4]:
+            print(f'  {"":<14}port only: frame {d["frame"]} at {d["x"]} {d["y"]} {d["z"]} on {d["on"]}')
+
+
 def monsters(pc, ds, pos):
     """The monsters, each paired with the port's of its class that started
     nearest (mstart rows): their AI's events as two sequences, aligned in
@@ -485,6 +541,7 @@ def main():
     shots(pc, ds, a.pos)
     projectiles(pc, ds, a.pos, a.vel, table)
     hurts(pc, ds)
+    marks(pc, ds)
     turning(pc, ds)
     monsters(pc, ds, a.pos)
 

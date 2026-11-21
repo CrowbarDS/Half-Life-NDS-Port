@@ -18,6 +18,7 @@
 #include <cstring>
 
 #include "HlAnim.hpp"
+#include "HlDiag.hpp"
 #include "HlFields.hpp"
 #include "HlMovers.hpp"
 #include "HlUi.hpp"
@@ -1481,6 +1482,7 @@ namespace hldata
                 old.at[k] = at[k];
                 old.normal[k] = normal[k];
             }
+            HL_DIAG(mark, diag::Mark{i, old.picture, old.at, old.normal, old.half, old.brush, true});
             return old;
         }
         // A place for it: a free one; else the one least worth keeping
@@ -1524,6 +1526,8 @@ namespace hldata
             decal.at[i] = at[i];
             decal.normal[i] = normal[i];
         }
+        HL_DIAG(mark, diag::Mark{static_cast<int>(&decal - a.decals), decal.picture, decal.at, decal.normal, decal.half,
+                                 decal.brush, false});
         return decal;
     }
 

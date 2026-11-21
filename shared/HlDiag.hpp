@@ -63,6 +63,18 @@ namespace hldata::diag
     };
     inline void (*boom)(const Boom &) = nullptr;
 
+    /// A mark left or moved (decalAdd): its slot, picture (kDecal*), where
+    /// (Q12: from its brush's place when `brush` is one), the wall's normal
+    /// (Q12), its size, and whether it was one already there, moved.
+    struct Mark
+    {
+        int slot, picture;
+        const std::int32_t *at, *normal;
+        int half, brush;
+        bool moved;
+    };
+    inline void (*mark)(const Mark &) = nullptr;
+
     /// The player hurt (playerTakeDamage): what was asked, from where (null:
     /// nowhere), and the player before and after -- velocity (Q12 units a
     /// second), health and armour.

@@ -571,6 +571,7 @@ int main(int argc, char **argv)
     std::fprintf(out, "#cols proj frame seq t id cls sub ox oy oz vx vy vz mt og water\n");
     std::fprintf(out, "#cols shot frame seq t n seed sx sy sz ax ay az x y cx cy ex ey ez frac hit\n");
     std::fprintf(out, "#cols boom frame seq t x y z damage radius type by\n");
+    std::fprintf(out, "#cols decal frame seq t x y z nx ny nz family name on\n");
     std::fprintf(out, "#cols dmg frame seq t amount type by fx fy fz vx0 vy0 vz0 vx vy vz hp0 hp ap0 ap\n");
     std::fprintf(out, "#cols mstart frame seq t id cls sx sy sz start first\n");
     std::fprintf(out, "#cols mon frame seq t id ox oy oz yaw state ideal sched ti tid cond enemy act seq hp next\n");
@@ -709,6 +710,28 @@ int main(int argc, char **argv)
             return;
         std::fprintf(now.out, "boom,%d,%d,%.4f,%.3f,%.3f,%.3f,%d.00,%d.00,%u,-\n", now.frame, now.frame, now.t,
                      units(boom.at[0]), units(boom.at[1]), units(boom.at[2]), boom.damage, boom.radius, boom.type);
+    };
+    // A mark: as the game's row has it, in the world (a brush's own from
+    // where the brush is now), its family named as the game's decals are.
+    diag::mark = [](const diag::Mark &m) {
+        if (now.frame < 1)
+            return;
+        double at[3];
+        for (int a = 0; a < 3; ++a)
+            at[a] = units(m.at[a]) + (m.brush >= 0 ? units(now.game->brushStates[m.brush].pos[a]) : 0.0);
+        const int family = decalFamily(static_cast<std::uint8_t>(m.picture));
+        const char *name = m.picture == kDecalSign ? "sign"
+                           : family == 0 ? "shot"
+                           : family == 4 ? "bigshot"
+                           : family == 5 ? "blood"
+                           : family == 8 ? "yblood"
+                           : family == 9 ? "break"
+                           : family == 10 ? "scorch"
+                           : family == 12 ? "spit"
+                                         : "wall";
+        std::fprintf(now.out, "decal,%d,%d,%.4f,%.3f,%.3f,%.3f,%.4f,%.4f,%.4f,%s,%d%s,%s\n", now.frame, now.frame, now.t,
+                     at[0], at[1], at[2], units(m.normal[0]), units(m.normal[1]), units(m.normal[2]), name, m.picture,
+                     m.moved ? "m" : "", m.brush >= 0 ? (*now.names)[m.brush].c_str() : "world");
     };
     diag::hurt = [](const diag::Hurt &h) {
         if (now.frame < 1)
