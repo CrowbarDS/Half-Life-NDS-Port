@@ -138,6 +138,15 @@ namespace hlrt
 #endif
     }
 
+    bool Think::onWorker() const
+    {
+#ifndef HLDS_CHILD
+        return started_ && cothread_get_current() != mainThread;
+#else
+        return false;
+#endif
+    }
+
     std::uint32_t Think::stackPeak() const
     {
 #if defined(HLDS_PROFILE) && !defined(HLDS_CHILD)

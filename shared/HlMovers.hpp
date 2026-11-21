@@ -594,8 +594,9 @@ namespace hldata
     // (In the game library, the engine's own, in ITCM: game/GameApi.hpp.)
     Trace traceAll(const MoveWorld &world, bool crouched, const fx *start, const fx *end);
 #else
-    HL_HOT Trace traceAll(const MoveWorld &world, bool crouched, const fx *start, const fx *end)
+    HL_HOT HL_TRACE_NOINLINE Trace traceAll(const MoveWorld &world, bool crouched, const fx *start, const fx *end)
     {
+        HL_TRACE_SPENT(kTraceAll);
         Trace best = traceHull(crouched ? world.crouched : world.standing, start, end);
         const detail::SegmentReach reach = detail::segmentReach(crouched, start, end);
         for (int m = 0; m < world.moverCount; ++m)
@@ -808,8 +809,9 @@ namespace hldata
         }
     } // namespace detail
 
-    HL_HOT Shot traceShot(const MoveWorld &world, const fx *start, const fx *end)
+    HL_HOT HL_TRACE_NOINLINE Shot traceShot(const MoveWorld &world, const fx *start, const fx *end)
     {
+        HL_TRACE_SPENT(kTraceShot);
         Shot shot;
         if (world.nodes != nullptr)
         {
@@ -1015,8 +1017,9 @@ namespace hldata
     template <class SeeThrough>
     inline bool sightClear(const MoveWorld &world, const fx *start, const fx *end, SeeThrough &&seeThrough);
 
-    inline bool lineClear(const MoveWorld &world, const fx *start, const fx *end)
+    inline HL_TRACE_NOINLINE bool lineClear(const MoveWorld &world, const fx *start, const fx *end)
     {
+        HL_TRACE_SPENT(kTraceLineClear);
         return sightClear(world, start, end, [](int) { return false; });
     }
 

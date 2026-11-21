@@ -22,6 +22,7 @@
 // the DS it is instantiated in an ITCM translation unit (game/HullTrace).
 
 #include "HlPlaneMath.hpp"
+#include "HlTraceCount.hpp"
 
 namespace hldata
 {
@@ -206,8 +207,9 @@ namespace hldata
     // (In the game library, the engine's own, in ITCM: game/GameApi.hpp.)
     Trace traceHull(const Hull &hull, const fx *start, const fx *end);
 #else
-    HL_HOT Trace traceHull(const Hull &hull, const fx *start, const fx *end)
+    HL_HOT HL_TRACE_NOINLINE Trace traceHull(const Hull &hull, const fx *start, const fx *end)
     {
+        HL_TRACE_SPENT(kTraceHull);
 #if !defined(__arm__)
         ++hostTraceCount;
 #endif

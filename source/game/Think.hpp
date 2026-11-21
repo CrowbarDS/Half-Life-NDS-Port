@@ -27,6 +27,8 @@ namespace hlrt
         /// once and dropped, and nothing more is asked of the worker.
         void detach();
         bool running() const { return started_; }
+        /// Whether what runs now is the worker (perf.txt's trace counts).
+        bool onWorker() const;
 
         /// Questions the worker has answered (perf.txt counts them and
         /// sets this back to 0).

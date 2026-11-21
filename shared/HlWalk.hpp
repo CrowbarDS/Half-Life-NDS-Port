@@ -427,9 +427,10 @@ namespace hldata
     /// is half its width for what it stands on (0: the hull's own).
     /// `blockedBy`, if given: which actor's box stopped the step (-1 if
     /// none did).
-    HL_HOT bool walkStep(const MoveWorld &world, const ActorWorld *a, int index, int hull,
+    HL_HOT HL_TRACE_NOINLINE bool walkStep(const MoveWorld &world, const ActorWorld *a, int index, int hull,
                          fx *feet, fx dx, fx dy, fx half = 0, int *blockedBy = nullptr)
     {
+        HL_TRACE_SPENT(kTraceWalkStep);
         if (blockedBy != nullptr)
             *blockedBy = -1;
         const bool small = hull == kWalkCrouched;
@@ -543,9 +544,10 @@ namespace hldata
 
     /// Whether something that size can walk from `from` to `to` (feet, both)
     /// in a straight line, in at most `steps` steps of 16 units.
-    inline bool walkClear(const MoveWorld &world, const ActorWorld *a, int index, int small,
+    inline HL_TRACE_NOINLINE bool walkClear(const MoveWorld &world, const ActorWorld *a, int index, int small,
                           const fx *from, const fx *to, int steps)
     {
+        HL_TRACE_SPENT(kTraceWalkClear);
         fx at[3] = {from[0], from[1], from[2]};
         int pause = 0;
         for (int n = 0; n <= steps; ++n)

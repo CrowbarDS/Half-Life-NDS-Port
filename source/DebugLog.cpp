@@ -8,6 +8,7 @@
 
 #include "Global.hpp"
 #include "Guard.hpp"
+#include "HlTraceCount.hpp"
 #include "game/Think.hpp"
 
 // (The linker's: where the stack starts, under DTCM's own data, which sits
@@ -196,6 +197,16 @@ namespace hlrt::DebugLog::Perf
         };
         constexpr int kDivSites = 256, kRootSites = 64;
         Site divSites[kDivSites], rootSites[kRootSites];
+        // Who traces, and how long it takes (shared/HlTraceCount.hpp): the
+        // line that called, which trace (kTrace*, kTraceOnWorker on the think
+        // worker's thread), how many times and the time in all.
+        struct TraceSite
+        {
+            std::uint32_t at, kind, count, ticks;
+        };
+        constexpr int kTraceSites = 512;
+        TraceSite traceSites[kTraceSites];
+        std::uint32_t traceSitesLost = 0;
         std::uint32_t divFits = 0, sitesLost = 0;
 
         void writeSites(std::FILE *log, const char *what, Site *sites, int count)
@@ -223,6 +234,36 @@ namespace hlrt::DebugLog::Perf
             for (int k = 0; k < shown; ++k)
                 std::fprintf(log, ", %lx %lu", static_cast<unsigned long>(sites[top[k]].at),
                              static_cast<unsigned long>(sites[top[k]].count));
+            std::fprintf(log, "\n");
+        }
+
+        // The costliest callers of the traces, by their time.
+        void writeTraceSites(std::FILE *log)
+        {
+            constexpr int kShown = 48;
+            int top[kShown];
+            int shown = 0;
+            for (int i = 0; i < kTraceSites; ++i)
+            {
+                const std::uint32_t t = traceSites[i].ticks;
+                if (traceSites[i].count == 0 || (shown == kShown && t <= traceSites[top[shown - 1]].ticks))
+                    continue;
+                int at = shown < kShown ? shown++ : kShown - 1;
+                while (at > 0 && traceSites[top[at - 1]].ticks < t)
+                {
+                    top[at] = top[at - 1];
+                    --at;
+                }
+                top[at] = i;
+            }
+            std::fprintf(log, "tracesites: %d frames, %lu lost", framesIn, static_cast<unsigned long>(traceSitesLost));
+            for (int k = 0; k < shown; ++k)
+            {
+                const TraceSite &site = traceSites[top[k]];
+                std::fprintf(log, ", %lx %lu %lu %lu", static_cast<unsigned long>(site.at),
+                             static_cast<unsigned long>(site.kind), static_cast<unsigned long>(site.count),
+                             static_cast<unsigned long>(toMicros(site.ticks)));
+            }
             std::fprintf(log, "\n");
         }
 
@@ -281,6 +322,7 @@ namespace hlrt::DebugLog::Perf
             writePieces(log);
             writeWorst(log);
             writeSites(log, "divsites", divSites, kDivSites);
+            writeTraceSites(log);
             writeSites(log, "rootsites", rootSites, kRootSites);
             std::fclose(log);
         }
@@ -294,6 +336,9 @@ namespace hlrt::DebugLog::Perf
                 site = Site{};
             for (Site &site : rootSites)
                 site = Site{};
+            for (TraceSite &site : traceSites)
+                site = TraceSite{};
+            traceSitesLost = 0;
             divFits = sitesLost = 0;
             leaveCriticalSection(saved);
         }
@@ -429,6 +474,35 @@ extern "C" void hlProfileSite(std::uint32_t at, int kind, std::uint32_t wide)
         }
     }
     ++sitesLost;
+}
+
+// shared/HlTraceCount.hpp: the profiler's clock, and a trace counted to the
+// line that called it. (From the frame's thread or the think worker's, never
+// an interrupt; they take turns only at their yields, so no lock.)
+extern "C" std::uint32_t hlProfileNow() { return hlrt::DebugLog::Perf::now(); }
+
+extern "C" void hlProfileTrace(std::uint32_t at, std::uint32_t kind, std::uint32_t ticks)
+{
+    using namespace hlrt::DebugLog::Perf;
+    if (hlrt::think.onWorker())
+        kind |= hldata::kTraceOnWorker;
+    const std::uint32_t hash = ((at >> 1) ^ (kind << 28)) * 2654435761u;
+    for (std::uint32_t k = 0; k < 8; ++k)
+    {
+        TraceSite &site = traceSites[((hash >> 23) + k) & (kTraceSites - 1)];
+        if (site.count != 0 && site.at == at && site.kind == kind)
+        {
+            ++site.count;
+            site.ticks += ticks;
+            return;
+        }
+        if (site.count == 0)
+        {
+            site = TraceSite{at, kind, 1, ticks};
+            return;
+        }
+    }
+    ++traceSitesLost;
 }
 
 #endif

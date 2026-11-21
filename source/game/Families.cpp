@@ -204,11 +204,11 @@ namespace hlrt::families
             }
             family.library = library;
             family.funcs = funcs;
-#ifdef HLDS_ITCM_OFF
-            // (The build that measures the instruction cache: where the
-            // family's code lies, for tools/icache_rank.py to name what of
-            // the heap's lines is its -- by its GetFamilyAPI, whose place in
-            // the family's own ELF says the rest.)
+#if defined(HLDS_ITCM_OFF) || defined(HLDS_PROFILE)
+            // (The builds that measure the instruction cache and the time:
+            // where the family's code lies, for tools/icache_rank.py and
+            // tools/tracesites.py to name what is its -- by its GetFamilyAPI,
+            // whose place in the family's own ELF says the rest.)
             if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
             {
                 static const char *const kName[hldata::kFamilyCount] = {"", "boss", "military", "net", "shift"};
