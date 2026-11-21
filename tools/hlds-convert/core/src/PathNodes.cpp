@@ -200,9 +200,11 @@ namespace hlds
 
         // Ways down. From a node to one below it and not far off, where
         // there is no way already: out level over the edge with nothing in
-        // the way, and down onto it. One way only.
+        // the way, and down onto it. One way only. (Not on the game's own
+        // graph: its monsters have no such ways, and a route or a cover
+        // spot by one is somewhere the game's would never go.)
         const int count = static_cast<int>(level.pathNodes.size());
-        for (int a = 0; a < count; ++a)
+        for (int a = 0; a < (report.fromGraph ? 0 : count); ++a)
         {
             for (int b = 0; b < count; ++b)
             {
@@ -256,7 +258,18 @@ namespace hlds
             PathLink link{};
             link.to = static_cast<std::uint8_t>(way.to);
             link.flags = way.flags;
-            link.length = static_cast<std::uint16_t>(std::clamp(std::lround(way.length), 1L, 65535L));
+            // (In sixteenths: the longest of the game's, c1a4's 3,544, is
+            // 56,697 of them. One longer than the field holds would be a way
+            // made out sixteen times too short: refused, not cut down.)
+            const long sixteenths = std::lround(way.length * (1 << kPathLinkShift));
+            if (sixteenths > 65535)
+            {
+                ++report.linksTooLong;
+                continue;
+            }
+            link.length = static_cast<std::uint16_t>(sixteenths < 1 ? 1 : sixteenths);
+            if (way.length > report.longestLink)
+                report.longestLink = way.length;
             link.brush = way.brush;
             level.pathLinks.push_back(link);
             ++node.linkCount;

@@ -1954,6 +1954,8 @@ namespace hlds
         result.pathDoorLinks = report.paths.doorLinks;
         result.pathRefused = report.paths.refused;
         result.pathDrops = report.paths.dropLinks;
+        result.pathTooLong = report.paths.linksTooLong;
+        result.pathLongest = static_cast<int>(report.paths.longestLink + 0.5);
         result.pathFromGraph = report.paths.fromGraph;
         result.unsupportedClasses = static_cast<int>(report.unsupported.size());
         for (const auto &entry : report.unsupported)

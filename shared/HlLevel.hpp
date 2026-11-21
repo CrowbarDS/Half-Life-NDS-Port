@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 79;
+    inline constexpr std::uint16_t kLevelVersion = 80;
     /// The oldest level format this build reads. (49: a map's textures are
     /// stored in its archive as they are, never compressed, so that one that
     /// streams is read straight in during play. 50: each texture's record
@@ -63,8 +63,9 @@ namespace hldata
     /// track change's flags and waitMs say what kind it is, where it starts
     /// and how fast it goes: without them the tram's lift would not move.
     /// 76: the common sounds are CommonSoundRefs of their own, and Sounds
-    /// is the map's own only.)
-    inline constexpr std::uint16_t kLevelMinVersion = 76;
+    /// is the map's own only. 80: a path link's length is in sixteenths of
+    /// a unit (kPathLinkShift), which a build before takes for whole units.)
+    inline constexpr std::uint16_t kLevelMinVersion = 80;
     /// The oldest build that can read what it writes. (32: what the people
     /// say, after the soldiers' table in Section::Speech, which a build
     /// before would refuse; 33: the round 3 monsters, kinds a build before
@@ -133,8 +134,10 @@ namespace hldata
     /// files a build before does not look for. 78: a sprite's picture may
     /// be A5I3 (kTextureA5I3), which a build before draws as A3I5.) 79:
     /// the smoke among the common sprites, before the map's own, which a
-    /// build before takes for the map's first: commonSpritesOf.
-    inline constexpr std::uint16_t kLevelMinReader = 79;
+    /// build before takes for the map's first: commonSpritesOf. 80: a path
+    /// link's length in sixteenths of a unit, which a build before takes
+    /// for whole units -- its monsters' ways all sixteen times too long.)
+    inline constexpr std::uint16_t kLevelMinReader = 80;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,
     /// 28 -> 29 a func_train's global name (extra[3], 0 before: read as
@@ -1717,11 +1720,16 @@ namespace hldata
     /// out. There is no table of ways from each node to each: the console
     /// finds its way when it needs one, over the links as they are at that
     /// moment (HlWalk.hpp, pathStep).
+    /// A path link's length is in sixteenths of a unit (the game's are
+    /// floats: two ways only a little apart in length are told apart, as
+    /// its FindShortestPath tells them). Its longest, c1a4's, is 3,544.
+    inline constexpr int kPathLinkShift = 4;
+
     struct PathLink
     {
         std::uint8_t to;
         std::uint8_t flags;   ///< kPathLink*
-        std::uint16_t length; ///< whole units
+        std::uint16_t length; ///< in sixteenths of a unit (kPathLinkShift)
         std::uint16_t brush;  ///< into Brushes, or kNoBrush
         std::uint16_t pad;
     };

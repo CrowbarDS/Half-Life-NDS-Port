@@ -789,20 +789,22 @@ namespace hldata
     /// now. kNoPathNode if there is no way; `to` itself if they are joined.
     ///
     /// (Every node's distance from `from`, nearest first, until `to` is
-    /// reached: at most 254 nodes, a kilobyte on the stack. A shut door
-    /// counts as a little further than it is.)
+    /// reached: at most 254 nodes, a kilobyte and a half on the stack. The
+    /// links' lengths as they are, in sixteenths, as the game's
+    /// FindShortestPath adds its float lengths -- no more for a node passed;
+    /// a shut door counts as 128 further than it is.)
     inline std::uint8_t pathStep(const ActorWorld &a, int from, int to, std::uint8_t size, bool opens)
     {
         if (from < 0 || to < 0 || from >= a.nodeCount || to >= a.nodeCount || a.links == nullptr)
             return kNoPathNode;
         if (from == to)
             return static_cast<std::uint8_t>(to);
-        std::uint16_t far[kMaxPathNodes];
+        std::uint32_t far[kMaxPathNodes];
         std::uint8_t before[kMaxPathNodes];
         std::uint8_t done[kMaxPathNodes];
         for (int n = 0; n < a.nodeCount; ++n)
         {
-            far[n] = 0xFFFF;
+            far[n] = 0xFFFFFFFFu;
             before[n] = kNoPathNode;
             done[n] = 0;
         }
@@ -814,7 +816,7 @@ namespace hldata
             int at = -1;
             for (int n = 0; n < a.nodeCount; ++n)
             {
-                if (!done[n] && far[n] != 0xFFFF && (at < 0 || far[n] < far[at]))
+                if (!done[n] && far[n] != 0xFFFFFFFFu && (at < 0 || far[n] < far[at]))
                     at = n;
             }
             if (at < 0)
@@ -831,10 +833,10 @@ namespace hldata
                 const std::uint8_t shut = a.linkShut != nullptr ? a.linkShut[l] : kLinkOpen;
                 if (shut == kLinkNoWay || (shut == kLinkDoor && !opens))
                     continue;
-                const std::uint32_t through = far[at] + link.length + (shut == kLinkDoor ? 128u : 0u) + 1u;
+                const std::uint32_t through = far[at] + link.length + (shut == kLinkDoor ? 128u << kPathLinkShift : 0u);
                 if (through < far[link.to])
                 {
-                    far[link.to] = static_cast<std::uint16_t>(through > 0xFFFE ? 0xFFFE : through);
+                    far[link.to] = through;
                     before[link.to] = static_cast<std::uint8_t>(at);
                 }
             }

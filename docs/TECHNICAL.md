@@ -2212,8 +2212,14 @@ which of its path nodes can be walked between, by what size of creature and
 through which doors, and writes that beside the map
 (`maps/graphs/<map>.nod`); those files come with the game, and the converter
 reads them (`NodGraph`): the nodes, the links for small things, people and
-large things, and the door or breakable thing each link passes through. It
-adds ways DOWN from ledges, which the game has not got. There is no table
+large things, and the door or breakable thing each link passes through. A
+link's length is kept in sixteenths of a unit (`kPathLinkShift`; c1a4's
+longest, 3,544 units, is 56,697 of them), and a route adds them as they
+are, as the game's FindShortestPath adds its float lengths -- no more for a
+node passed -- so of two ways nearly as long it takes the game's. A map
+without the game's graph has its nodes joined by the converter, which then
+adds ways DOWN from ledges as well; with the game's graph there are none
+of those, as its monsters have none. There is no table
 of routes on the card: the console finds a route when it needs one
 (`shared/HlWalk.hpp`, `pathStep`), over the links as they are at that
 moment -- a door shut costs a little and is opened by whoever opens doors,

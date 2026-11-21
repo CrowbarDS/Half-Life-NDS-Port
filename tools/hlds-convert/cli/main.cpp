@@ -359,9 +359,10 @@ namespace
                         r.stoodIn);
         if (r.pathNodes != 0)
             std::printf("  %d nodes, %d ways between them (%s; %d through doors and what breaks, %d not walked by a "
-                        "trial over the world alone, %d ways down added)\n",
+                        "trial over the world alone, %d ways down added; the longest %d units%s)\n",
                         r.pathNodes, r.pathLinks, r.pathFromGraph ? "the game's graph" : "worked out", r.pathDoorLinks,
-                        r.pathRefused, r.pathDrops);
+                        r.pathRefused, r.pathDrops, r.pathLongest,
+                        r.pathTooLong != 0 ? ", some too long for the format left out" : "");
         if (r.models != 0)
         {
             std::printf("  %d actors of %d models: %d KB, skins %dK texels\n", r.actors, r.models,

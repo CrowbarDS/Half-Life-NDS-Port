@@ -157,6 +157,8 @@ namespace hlds
         int pathDoorLinks = 0; ///< of them, through a door or something that breaks
         int pathRefused = 0;   ///< links of the game's graph the console's walk could not make
         int pathDrops = 0;     ///< ways down added
+        int pathTooLong = 0;   ///< links longer than the format holds, left out
+        int pathLongest = 0;   ///< the longest link kept, units
         bool pathFromGraph = false; ///< from the game's own graph (maps/graphs)
         int archiveKb = 0;    ///< the map's archive on the card
         int archiveRawKb = 0; ///< what is in it, inflated

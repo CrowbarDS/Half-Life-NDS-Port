@@ -1079,11 +1079,12 @@ namespace
                 for (int l = node.firstLink; l < node.firstLink + node.linkCount && from < 0; ++l)
                 {
                     const PathLink &link = g.actors.links[l];
-                    if (!(link.flags & kPathLinkHuman) || link.length < 150 || link.length > 400)
+                    const int length = link.length >> kPathLinkShift;
+                    if (!(link.flags & kPathLinkHuman) || length < 150 || length > 400)
                         continue;
                     const fx *p = node.pos;
                     const fx *q = g.actors.nodes[link.to].pos;
-                    const fx far = fxFromInt(link.length);
+                    const fx far = fxFromInt(length);
                     const fx clear = walkClearAhead(g.move, p, hull, q, far);
                     fx apex[3];
                     if (clear >= fxFromInt(64) && clear + fxFromInt(48) < far &&
@@ -1228,7 +1229,7 @@ namespace
             {
                 const PathLink &link = g.actors.links[l];
                 if ((link.flags & kPathLinkHuman) && !(g.actors.nodes[link.to].flags & kPathNodeAir) &&
-                    link.length >= 100 && link.length <= 300)
+                    (link.length >> kPathLinkShift) >= 100 && (link.length >> kPathLinkShift) <= 300)
                 {
                     from = n;
                     to = link.to;

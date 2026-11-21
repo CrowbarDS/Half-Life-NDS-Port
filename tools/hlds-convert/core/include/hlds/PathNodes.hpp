@@ -34,8 +34,10 @@ namespace hlds
         int links = 0;
         int doorLinks = 0;      ///< ... of them, through a door or something that breaks
         int refused = 0;        ///< links of the game's a trial walk over the world alone could not make (kept)
-        int dropLinks = 0;      ///< ways down added
+        int dropLinks = 0;      ///< ways down added (none on the game's graph)
         int nodesLeftOut = 0;   ///< in the air, or more than the format holds
+        int linksTooLong = 0;   ///< longer than a link's length holds (4,095 units): left out
+        double longestLink = 0; ///< units, of those kept
     };
 
     /// Fills `level.pathNodes` and `level.pathLinks`. The level's planes,

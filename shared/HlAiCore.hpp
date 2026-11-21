@@ -1169,13 +1169,14 @@ namespace hldata
 
     // ------------------------------------------------------------- cover
 
-    /// Every node's distance along the links from node `from` (0xFFFF: no
-    /// way), for something of `size` that does or does not open doors (the
-    /// game's PathLength, for all of them at once).
-    inline void aiPathDistances(const ActorWorld &a, int from, std::uint8_t size, bool opens, std::uint16_t *far)
+    /// Every node's distance along the links from node `from`, in sixteenths
+    /// of a unit (0xFFFFFFFF: no way), for something of `size` that does or
+    /// does not open doors (the game's PathLength, for all of them at once:
+    /// its float lengths added, no more for a node passed).
+    inline void aiPathDistances(const ActorWorld &a, int from, std::uint8_t size, bool opens, std::uint32_t *far)
     {
         for (int n = 0; n < a.nodeCount; ++n)
-            far[n] = 0xFFFF;
+            far[n] = 0xFFFFFFFFu;
         if (from < 0 || from >= a.nodeCount || a.links == nullptr)
             return;
         std::uint8_t done[kMaxPathNodes] = {};
@@ -1187,7 +1188,7 @@ namespace hldata
             int at = -1;
             for (int n = 0; n < a.nodeCount; ++n)
             {
-                if (!done[n] && far[n] != 0xFFFF && (at < 0 || far[n] < far[at]))
+                if (!done[n] && far[n] != 0xFFFFFFFFu && (at < 0 || far[n] < far[at]))
                     at = n;
             }
             if (at < 0)
@@ -1202,9 +1203,9 @@ namespace hldata
                 const std::uint8_t shut = a.linkShut != nullptr ? a.linkShut[l] : kLinkOpen;
                 if (shut == kLinkNoWay || (shut == kLinkDoor && !opens))
                     continue;
-                const std::uint32_t through = far[at] + link.length + 1u;
+                const std::uint32_t through = far[at] + link.length;
                 if (through < far[link.to])
-                    far[link.to] = static_cast<std::uint16_t>(through > 0xFFFE ? 0xFFFE : through);
+                    far[link.to] = through;
             }
         }
     }
@@ -1232,7 +1233,7 @@ namespace hldata
         if (theirs < 0)
             theirs = mine;
         const fx looker[3] = {threat[0], threat[1], threat[2] + viewOfs};
-        std::uint16_t fromMe[kMaxPathNodes], fromThem[kMaxPathNodes];
+        std::uint32_t fromMe[kMaxPathNodes], fromThem[kMaxPathNodes];
         const std::uint8_t size = pathSizeOf(hull);
         aiPathDistances(a, mine, size, opens, fromMe);
         if (theirs != mine)
@@ -1252,7 +1253,7 @@ namespace hldata
             const fx from[3] = {p[0], p[1], p[2] + viewOfs};
             if (lineClear(world, from, looker))
                 continue;
-            if (fromMe[n] == 0xFFFF)
+            if (fromMe[n] == 0xFFFFFFFFu)
                 continue;
             if (theirs != mine && fromMe[n] > fromThem[n])
                 continue;

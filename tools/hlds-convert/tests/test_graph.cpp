@@ -38,7 +38,7 @@ namespace
                     nodes[from].firstLink = static_cast<std::uint16_t>(next);
                 links[next].to = static_cast<std::uint8_t>(to);
                 links[next].flags = flags;
-                links[next].length = static_cast<std::uint16_t>(length);
+                links[next].length = static_cast<std::uint16_t>(length << kPathLinkShift);
                 links[next].brush = brush;
                 ++nodes[from].linkCount;
                 ++next;
@@ -88,6 +88,30 @@ namespace
         check(pathLinkBetween(h.a, 1, 2) == 3 && pathLinkBetween(h.a, 1, 3) < 0, "the link between two nodes is found");
         check(pathStep(h.a, 0, 9, kPathLinkHuman, true) == kNoPathNode && pathStep(h.a, -1, 3, kPathLinkHuman, true) == kNoPathNode,
               "a node that is not there is no way");
+    }
+
+    /// Lengths as the game adds them: two links of 100 come before one of
+    /// 200 and a sixteenth -- no more for a node passed, and a sixteenth
+    /// is told apart (the game's FindShortestPath adds floats).
+    void testHops()
+    {
+        PathNode nodes[3]{};
+        PathLink links[3]{};
+        const std::uint8_t all = kPathLinkSmall | kPathLinkHuman | kPathLinkLarge;
+        nodes[0].firstLink = 0;
+        nodes[0].linkCount = 2;
+        links[0] = PathLink{1, all, 100 << kPathLinkShift, kNoBrush, 0};
+        links[1] = PathLink{2, all, (200 << kPathLinkShift) + 1, kNoBrush, 0};
+        nodes[1].firstLink = 2;
+        nodes[1].linkCount = 1;
+        links[2] = PathLink{2, all, 100 << kPathLinkShift, kNoBrush, 0};
+        ActorWorld a;
+        a.nodes = nodes;
+        a.links = links;
+        a.nodeCount = 3;
+        a.linkCount = 3;
+        check(pathStep(a, 0, 2, kPathLinkHuman, false) == 1,
+              "two links of 100 come before one of 200 and a sixteenth, as the game adds them");
     }
 
     void testNodFile(const char *valve)
@@ -293,6 +317,7 @@ namespace
 int main()
 {
     testSearch();
+    testHops();
     const char *valve = std::getenv("HLDS_VALVE_DIR");
     if (valve == nullptr || *valve == '\0')
     {
