@@ -1,0 +1,26 @@
+# The ACHIEVEMENTS sheet's chapters, in its order (shared/HlAchievements.hpp:
+# kAchChapterStart): the game's, then Uplink, then those of no one place.
+@home resident
+@unique
+
+HazardCourse = HAZARD COURSE
+BlackMesaInbound = BLACK MESA INBOUND
+AnomalousMaterials = ANOMALOUS MATERIALS
+UnforeseenConsequences = UNFORESEEN CONSEQUENCES
+OfficeComplex = OFFICE COMPLEX
+WeveGotHostiles = WE'VE GOT HOSTILES
+BlastPit = BLAST PIT
+PowerUp = POWER UP
+OnARail = ON A RAIL
+Apprehension = APPREHENSION
+ResidueProcessing = RESIDUE PROCESSING
+QuestionableEthics = QUESTIONABLE ETHICS
+SurfaceTension = SURFACE TENSION
+ForgetAboutFreeman = FORGET ABOUT FREEMAN
+LambdaCore = LAMBDA CORE
+Xen = XEN
+GonarchsLair = GONARCH'S LAIR
+Interloper = INTERLOPER
+Nihilanth = NIHILANTH
+Uplink = UPLINK
+General = GENERAL

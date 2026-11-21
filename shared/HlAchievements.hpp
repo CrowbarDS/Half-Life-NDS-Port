@@ -99,151 +99,83 @@ namespace hldata
         kAchievementCount
     };
 
+    /// One achievement's rules. Its name and what it asks are the game's
+    /// UI text (text/ui/ach_names.txt, ach_texts.txt), by its id.
     struct AchievementInfo
     {
-        const char *title; ///< the player's name for it
-        const char *text;  ///< what to do
         bool hidden;       ///< not described until it is earned
         std::uint16_t goal; ///< how many, for one that counts; 0: once is enough
     };
 
     inline constexpr AchievementInfo kAchievements[kAchievementCount] = {
-        {"You're just as bad as them.",
-         "Kill a scientist.", false, 0},
-        {"Zapped to oblivion",
-         "Complete Power Up.", false, 0},
-        {"Poor Big Momma...",
-         "Complete Gonarch's Lair.", false, 0},
-        {"On-the-Line",
-         "Complete Uplink.", false, 0},
-        {"Settled in!",
-         "Complete the Hazard Course.", false, 0},
-        {"Morning, Mr. Freeman",
-         "Sit through the Tram Ride and complete Black Mesa Inbound.", false, 0},
-        {"A small discrepency",
-         "Witness (and indirectly cause) the Black Mesa Incident and complete Anomalous Materials.", false, 0},
-        {"To the surface",
-         "Conform to Eli's mission and complete Unforeseen Consequences.", false, 0},
-        {"Bad day to be Dr. Newell",
-         "Complete Office Complex.", false, 0},
-        {"Bad day to be part of the Science Team",
-         "Survive the HECU infiltration and complete \\\"We've Got Hostiles.\\\"", false, 0},
-        {"4000 Degrees Kelvin",
-         "Complete Blast Pit.", false, 0},
-        {"Liftoff",
-         "Complete On a Rail.", false, 0},
-        {"Nice catch",
-         "Complete Apprenhension.", false, 0},
-        {"Got enough conveyors?",
-         "Complete the labyrinth that is Residue Processing.", false, 0},
-        {"You weren't authorized to know about that.",
-         "Complete Questionable Ethics.", false, 0},
-        {"War Games",
-         "Complete Surface Tension.", false, 0},
-        {"Descension",
-         "Survive the mortars and complete \\\"Forget About Freeman.\\\"", false, 0},
-        {"Brave New World",
-         "Complete Lambda Core.", false, 0},
-        {"So beautiful I could cry",
-         "Complete Xen.", false, 0},
-        {"Penultimatum",
-         "Complete Interloper.", false, 0},
-        {"I think I just saved the world...",
-         "Complete Nihilanth.", false, 0},
-        {"...or I suppose not.",
-         "Reject the offer. Goodbye, Dr. Freeman.", true, 0},
-        {"...or did I?",
-         "Accept the offer.", true, 0},
-        {"I'm not following you, you evil person!",
-         "In Unforeseen Consequences, kill the security guard fighting the zombie to take his gun.", false, 0},
-        {"Explorer",
-         "In Office Complex, find Barney's hideout.", false, 0},
-        {"Stealth \\u0026 Action",
-         "Disengage the first turret in Office Complex.", false, 0},
-        {"Explorer II",
-         "Find the Maintenance Area in Office Complex.", false, 0},
-        {"Explorer III",
-         "Find the grenade cache near the end of Office Complex.", false, 0},
-        {"No more ropes",
-         "Kill 15 barnacles.", false, 15},
-        {"Owowowowowow!",
-         "Destroy 5 turrets. (excludes ceiling mounted turrets)", false, 5},
-        {"Not Magnusson's Meal...",
-         "In Anomalous Materials, destroy, uh... you-know-who's lunch.", false, 0},
-        {"Got the Chills",
-         "In Office Complex, solve the chiller puzzle.", false, 0},
-        {"Bye bye headhumpers!",
-         "Kill 500 headcrabs.", false, 500},
-        {"Freed, in another kind of way",
-         "Kill 100 Alien Slaves. Don't worry, you'll come to regret this.", false, 100},
-        {"You've got mail",
-         "In Anomalous Materials, open the Message Terminal.", false, 0},
-        {"Hygiene is important",
-         "In Anomalous Materials, dry your hands.", false, 0},
-        {"Defiant",
-         "In Anomalous Materials, refuse to put on the HEV Suit.", false, 0},
-        {"Explorer IV",
-         "In We've Got Hostiles, find the base upon the conveyor belts.", false, 0},
-        {"Martial hierarchy",
-         "Kill an assassin.", false, 0},
-        {"Kind-hearted soul",
-         "In Questionable Ethics, free the Alien Grunt.", false, 0},
-        {"A new toy! Can I play?",
-         "In Questionable Ethics, activate the steriliser.", false, 0},
-        {"He let it overcharge.",
-         "In Questionable Ethics, retrieve the Tau Cannon.", false, 0},
-        {"Defeating physics",
-         "In Questionable Ethics, use the laser to destroy the wall.", false, 0},
-        {"Me and my Tau Cannon",
-         "In Surface Tension, destroy the first Apache.", false, 0},
-        {"Me and my Tau Cannon II",
-         "In Surface Tension, destroy the second Apache after leaving the dam.", false, 0},
-        {"Better than a Snake",
-         "In Surface Tension, successfully dodge all the tripmines before descending.", false, 0},
-        {"Mortar'd to oblivion",
-         "In Surface Tension, kill the Gargantua.", false, 0},
-        {"2 days have paid off",
-         "Reach the bottom of the Lambda Complex.", false, 0},
-        {"PUMP STATION 01",
-         "In Lambda Core, activate Pump Station 01.", false, 0},
-        {"PUMP STATION 02",
-         "In Lambda Core, activate Pump Station 02.", false, 0},
-        {"All of those puzzles have paid off",
-         "Reach Level A in the Lambda Complex.", false, 0},
-        {"Boss baby",
-         "Kill a Controller.", false, 0},
-        {"Not the Only Achievement",
-         "Welcome to Half-Life Legacy.", false, 0},
-        {"Me and my RPG",
-         "In Surface Tension, destroy the third Apache on the cliffside.", false, 0},
-        {"Yummers",
-         "Heal yourself with a soda.", false, 0},
-        {"Marathon",
-         "In any desired order, complete the Hazard Course, Uplink, and Half-Life back to back. Doing them in one sitting is NOT required.", false, 0},
-        {"Instigator",
-         "In Anomalous Materials, sound the alarm at the reception.", false, 0},
-        {"Cheater",
-         "Enable cheats.", true, 0},
-        {"Uplink Explorer",
-         "In Uplink, find the shotgun room.", false, 0},
-        {"Hello, Gordon!",
-         "In Nihilanth, find the one and only living scientist in one of the chambers.", false, 0},
-        {"Signature move",
-         "In On a Rail, find Dave Riller's signature.", true, 0},
-        {"Third time's the charm",
-         "In Interloper, kill the Gargantua.", false, 0},
-        {"Demolition Man",
-         "Break 250 objects (crates, boxes, barrels, etc.)", false, 250},
-        {"Explorer V",
-         "In On a Rail, find the secret cache aside an elevator.", false, 0},
-        {"Explorer VI",
-         "In Blast Pit, find the hidden chargers.", false, 0},
-        {"Explorer VII",
-         "In Apprehension, find the hidden cache.", false, 0},
-        {"Explorer VIII",
-         "In Forget About Freeman, find the secret room.", false, 0},
-        {"Explorer IX",
-         "In Interloper, find the spiral.", false, 0},
+        {false, 0}, // kAchTestAchievement
+        {false, 0}, // kAchC2a1Complete
+        {false, 0}, // kAchC4a2Complete
+        {false, 0}, // kAchUplinkComplete
+        {false, 0}, // kAchTrainingComplete
+        {false, 0}, // kAchC0a0Complete
+        {false, 0}, // kAchC1a0Complete
+        {false, 0}, // kAchC1a1Complete
+        {false, 0}, // kAchC1a2Complete
+        {false, 0}, // kAchC1a3Complete
+        {false, 0}, // kAchC1a4Complete
+        {false, 0}, // kAchC2a2Complete
+        {false, 0}, // kAchC2a3Complete
+        {false, 0}, // kAchC2a4Complete
+        {false, 0}, // kAchC2a5Complete
+        {false, 0}, // kAchC2a5eComplete
+        {false, 0}, // kAchC3a1Complete
+        {false, 0}, // kAchC3a2Complete
+        {false, 0}, // kAchC4a1Complete
+        {false, 0}, // kAchC4a3Complete
+        {false, 0}, // kAchC4a4Complete
+        {true, 0}, // kAchC5a1Failed
+        {true, 0}, // kAchC5a1Complete
+        {false, 0}, // kAchC1a1BarnDie
+        {false, 0}, // kAchC1a2dBarney
+        {false, 0}, // kAchC1a2Turret
+        {false, 0}, // kAchC1a2aTurret
+        {false, 0}, // kAchC1a2Grenades
+        {false, 15}, // kAch5Barn
+        {false, 5}, // kAch5Tur
+        {false, 0}, // kAchC1a0dStopit
+        {false, 0}, // kAchFridgefreezer
+        {false, 500}, // kAchHeadhumpers
+        {false, 100}, // kAchFreed
+        {false, 0}, // kAchC1a0dAol
+        {false, 0}, // kAchC1a0dDyson
+        {false, 0}, // kAchC1a0dToldoff
+        {false, 0}, // kAchC1a3aConveyorbase
+        {false, 0}, // kAchFemdead
+        {false, 0}, // kAchC2a4dPeta
+        {false, 0}, // kAchC2a4dDeathmachine
+        {false, 0}, // kAchC2a4fGauss
+        {false, 0}, // kAchC2a4fSolved
+        {false, 0}, // kAchC2a5Apache1
+        {false, 0}, // kAchC2a5aApache2
+        {false, 0}, // kAchC2a5dLift
+        {false, 0}, // kAchC2a5gGarg
+        {false, 0}, // kAchC3a2Entry
+        {false, 0}, // kAchC3a2aStation1
+        {false, 0}, // kAchC3a2aStation2
+        {false, 0}, // kAchC3a2dPeak
+        {false, 0}, // kAchControlDie
+        {false, 0}, // kAchInit
+        {false, 0}, // kAchC2a5aApache3
+        {false, 0}, // kAchBeverages
+        {false, 0}, // kAchMarathon
+        {false, 0}, // kAchC1a0Naughty
+        {true, 0}, // kAchCheater
+        {false, 0}, // kAchUplinkExplorer
+        {false, 0}, // kAchNihilSci
+        {true, 0}, // kAchRiller
+        {false, 0}, // kAchLoperGarg
+        {false, 250}, // kAchLoperEggz
+        {false, 0}, // kAchC2a2b2Lift
+        {false, 0}, // kAchC1a4iBarnacle
+        {false, 0}, // kAchC2a3aPipe
+        {false, 0}, // kAchC3a1Secret
+        {false, 0}, // kAchC4a1eSpiral
     };
 
 #if !defined(__NDS__)
@@ -323,31 +255,8 @@ namespace hldata
 
     // The achievements by chapter, for the list the player reads: the
     // chapters in the order they are played, then Uplink, then those that
-    // belong to no one place.
+    // belong to no one place (their names: text/ui/ach_chapters.txt).
     inline constexpr int kAchChapterCount = 21;
-    inline constexpr const char *kAchChapterNames[kAchChapterCount] = {
-        "HAZARD COURSE",
-        "BLACK MESA INBOUND",
-        "ANOMALOUS MATERIALS",
-        "UNFORESEEN CONSEQUENCES",
-        "OFFICE COMPLEX",
-        "WE'VE GOT HOSTILES",
-        "BLAST PIT",
-        "POWER UP",
-        "ON A RAIL",
-        "APPREHENSION",
-        "RESIDUE PROCESSING",
-        "QUESTIONABLE ETHICS",
-        "SURFACE TENSION",
-        "FORGET ABOUT FREEMAN",
-        "LAMBDA CORE",
-        "XEN",
-        "GONARCH'S LAIR",
-        "INTERLOPER",
-        "NIHILANTH",
-        "UPLINK",
-        "GENERAL",
-    };
     /// Every achievement once, chapter by chapter ...
     inline constexpr std::uint8_t kAchByChapter[kAchievementCount] = {
         kAchTrainingComplete,

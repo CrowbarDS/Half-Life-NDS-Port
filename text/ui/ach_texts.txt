@@ -1,0 +1,85 @@
+# What each achievement asks, in the order of their ids (shared/HlAchievements.hpp),
+# then the ACHIEVEMENTS sheet's other words.
+@home resident
+@enum shared/HlAchievements.hpp Achievement kAchievementCount
+
+kAchTestAchievement = Kill a scientist.
+kAchC2a1Complete = Complete Power Up.
+kAchC4a2Complete = Complete Gonarch's Lair.
+kAchUplinkComplete = Complete Uplink.
+kAchTrainingComplete = Complete the Hazard Course.
+kAchC0a0Complete = Sit through the Tram Ride and complete Black Mesa Inbound.
+kAchC1a0Complete = Witness (and indirectly cause) the Black Mesa Incident and complete Anomalous Materials.
+kAchC1a1Complete = Conform to Eli's mission and complete Unforeseen Consequences.
+kAchC1a2Complete = Complete Office Complex.
+kAchC1a3Complete = Survive the HECU infiltration and complete \\\"We've Got Hostiles.\\\"
+kAchC1a4Complete = Complete Blast Pit.
+kAchC2a2Complete = Complete On a Rail.
+kAchC2a3Complete = Complete Apprenhension.
+kAchC2a4Complete = Complete the labyrinth that is Residue Processing.
+kAchC2a5Complete = Complete Questionable Ethics.
+kAchC2a5eComplete = Complete Surface Tension.
+kAchC3a1Complete = Survive the mortars and complete \\\"Forget About Freeman.\\\"
+kAchC3a2Complete = Complete Lambda Core.
+kAchC4a1Complete = Complete Xen.
+kAchC4a3Complete = Complete Interloper.
+kAchC4a4Complete = Complete Nihilanth.
+kAchC5a1Failed = Reject the offer. Goodbye, Dr. Freeman.
+kAchC5a1Complete = Accept the offer.
+kAchC1a1BarnDie = In Unforeseen Consequences, kill the security guard fighting the zombie to take his gun.
+kAchC1a2dBarney = In Office Complex, find Barney's hideout.
+kAchC1a2Turret = Disengage the first turret in Office Complex.
+kAchC1a2aTurret = Find the Maintenance Area in Office Complex.
+kAchC1a2Grenades = Find the grenade cache near the end of Office Complex.
+kAch5Barn = Kill 15 barnacles.
+kAch5Tur = Destroy 5 turrets. (excludes ceiling mounted turrets)
+kAchC1a0dStopit = In Anomalous Materials, destroy, uh... you-know-who's lunch.
+kAchFridgefreezer = In Office Complex, solve the chiller puzzle.
+kAchHeadhumpers = Kill 500 headcrabs.
+kAchFreed = Kill 100 Alien Slaves. Don't worry, you'll come to regret this.
+kAchC1a0dAol = In Anomalous Materials, open the Message Terminal.
+kAchC1a0dDyson = In Anomalous Materials, dry your hands.
+kAchC1a0dToldoff = In Anomalous Materials, refuse to put on the HEV Suit.
+kAchC1a3aConveyorbase = In We've Got Hostiles, find the base upon the conveyor belts.
+kAchFemdead = Kill an assassin.
+kAchC2a4dPeta = In Questionable Ethics, free the Alien Grunt.
+kAchC2a4dDeathmachine = In Questionable Ethics, activate the steriliser.
+kAchC2a4fGauss = In Questionable Ethics, retrieve the Tau Cannon.
+kAchC2a4fSolved = In Questionable Ethics, use the laser to destroy the wall.
+kAchC2a5Apache1 = In Surface Tension, destroy the first Apache.
+kAchC2a5aApache2 = In Surface Tension, destroy the second Apache after leaving the dam.
+kAchC2a5dLift = In Surface Tension, successfully dodge all the tripmines before descending.
+kAchC2a5gGarg = In Surface Tension, kill the Gargantua.
+kAchC3a2Entry = Reach the bottom of the Lambda Complex.
+kAchC3a2aStation1 = In Lambda Core, activate Pump Station 01.
+kAchC3a2aStation2 = In Lambda Core, activate Pump Station 02.
+kAchC3a2dPeak = Reach Level A in the Lambda Complex.
+kAchControlDie = Kill a Controller.
+kAchInit = Welcome to Half-Life Legacy.
+kAchC2a5aApache3 = In Surface Tension, destroy the third Apache on the cliffside.
+kAchBeverages = Heal yourself with a soda.
+kAchMarathon = In any desired order, complete the Hazard Course, Uplink, and Half-Life back to back. Doing them in one sitting is NOT required.
+kAchC1a0Naughty = In Anomalous Materials, sound the alarm at the reception.
+kAchCheater = Enable cheats.
+kAchUplinkExplorer = In Uplink, find the shotgun room.
+kAchNihilSci = In Nihilanth, find the one and only living scientist in one of the chambers.
+kAchRiller = In On a Rail, find Dave Riller's signature.
+kAchLoperGarg = In Interloper, kill the Gargantua.
+kAchLoperEggz = Break 250 objects (crates, boxes, barrels, etc.)
+kAchC2a2b2Lift = In On a Rail, find the secret cache aside an elevator.
+kAchC1a4iBarnacle = In Blast Pit, find the hidden chargers.
+kAchC2a3aPipe = In Apprehension, find the hidden cache.
+kAchC3a1Secret = In Forget About Freeman, find the secret room.
+kAchC4a1eSpiral = In Interloper, find the spiral.
+
+# A hidden one, until it is earned: its name, and what it asks.
+HiddenTitle = Hidden achievement
+HiddenText = Earned somewhere along the way.
+# A row's end, once it is earned.
+Earned = earned
+# The box under the list, before one is touched.
+Tally = This chapter: %d of %d - in all: %d of %d
+Hint = Touch one to read it. Slide the list, or touch < >, for another chapter.
+# The bar's button: whether the pop-ups are shown.
+PopUpsOn = POP-UPS: ON
+PopUpsOff = POP-UPS: OFF

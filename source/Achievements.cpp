@@ -12,6 +12,7 @@
 #include "game/Player.hpp"
 #include "net/NetGame.hpp"
 #include "render/TopText.hpp"
+#include "ui/UiText.hpp"
 
 Achievements achievements;
 
@@ -175,7 +176,9 @@ void Achievements::frame()
         }
         return;
     }
-    std::snprintf(shown_, sizeof(shown_), "ACHIEVEMENT UNLOCKED\n%s", hldata::kAchievements[id].title);
+    // (A copy: the pop-up keeps it.)
+    std::snprintf(shown_, sizeof(shown_), hlrt::ui::uiText(hlrt::ui::txt::ach_names::Unlocked),
+                  hlrt::ui::uiText(hlrt::ui::txt::ach_names::line(static_cast<unsigned>(id))));
     if (hlrt::topText.announce(shown_, kShownMs))
     {
         hlrt::sound.ui(hldata::kUiSoundPress);

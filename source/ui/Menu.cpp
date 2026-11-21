@@ -953,6 +953,9 @@ namespace hlrt
 
         // --- The achievements.
 
+        static_assert(ui::txt::ach_chapters::kCount == hldata::kAchChapterCount, "a name a chapter");
+        static_assert(ui::txt::ach_chapters::line(hldata::kAchChapterCount - 1).at == ui::txt::ach_chapters::General.at,
+                      "the general ones last, as kAchChapterStart has them");
         int achCount(int chapter)
         {
             return hldata::kAchChapterStart[chapter + 1] - hldata::kAchChapterStart[chapter];
@@ -965,14 +968,15 @@ namespace hlrt
         /// A hidden one says nothing of itself until it is earned.
         const char *achTitle(const hldata::AchievementTracker &tracker, int id)
         {
-            return hldata::kAchievements[id].hidden && !tracker.has(id) ? "Hidden achievement"
-                                                                         : hldata::kAchievements[id].title;
+            return uiText(hldata::kAchievements[id].hidden && !tracker.has(id)
+                              ? ui::txt::ach_texts::HiddenTitle
+                              : ui::txt::ach_names::line(static_cast<unsigned>(id)));
         }
         /// What a row says at its end: earned, how far along, or nothing.
         void achStatus(const hldata::AchievementTracker &tracker, int id, char *out, std::size_t size)
         {
             if (tracker.has(id))
-                std::snprintf(out, size, "earned");
+                std::snprintf(out, size, "%s", uiText(ui::txt::ach_texts::Earned));
             else if (hldata::kAchievements[id].goal != 0)
                 std::snprintf(out, size, "%d/%d", tracker.progress(id), hldata::kAchievements[id].goal);
             else
@@ -985,8 +989,9 @@ namespace hlrt
         }
         const char *achText(const hldata::AchievementTracker &tracker, int id)
         {
-            return hldata::kAchievements[id].hidden && !tracker.has(id) ? "Earned somewhere along the way."
-                                                                         : hldata::kAchievements[id].text;
+            return uiText(hldata::kAchievements[id].hidden && !tracker.has(id)
+                              ? ui::txt::ach_texts::HiddenText
+                              : ui::txt::ach_texts::line(static_cast<unsigned>(id)));
         }
 
         /// The trophy of the top screen's pop-up, small: lit, or not yet.
@@ -2150,7 +2155,7 @@ namespace hlrt
             drawSheetButton(kSheetRightBox, ">", sheetPressed_ == kSheetRight);
         }
         const int chapter = sheetChapter();
-        const char *name = page_ == Page::Achievements ? hldata::kAchChapterNames[chapter]
+        const char *name = page_ == Page::Achievements ? uiText(ui::txt::ach_chapters::line(static_cast<unsigned>(chapter)))
                            : page_ == Page::Settings   ? uiText(kSettingsChapterNames[chapter])
                            : page_ == Page::Profile    ? "PROFILE"
                            : page_ == Page::NetHost    ? (chapter == kHostMatch ? "MATCH" : chapter == kHostPlayers ? "PLAYERS" : "NEXT MAP")
@@ -2425,12 +2430,11 @@ namespace hlrt
             for (int n = 0; n < achCount(chapter); ++n)
                 here += tracker.has(achOf(chapter, n)) ? 1 : 0;
             char earned[48];
-            std::snprintf(earned, sizeof(earned), "This chapter: %d of %d - in all: %d of %d", here, achCount(chapter),
+            std::snprintf(earned, sizeof(earned), uiText(ui::txt::ach_texts::Tally), here, achCount(chapter),
                           tracker.earned(), static_cast<int>(hldata::kAchievementCount));
             drawFitted(canvas, small, x, y, earned, inkFor(small, kUiOrange), kWidth);
-            drawWrapped(canvas, small, x, y, g.line, 1, kLast,
-                        "Touch one to read it. Slide the list, or touch < >, for another chapter.",
-                        inkFor(small, kUiGrey), kWidth);
+            drawWrapped(canvas, small, x, y, g.line, 1, kLast, uiText(ui::txt::ach_texts::Hint), inkFor(small, kUiGrey),
+                        kWidth);
             return;
         }
 #ifndef HLDS_CHILD
@@ -2715,7 +2719,8 @@ namespace hlrt
         }
         if (page_ == Page::Achievements)
         {
-            drawSheetButton(sheetBarBox(0, 2), settings.achievementPopups ? "POP-UPS: ON" : "POP-UPS: OFF",
+            drawSheetButton(sheetBarBox(0, 2),
+                            uiText(settings.achievementPopups ? ui::txt::ach_texts::PopUpsOn : ui::txt::ach_texts::PopUpsOff),
                             sheetPressed_ == kSheetBar);
             drawSheetButton(sheetBarBox(1, 2), "BACK", sheetPressed_ == kSheetBar - 1);
             return;

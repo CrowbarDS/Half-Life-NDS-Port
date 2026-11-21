@@ -1,0 +1,77 @@
+# The achievements' names, in the order of their ids (shared/HlAchievements.hpp):
+# the top screen's pop-up shows one when it is earned, in play.
+@home resident
+@unique
+@enum shared/HlAchievements.hpp Achievement kAchievementCount
+
+kAchTestAchievement = You're just as bad as them.
+kAchC2a1Complete = Zapped to oblivion
+kAchC4a2Complete = Poor Big Momma...
+kAchUplinkComplete = On-the-Line
+kAchTrainingComplete = Settled in!
+kAchC0a0Complete = Morning, Mr. Freeman
+kAchC1a0Complete = A small discrepency
+kAchC1a1Complete = To the surface
+kAchC1a2Complete = Bad day to be Dr. Newell
+kAchC1a3Complete = Bad day to be part of the Science Team
+kAchC1a4Complete = 4000 Degrees Kelvin
+kAchC2a2Complete = Liftoff
+kAchC2a3Complete = Nice catch
+kAchC2a4Complete = Got enough conveyors?
+kAchC2a5Complete = You weren't authorized to know about that.
+kAchC2a5eComplete = War Games
+kAchC3a1Complete = Descension
+kAchC3a2Complete = Brave New World
+kAchC4a1Complete = So beautiful I could cry
+kAchC4a3Complete = Penultimatum
+kAchC4a4Complete = I think I just saved the world...
+kAchC5a1Failed = ...or I suppose not.
+kAchC5a1Complete = ...or did I?
+kAchC1a1BarnDie = I'm not following you, you evil person!
+kAchC1a2dBarney = Explorer
+kAchC1a2Turret = Stealth \\u0026 Action
+kAchC1a2aTurret = Explorer II
+kAchC1a2Grenades = Explorer III
+kAch5Barn = No more ropes
+kAch5Tur = Owowowowowow!
+kAchC1a0dStopit = Not Magnusson's Meal...
+kAchFridgefreezer = Got the Chills
+kAchHeadhumpers = Bye bye headhumpers!
+kAchFreed = Freed, in another kind of way
+kAchC1a0dAol = You've got mail
+kAchC1a0dDyson = Hygiene is important
+kAchC1a0dToldoff = Defiant
+kAchC1a3aConveyorbase = Explorer IV
+kAchFemdead = Martial hierarchy
+kAchC2a4dPeta = Kind-hearted soul
+kAchC2a4dDeathmachine = A new toy! Can I play?
+kAchC2a4fGauss = He let it overcharge.
+kAchC2a4fSolved = Defeating physics
+kAchC2a5Apache1 = Me and my Tau Cannon
+kAchC2a5aApache2 = Me and my Tau Cannon II
+kAchC2a5dLift = Better than a Snake
+kAchC2a5gGarg = Mortar'd to oblivion
+kAchC3a2Entry = 2 days have paid off
+kAchC3a2aStation1 = PUMP STATION 01
+kAchC3a2aStation2 = PUMP STATION 02
+kAchC3a2dPeak = All of those puzzles have paid off
+kAchControlDie = Boss baby
+kAchInit = Not the Only Achievement
+kAchC2a5aApache3 = Me and my RPG
+kAchBeverages = Yummers
+kAchMarathon = Marathon
+kAchC1a0Naughty = Instigator
+kAchCheater = Cheater
+kAchUplinkExplorer = Uplink Explorer
+kAchNihilSci = Hello, Gordon!
+kAchRiller = Signature move
+kAchLoperGarg = Third time's the charm
+kAchLoperEggz = Demolition Man
+kAchC2a2b2Lift = Explorer V
+kAchC1a4iBarnacle = Explorer VI
+kAchC2a3aPipe = Explorer VII
+kAchC3a1Secret = Explorer VIII
+kAchC4a1eSpiral = Explorer IX
+
+# The pop-up, over the name.
+Unlocked = ACHIEVEMENT UNLOCKED\n%s

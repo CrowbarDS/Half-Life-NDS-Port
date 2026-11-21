@@ -32,18 +32,18 @@ namespace
 
     void testTable()
     {
-        std::set<std::string> apis, titles;
+        // (Their names and what they ask are UI text: tools/uitext.py holds
+        // those to one each, never empty, in the ids' order.)
+        std::set<std::string> apis;
         int hidden = 0, counted = 0;
         for (const AchievementInfo &info : kAchievements)
         {
             apis.insert(kAchievementApis[&info - kAchievements]);
-            titles.insert(info.title);
             hidden += info.hidden ? 1 : 0;
             counted += info.goal != 0 ? 1 : 0;
-            check(info.text[0] != '\0', "every achievement says what to do");
         }
         check(kAchievementCount == 68, "the mod's 68");
-        check(apis.size() == 68 && titles.size() == 68, "each named once");
+        check(apis.size() == 68, "each named once");
         check(hidden == 4, "four hidden (both ends of the game, Cheater, Signature move)");
         check(counted == 5, "five that count");
         check(std::string(kAchievementApis[kAchInit]) == "INIT", "the ids are the table's rows");
@@ -62,9 +62,7 @@ namespace
               "the chapters cover the list");
         for (int c = 0; c < kAchChapterCount; ++c)
             check(kAchChapterStart[c + 1] > kAchChapterStart[c], "no chapter is empty");
-        check(std::string(kAchChapterNames[kAchChapterCount - 1]) == "GENERAL" &&
-                  kAchByChapter[kAchChapterStart[kAchChapterCount - 1]] == kAchInit,
-              "the general ones are last");
+        check(kAchByChapter[kAchChapterStart[kAchChapterCount - 1]] == kAchInit, "the general ones are last");
     }
 
     void testFile()
