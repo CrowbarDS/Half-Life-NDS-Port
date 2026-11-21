@@ -57,6 +57,10 @@ profile += ['HLDS_DEV=1'] if os.environ.get('HLDS_DEV') else []
 # tools/icache_rank.py) sees what each function would cost from main memory.
 # arm9-report.sh --check fails on it, as it should.
 profile += ['HLDS_ITCM_OFF=1'] if os.environ.get('HLDS_ITCM_OFF') else []
+# HLDS_ICACHE_PHASES=1 (with HLDS_PROFILE and HLDS_ITCM_OFF): the profiler's
+# sections also tell the I-cache profiler's melonDS which part of the frame
+# is running (source/DebugLog.hpp), for misses counted by phase.
+profile += ['HLDS_ICACHE_PHASES'] if os.environ.get('HLDS_ICACHE_PHASES') else []
 # HLDS_OVL_ROM=1 ./make.sh: the overlays (below) in the ROM's own ARM9
 # overlay table and its files, as retail games have them, not packed in
 # NitroFS (source/Overlay.arm.cpp). To become the only way once a DSi and a

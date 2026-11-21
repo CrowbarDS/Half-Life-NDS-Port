@@ -61,14 +61,45 @@ namespace hlrt::DebugLog
         /// the rest (perf.txt "pcs:"; tools/pcsample.py names them).
         void noteLibrary(const void *base, std::uint32_t codeBytes);
 
+#ifdef HLDS_ICACHE_PHASES
+        /// (HLDS_ICACHE_PHASES: which part of the frame is running, for the
+        /// I-cache profiler -- its melonDS counts misses by it: the section
+        /// plus 1, 0 outside any. Its register is one the console does not
+        /// have, tools/icache/melonds-icache.patch's; a write there is
+        /// nothing on the console.)
+        inline std::uint32_t phaseNow = 0;
+        inline void setPhase(std::uint32_t phase)
+        {
+            phaseNow = phase;
+            *reinterpret_cast<volatile std::uint32_t *>(0x04FFFA2C) = phase;
+        }
+#endif
+
         struct Scope
         {
+#ifdef HLDS_ICACHE_PHASES
+            // (The innermost section is the phase; the one around it again
+            // once it ends.)
+            explicit Scope(Section s) : section(s), start(now()), outer(phaseNow)
+            {
+                setPhase(static_cast<std::uint32_t>(s) + 1);
+            }
+            ~Scope()
+            {
+                add(section, now() - start);
+                setPhase(outer);
+            }
+#else
             explicit Scope(Section s) : section(s), start(now()) {}
             ~Scope() { add(section, now() - start); }
+#endif
             Scope(const Scope &) = delete;
             Scope &operator=(const Scope &) = delete;
             Section section;
             std::uint32_t start;
+#ifdef HLDS_ICACHE_PHASES
+            std::uint32_t outer;
+#endif
         };
     } // namespace Perf
 #else
