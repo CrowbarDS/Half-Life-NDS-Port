@@ -1425,6 +1425,23 @@ asked for in `source/game/GameDll.arm.cpp`):
   objects, the twenty-odd of their functions the game calls, and the hot
   code in ITCM.
 
+The think worker (`source/game/Think.cpp`, `shared/HlThink.hpp`) is a
+thread under the frame's, which answers the monsters' long questions -- a
+walk's plan, a way round, a cover spot -- while the frame waits for the
+screen; the two take turns only at their yields (libnds's preemption is
+off on the pinned libnds, and the guard stops the game if it is ever on).
+It sleeps on a semaphore that each question asked counts up
+(`ThinkQueue::posted`), rather than waking every frame to find nothing,
+and holds a mutex while it works one out, which a map's leaving waits for
+before what the question reads goes. libnds's comutex and cosema hold the
+interrupts off a moment and put them back as they were (on the pinned
+libnds; a later one turns them on regardless): neither is used with the
+interrupts held off, nor from an interrupt, where only
+`cothread_send_signal` is. In a fight on a DS its answers are taken up
+2 or 3 frames after they are asked (`perf.txt`, HLDS_PROFILE: "answers
+taken", "woken for none"); its stack, 6 KB of its own, is 4.2 KB deep at
+most.
+
 ### The families
 
 What a map can do without is a library of its own in the ROM's NitroFS,

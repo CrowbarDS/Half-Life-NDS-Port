@@ -18,7 +18,16 @@ namespace hlrt
     {
         hldata::ThinkQueue queue;
         hldata::LogicWorld *world = nullptr; // the map's, while there is one
-        volatile bool busy = false;          // a question is being worked out
+        // Counted up for each question asked (ThinkQueue::posted): the worker
+        // sleeps on it, rather than waking every frame to find nothing.
+        cosema_t asked = 0;
+        // Held by the worker while it works a question out: what detach()
+        // waits for before what the question reads goes.
+        comutex_t thinking = 0;
+        // (comutex and cosema hold the interrupts off a moment and put them
+        // back as they were -- on the pinned libnds; a later one turns them
+        // on regardless. Neither is ever used with the interrupts held off,
+        // nor from an interrupt: there, cothread_send_signal only.)
 
         /// The worker answers the questions while the frame waits for the
         /// screen. (Off, every question is answered as it is asked, inside
@@ -53,11 +62,6 @@ namespace hlrt
 #endif
 #endif
 
-        // What detach() waits on while a question is being finished: the
-        // worker sends it as it puts one down. (An address in main RAM: the
-        // top bit, libnds's own, is clear.)
-        std::uint32_t idleSignal() { return static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(&busy)); }
-
 #ifndef HLDS_CHILD
         cothread_t mainThread = -1;
 
@@ -71,26 +75,36 @@ namespace hlrt
                 cothread_yield();
         }
 
-        // The worker: a question at a time while there are any; otherwise
-        // asleep until the next frame's wait.
+        // A question asked: the worker woken (from the frame's own thread).
+        void posted() { cosema_signal(&asked); }
+
+        // The worker: asleep until a question is asked, then a question at a
+        // time while there are any. (No wake-up is missed: it only stops at
+        // its own yields, and there is none between finding the questions
+        // all answered and going back to sleep.)
         int work(void *)
         {
             for (;;)
             {
-                if (world != nullptr && !queue.abort)
+                cosema_wait(&asked);
+                // (Several asked since it last looked are all answered now.)
+                while (cosema_try_wait(&asked))
                 {
-                    busy = true;
-                    const bool did = gameApi.thinkRunOne(*world, pause);
-                    busy = false;
-                    cothread_send_signal(idleSignal());
-                    if (did)
-                    {
-                        ++think.answered;
-                        cothread_yield();
-                        continue;
-                    }
                 }
-                cothread_yield_irq(IRQ_VBLANK);
+                bool any = false;
+                while (world != nullptr && !queue.abort)
+                {
+                    comutex_acquire(&thinking);
+                    const bool did = world != nullptr && !queue.abort && gameApi.thinkRunOne(*world, pause);
+                    comutex_release(&thinking);
+                    if (!did)
+                        break;
+                    any = true;
+                    ++think.answered;
+                    cothread_yield();
+                }
+                if (!any)
+                    ++think.idleWakes;
             }
             return 0;
         }
@@ -109,6 +123,8 @@ namespace hlrt
         for (std::uint32_t i = 0; i < kGuardWords; ++i)
             stack[i] = kGuardMark ^ i;
         mainThread = cothread_get_current();
+        cosema_init(&asked, 0);
+        comutex_init(&thinking);
         // (It takes turns with the main thread, at its cothread_yield calls:
         // never cut off by it, nor it by this. The program's statics count
         // on that -- they are made without a lock, source/StdHalts.cpp -- and
@@ -166,6 +182,10 @@ namespace hlrt
         // game's do they look for it.)
         queue.answersAtOnce = started_ && isDSiMode();
         queue.abort = false;
+        // (Each question asked wakes the worker: it sleeps otherwise.)
+#ifndef HLDS_CHILD
+        queue.posted = started_ ? &posted : nullptr;
+#endif
         w.actors->think = &queue;
         world = &w;
     }
@@ -189,8 +209,13 @@ namespace hlrt
         // worker, under it, would never have the CPU if the frame only
         // yielded.)
         queue.abort = true;
-        while (busy)
-            cothread_yield_signal(idleSignal());
+#ifndef HLDS_CHILD
+        if (started_)
+        {
+            comutex_acquire(&thinking);
+            comutex_release(&thinking);
+        }
+#endif
         if (world != nullptr && world->actors != nullptr)
             world->actors->think = nullptr;
         world = nullptr;
@@ -199,6 +224,7 @@ namespace hlrt
         queue.count = 0;
         queue.deferred = false;
         queue.answersAtOnce = false;
+        queue.posted = nullptr;
         queue.abort = false;
     }
 } // namespace hlrt

@@ -548,10 +548,18 @@ namespace hldata
         std::uint32_t longest = 0;     ///< ... the longest
         std::uint32_t dropped = 0;     ///< answers to a walk's plan from where it no longer was
         std::uint32_t gaveUp = 0;      ///< questions not taken up in time: the asker worked them out
+        /// Told of each question asked (the engine's: it wakes the worker,
+        /// which otherwise sleeps); none on the host.
+        void (*posted)() = nullptr;
     };
 
-    /// A question asked: when.
-    inline void thinkAsked(const ThinkQueue &q, ThinkSlot &slot) { slot.askedFrame = q.frame; }
+    /// A question asked: when -- and the worker woken for it.
+    inline void thinkAsked(const ThinkQueue &q, ThinkSlot &slot)
+    {
+        slot.askedFrame = q.frame;
+        if (q.posted != nullptr)
+            q.posted();
+    }
     /// Its answer taken up: how long it took, for perf.txt.
     inline void thinkTaken(ThinkQueue &q, const ThinkSlot &slot)
     {

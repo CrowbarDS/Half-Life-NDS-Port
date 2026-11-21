@@ -209,8 +209,10 @@ namespace hlrt::DebugLog::Perf
                          static_cast<unsigned long>(waits.taken != 0 ? waits.frames / waits.taken : 0),
                          static_cast<unsigned long>(waits.longest), static_cast<unsigned long>(waits.dropped),
                          static_cast<unsigned long>(waits.gaveUp));
-            std::fprintf(log, ", answered %lu, think stack %lu, key reads %lu, longest read %lu, keys in worst frame %lu\n",
-                         static_cast<unsigned long>(think.answered), static_cast<unsigned long>(think.stackPeak()),
+            std::fprintf(log, ", answered %lu, woken for none %lu, think stack %lu, key reads %lu, longest read %lu, "
+                         "keys in worst frame %lu\n",
+                         static_cast<unsigned long>(think.answered), static_cast<unsigned long>(think.idleWakes),
+                         static_cast<unsigned long>(think.stackPeak()),
                          static_cast<unsigned long>(keyReads), static_cast<unsigned long>(toMicros(keyLongest)),
                          static_cast<unsigned long>(toMicros(keysInWorstFrame)));
             writePieces(log);
@@ -232,6 +234,7 @@ namespace hlrt::DebugLog::Perf
             leaveCriticalSection(saved);
         }
         think.answered = 0;
+        think.idleWakes = 0;
         keyReads = keyLongest = keysInWorstFrame = 0;
         for (int i = 0; i < kCount; ++i)
         {

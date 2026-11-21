@@ -31,6 +31,9 @@ namespace hlrt
         /// Questions the worker has answered (perf.txt counts them and
         /// sets this back to 0).
         std::uint32_t answered = 0;
+        /// Times the worker woke for a question and found none to answer
+        /// (perf.txt counts them and sets this back to 0).
+        std::uint32_t idleWakes = 0;
         /// How long the answers took to be taken up, asked to taken (in
         /// frames), since this was last asked; and those dropped (a walk's
         /// plan from where it no longer was) or not taken up in time (the
