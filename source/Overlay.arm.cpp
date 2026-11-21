@@ -267,6 +267,15 @@ namespace hlrt::ovl
             // Nothing of what was there is kept: its lines in the cache go too.
             there = Id::None;
             const RegionBounds &b = kRegions[k.region];
+#ifdef HLDS_DEBUG_BUILD
+            // (A debug build spoils it first: code kept from it then stops at
+            // once, an undefined instruction, and text kept from it reads as
+            // garbage -- rather than working until the new one differs.)
+            for (std::uint32_t *w = reinterpret_cast<std::uint32_t *>(b.start);
+                 w < reinterpret_cast<std::uint32_t *>(b.end); ++w)
+                *w = 0xE7FFDEFFu;
+            DC_FlushRange(b.start, static_cast<std::uint32_t>(b.end - b.start));
+#endif
             DC_InvalidateRange(b.start, static_cast<std::uint32_t>(b.end - b.start));
             const Entry &e = table[i];
             if (e.load != 0)

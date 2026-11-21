@@ -12,6 +12,7 @@
 // function or a variable put there by attribute:
 //   HL_OVL_CODE(front) void drawProfile();   code in overlay `front`
 //   HL_OVL_BSS(map) static char buffer[N];   zeroed data in overlay `map`
+//   HL_OVL_RODATA(front) const char text[] = "...";   constants in `front`
 // The program calls into one only through a GATE, a function of its own:
 //   HL_OVL_GATED void drawProfile() { HL_OVL_GATE(Front); detail::drawProfile(); }
 // which is the overlay loaded, or a halt that names it -- never a jump into
@@ -39,10 +40,12 @@
 #if HL_OVL_COUNT > 0
 #define HL_OVL_CODE(name) __attribute__((section(".ovl." #name ".text." HL_OVL_STR(__COUNTER__)), noinline))
 #define HL_OVL_BSS(name) __attribute__((section(".ovl." #name ".bss." HL_OVL_STR(__COUNTER__))))
+#define HL_OVL_RODATA(name) __attribute__((section(".ovl." #name ".rodata." HL_OVL_STR(__COUNTER__))))
 #else
 // (No overlays -- the child, a program without regions: the program's own.)
 #define HL_OVL_CODE(name) __attribute__((noinline))
 #define HL_OVL_BSS(name)
+#define HL_OVL_RODATA(name)
 #endif
 #define HL_OVL_GATED __attribute__((noinline, section(".text.ovlgate." HL_OVL_STR(__COUNTER__))))
 
