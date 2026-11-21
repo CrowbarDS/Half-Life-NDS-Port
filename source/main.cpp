@@ -1942,8 +1942,13 @@ namespace
         std::FILE *file = std::fopen(global.dataPath("debug_start.txt").c_str(), "r");
         if (file == nullptr)
             return false;
-        // (The readout is on: whoever starts this way wants to see it.)
+        // (The readout is on: whoever starts this way wants to see it. Not
+        // in a profiling build, which measures the game as it is played: the
+        // readout's drawing and its CPU meter's line count are not the
+        // game's -- DebugOverlay.)
+#ifndef HLDS_PROFILE
         settings.debugReadout = true;
+#endif
         // (The sixth number, the seconds until the player dies, is read by
         // Player. The seventh is how many models may be drawn at once.)
         // (The eighth and ninth, a weapon and god mode, are Player's too.
