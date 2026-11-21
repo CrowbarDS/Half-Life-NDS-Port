@@ -807,24 +807,32 @@ namespace hldata
             }
             return enter;
         }
+        /// How far a line goes through the world alone, its movers left out
+        /// (kFractionOne the whole way): traceShot's first part.
+        inline std::int32_t shotWorld(const MoveWorld &world, const fx *start, const fx *end)
+        {
+            if (world.nodes != nullptr)
+            {
+                std::int32_t hit = kFractionOne;
+                return detail::lineThrough(world, world.headNode, 0, kFractionOne, start, end, hit, 0) ? kFractionOne
+                                                                                                       : hit;
+            }
+            // A world given no tree (some tests): its clip hull must do.
+            const Trace t = traceHull(world.crouched, start, end);
+            return t.startSolid ? 0 : t.fraction;
+        }
     } // namespace detail
 
-    HL_HOT HL_TRACE_NOINLINE Shot traceShot(const MoveWorld &world, const fx *start, const fx *end)
+    /// `worldFraction`, if not -1: how far the line goes through the world
+    /// alone, known already (detail::shotWorld) -- a line that is the same
+    /// each time, from something that never moves, as a barnacle's tongue's
+    /// way down. The world does not change; only its movers are looked at.
+    HL_HOT HL_TRACE_NOINLINE Shot traceShot(const MoveWorld &world, const fx *start, const fx *end,
+                                            std::int32_t worldFraction = -1)
     {
         HL_TRACE_SPENT(kTraceShot);
         Shot shot;
-        if (world.nodes != nullptr)
-        {
-            std::int32_t hit = kFractionOne;
-            if (!detail::lineThrough(world, world.headNode, 0, kFractionOne, start, end, hit, 0))
-                shot.fraction = hit;
-        }
-        else
-        {
-            // A world given no tree (some tests): its clip hull must do.
-            const Trace t = traceHull(world.crouched, start, end);
-            shot.fraction = t.startSolid ? 0 : t.fraction;
-        }
+        shot.fraction = worldFraction >= 0 ? worldFraction : detail::shotWorld(world, start, end);
         // (Only a brush the line reaches before the world stops it can stop
         // it sooner: the others are passed over by their boxes.)
         fx stop[3];

@@ -1684,7 +1684,14 @@ namespace hldata
             // (From just under the mouth: the mouth itself is the ceiling's.)
             const fx from[3] = {c.me.pos[0], c.me.pos[1], c.me.pos[2] - fxFromInt(4)};
             const fx down[3] = {c.me.pos[0], c.me.pos[1], c.me.pos[2] - fxFromInt(2048)};
-            const Shot shot = traceShot(*c.w.world, from, down);
+            // (The world's part of that way down is the same each think: it
+            // hangs where it is, and the world never changes. Found once,
+            // kept in time2 -- one more, 0 not yet -- and only the movers,
+            // a door or a lift come under it, looked at again: the game's
+            // whole trace, a think's worth of them, was a frame's dearest.)
+            if (c.m.time2 == 0)
+                c.m.time2 = detail::shotWorld(*c.w.world, from, down) + 1;
+            const Shot shot = traceShot(*c.w.world, from, down, c.m.time2 - 1);
             length = fxFromInt(4) +
                      static_cast<fx>((static_cast<std::int64_t>(fxFromInt(2044)) * shot.fraction) >> kFractionShift);
             const fx mins[3] = {c.me.pos[0] - fxFromInt(kCheckSpacing), c.me.pos[1] - fxFromInt(kCheckSpacing),
