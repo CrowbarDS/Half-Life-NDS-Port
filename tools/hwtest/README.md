@@ -160,6 +160,37 @@ On a console, 2026-11-03: PASS, 0 wrong, and in cycles an item:
 So the game uses them: about a tenth off a time step's product and a sixteenth
 off a bone's rotation.
 
+## itcmswap/ — what bringing code into ITCM would cost
+
+The two numbers `tools/icache_rank.py --by-phase` models an ITCM region
+swapped by phase with: what copying code into ITCM costs, and what one miss
+of the instruction cache costs. On the console, not the emulator, whose
+timings are not the console's (melonDS does not even model the instruction
+cache: its "one miss" is 0). In CPU cycles: a byte copied, or a line of the
+cache.
+
+- **memcpy warm**, **ldm/stm warm / cold / uncached** (4, 8, 16 KB): main
+  RAM into ITCM, with libc's copy and with an LDM/STM of eight registers;
+  the source in the data cache, out of it (cleaned and emptied first), and
+  read through the uncached mirror.
+- **chain cold / warm, one miss**: a chain of branches, one to each 32-byte
+  line of main RAM, run with the instruction cache emptied and again warm;
+  the difference per line is what a miss costs, to pass as `--miss-cycles`.
+
+| Where | copy, cycles a byte | chain cold / warm, a line | one miss |
+|---|---|---|---|
+| DSi, 134 MHz (2026-11-21, first probe) | 3.18-3.30 (2.85 once), warm, cold or uncached alike | 93.1 / 54.6 | 38.5: too low, see below |
+| DSi, 134 MHz (2026-11-21, a chain of 64) | 3.1-3.3 alike | 95.4 / 6.5 | **88.8** (0.66 us) |
+
+A copy into ITCM runs at the speed of main RAM, cached or not: 8 KB is
+about 0.2 ms on a DSi. The first probe's chain ran 192 lines through a cache
+of 64 sets of 4: lines 64 apart fell in the same way (the replacement counter
+is the whole cache's, it seems) and pushed each other out, so its warm run
+still missed -- 54.6 cycles a line, where a cached branch takes a few. The
+chain is now 64 lines, one to each set: warm, 6.5 cycles a line, and a miss
+88.8 cycles, 0.66 us. A DS is not measured yet: its main RAM is the same, so
+the same time is likely, half as many of its cycles.
+
 ## rtcom/ — can the game reach the 3DS's side? (3DS only)
 
 On a 3DS, DS(i) mode is shown by TwlBg, the 3DS's own program. TWPatch makes
