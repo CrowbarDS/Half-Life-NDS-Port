@@ -5,11 +5,16 @@
 // The hardware takes so many polygons a frame and no more, and the models
 // have a share of that. The rule here: an enemy that is alive and in view
 // is ALWAYS drawn, and so are the people of the place; what gives way for
-// them is, in order, what matters least -- bodies and furniture, things to
+// them is, in order, what matters least -- furniture, bodies, things to
 // pick up, the far enemies' detail, the nearest's, the detail of the weapon
 // in hand, and at the last a little of the world's far end. (It used to be
 // "nearest first, whatever it is": a medkit at the player's feet could cost
 // them the sight of the headcrab behind it.)
+//
+// A body that is drawn stays drawn: it gives its place to an enemy or one
+// of the people, not to a new thing to pick up or another body, and not to
+// a frame under pressure. (A body was the first thing to go, and came and
+// went as the view turned and enemies came into it.)
 //
 // And what "in view" means follows the shape of the thing: a barnacle is a
 // mouth on the ceiling and a tongue that hangs to the floor, and is in view
@@ -29,8 +34,9 @@ namespace hldata
     inline constexpr int kDrawEnemy = 0;  ///< alive, and fights: never left out
     inline constexpr int kDrawPerson = 1; ///< alive, one of the people; or in a scene
     inline constexpr int kDrawPickup = 2; ///< something to take
-    inline constexpr int kDrawProp = 3;   ///< bodies, furniture, the rest: first to go
-    inline constexpr int kDrawClasses = 4;
+    inline constexpr int kDrawBody = 3;   ///< dead: kept while it was drawn
+    inline constexpr int kDrawProp = 4;   ///< furniture, the rest: first to go
+    inline constexpr int kDrawClasses = 5;
 
     inline int drawClass(const ActorState &actor)
     {
@@ -43,12 +49,12 @@ namespace hldata
             actor.kind == static_cast<std::uint8_t>(ActorKind::Boid))
             return kDrawProp;
         if (fights(actor.kind))
-            return dead ? kDrawProp : kDrawEnemy;
+            return dead ? kDrawBody : kDrawEnemy;
         // (Another player is never left out either: they shoot back.)
         if (actor.kind == static_cast<std::uint8_t>(ActorKind::Player))
             return kDrawEnemy;
         if (isPerson(actor.kind) || actor.kind == static_cast<std::uint8_t>(ActorKind::Gman))
-            return dead ? kDrawProp : kDrawPerson;
+            return dead ? kDrawBody : kDrawPerson;
         // (Whatever a scene has taken is what the scene is about.)
         if (actor.script >= 0 && actor.scriptPhase != kActorFree)
             return kDrawPerson;
@@ -280,12 +286,21 @@ namespace hldata
             return one.levels - 1;
         };
 
-        // Who has a place at all: the first `limit`; and every enemy.
+        // Who has a place at all: the first `limit`; and every enemy. (A
+        // body drawn the pass before keeps one: what is new of the things
+        // to pick up and the bodies does not take it.)
+        auto keptBody = [&](int i) { return all[i].kind == kDrawBody && all[i].shown; };
+        int bodiesWaiting = 0;
+        for (int i = 0; i < count; ++i)
+            bodiesWaiting += keptBody(i) ? 1 : 0;
         int kept = 0;
         for (int i = 0; i < count; ++i)
         {
             const DrawCandidate &one = all[i];
-            const bool place = kept < limit || (one.kind == kDrawEnemy && kept < enemyMost);
+            const bool fresh = (one.kind == kDrawPickup || one.kind == kDrawBody) && !one.shown;
+            bodiesWaiting -= keptBody(i) ? 1 : 0;
+            const bool place = fresh ? kept + bodiesWaiting < limit
+                                     : kept < limit || (one.kind == kDrawEnemy && kept < enemyMost);
             if (!place)
             {
                 ++plan.cut[one.kind];
@@ -429,41 +444,46 @@ namespace hldata
             }
         }
 
-        // Then what there is to pick up, and the rest, for as long as they
-        // fit what is left of the share -- which under pressure is less.
+        // Then the bodies that were drawn, for as long as they fit the share
+        // (the whole of it: a frame under pressure does not take them); then
+        // what there is to pick up, and the rest, for as long as they fit
+        // what is left of it -- which under pressure is less.
         const int share = 4 - (pressure > 2 ? 2 : pressure);
         int polygons = sum(false, kDrawPerson), vertices = sum(true, kDrawPerson);
         bool any = held.active;
         for (int i = 0; i < count; ++i)
             any = any || (plan.drawn[i] && all[i].kind <= kDrawPerson);
-        for (int i = 0; i < count; ++i)
+        for (const bool bodies : {true, false})
         {
-            if (!plan.drawn[i] || all[i].kind <= kDrawPerson)
-                continue;
-            const DrawCandidate &one = all[i];
-            bool fits = false;
-            int level = plan.level[i];
-            // (Nothing new of theirs when the enemies have had to take more
-            // than the share -- but what was shown stays while it fits: they
-            // go as the room goes, not all at once.)
-            for (; level < one.levels && (!tight || one.shown); ++level)
+            for (int i = 0; i < count; ++i)
             {
-                const int p = polygons + one.polygons[level], v = vertices + one.vertices[level];
-                fits = p <= sharePolygons && v <= shareVertices &&
-                       (!any || (p <= sharePolygons * share / 4 && v <= shareVertices * share / 4));
-                if (fits)
-                    break;
+                if (!plan.drawn[i] || all[i].kind <= kDrawPerson || keptBody(i) != bodies)
+                    continue;
+                const DrawCandidate &one = all[i];
+                bool fits = false;
+                int level = plan.level[i];
+                // (Nothing new of theirs when the enemies have had to take
+                // more than the share -- but what was shown stays while it
+                // fits: they go as the room goes, not all at once.)
+                for (; level < one.levels && (!tight || one.shown); ++level)
+                {
+                    const int p = polygons + one.polygons[level], v = vertices + one.vertices[level];
+                    fits = p <= sharePolygons && v <= shareVertices &&
+                           (bodies || !any || (p <= sharePolygons * share / 4 && v <= shareVertices * share / 4));
+                    if (fits)
+                        break;
+                }
+                if (!fits)
+                {
+                    plan.drawn[i] = false;
+                    ++plan.cut[one.kind];
+                    continue;
+                }
+                plan.level[i] = static_cast<std::uint8_t>(level);
+                polygons += one.polygons[level];
+                vertices += one.vertices[level];
+                any = true;
             }
-            if (!fits)
-            {
-                plan.drawn[i] = false;
-                ++plan.cut[one.kind];
-                continue;
-            }
-            plan.level[i] = static_cast<std::uint8_t>(level);
-            polygons += one.polygons[level];
-            vertices += one.vertices[level];
-            any = true;
         }
         plan.polygons = polygons;
         plan.vertices = vertices;

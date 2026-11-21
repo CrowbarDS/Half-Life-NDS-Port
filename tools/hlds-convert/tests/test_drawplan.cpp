@@ -66,7 +66,7 @@ namespace
         a.ai = kAiDying;
         check(drawClass(a) == kDrawEnemy, "... still, while it dies");
         a.ai = kAiDead;
-        check(drawClass(a) == kDrawProp, "... and a body once it is dead");
+        check(drawClass(a) == kDrawBody, "... and a body once it is dead");
         a = ActorState();
         a.kind = kind(ActorKind::Tripmine);
         check(drawClass(a) == kDrawEnemy, "a mine on a wall is to be seen");
@@ -294,6 +294,54 @@ namespace
         }
     }
 
+    // A body drawn stays drawn as the view turns: it gives way to an enemy
+    // or one of the people, not to a new thing to pick up, a new body or a
+    // frame under pressure.
+    void testBodies()
+    {
+        {
+            DrawCandidate all[5] = {model(kDrawEnemy, 100, 1), model(kDrawEnemy, 100, 1), model(kDrawPickup, 20, 1),
+                                    model(kDrawPickup, 20, 1), model(kDrawBody, 100, 1)};
+            all[2].far = all[3].far = 50;
+            all[4].far = 500;
+            all[4].shown = true;
+            const DrawPlan plan = planModels(all, 5, 4, DrawHeld(), 0, kShare, kShareVertices, kWhole);
+            check(plan.drawn[4] && drawnOf(plan, all, 5, kDrawPickup) == 1,
+                  "two new pickups come into view at the limit: the body keeps its place, one pickup waits");
+            all[4].shown = false;
+            const DrawPlan fresh = planModels(all, 5, 4, DrawHeld(), 0, kShare, kShareVertices, kWhole);
+            check(!fresh.drawn[4] && drawnOf(fresh, all, 5, kDrawPickup) == 2, "... a body not yet drawn does not");
+        }
+        {
+            DrawCandidate all[4] = {model(kDrawEnemy, 100, 1), model(kDrawEnemy, 100, 1), model(kDrawPerson, 100, 1),
+                                    model(kDrawBody, 100, 1)};
+            all[3].shown = true;
+            const DrawPlan plan = planModels(all, 4, 3, DrawHeld(), 0, kShare, kShareVertices, kWhole);
+            check(!plan.drawn[3] && plan.drawn[0] && plan.drawn[1] && plan.drawn[2] && plan.cut[kDrawBody] == 1,
+                  "a body gives its place to the enemies and the people");
+        }
+        {
+            DrawCandidate all[4] = {model(kDrawEnemy, 100, 1), model(kDrawEnemy, 100, 1), model(kDrawBody, 100, 1),
+                                    model(kDrawBody, 100, 1)};
+            all[2].far = 50;
+            all[3].far = 400;
+            all[3].shown = true;
+            const DrawPlan plan = planModels(all, 4, 3, DrawHeld(), 0, kShare, kShareVertices, kWhole);
+            check(plan.drawn[3] && !plan.drawn[2], "a new body nearer does not push out one drawn");
+        }
+        {
+            // An enemy of 400 and a body of 300 in a share of 1200 that the
+            // frame's pressure halves for what is not an enemy.
+            DrawCandidate all[2] = {model(kDrawEnemy, 400, 1), model(kDrawBody, 300, 1)};
+            all[1].shown = true;
+            check(planModels(all, 2, 8, DrawHeld(), 2, kShare, kShareVertices, kWhole).drawn[1],
+                  "a body drawn stays when the frame is under pressure, while it fits the share");
+            all[1].shown = false;
+            check(!planModels(all, 2, 8, DrawHeld(), 2, kShare, kShareVertices, kWhole).drawn[1],
+                  "... a new one waits for room");
+        }
+    }
+
     void testWho()
     {
         // Eight props near, two headcrabs behind them, room for eight: the
@@ -451,6 +499,7 @@ int main()
     testHidden();
     testHiddenCache();
     testSteady();
+    testBodies();
     if (g_failures == 0)
         std::printf("test_drawplan: ok\n");
     return g_failures == 0 ? 0 : 1;

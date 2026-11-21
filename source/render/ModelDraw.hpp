@@ -29,7 +29,7 @@ namespace hlrt
         /// how many may be on this machine (setLimit): what there is time to
         /// pose, not what there is room to draw.
         static constexpr int kMaxDrawn = 16;
-        int cutOf(int kind) const { return cutClass_[kind & 3]; }
+        int cutOf(int kind) const { return kind >= 0 && kind < 5 ? cutClass_[kind] : 0; }
         /// The enemies left out that could have been seen (not behind a wall).
         int seenEnemiesCut() const { return seenCut_; }
         /// How many in view were behind a wall this pass, and not drawn.
@@ -147,7 +147,7 @@ namespace hlrt
         /// models went over their share for an enemy's sake; and whether
         /// one had to be made room for at all, at which the frame's
         /// effects give way.
-        int cutClass_[4] = {};
+        int cutClass_[5] = {};
         int grown_ = 0;
         int seenCut_ = 0;
         /// Per actor (by its index, as lastLevel_): how many looks in a row
