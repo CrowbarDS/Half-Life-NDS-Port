@@ -101,7 +101,7 @@ namespace hldata
     {
         fx at[3], normal[3];
         int on = -1;
-        if (!traceShotWall(world, start, end, at, normal, &on))
+        if (!traceShotWall(world, start, end, at, normal, &on, true))
             return false;
         if (mover != nullptr)
             *mover = on;
@@ -137,7 +137,7 @@ namespace hldata
                           from[2] + along[2] * reach - fxFromInt(reach / 3)};
         fx at[3], normal[3];
         int on = -1;
-        if (!traceShotWall(world, from, to, at, normal, &on))
+        if (!traceShotWall(world, from, to, at, normal, &on, true))
             return false;
         const std::uint8_t picture = alien ? ((a.seed >> 14) & 1 ? kDecalAlien : kDecalAlien2)
                                            : static_cast<std::uint8_t>(kDecalBlood + ((a.seed >> 14) % kDecalBloods));
@@ -156,7 +156,7 @@ namespace hldata
         const fx to[3] = {at[0], at[1], at[2] - fxFromInt(drop)};
         fx on[3], normal[3];
         int mover = -1;
-        if (!traceShotWall(world, from, to, on, normal, &mover) || normal[2] < kFxOne / 2)
+        if (!traceShotWall(world, from, to, on, normal, &mover, true) || normal[2] < kFxOne / 2)
             return false;
         markOn(a, world, mover, picture, on, normal, half, colour);
         return true;
@@ -170,7 +170,7 @@ namespace hldata
         const fx to[3] = {at[0], at[1], at[2] - fxFromInt(72)};
         fx on[3], normal[3];
         int mover = -1;
-        if (!traceShotWall(world, from, to, on, normal, &mover))
+        if (!traceShotWall(world, from, to, on, normal, &mover, true))
             return;
         markOn(a, world, mover, kDecalScorch, on, normal, size < 32 ? 32 : (size > 56 ? 56 : size), kMarkSoot);
         specksAdd(a, on, normal, 5, static_cast<std::uint16_t>(6 | 5 << 5 | 4 << 10), 220);

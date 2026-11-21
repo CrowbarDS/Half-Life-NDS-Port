@@ -1068,10 +1068,13 @@ namespace hldata
     /// drawn: `at` is brought back onto the face, for one that is square to
     /// the axes -- as doors are.) `metMover`: the brush entity that stopped it,
     /// or -1 for the world (or for one it only passed within a hull's
-    /// breadth of, as traceShot does not count it).
+    /// breadth of, as traceShot does not count it). `asShot`: such a brush
+    /// does not stop the line either, as it does not stop a shot -- a mark
+    /// goes where the round went, not on the air in front of a crate it
+    /// passed close by.
     // (One copy, not one in every monster that looks for a wall.)
     [[gnu::noinline]] inline bool traceShotWall(const MoveWorld &world, const fx *start, const fx *end, fx *at, fx *normal,
-                                                int *metMover = nullptr)
+                                                int *metMover = nullptr, bool asShot = false)
     {
         std::int32_t fraction = kFractionOne;
         int wall = -1;
@@ -1106,21 +1109,22 @@ namespace hldata
             const Trace t = traceHull(mover.crouched, a, b);
             if (t.startSolid || t.allSolid || !t.hit || t.fraction >= fraction)
                 continue;
-            fraction = t.fraction;
             // (Which it is: one whose own box the line goes into, as
             // traceShot has it. One met only by its hull's breadth is in
             // front of what was hit.)
-            on = -1;
-            if (metMover != nullptr && world.brushes != nullptr && world.models != nullptr)
+            int into = m;
+            if ((metMover != nullptr || asShot) && world.brushes != nullptr && world.models != nullptr)
             {
                 const Model &model = world.models[world.brushes[m].model];
                 fx mins[3] = {fxFromInt(model.mins[0]), fxFromInt(model.mins[1]), fxFromInt(model.mins[2])};
                 fx maxs[3] = {fxFromInt(model.maxs[0]), fxFromInt(model.maxs[1]), fxFromInt(model.maxs[2])};
                 detail::boxCentred(mover, mins, maxs);
-                on = detail::lineIntoBox(a, b, mins, maxs) >= 0 ? m : -1;
+                into = detail::lineIntoBox(a, b, mins, maxs) >= 0 ? m : -1;
             }
-            else if (metMover != nullptr)
-                on = m;
+            if (asShot && into < 0)
+                continue;
+            fraction = t.fraction;
+            on = metMover != nullptr ? into : -1;
             back = 0;
             for (int i = 0; i < 3; ++i)
             {
