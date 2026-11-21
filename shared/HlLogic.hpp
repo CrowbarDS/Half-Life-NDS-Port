@@ -2390,6 +2390,92 @@ namespace hldata
             return t;
         }
 
+        /// When a box `half` across each way from its middle, at `centre`,
+        /// moving by `move`, meets the box `mins`..`maxs` (boxTrace's box
+        /// against another): a fraction of the move (Q30), and the axis it
+        /// meets it along in `stopAxis`; -1 if it does not before `best` (at
+        /// most kFractionOne). One already in it may only move out of it, the
+        /// short way: 0, along that, if it goes any other.
+        inline std::int64_t boxMeetsBox(const fx *mins, const fx *maxs, const fx *half, const fx *centre,
+                                        const fx *move, std::int64_t best, int &stopAxis)
+        {
+            // Wholly beyond a face of it -- starting past it, and ending past
+            // it or on it -- it never meets it: what the slab test below finds
+            // (an entry at the very end, or none before the start), without
+            // its divides. tools/hlds-convert/tests/test_divfree.cpp holds this
+            // to what it was, bit for bit.
+            for (int k = 0; k < 3; ++k)
+            {
+                const fx lo = mins[k] - half[k] - centre[k], hi = maxs[k] + half[k] - centre[k];
+                if ((lo > 0 && move[k] <= lo) || (hi < 0 && move[k] >= hi))
+                {
+                    stopAxis = -1;
+                    return -1;
+                }
+            }
+            // When, along the move, it comes to touch on every side at once
+            // -- and until when.
+            std::int64_t enter = -1, leave = kFractionOne;
+            int axis = -1;
+            bool apart = false;
+            fx least = 0;
+            int leastAxis = -1;
+            bool in = true;
+            for (int k = 0; k < 3; ++k)
+            {
+                const fx lo = mins[k] - half[k] - centre[k], hi = maxs[k] + half[k] - centre[k];
+                // (How far into it on this side, at the start.)
+                const fx depth = -lo < hi ? -lo : hi;
+                if (lo >= 0 || hi <= 0)
+                    in = false;
+                else if (leastAxis < 0 || depth < least)
+                {
+                    least = depth;
+                    leastAxis = k;
+                }
+                if (move[k] == 0)
+                {
+                    if (lo >= 0 || hi <= 0)
+                        apart = true;
+                    continue;
+                }
+                std::int64_t t0 = (static_cast<std::int64_t>(lo) << kFractionShift) / move[k];
+                std::int64_t t1 = (static_cast<std::int64_t>(hi) << kFractionShift) / move[k];
+                if (t0 > t1)
+                {
+                    const std::int64_t swap = t0;
+                    t0 = t1;
+                    t1 = swap;
+                }
+                if (t0 > enter)
+                {
+                    enter = t0;
+                    axis = k;
+                }
+                leave = t1 < leave ? t1 : leave;
+            }
+            std::int64_t stop = -1;
+            stopAxis = axis;
+            if (in)
+            {
+                // In it already: only out, the short way.
+                const fx lo = mins[leastAxis] - half[leastAxis] - centre[leastAxis];
+                const fx hi = maxs[leastAxis] + half[leastAxis] - centre[leastAxis];
+                const bool outwards = (-lo < hi) ? move[leastAxis] <= 0 : move[leastAxis] >= 0;
+                const bool sideways = move[leastAxis] == 0;
+                if (!outwards || (sideways && least > fxFromInt(1)))
+                {
+                    stop = 0;
+                    stopAxis = leastAxis;
+                }
+            }
+            else if (!apart && axis >= 0 && enter >= 0 && enter < leave && enter < best)
+            {
+                stop = enter;
+            }
+            return stop;
+        }
+
         /// A box moved from `from` to `to` (its middle: boxMiddle), through
         /// the world and everything solid in it but itself -- AS WIDE AND AS
         /// DEEP AS IT IS. The map's collision knows only shapes a person
@@ -2568,66 +2654,8 @@ namespace hldata
                     const MoverHull &hull = w.movers[other];
                     if (other == brush || !hull.solid || !w.brushStates[other].active)
                         continue;
-                    // When, along the move, it comes to touch on every
-                    // side at once -- and until when.
-                    std::int64_t enter = -1, leave = kFractionOne;
-                    int axis = -1;
-                    bool apart = false;
-                    fx least = 0;
-                    int leastAxis = -1;
-                    bool in = true;
-                    for (int k = 0; k < 3; ++k)
-                    {
-                        const fx lo = hull.mins[k] - half[k] - centre[k], hi = hull.maxs[k] + half[k] - centre[k];
-                        // (How far into it on this side, at the start.)
-                        const fx depth = -lo < hi ? -lo : hi;
-                        if (lo >= 0 || hi <= 0)
-                            in = false;
-                        else if (leastAxis < 0 || depth < least)
-                        {
-                            least = depth;
-                            leastAxis = k;
-                        }
-                        if (move[k] == 0)
-                        {
-                            if (lo >= 0 || hi <= 0)
-                                apart = true;
-                            continue;
-                        }
-                        std::int64_t t0 = (static_cast<std::int64_t>(lo) << kFractionShift) / move[k];
-                        std::int64_t t1 = (static_cast<std::int64_t>(hi) << kFractionShift) / move[k];
-                        if (t0 > t1)
-                        {
-                            const std::int64_t swap = t0;
-                            t0 = t1;
-                            t1 = swap;
-                        }
-                        if (t0 > enter)
-                        {
-                            enter = t0;
-                            axis = k;
-                        }
-                        leave = t1 < leave ? t1 : leave;
-                    }
-                    std::int64_t stop = -1;
-                    int stopAxis = axis;
-                    if (in)
-                    {
-                        // In it already: only out, the short way.
-                        const fx lo = hull.mins[leastAxis] - half[leastAxis] - centre[leastAxis];
-                        const fx hi = hull.maxs[leastAxis] + half[leastAxis] - centre[leastAxis];
-                        const bool outwards = (-lo < hi) ? move[leastAxis] <= 0 : move[leastAxis] >= 0;
-                        const bool sideways = move[leastAxis] == 0;
-                        if (!outwards || (sideways && least > fxFromInt(1)))
-                        {
-                            stop = 0;
-                            stopAxis = leastAxis;
-                        }
-                    }
-                    else if (!apart && axis >= 0 && enter >= 0 && enter < leave && enter < best.fraction)
-                    {
-                        stop = enter;
-                    }
+                    int stopAxis = -1;
+                    const std::int64_t stop = boxMeetsBox(hull.mins, hull.maxs, half, centre, move, best.fraction, stopAxis);
                     if (stop < 0 || stop >= best.fraction)
                         continue;
                     best.fraction = static_cast<std::int32_t>(stop);

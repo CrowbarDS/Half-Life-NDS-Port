@@ -120,6 +120,69 @@ namespace
         }
     }
 
+    /// boxTrace's box against another, as it was (its loop's body).
+    std::int64_t boxMeetsBoxBefore(const fx *mins, const fx *maxs, const fx *half, const fx *centre, const fx *move,
+                                   std::int64_t best, int &stopAxis)
+    {
+        std::int64_t enter = -1, leave = kFractionOne;
+        int axis = -1;
+        bool apart = false;
+        fx least = 0;
+        int leastAxis = -1;
+        bool in = true;
+        for (int k = 0; k < 3; ++k)
+        {
+            const fx lo = mins[k] - half[k] - centre[k], hi = maxs[k] + half[k] - centre[k];
+            const fx depth = -lo < hi ? -lo : hi;
+            if (lo >= 0 || hi <= 0)
+                in = false;
+            else if (leastAxis < 0 || depth < least)
+            {
+                least = depth;
+                leastAxis = k;
+            }
+            if (move[k] == 0)
+            {
+                if (lo >= 0 || hi <= 0)
+                    apart = true;
+                continue;
+            }
+            std::int64_t t0 = (static_cast<std::int64_t>(lo) << kFractionShift) / move[k];
+            std::int64_t t1 = (static_cast<std::int64_t>(hi) << kFractionShift) / move[k];
+            if (t0 > t1)
+            {
+                const std::int64_t swap = t0;
+                t0 = t1;
+                t1 = swap;
+            }
+            if (t0 > enter)
+            {
+                enter = t0;
+                axis = k;
+            }
+            leave = t1 < leave ? t1 : leave;
+        }
+        std::int64_t stop = -1;
+        stopAxis = axis;
+        if (in)
+        {
+            const fx lo = mins[leastAxis] - half[leastAxis] - centre[leastAxis];
+            const fx hi = maxs[leastAxis] + half[leastAxis] - centre[leastAxis];
+            const bool outwards = (-lo < hi) ? move[leastAxis] <= 0 : move[leastAxis] >= 0;
+            const bool sideways = move[leastAxis] == 0;
+            if (!outwards || (sideways && least > fxFromInt(1)))
+            {
+                stop = 0;
+                stopAxis = leastAxis;
+            }
+        }
+        else if (!apart && axis >= 0 && enter >= 0 && enter < leave && enter < best)
+        {
+            stop = enter;
+        }
+        return stop;
+    }
+
     bool sameTrace(const Trace &a, const Trace &b)
     {
         bool same = a.allSolid == b.allSolid && a.startSolid == b.startSolid && a.inOpen == b.inOpen &&
@@ -237,12 +300,49 @@ namespace
         check(mismatch == 0, "traceBoxes answers as it did, whole Trace and all");
         check(hits > 50000, "... over moves that meet a box as well as miss");
     }
+    void testBoxMeetsBox()
+    {
+        std::mt19937 rng(21112026);
+        long mismatch = 0, met = 0, inside = 0;
+        for (long n = 0; n < 4000000; ++n)
+        {
+            fx mins[3], maxs[3], half[3], centre[3], move[3];
+            randomBox(rng, mins, maxs);
+            for (int k = 0; k < 3; ++k)
+            {
+                half[k] = static_cast<fx>(1 + rng() % 48u) * kFxOne / 2 + static_cast<fx>(rng() % 3u);
+                // (The moving box's middle, near the other's faces grown by
+                // its own half, or inside, or anywhere.)
+                const fx lo = mins[k] - half[k], hi = maxs[k] + half[k];
+                centre[k] = rng() % 4 == 0 ? (lo + hi) / 2 : coordinate(rng, lo, hi);
+                // (A move: none along this axis now and then; to a face or a
+                // hair either side of one; or anything.)
+                const fx to = rng() % 5 == 0 ? centre[k] : coordinate(rng, lo, hi);
+                move[k] = to - centre[k];
+            }
+            const std::int64_t best = rng() % 3 == 0 ? static_cast<std::int64_t>(rng() % (kFractionOne + 1u)) : kFractionOne;
+            int axisBefore = -9, axisNow = -9;
+            const std::int64_t before = boxMeetsBoxBefore(mins, maxs, half, centre, move, best, axisBefore);
+            const std::int64_t now = detail::boxMeetsBox(mins, maxs, half, centre, move, best, axisNow);
+            // (What boxTrace takes of it: a stop before `best`, and its axis.)
+            const bool tookBefore = before >= 0 && before < best, tookNow = now >= 0 && now < best;
+            if (tookBefore != tookNow || (tookBefore && (before != now || axisBefore != axisNow)))
+                ++mismatch;
+            met += tookBefore;
+            inside += tookBefore && before == 0;
+        }
+        std::printf("test_divfree: boxMeetsBox, 4000000 moves, %ld met (%ld from inside), %ld differ\n", met, inside,
+                    mismatch);
+        check(mismatch == 0, "boxTrace's box against another answers as it did");
+        check(met > 100000 && inside > 1000, "... over moves that meet it, from outside and from in it");
+    }
 } // namespace
 
 int main()
 {
     testSlabs();
     testTraceBoxes();
+    testBoxMeetsBox();
     std::printf("test_divfree: %s\n", failures == 0 ? "all passed" : "FAILED");
     return failures == 0 ? 0 : 1;
 }
