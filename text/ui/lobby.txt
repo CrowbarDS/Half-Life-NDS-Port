@@ -1,7 +1,7 @@
 # A match before it begins: HOST's MATCH and PLAYERS, the lobby, STARTING,
 # and PROFILE (source/ui/Menu.cpp). Before play only; the Download Play
 # child has them too (host.txt: what only the full game has).
-@home resident
+@home front
 
 # The sheets' titles.
 TitleMatch = MATCH

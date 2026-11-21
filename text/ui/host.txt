@@ -1,7 +1,7 @@
 # What only the full game's multiplayer has, not the Download Play child:
 # HOST's NEXT MAP, the lobby's CHAT and microphone, SEND THE GAME, ONLINE and
 # the demos (source/ui/Menu.cpp). Before play only.
-@home resident
+@home front
 
 # NEXT MAP's rows.
 RowNext = Next map

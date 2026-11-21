@@ -1,6 +1,6 @@
 # The menus' words seen only before play, with no map up: the title,
 # MULTIPLAYER and its pages, the demos, which hand (source/ui/Menu.cpp).
-@home resident
+@home front
 
 Continue = CONTINUE
 NewGame = NEW GAME

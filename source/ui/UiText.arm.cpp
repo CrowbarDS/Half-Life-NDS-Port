@@ -69,13 +69,17 @@ namespace hlrt::ui
     const char *uiText(TextRef ref)
     {
         const TextGroupInfo &group = *ref.group;
-        const char *text = ref.at < group.size ? group.chars + ref.at : "";
 #ifdef HLDS_DEBUG_BUILD
+        // (Before an overlay's gate may read anything in.)
         if (inInterrupt())
             hlOvlHalt("UI text asked for from an interrupt:", group.name);
         if (started && cothread_get_current() != mainThread)
             hlOvlHalt("UI text asked for off the main thread:", group.name);
-        if (ref.at >= group.size || (ref.at > 0 && group.chars[ref.at - 1] != '\0'))
+#endif
+        const char *chars = group.chars != nullptr ? group.chars : group.bring();
+        const char *text = ref.at < group.size ? chars + ref.at : "";
+#ifdef HLDS_DEBUG_BUILD
+        if (ref.at >= group.size || (ref.at > 0 && chars[ref.at - 1] != '\0'))
             hlOvlHalt("UI text asked for where no line of it begins:", group.name);
         const std::uint32_t length = static_cast<std::uint32_t>(std::strlen(text)) + 1;
         if (length > kRing)

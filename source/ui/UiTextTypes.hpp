@@ -9,12 +9,14 @@
 namespace hlrt::ui
 {
     /// One group of text, text/ui/<name>.txt: its lines one after another,
-    /// each ending in a NUL.
+    /// each ending in a NUL. In the program (`chars`), or in an overlay:
+    /// then `bring`, its gate, loads it and says where it is.
     struct TextGroupInfo
     {
         const char *name;
         const char *chars;
         std::uint16_t size; ///< bytes, the last NUL with them
+        const char *(*bring)();
     };
 
     /// One line of it: what is kept where text is to be shown later (a

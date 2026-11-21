@@ -12,8 +12,10 @@ A GROUP is a file, text/ui/<group>.txt:
 
   # a comment
   @home resident             where the group lives: resident (in the
-                             program, always there) -- or, later, an
-                             overlay's name
+                             program, always there), or an overlay's
+                             (source/Overlay.hpp: front) -- read through a
+                             gate that loads it; only what is never asked
+                             for with something else in its region
   @unique                    no two lines of it alike (names of things)
   @enum shared/X.hpp Kind kKindCount
                              its first lines are named, in order, as the
@@ -42,7 +44,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEXT_DIR = os.path.join(ROOT, 'text', 'ui')
 OUT_HPP = os.path.join(ROOT, 'source', 'ui', 'UiText.gen.hpp')
 OUT_CPP = os.path.join(ROOT, 'source', 'ui', 'UiText.gen.cpp')
-HOMES = ('resident',)
+HOMES = ('resident', 'front')
 RESERVED = ('kLines', 'kCount', 'line')
 
 
@@ -198,7 +200,7 @@ def make(groups):
     hpp = ['// Made by tools/uitext.py from text/ui/: do not edit.', '#pragma once', '',
            '#include "ui/UiTextTypes.hpp"', '', 'namespace hlrt::ui', '{']
     cpp = ['// Made by tools/uitext.py from text/ui/: do not edit.', '#include "ui/UiText.gen.hpp"', '',
-           'namespace hlrt::ui', '{']
+           '#include "Overlay.hpp"', '', 'namespace hlrt::ui', '{']
     for name in names:
         home, lines = groups[name]
         group = camel(name)
@@ -227,12 +229,34 @@ def make(groups):
         hpp.append('    }')
         cpp.append('    namespace')
         cpp.append('    {')
-        cpp.append('        const char k%sChars[] =' % group)
+        if home == 'resident':
+            cpp.append('        const char k%sChars[] =' % group)
+        else:
+            cpp.append('        HL_OVL_RODATA(%s) const char k%sChars[] =' % (home, group))
         for i, text in enumerate(blob):
             cpp.append('            %s%s' % (c_literal(text), ' "\\0"' if i + 1 < len(blob) else ''))
         cpp.append('            ;')
+        if home != 'resident':
+            # (Its way in: the overlay loaded, a halt naming it if it may not
+            # be -- something else holding the region. A program without
+            # overlays has the text as its own.)
+            cpp.append('#if HL_OVL_COUNT > 0')
+            cpp.append('        HL_OVL_GATED const char *bring%s()' % group)
+            cpp.append('        {')
+            cpp.append('            ::hlrt::ovl::load(::hlrt::ovl::Id::%s);' % camel(home))
+            cpp.append('            HL_OVL_GATE(%s);' % camel(home))
+            cpp.append('            return k%sChars;' % group)
+            cpp.append('        }')
+            cpp.append('#endif')
         cpp.append('    }')
-        cpp.append('    const TextGroupInfo kText%s = {"%s", k%sChars, %d};' % (group, name, group, offset))
+        if home == 'resident':
+            cpp.append('    const TextGroupInfo kText%s = {"%s", k%sChars, %d, nullptr};' % (group, name, group, offset))
+        else:
+            cpp.append('#if HL_OVL_COUNT > 0')
+            cpp.append('    const TextGroupInfo kText%s = {"%s", nullptr, %d, &bring%s};' % (group, name, offset, group))
+            cpp.append('#else')
+            cpp.append('    const TextGroupInfo kText%s = {"%s", k%sChars, %d, nullptr};' % (group, name, group, offset))
+            cpp.append('#endif')
     hpp += ['} // namespace hlrt::ui', '']
     cpp += ['} // namespace hlrt::ui', '']
     return '\n'.join(hpp), '\n'.join(cpp)
@@ -282,7 +306,11 @@ def self_test():
            'a reference per line, where it begins')
     expect('namespace txt::front_end' in hpp and 'kTextFrontEnd' in hpp, 'a group name made a C++ name')
     expect('"RESUME" "\\0"' in cpp and '"QUIT \\"now\\"\\n"' in cpp, 'the strings, NUL after each, escaped again')
-    expect('{"menu", kMenuChars, 19}' in cpp, 'the descriptor, the size with the last NUL')
+    expect('{"menu", kMenuChars, 19, nullptr}' in cpp, 'the descriptor, the size with the last NUL')
+    _hpp, cpp = make({'lobby': ('front', [('Host', 'HOST')])})
+    expect('HL_OVL_RODATA(front) const char kLobbyChars[]' in cpp and 'HL_OVL_GATE(Front);' in cpp and
+           '{"lobby", nullptr, 5, &bringLobby}' in cpp and '{"lobby", kLobbyChars, 5, nullptr}' in cpp,
+           'a group in an overlay: its text there, read through a gate')
     _hpp, cpp = make({'opts': ('resident', [('On', 'on'), ('Off', 'off'), ('Again', 'on')])})
     expect('Again{&kTextOpts, 0}' in _hpp and 'Off{&kTextOpts, 3}' in _hpp and cpp.count('"on"') == 1,
            'a text two lines share kept once')
