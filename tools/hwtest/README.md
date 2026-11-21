@@ -426,6 +426,10 @@ stand in for pack:
 |---|---|---|---|---|---|---|---|---|---|
 | melonDS, DS mode (2026-11-20) | PASS, 2 in the header | PASS | PASS | 0 wrong | PASS | 0 bytes | 353 ticks | — | 6.0 MB/s |
 | melonDS, DSi mode | PASS, 2 in the header | PASS | PASS | 0 wrong | PASS | 0 bytes | 322 ticks | PASS | 6.6 MB/s |
+| DSi, TWiLight Menu++, from SD (2026-11-21) | PASS, 2 in the header | PASS | PASS | 0 wrong | PASS | 0 bytes | 888 ticks | PASS | 2.4 MB/s |
+
+On the DSi, A then halted naming `two`, by `twoCompute` (`one` there), as it
+must.
 
 `negative.sh` (2026-11-19): a call into an overlay outside a gate (R1), a
 static constructor in an overlay (R0), and an overlay larger than its
