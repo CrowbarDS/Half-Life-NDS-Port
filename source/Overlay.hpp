@@ -42,8 +42,9 @@
 #define HL_OVL_BSS(name) __attribute__((section(".ovl." #name ".bss." HL_OVL_STR(__COUNTER__))))
 #define HL_OVL_RODATA(name) __attribute__((section(".ovl." #name ".rodata." HL_OVL_STR(__COUNTER__))))
 #else
-// (No overlays -- the child, a program without regions: the program's own.)
-#define HL_OVL_CODE(name) __attribute__((noinline))
+// (No overlays -- the child, a program without regions: the program's own,
+// and free to be inlined into its gate.)
+#define HL_OVL_CODE(name)
 #define HL_OVL_BSS(name)
 #define HL_OVL_RODATA(name)
 #endif

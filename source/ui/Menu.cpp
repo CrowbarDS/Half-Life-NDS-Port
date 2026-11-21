@@ -13,6 +13,7 @@
 #include "Achievements.hpp"
 #include "Global.hpp"
 #include "Guard.hpp"
+#include "Overlay.hpp"
 #include "Settings.hpp"
 #include "platform/Slot2.hpp"
 #include "audio/Arm7Audio.hpp"
@@ -32,6 +33,20 @@
 #include "render/ProfileView.hpp"
 #include "ui/Keyboard.hpp"
 #include "ui/TouchCanvas.hpp"
+
+// The front end's own (the title, multiplayer, the lobby): in its overlay,
+// HL_OVL_CODE(front), each reached through a gate of the same name that
+// reads the overlay in -- a halt naming it if a map holds its memory.
+#if HL_OVL_COUNT > 0
+#define HL_MENU_FRONT()                                                                                                \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        ::hlrt::ovl::load(::hlrt::ovl::Id::Front);                                                                     \
+        HL_OVL_GATE(Front);                                                                                            \
+    } while (0)
+#else
+#define HL_MENU_FRONT() ((void)0)
+#endif
 
 namespace hlrt
 {
@@ -508,7 +523,13 @@ namespace hlrt
         draw();
     }
 
-    void Menu::openLobby()
+    HL_OVL_GATED void Menu::openLobby()
+    {
+        HL_MENU_FRONT();
+        openLobbyBody();
+    }
+
+    HL_OVL_CODE(front) void Menu::openLobbyBody()
     {
         open(false);
         probeCard();
@@ -625,7 +646,13 @@ namespace hlrt
         openJoin();
     }
 
-    void Menu::openJoin()
+    HL_OVL_GATED void Menu::openJoin()
+    {
+        HL_MENU_FRONT();
+        openJoinBody();
+    }
+
+    HL_OVL_CODE(front) void Menu::openJoinBody()
     {
         open(false);
         title_ = true;
@@ -639,7 +666,13 @@ namespace hlrt
     }
 
     /// The games found, as rows; then BACK.
-    void Menu::showFound()
+    HL_OVL_GATED void Menu::showFound()
+    {
+        HL_MENU_FRONT();
+        showFoundBody();
+    }
+
+    HL_OVL_CODE(front) void Menu::showFoundBody()
     {
         foundCount = netGame.found(foundList, kFoundListed);
         for (int i = 0; i < foundCount; ++i)
@@ -1382,7 +1415,7 @@ namespace hlrt
             return !netGame.guestsOffered() || at < 0 ||
                    netMapOffered(netGame.mapInfo()[static_cast<std::size_t>(at)], true, netGame.guestRoom());
         }
-        void setHostMap(int index)
+        HL_OVL_CODE(front) void setHostMapBody(int index)
         {
             const std::vector<NetMapInfo> &maps = netGame.mapInfo();
             if (index < 0 || index >= static_cast<int>(maps.size()))
@@ -1391,6 +1424,12 @@ namespace hlrt
             std::memset(settings.hostMap, 0, sizeof(settings.hostMap));
             std::memcpy(settings.hostMap, name.data(),
                         name.size() < sizeof(settings.hostMap) ? name.size() : sizeof(settings.hostMap) - 1);
+        }
+
+        HL_OVL_GATED void setHostMap(int index)
+        {
+            HL_MENU_FRONT();
+            setHostMapBody(index);
         }
         /// How many are in the game (the host among them).
         int playersHere()
@@ -1416,7 +1455,7 @@ namespace hlrt
         void untintSeats();
         /// Why a row of HOST or of the lobby can do nothing now (null: it
         /// can).
-        const char *hostDead(Id id)
+        HL_OVL_CODE(front) const char *hostDeadBody(Id id)
         {
             switch (id)
             {
@@ -1439,6 +1478,12 @@ namespace hlrt
             default:
                 return nullptr;
             }
+        }
+
+        HL_OVL_GATED const char *hostDead(Id id)
+        {
+            HL_MENU_FRONT();
+            return hostDeadBody(id);
         }
         /// Signal bars: four of them, rising, lit up to `bars` (-1: not known,
         /// none drawn).
@@ -2367,7 +2412,13 @@ namespace hlrt
     /// colours, their name, their team and how their link is; or an open
     /// place. `tinted`: the list stands still, and the swatch is drawn in
     /// the player's own colours (cells of their own).
-    void Menu::drawSeat(Canvas &band, int x, int y, int textY, int seat, bool tinted)
+    HL_OVL_GATED void Menu::drawSeat(Canvas &band, int x, int y, int textY, int seat, bool tinted)
+    {
+        HL_MENU_FRONT();
+        drawSeatBody(band, x, y, textY, seat, tinted);
+    }
+
+    HL_OVL_CODE(front) void Menu::drawSeatBody(Canvas &band, int x, int y, int textY, int seat, bool tinted)
     {
         const SheetGeometry g = sheetGeometry();
         const FontView &small = touchCanvas.font(kFontSmall);
@@ -3059,7 +3110,13 @@ namespace hlrt
     }
 
     /// A seat of HOST's PLAYERS, chosen again: its player let go, if asked.
-    void Menu::askKick(int row)
+    HL_OVL_GATED void Menu::askKick(int row)
+    {
+        HL_MENU_FRONT();
+        askKickBody(row);
+    }
+
+    HL_OVL_CODE(front) void Menu::askKickBody(int row)
     {
         int count = 0;
         const int chapter = sheetChapter();
@@ -3075,7 +3132,13 @@ namespace hlrt
 
     /// PROFILE's name typed on the keyboard; empty, the console's owner's
     /// again.
-    void Menu::typeName()
+    HL_OVL_GATED void Menu::typeName()
+    {
+        HL_MENU_FRONT();
+        typeNameBody();
+    }
+
+    HL_OVL_CODE(front) void Menu::typeNameBody()
     {
         touchCanvas.tint(kSprayCellX, kSprayCellY, 4, 4, nullptr);
         std::string name = settings.name;
@@ -3492,7 +3555,13 @@ namespace hlrt
     }
 #endif
 
-    void Menu::openHost()
+    HL_OVL_GATED void Menu::openHost()
+    {
+        HL_MENU_FRONT();
+        openHostBody();
+    }
+
+    HL_OVL_CODE(front) void Menu::openHostBody()
     {
 #ifndef HLDS_CHILD
         // (Online, not there yet: CONNECTING first, which comes back here.)
@@ -3534,7 +3603,13 @@ namespace hlrt
 #endif
     }
 
-    void Menu::sendBegin()
+    HL_OVL_GATED void Menu::sendBegin()
+    {
+        HL_MENU_FRONT();
+        sendBeginBody();
+    }
+
+    HL_OVL_CODE(front) void Menu::sendBeginBody()
     {
 #ifndef HLDS_CHILD
         sound.ui(kUiSoundPress);
@@ -3575,7 +3650,13 @@ namespace hlrt
 #endif
     }
 
-    void Menu::sendEnd()
+    HL_OVL_GATED void Menu::sendEnd()
+    {
+        HL_MENU_FRONT();
+        sendEndBody();
+    }
+
+    HL_OVL_CODE(front) void Menu::sendEndBody()
     {
 #ifndef HLDS_CHILD
         dlsend::end();
@@ -4108,7 +4189,13 @@ namespace hlrt
         }
     }
 
-    const char *Menu::foundDead(int row) const
+    HL_OVL_GATED const char *Menu::foundDead(int row) const
+    {
+        HL_MENU_FRONT();
+        return foundDeadBody(row);
+    }
+
+    HL_OVL_CODE(front) const char *Menu::foundDeadBody(int row) const
     {
         if (row < 0 || row >= foundCount)
             return nullptr;

@@ -58,6 +58,7 @@ namespace hlrt
         /// HOST: the host's game opened and its page shown (or, if the radio
         /// would not start, why, on MULTIPLAYER).
         void openHost();
+        void openHostBody(); ///< (its work, in the front end's overlay: Menu.cpp)
         /// The same, as the game's title: CONTINUE, LOAD GAME, NEW GAME,
         /// OPTIONS, with no game behind it.
         void openTitle();
@@ -77,9 +78,11 @@ namespace hlrt
         int chosenGame() const { return chosenGame_; }
 #endif
         void openLobby();
+        void openLobbyBody(); ///< (its work, in the front end's overlay: Menu.cpp)
         /// The games near, to choose one: where a console out of a game lands
         /// if it has nowhere else (one sent the game), and says why.
         void openJoin();
+        void openJoinBody(); ///< (its work, in the front end's overlay: Menu.cpp)
         bool onJoin() const { return page_ == Page::NetJoin; }
         bool onHand() const { return page_ == Page::Hand; }
         bool onDemoChoice() const { return page_ == Page::DemoChoice; }
@@ -125,6 +128,7 @@ namespace hlrt
         const char *whyDead(int id) const;
         /// ... and why a room found on JOIN cannot be joined (null: it can).
         const char *foundDead(int row) const;
+        const char *foundDeadBody(int row) const; ///< (its work, in the front end's overlay: Menu.cpp)
         void showReason(const char *why);
         /// What is on the card, for the rows that are there only if it is.
         void probeCard();
@@ -198,7 +202,9 @@ namespace hlrt
         /// SEND GAME: Download Play begun (the host's game closed meanwhile),
         /// or let go of, the host's game opened again.
         void sendBegin();
+        void sendBeginBody(); ///< (its work, in the front end's overlay: Menu.cpp)
         void sendEnd();
+        void sendEndBody(); ///< (its work, in the front end's overlay: Menu.cpp)
         char sendWhy_[72] = {}; ///< why the game could not be sent, read out on HOST
         /// That last button, or B: back -- the host asked first, if anyone
         /// has joined its game.
@@ -243,6 +249,7 @@ namespace hlrt
         Action sheetLeave();
         Action sheetAct(int row);
         void typeName();
+        void typeNameBody(); ///< (its work, in the front end's overlay: Menu.cpp)
         Action sheetBarPress(int button);
         Action sheetYes();
         void sheetAsk(int what, const char *question);
@@ -260,6 +267,7 @@ namespace hlrt
         void drawSheetList();
         void drawSheetRows(int chapter, int x, int scroll);
         void drawSeat(hldata::Canvas &band, int x, int y, int textY, int seat, bool tinted);
+        void drawSeatBody(hldata::Canvas &band, int x, int y, int textY, int seat, bool tinted); ///< (its work, in the front end's overlay: Menu.cpp)
         void drawSheetDetail();
         void drawSheetBar();
 
@@ -300,6 +308,7 @@ namespace hlrt
         unsigned netShown_ = 0;
         int netTick_ = 0;
         void showFound();
+        void showFoundBody(); ///< (its work, in the front end's overlay: Menu.cpp)
         /// ONLINE's HOST or JOIN, not online yet: the CONNECTING page, which
         /// then does `then` (1 host, 2 join) once there.
         void openConnecting(int then);
@@ -341,6 +350,7 @@ namespace hlrt
         void drawWhole();
         void outOfGame();
         void askKick(int row);
+        void askKickBody(int row); ///< (its work, in the front end's overlay: Menu.cpp)
         void drawRow(int row, bool down);
         int rowAt(int x, int y) const;
         int rowCount() const;
