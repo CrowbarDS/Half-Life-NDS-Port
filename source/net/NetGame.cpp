@@ -11,6 +11,7 @@
 #include <nds.h>
 
 #include "Global.hpp"
+#include "Overlay.hpp"
 #include "Settings.hpp"
 #include "data/LevelFile.hpp"
 #include "game/Game.hpp"
@@ -310,7 +311,16 @@ namespace hlrt
         return netrelay::holdsWifi();
     }
 
-    bool NetGame::host()
+    HL_OVL_GATED bool NetGame::host()
+    {
+#if HL_OVL_COUNT > 0
+        ovl::load(ovl::Id::Front); // (HOST, JOIN, the demo: the front end's)
+#endif
+        HL_OVL_GATE(Front);
+        return hostBody();
+    }
+
+    HL_OVL_CODE(front) bool NetGame::hostBody()
     {
 #ifndef HLDS_CHILD
         turn_ = -1;
@@ -360,7 +370,16 @@ namespace hlrt
         return true;
     }
 
-    int NetGame::found(Found *out, int most)
+    HL_OVL_GATED int NetGame::found(Found *out, int most)
+    {
+#if HL_OVL_COUNT > 0
+        ovl::load(ovl::Id::Front); // (HOST, JOIN, the demo: the front end's)
+#endif
+        HL_OVL_GATE(Front);
+        return foundBody(out, most);
+    }
+
+    HL_OVL_CODE(front) int NetGame::foundBody(Found *out, int most)
     {
         int count = 0;
         const int all = phase_ == Phase::Scanning ? netlink::found() : 0;
@@ -3162,7 +3181,19 @@ namespace hlrt
         }
     } // namespace
 
-    bool NetGame::demoHost(int group)
+    HL_OVL_GATED bool NetGame::demoHost(int group)
+    {
+#if HL_OVL_COUNT > 0
+        // (Only while serving a demo, with no map up; a word heard
+        // otherwise, a map holding the memory, is let go.)
+        if (!ovl::tryLoad(ovl::Id::Front))
+            return false;
+#endif
+        HL_OVL_GATE(Front);
+        return demoHostBody(group);
+    }
+
+    HL_OVL_CODE(front) bool NetGame::demoHostBody(int group)
     {
         // How long the longest is: what a receiver makes its room by. A map's
         // stream is all of it: its .dsi.hgs, then its bank.
@@ -3296,7 +3327,19 @@ namespace hlrt
         match_.host.out.add(netEvent(NetEventType::DemoHave, c, file != nullptr ? 1 : 0));
     }
 
-    void NetGame::demoUpHeard(int from, const std::uint8_t *bytes, int size)
+    HL_OVL_GATED void NetGame::demoUpHeard(int from, const std::uint8_t *bytes, int size)
+    {
+#if HL_OVL_COUNT > 0
+        // (Only while serving a demo, with no map up; a word heard
+        // otherwise, a map holding the memory, is let go.)
+        if (!ovl::tryLoad(ovl::Id::Front))
+            return;
+#endif
+        HL_OVL_GATE(Front);
+        demoUpHeardBody(from, bytes, size);
+    }
+
+    HL_OVL_CODE(front) void NetGame::demoUpHeardBody(int from, const std::uint8_t *bytes, int size)
     {
         DemoUpHead head;
         if (from < 1 || from >= kNetPlayers || demoIds_[from] == 0 || !demoUpRead(bytes, size, head) ||
@@ -3355,7 +3398,19 @@ namespace hlrt
             netlink::send(ack, length);
     }
 
-    void NetGame::demoHeard(const NetEvent &event)
+    HL_OVL_GATED void NetGame::demoHeard(const NetEvent &event)
+    {
+#if HL_OVL_COUNT > 0
+        // (Only while serving a demo, with no map up; a word heard
+        // otherwise, a map holding the memory, is let go.)
+        if (!ovl::tryLoad(ovl::Id::Front))
+            return;
+#endif
+        HL_OVL_GATE(Front);
+        demoHeardBody(event);
+    }
+
+    HL_OVL_CODE(front) void NetGame::demoHeardBody(const NetEvent &event)
     {
         const int c = event.from;
         if (c < 1 || c >= kNetPlayers)
@@ -3494,7 +3549,19 @@ namespace hlrt
         return true;
     }
 
-    int NetGame::demoFrame()
+    HL_OVL_GATED int NetGame::demoFrame()
+    {
+#if HL_OVL_COUNT > 0
+        // (Only while serving a demo, with no map up; a word heard
+        // otherwise, a map holding the memory, is let go.)
+        if (!ovl::tryLoad(ovl::Id::Front))
+            return 0;
+#endif
+        HL_OVL_GATE(Front);
+        return demoFrameBody();
+    }
+
+    HL_OVL_CODE(front) int NetGame::demoFrameBody()
     {
         // Who has gone is kept for when they come back, and not sent to.
         const unsigned present = netlink::clients();

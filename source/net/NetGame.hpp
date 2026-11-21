@@ -104,6 +104,7 @@ namespace hlrt
         /// word, and never online (nothing is sent by Download Play there).
         bool guestsOffered() const;
         bool host();  ///< be a host; false if the radio would not start
+        bool hostBody(); ///< (its work, in the front end's overlay)
         bool scan();  ///< look for hosts
         /// The hosts found so far: up to `most` of them, each a line to
         /// show ("name 2/4"), what its beacon says of the match, how strong
@@ -122,6 +123,7 @@ namespace hlrt
             int bars;        ///< 0..4
         };
         int found(Found *out, int most);
+        int foundBody(Found *out, int most);
         bool join(int index);
         /// A console started by Download Play: the host is whoever started
         /// it.
@@ -239,6 +241,7 @@ namespace hlrt
         /// The host: serve a demo, and nothing else. False if the radio would
         /// not start.
         bool demoHost(int group);
+        bool demoHostBody(int group); ///< (its work, in the front end's overlay)
         /// A receiver's line, for the Serving page: who, what, how far. `row`-th
         /// of those here; false: no such. Its signal, 0..4.
         bool demoRow(int row, char *line, int room, int &bars);
@@ -554,13 +557,16 @@ namespace hlrt
         hldata::DemoUpTaker demoTakers_[hldata::kNetPlayers];
         void demoHello(const hldata::NetEvent &event);
         void demoUpHeard(int from, const std::uint8_t *bytes, int size);
+        void demoUpHeardBody(int from, const std::uint8_t *bytes, int size);
         std::string demoFolder(int c) const;
         std::string demoFilePath(int c, std::uint32_t what) const;
         int fetchWho_ = 0;            ///< (who asked for what fetchFind is finding)
         std::uint16_t demoTokens_[hldata::kNetPlayers] = {};
         std::uint8_t demoMapOf_[hldata::kNetPlayers] = {}; ///< (its place among the demo's maps, + 1)
         int demoFrame();
+        int demoFrameBody();
         void demoHeard(const hldata::NetEvent &event);
+        void demoHeardBody(const hldata::NetEvent &event);
         void demoStop();
         unsigned guests_ = 0;        ///< bit n: client n has asked for a stream
         std::FILE *airFile_ = nullptr;
