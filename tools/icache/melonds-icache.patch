@@ -1,19 +1,28 @@
 --- a/src/CP15.cpp
 +++ b/src/CP15.cpp
-@@ -38,6 +38,50 @@
+@@ -38,6 +38,76 @@
  const int kDataCacheTiming = 3;//2;
  const int kCodeCacheTiming = 3;//5;
  
 +// HLDS I-cache profiler (Half-Life NDS port, tools only): per 32-byte line of
-+// main RAM, how often code entered the line (a lookup) and how often it missed.
-+// With HLDS_ICACHE_OUT set, a snapshot of the counts so far is written every
-+// 2^26 lookups to $HLDS_ICACHE_OUT.<n> ("addr lookups misses" in hex, lines
-+// with any), so that a scene is the difference of two snapshots.
++// main RAM (all 16 MB of a DSi's), how often code entered the line (a lookup)
++// and how often it missed, by the phase of the frame the game said it was in
++// (a write to 0x04FFFA2C: HlSetIcachePhase, NDS.cpp; 0 until one is made).
++// Code run in IRQ mode is counted under phase 15 whatever. With
++// HLDS_ICACHE_OUT set, a snapshot of the counts so far is written every 2^26
++// lookups to $HLDS_ICACHE_OUT.<n> ("addr phase lookups misses" in hex, lines
++// with any; its head says how many frames had begun: a write of phase 8, the
++// game's Frame, straight after 0), so that a scene is the difference of two
++// snapshots.
 +namespace
 +{
-+constexpr u32 kHlLines = 0x400000 >> 5; // 4 MB of main RAM
-+u32 hlLookups[kHlLines];
-+u32 hlMisses[kHlLines];
++constexpr u32 kHlLines = 0x1000000 >> 5; // 16 MB of main RAM
++constexpr u32 kHlPhases = 16;
++constexpr u32 kHlIrqPhase = 15;
++u32* hlLookups = nullptr; // [phase][line]
++u32* hlMisses = nullptr;
++u32 hlPhase = 0;
++u64 hlFrames = 0;
 +u64 hlTotal = 0;
 +int hlSnapshot = 0;
 +const char* hlOut = nullptr;
@@ -25,49 +34,88 @@
 +    snprintf(name, sizeof(name), "%s.%d", hlOut, hlSnapshot++);
 +    FILE* f = fopen(name, "w");
 +    if (!f) return;
-+    fprintf(f, "# lookups %llu\n", (unsigned long long)hlTotal);
-+    for (u32 i = 0; i < kHlLines; i++)
-+        if (hlLookups[i] || hlMisses[i])
-+            fprintf(f, "%08x %x %x\n", 0x02000000u + (i << 5), hlLookups[i], hlMisses[i]);
++    fprintf(f, "# lookups %llu phases frames %llu\n", (unsigned long long)hlTotal, (unsigned long long)hlFrames);
++    for (u32 p = 0; p < kHlPhases; p++)
++        for (u32 i = 0; i < kHlLines; i++)
++        {
++            const u32 at = p * kHlLines + i;
++            if (hlLookups[at] || hlMisses[at])
++                fprintf(f, "%08x %x %x %x\n", 0x02000000u + (i << 5), p, hlLookups[at], hlMisses[at]);
++        }
 +    fclose(f);
 +}
 +
-+inline void hlCount(u32 addr, bool miss)
++inline void hlCount(u32 addr, bool miss, u32 cpsr)
 +{
 +    if (!hlChecked)
 +    {
 +        hlChecked = true;
 +        hlOut = getenv("HLDS_ICACHE_OUT");
++        if (hlOut)
++        {
++            hlLookups = (u32*)calloc((size_t)kHlPhases * kHlLines, sizeof(u32));
++            hlMisses = (u32*)calloc((size_t)kHlPhases * kHlLines, sizeof(u32));
++            if (!hlLookups || !hlMisses) hlOut = nullptr;
++        }
 +    }
 +    if (!hlOut || (addr & 0xFF000000) != 0x02000000) return;
-+    u32 i = (addr & 0x3FFFFF) >> 5;
++    const u32 phase = (cpsr & 0x1F) == 0x12 ? kHlIrqPhase : hlPhase;
++    const u32 i = phase * kHlLines + ((addr & 0xFFFFFF) >> 5);
 +    if (miss) { hlMisses[i]++; return; }
 +    hlLookups[i]++;
 +    if ((++hlTotal & ((1u << 26) - 1)) == 0) hlWriteSnapshot();
 +}
 +}
 +
-+
++// (NDS.cpp: the game's write to 0x04FFFA2C.)
++void HlSetIcachePhase(u32 phase)
++{
++    if (phase == 8 && hlPhase == 0)
++        hlFrames++;
++    hlPhase = phase < kHlPhases ? phase : 0;
++}
  
  void ARMv5::CP15Reset()
  {
-@@ -384,6 +428,7 @@
+@@ -384,6 +454,7 @@
      line += id;
  
      addr &= ~0x1F;
-+    hlCount(addr, true);
++    hlCount(addr, true, CPSR);
      u8* ptr = &ICache[line << 5];
  
      if (CodeMem.Mem)
-@@ -802,7 +847,10 @@
+@@ -802,7 +873,10 @@
      if (CodeCycles == 0xFF) // cached memory. hax
      {
          if (branch || !(addr & 0x1F))
 -            CodeCycles = kCodeCacheTiming;//ICacheLookup(addr);
 +        {
-+            hlCount(addr, false);
++            hlCount(addr, false, CPSR);
 +            ICacheLookup(addr); // (HLDS profiler: the cache modelled, for its timing and misses)
 +        }
          else
              CodeCycles = 1;
  
+--- a/src/NDS.cpp
++++ b/src/NDS.cpp
+@@ -47,6 +47,9 @@
+ 
+ namespace melonDS
+ {
++// (CP15.cpp: the HLDS I-cache profiler's phase.)
++void HlSetIcachePhase(u32 phase);
++
+ using namespace Platform;
+ 
+ const s32 kMaxIterationCycles = 64;
+@@ -3614,6 +3617,9 @@
+ 
+     // NO$GBA debug register "Char Out"
+         case 0x04FFFA1C: Log(LogLevel::Debug, "%c", val & 0xFF); return;
++
++    // (HLDS I-cache profiler: the phase of the frame the game is in, CP15.cpp.)
++    case 0x04FFFA2C: HlSetIcachePhase(val); return;
+     }
+ 
+     if (addr >= 0x04000000 && addr < 0x04000060)

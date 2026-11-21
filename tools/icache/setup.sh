@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # The I-cache profiler: a melonDS of its own, with the ARM9's instruction cache
 # modelled (melonDS has the model but leaves it off: CP15.cpp's CodeRead32) and
-# each 32-byte line of main RAM's lookups and misses counted. For choosing
+# each 32-byte line of main RAM's lookups and misses counted -- by the part of
+# the frame the game says it is in (a phase-counting build, HLDS_ICACHE_PHASES:
+# source/DebugLog.hpp writes it to a register only this melonDS has), and
+# what runs in an interrupt apart. For choosing
 # what goes in ITCM (tools/icache_rank.py), never for timing: its timings are
 # not the console's.
 #

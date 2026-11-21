@@ -7,7 +7,12 @@
 #   tools/icache/scenes.sh <rom> <out>
 #
 # The card is the repository's sdroot/, which the owner plays from: run it on
-# a card of its own (a copy, swapped in), as the other emulator scripts are.
+# a card of its own (a copy, swapped in), as the other emulator scripts are;
+# or ICACHE_CARD=sc: the scratch card's configurations (build/emu/cfg_scds,
+# cfg_scdsi), on whichever card they name.
+# A phase-counting build (HLDS_ICACHE_PHASES, with HLDS_PROFILE, HLDS_DEV and
+# HLDS_ITCM_OFF) writes its misses by part of the frame: rank them with
+# tools/icache_rank.py --by-phase.
 # Then, for a scene (its first snapshot after the map was up, s.0, to its
 # last):
 #
@@ -22,10 +27,13 @@ ROM=${1:?usage: tools/icache/scenes.sh <rom> <out>}
 OUT=${2:?usage: tools/icache/scenes.sh <rom> <out>}
 export MELONDS="$PWD/build/tools/melonds-icache/build/melonDS"
 [ -x "$MELONDS" ] || { echo "no profiling melonDS: tools/icache/setup.sh first" >&2; exit 1; }
-D=sdroot/_nds/hl_nds/data
+CARD_PREFIX=${ICACHE_CARD:-}
 FIGHT="key Up 3; hold z; sleep 1.5; release z; key Left 1; key Up 3; sleep 12; hold z; sleep 2; release z; key Right 2; key Up 3; sleep 12; hold z; sleep 2; release z; sleep 15"
 while IFS='|' read -r tag mode map spot extra; do
     mkdir -p "$OUT/$tag"
+    mode="$CARD_PREFIX$mode"
+    CARD="$(sed -n 's/^FolderPath = "\(.*\)"$/\1/p' "build/emu/cfg_$mode/melonDS/melonDS.toml" 2>/dev/null | head -1)"
+    D="${CARD:-$PWD/sdroot}/_nds/hl_nds/data"
     python3 -I tools/emu/setstart.py "$D/manifest.bin" "$map" >/dev/null || exit 1
     rm -f "$D/perf.txt"
     HLDS_ICACHE_OUT="$OUT/$tag/s" EMU_ROM="$ROM" EMU_START="$spot" timeout 500 tools/emu/play.sh "$mode" \
@@ -38,6 +46,7 @@ while IFS='|' read -r tag mode map spot extra; do
         sleep 1
     done
     grep "^family: " "$D/perf.txt" > "$OUT/$tag/families.txt" 2>/dev/null
+    cp "$D/perf.txt" "$OUT/$tag/perf.txt" 2>/dev/null
     echo "$tag: $(ls "$OUT/$tag" | grep -c '^s\.') snapshots, $(wc -l < "$OUT/$tag/families.txt") families"
 done <<LIST
 c1a3a-ds|ds|c1a3a|632 -2528 -60 31 -1 0 0 0 1 2|key Up 1.5; sleep 45
