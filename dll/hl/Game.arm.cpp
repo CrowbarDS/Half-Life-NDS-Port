@@ -48,7 +48,7 @@ namespace hlrt
         /// takes: sizes from the level alone, each on eight.
         struct ArrayPlan
         {
-            std::uint32_t brushStates, movers, reach, states, ladders, ladderModels, corners, actorStates, actorBoxes,
+            std::uint32_t brushStates, movers, reach, moverOrder, moverSlot, groupReach, states, ladders, ladderModels, corners, actorStates, actorBoxes,
                 linkShut, aiSlots, aiHeld, boxPlanes, total;
             int ladderCount, actorCount;
         };
@@ -71,6 +71,9 @@ namespace hlrt
             take(plan.brushStates, (view.brushCount + 1) * sizeof(BrushState));
             take(plan.movers, (view.brushCount + 1) * sizeof(MoverHull));
             take(plan.reach, (view.brushCount + 1) * sizeof(MoverReach));
+            take(plan.moverOrder, (view.brushCount + 1) * sizeof(std::uint16_t));
+            take(plan.moverSlot, (view.brushCount + 1) * sizeof(std::uint16_t));
+            take(plan.groupReach, (moverGroups(static_cast<int>(view.brushCount)) + 1) * sizeof(MoverReach));
             take(plan.states, (view.logicCount + 1) * sizeof(LogicState));
             take(plan.ladders, (plan.ladderCount + 1) * sizeof(LadderVolume));
             take(plan.ladderModels, (plan.ladderCount + 1) * sizeof(std::uint16_t));
@@ -209,6 +212,9 @@ namespace hlrt
         world.brushes = view.brushes;
         world.models = view.models;
         world.reach = reach_;
+        world.moverOrder = reinterpret_cast<std::uint16_t *>(arrays_ + plan.moverOrder);
+        world.moverSlot = reinterpret_cast<std::uint16_t *>(arrays_ + plan.moverSlot);
+        world.groupReach = reinterpret_cast<MoverReach *>(arrays_ + plan.groupReach);
         world.moverCount = static_cast<int>(view.brushCount);
         world.nodes = view.nodes;
         world.leaves = view.leaves;

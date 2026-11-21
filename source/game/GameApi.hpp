@@ -47,7 +47,7 @@ namespace hlrt
     class TopText;
 
     /// Changed whenever either table or anything they carry changes shape.
-    inline constexpr std::uint32_t kGameApiVersion = 16;
+    inline constexpr std::uint32_t kGameApiVersion = 17;
 
     /// The sizes of what both sides lay out, compared at the handshake: a
     /// library built from other headers, or with other settings, is refused

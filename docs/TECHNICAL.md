@@ -724,6 +724,13 @@ Milestone 11, "levels of detail".
   it. A map has some hundreds, each a hundred bytes of record: now there is
   a table of twelve bytes a brush, read first (`MoverReach`). At the fight
   in c1a2 that took a quarter off the logic's time.
+- Nor does it read that whole table: the brushes are set out in groups of
+  eight that lie near each other (by their middles, in Morton order, when a
+  map is set up), each group with the reach of all its brushes, kept up as
+  one moves (`moverReachSet`). A trace asks the groups, then only the
+  brushes of those it may touch, in their own order: of two brushes a
+  trace meets at once, the same one is said as before. At the fight in
+  c1a3a (149 brushes) that took 0.7 ms off a frame of 21.
 - `tools/arm9-report.sh` says what the built program is made of: what is in
   the fast memory byte by byte, which of the game's functions still call the
   library's arithmetic, which are Thumb; `--check` fails if one of the

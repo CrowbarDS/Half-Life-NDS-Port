@@ -39,6 +39,8 @@ namespace hldstest
         MoveWorld move;
         std::vector<MoverHull> movers;
         std::vector<MoverReach> reach; ///< MoveWorld::reach
+        std::vector<std::uint16_t> moverOrder, moverSlot; ///< MoveWorld's
+        std::vector<MoverReach> groupReach;              ///< MoveWorld::groupReach
         std::vector<BrushState> brushStates;
         std::vector<LogicState> states;
         std::vector<Plane> boxPlanes; ///< LogicWorld::boxPlanes
@@ -275,6 +277,9 @@ namespace hldstest
         g.move.large = Hull{v.clipNodes, v.planes, v.planeTypes, v.models[0].clipLarge};
         g.movers.resize(v.brushCount);
         g.reach.assign(v.brushCount + 1, MoverReach());
+        g.moverOrder.assign(v.brushCount + 1, 0);
+        g.moverSlot.assign(v.brushCount + 1, 0);
+        g.groupReach.assign(moverGroups(static_cast<int>(v.brushCount)) + 1, MoverReach());
         g.brushStates.resize(v.brushCount);
         g.states.resize(v.logicCount);
         g.cornerState.resize(v.cornerCount + 1);
@@ -295,6 +300,9 @@ namespace hldstest
         g.move.visLeafCount = v.header->visLeafCount;
         g.move.movers = g.movers.data();
         g.move.reach = g.reach.data();
+        g.move.moverOrder = g.moverOrder.data();
+        g.move.moverSlot = g.moverSlot.data();
+        g.move.groupReach = g.groupReach.data();
         g.move.moverCount = static_cast<int>(g.movers.size());
         int ladderCount = 0;
         for (std::uint32_t i = 0; i < v.logicCount; ++i)

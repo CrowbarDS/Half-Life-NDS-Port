@@ -149,6 +149,10 @@ namespace hldata
         std::int16_t hi[3] = {-32768, -32768, -32768};
     };
 
+    /// How many movers lie near each other in a group (MoveWorld::groupReach).
+    inline constexpr int kMoverGroup = 8;
+    inline constexpr int moverGroups(int movers) { return (movers + kMoverGroup - 1) / kMoverGroup; }
+
     /// Everything the player can collide with, and climb.
     struct MoveWorld
     {
@@ -163,6 +167,16 @@ namespace hldata
         /// it solid (moverReachSet), and read before the mover itself is.
         /// A world given none asks every mover, as before.
         MoverReach *reach = nullptr;
+        /// The movers by where they are, if given (with `reach`), set out by
+        /// moverReachAll: `moverOrder` lists them so that each kMoverGroup of
+        /// it, one after another, lie near each other; `moverSlot` is where
+        /// each is in that list; `groupReach` is each group's reach, all its
+        /// movers' together, kept by moverReachSet. A trace asks a group
+        /// before its movers: an eighth as many questions, on a map of a
+        /// hundred and more (detail::moversNear). None: every mover asked.
+        std::uint16_t *moverOrder = nullptr;
+        std::uint16_t *moverSlot = nullptr;
+        MoverReach *groupReach = nullptr;
         const LadderVolume *ladders = nullptr;
         int ladderCount = 0;
         /// Parallel to `ladders`: a ladder that is not one plain box (a
@@ -398,6 +412,74 @@ namespace hldata
                      move.lo[1] > reach.hi[1] || move.hi[2] < reach.lo[2] || move.lo[2] > reach.hi[2]);
         }
 
+        /// The movers a move may touch, by their groups (MoveWorld::groupReach):
+        /// in their own order, as asking every one of them would meet them --
+        /// so that of two a trace meets at once, the same one is said. Each
+        /// is still asked (moverMayTouch). `count` -1: every mover -- a world
+        /// with no groups, or more of them near than there is room to say.
+        inline constexpr int kMoversNearMax = 48;
+        /// (A map of more movers than this asks each: none of the game's.)
+        inline constexpr int kMoversNearBits = 1024;
+        struct MoversNear
+        {
+            int count = -1;
+            std::uint16_t list[kMoversNearMax];
+            int size(const MoveWorld &world) const { return count < 0 ? world.moverCount : count; }
+            int at(int k) const { return count < 0 ? k : list[k]; }
+        };
+        // (In main memory, and one copy of it, not one in each file that
+        // traces -- once a trace, not in its inner loop: ITCM has no room.)
+        [[gnu::noinline, gnu::noclone]] HL_WARM void moversNear(const MoveWorld &world, const SegmentReach &move,
+                                                               MoversNear &near)
+        {
+            near.count = -1;
+            if (world.groupReach == nullptr || world.moverCount > kMoversNearBits)
+                return;
+            std::uint32_t bits[kMoversNearBits / 32];
+            const int words = (world.moverCount + 31) / 32;
+            for (int w = 0; w < words; ++w)
+                bits[w] = 0;
+            const int groups = moverGroups(world.moverCount);
+            for (int g = 0; g < groups; ++g)
+            {
+                const MoverReach &reach = world.groupReach[g];
+                if (move.hi[0] < reach.lo[0] || move.lo[0] > reach.hi[0] || move.hi[1] < reach.lo[1] ||
+                    move.lo[1] > reach.hi[1] || move.hi[2] < reach.lo[2] || move.lo[2] > reach.hi[2])
+                    continue;
+                const int end = (g + 1) * kMoverGroup < world.moverCount ? (g + 1) * kMoverGroup : world.moverCount;
+                for (int i = g * kMoverGroup; i < end; ++i)
+                {
+                    const int m = world.moverOrder[i];
+                    bits[m >> 5] |= 1u << (m & 31);
+                }
+            }
+            int count = 0;
+            for (int w = 0; w < words; ++w)
+            {
+                for (std::uint32_t left = bits[w]; left != 0; left &= left - 1)
+                {
+                    if (count == kMoversNearMax)
+                        return;
+                    near.list[count++] = static_cast<std::uint16_t>(w * 32 + __builtin_ctz(left));
+                }
+            }
+            near.count = count;
+#ifndef __arm__
+            // (Off the console: none that may touch the move is left out, or a
+            // group's reach is not all of its movers'.)
+            for (int m = 0, k = 0; m < world.moverCount; ++m)
+            {
+                while (k < count && near.list[k] < m)
+                    ++k;
+                if (moverMayTouch(world, m, move) && !(k < count && near.list[k] == m))
+                {
+                    std::fprintf(stderr, "moversNear: mover %d may touch the move, and its group says not\n", m);
+                    std::abort();
+                }
+            }
+#endif
+        }
+
         /// A world point in the brush's own space: back along its origin,
         /// then turned back.
         /// A brush's model box (its own space) in a mover's space: the same,
@@ -460,20 +542,88 @@ namespace hldata
         }
     } // namespace detail
 
+    namespace detail
+    {
+        /// Group `g`'s reach: all its movers' together. (This and what sets
+        /// the groups out: Thumb, once a mover moves or a map is set up.)
+        [[gnu::noinline]] HL_COLD void groupReachSet(const MoveWorld &world, int g)
+        {
+            MoverReach all;
+            const int end = (g + 1) * kMoverGroup < world.moverCount ? (g + 1) * kMoverGroup : world.moverCount;
+            for (int i = g * kMoverGroup; i < end; ++i)
+            {
+                const MoverReach &one = world.reach[world.moverOrder[i]];
+                for (int k = 0; k < 3; ++k)
+                {
+                    all.lo[k] = one.lo[k] < all.lo[k] ? one.lo[k] : all.lo[k];
+                    all.hi[k] = one.hi[k] > all.hi[k] ? one.hi[k] : all.hi[k];
+                }
+            }
+            world.groupReach[g] = all;
+        }
+
+        /// Where a mover is, for its place in moverOrder: its middle's three
+        /// whole numbers, by 64 units, their bits taken in turn (a Morton
+        /// order -- what is near in it is near in the map, mostly), and its
+        /// number after, so that no two are the same.
+        [[gnu::noinline]] HL_COLD std::uint64_t moverPlaceKey(const MoverHull &mover, int m)
+        {
+            std::uint64_t key = 0;
+            for (int k = 0; k < 3; ++k)
+            {
+                const std::int32_t middle = ((mover.mins[k] >> 1) + (mover.maxs[k] >> 1)) >> kFxShift;
+                const std::uint32_t at = static_cast<std::uint32_t>((middle + 32768) >> 6) & 1023;
+                for (int bit = 0; bit < 10; ++bit)
+                    key |= static_cast<std::uint64_t>((at >> bit) & 1) << (bit * 3 + k);
+            }
+            return (key << 16) | static_cast<std::uint64_t>(m);
+        }
+    } // namespace detail
+
     /// Mover `m` has moved, or become solid or stopped being: its line of
-    /// the table, again. Whoever writes a MoverHull's bounds or its `solid`
-    /// calls this after. (One copy, not one in each place that moves a
-    /// brush: it is not what a frame spends its time on.)
+    /// the table, again, and its group's. Whoever writes a MoverHull's bounds
+    /// or its `solid` calls this after. (One copy, not one in each place that
+    /// moves a brush: it is not what a frame spends its time on.)
     [[gnu::noinline]] inline void moverReachSet(const MoveWorld &world, int m)
     {
-        if (world.reach != nullptr)
-            world.reach[m] = detail::moverReachOf(world.movers[m]);
+        if (world.reach == nullptr)
+            return;
+        world.reach[m] = detail::moverReachOf(world.movers[m]);
+        if (world.groupReach != nullptr)
+            detail::groupReachSet(world, world.moverSlot[m] / kMoverGroup);
     }
-    /// ... and all of them (a map set up; a saved game laid over it).
-    inline void moverReachAll(const MoveWorld &world)
+    /// ... and all of them (a map set up; a saved game laid over it): the
+    /// movers put in groups by where they are now, too. (Which group one is
+    /// in says nothing of what a trace finds -- only how soon it is asked.)
+    [[gnu::noinline]] HL_COLD void moverReachAll(const MoveWorld &world)
     {
+        if (world.reach == nullptr)
+            return;
         for (int m = 0; m < world.moverCount; ++m)
-            moverReachSet(world, m);
+            world.reach[m] = detail::moverReachOf(world.movers[m]);
+        if (world.groupReach == nullptr)
+            return;
+        std::uint16_t *order = world.moverOrder;
+        for (int m = 0; m < world.moverCount; ++m)
+            order[m] = static_cast<std::uint16_t>(m);
+        // (Shell sort, the gaps halved: no memory, a few thousand keys made
+        // for some hundreds of movers, once a map.)
+        for (int gap = world.moverCount / 2; gap > 0; gap /= 2)
+        {
+            for (int i = gap; i < world.moverCount; ++i)
+            {
+                const std::uint16_t m = order[i];
+                const std::uint64_t key = detail::moverPlaceKey(world.movers[m], m);
+                int j = i;
+                for (; j >= gap && detail::moverPlaceKey(world.movers[order[j - gap]], order[j - gap]) > key; j -= gap)
+                    order[j] = order[j - gap];
+                order[j] = m;
+            }
+        }
+        for (int i = 0; i < world.moverCount; ++i)
+            world.moverSlot[order[i]] = static_cast<std::uint16_t>(i);
+        for (int g = 0; g < moverGroups(world.moverCount); ++g)
+            detail::groupReachSet(world, g);
     }
 
     namespace detail
@@ -599,8 +749,11 @@ namespace hldata
         HL_TRACE_SPENT(kTraceAll);
         Trace best = traceHull(crouched ? world.crouched : world.standing, start, end);
         const detail::SegmentReach reach = detail::segmentReach(crouched, start, end);
-        for (int m = 0; m < world.moverCount; ++m)
+        detail::MoversNear near;
+        detail::moversNear(world, reach, near);
+        for (int k = 0, nearCount = near.size(world); k < nearCount; ++k)
         {
+            const int m = near.at(k);
             if (!detail::moverMayTouch(world, m, reach))
                 continue;
             const MoverHull &mover = world.movers[m];
@@ -657,8 +810,11 @@ namespace hldata
         if (!hullPositionFree(crouched ? world.crouched : world.standing, p))
             return false;
         const detail::SegmentReach reach = detail::segmentReach(crouched, p, p);
-        for (int m = 0; m < world.moverCount; ++m)
+        detail::MoversNear near;
+        detail::moversNear(world, reach, near);
+        for (int k = 0, nearCount = near.size(world); k < nearCount; ++k)
         {
+            const int m = near.at(k);
             if (!detail::moverMayTouch(world, m, reach))
                 continue;
             const MoverHull &mover = world.movers[m];
@@ -838,8 +994,11 @@ namespace hldata
         fx stop[3];
         detail::shotStop(start, end, shot.fraction, stop);
         const detail::SegmentReach reach = detail::segmentReach(true, start, stop);
-        for (int m = 0; m < world.moverCount; ++m)
+        detail::MoversNear near;
+        detail::moversNear(world, reach, near);
+        for (int k = 0, nearCount = near.size(world); k < nearCount; ++k)
         {
+            const int m = near.at(k);
             if (!detail::moverMayTouch(world, m, reach))
                 continue;
             const MoverHull &mover = world.movers[m];
@@ -912,8 +1071,11 @@ namespace hldata
         fx stop[3];
         detail::shotStop(start, end, fraction, stop); // (as traceShot)
         const detail::SegmentReach reach = detail::segmentReach(true, start, stop);
-        for (int m = 0; m < world.moverCount; ++m)
+        detail::MoversNear near;
+        detail::moversNear(world, reach, near);
+        for (int k = 0, nearCount = near.size(world); k < nearCount; ++k)
         {
+            const int m = near.at(k);
             if (!detail::moverMayTouch(world, m, reach))
                 continue;
             const MoverHull &mover = world.movers[m];
@@ -1050,8 +1212,11 @@ namespace hldata
                 return false;
         }
         const detail::SegmentReach reach = detail::segmentReach(true, start, end);
-        for (int m = 0; m < world.moverCount; ++m)
+        detail::MoversNear near;
+        detail::moversNear(world, reach, near);
+        for (int k = 0, nearCount = near.size(world); k < nearCount; ++k)
         {
+            const int m = near.at(k);
             if (!detail::moverMayTouch(world, m, reach))
                 continue;
             const MoverHull &mover = world.movers[m];

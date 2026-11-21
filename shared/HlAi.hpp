@@ -746,7 +746,7 @@ namespace hldata
 
     /// Everything forgotten, on the same storage (a saved state laid over
     /// the map: each monster chooses afresh from where it is).
-    inline void aiRestart(ActorWorld &a)
+    [[gnu::noinline]] inline void aiRestart(ActorWorld &a)
     {
         if (a.ai == nullptr)
             return;
