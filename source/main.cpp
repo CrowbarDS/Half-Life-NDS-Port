@@ -731,6 +731,7 @@ namespace
         hlrt::spriteCache.destroy();
         hlrt::modelCache.destroy();
         hlrt::effectDraw.dropSprays();
+        hlrt::effectDraw.forgetMarks();
         // (What the map kept in the Expansion Pak: its textures, its sounds.)
         hlrt::slot2::reset();
         // (All of the map gone: anything that wrote where it should not

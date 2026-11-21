@@ -46,6 +46,9 @@ namespace hlrt
         int drawDecals();
         /// The most marks drawn in a pass (half of it on a DS).
         static constexpr int kDecalPolygons = 48;
+        /// Let go of the marks' shapes (made once each, as they are first
+        /// seen): the map they were made in is gone.
+        void forgetMarks();
 
         /// A match's sprays (HlNetGame.hpp): each player's made into a
         /// picture of its own, in its colour -- once the map is loaded, and

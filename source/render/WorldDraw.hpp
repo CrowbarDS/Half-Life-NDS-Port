@@ -157,6 +157,11 @@ namespace hlrt
         /// `centre` (whole units) can be seen at all -- its leaf is one the
         /// eye's leaf can see, and it is in the view.
         bool ballVisible(const std::int16_t *centre, int radius, bool anyDistance = false) const;
+        /// The leaf a point (whole units) is in, for what stays where it is
+        /// and is asked about every pass (a mark on a wall); -1 with no map.
+        int leafAt(const std::int16_t *at) const;
+        /// ballVisible for a ball whose leaf is known (leafAt).
+        bool ballVisibleIn(int leaf, const std::int16_t *centre, int radius) const;
         /// Take `polygons` and `vertices` from what is left of the pass.
         /// False, with nothing taken, if there is not that much.
         bool spend(int polygons, int vertices);

@@ -1,6 +1,8 @@
 #include "render/ModelDraw.hpp"
 #include "render/EffectDraw.hpp"
 
+#include <cstring>
+
 #include <nds.h>
 
 #include <NEAMain.h>
@@ -448,6 +450,116 @@ namespace hlrt
                 picture(*spark, frame, b, camera.right, camera.up, half, half);
             }
         }
+
+        // ------------------------------------------------------------ marks
+
+        /// A mark's shape, made once and kept (EffectDraw::drawDecals): its
+        /// corners in quarter units, as the level's vertices are sent (from
+        /// its brush's place, for one on a brush), the leaf it is in, and
+        /// what it was made from -- a mark moved (decalAdd moves one of its
+        /// family to where the next lands) is made again. All zero is "not
+        /// made": the DSi's half lies in memory a DS does not have, which
+        /// nothing may write at start.
+        struct MarkShape
+        {
+            std::int16_t at[3];      ///< quarter units: where it was made at
+            std::int16_t brush;      ///< ... on which (its brush + 1; 0 the world)
+            std::uint8_t half;       ///< 0: not made
+            std::uint8_t picture, turn;
+            std::int16_t leaf;       ///< a world mark's leaf + 1 (0: look each pass)
+            std::int16_t corner[4][3];
+        };
+        /// The DS's 32 marks in main memory; the DSi's other 32 in its own.
+        constexpr int kShapesMain = 32;
+        MarkShape shapesMain[kShapesMain];
+        TWL_BSS MarkShape shapesTwl[kMaxDecals - kShapesMain];
+
+        MarkShape *shapeOf(int slot)
+        {
+            if (slot < kShapesMain)
+                return &shapesMain[slot];
+            return isDSiMode() ? &shapesTwl[slot - kShapesMain] : nullptr;
+        }
+
+        bool shapeIs(const MarkShape &shape, const Decal &decal)
+        {
+            return shape.half == decal.half && shape.picture == decal.picture && shape.turn == decal.turn &&
+                   shape.brush == decal.brush + 1 && shape.at[0] == static_cast<std::int16_t>(decal.at[0] >> 10) &&
+                   shape.at[1] == static_cast<std::int16_t>(decal.at[1] >> 10) &&
+                   shape.at[2] == static_cast<std::int16_t>(decal.at[2] >> 10);
+        }
+
+        /// Make `decal`'s shape (a sign: of `sign`, its sprite). False if it
+        /// has none (a normal that is no direction).
+        bool shapeMake(MarkShape &shape, const Decal &decal, const SpriteRef *sign)
+        {
+            shape.half = 0;
+            const fx *n = decal.normal;
+            std::int32_t u[3], v[3];
+            int halfU = decal.half, halfV = decal.half;
+            if (sign != nullptr)
+            {
+                // Upright on a wall, as the game puts one: its "up" the
+                // world's, its "right" the viewer's right as they face it.
+                // (On a floor or a ceiling, its top towards the world's X.)
+                const bool wall = n[2] < kFxOne * 7 / 10 && n[2] > -kFxOne * 7 / 10;
+                const fx up[3] = {0, 0, kFxOne};
+                const fx along[3] = {kFxOne, 0, 0};
+                const fx *ref = wall ? up : along;
+                // right = ref x n (a wall), up = n x right.
+                fx right[3] = {(ref[1] * n[2] - ref[2] * n[1]) >> 12, (ref[2] * n[0] - ref[0] * n[2]) >> 12,
+                               (ref[0] * n[1] - ref[1] * n[0]) >> 12};
+                const fx length = fxLength(right);
+                if (length < 64)
+                    return false;
+                for (int i = 0; i < 3; ++i)
+                    u[i] = static_cast<fx>((static_cast<std::int64_t>(right[i]) << 12) / length);
+                halfU = (sign->worldWidth + 1) / 2;
+                halfV = (sign->worldHeight + 1) / 2;
+            }
+            else
+            {
+                // Two directions across the wall.
+                const fx size[3] = {n[0] < 0 ? -n[0] : n[0], n[1] < 0 ? -n[1] : n[1], n[2] < 0 ? -n[2] : n[2]};
+                const int least = size[0] <= size[1] && size[0] <= size[2] ? 0 : (size[1] <= size[2] ? 1 : 2);
+                fx axis[3] = {0, 0, 0};
+                axis[least] = kFxOne;
+                fx across[3] = {(n[1] * axis[2] - n[2] * axis[1]) >> 12, (n[2] * axis[0] - n[0] * axis[2]) >> 12,
+                                (n[0] * axis[1] - n[1] * axis[0]) >> 12};
+                const fx length = fxLength(across);
+                if (length < 64)
+                    return false;
+                for (int i = 0; i < 3; ++i)
+                    u[i] = static_cast<fx>((static_cast<std::int64_t>(across[i]) << 12) / length);
+            }
+            v[0] = (n[1] * u[2] - n[2] * u[1]) >> 12;
+            v[1] = (n[2] * u[0] - n[0] * u[2]) >> 12;
+            v[2] = (n[0] * u[1] - n[1] * u[0]) >> 12;
+            const int sides[4][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}};
+            for (int k = 0; k < 4; ++k)
+            {
+                for (int i = 0; i < 3; ++i)
+                    shape.corner[k][i] = static_cast<std::int16_t>(
+                        (decal.at[i] + u[i] * halfU * sides[k][0] + v[i] * halfV * sides[k][1]) >> 10);
+            }
+            // (Where it is, a little off its wall: the leaf of a mark that
+            // stays where it is never changes.)
+            shape.leaf = 0;
+            if (decal.brush < 0)
+            {
+                const std::int16_t centre[3] = {static_cast<std::int16_t>(fxToInt(decal.at[0] + n[0] * 2)),
+                                                static_cast<std::int16_t>(fxToInt(decal.at[1] + n[1] * 2)),
+                                                static_cast<std::int16_t>(fxToInt(decal.at[2] + n[2] * 2))};
+                shape.leaf = static_cast<std::int16_t>(worldDraw.leafAt(centre) + 1);
+            }
+            for (int i = 0; i < 3; ++i)
+                shape.at[i] = static_cast<std::int16_t>(decal.at[i] >> 10);
+            shape.brush = static_cast<std::int16_t>(decal.brush + 1);
+            shape.picture = decal.picture;
+            shape.turn = decal.turn;
+            shape.half = decal.half;
+            return true;
+        }
     } // namespace
 
     void EffectDraw::glow(const fx *at, int alpha, std::uint16_t colour, int half)
@@ -893,6 +1005,13 @@ namespace hlrt
         vertices += marks * 4 + pieces * 3;
     }
 
+    void EffectDraw::forgetMarks()
+    {
+        std::memset(shapesMain, 0, sizeof(shapesMain));
+        if (isDSiMode())
+            std::memset(shapesTwl, 0, sizeof(shapesTwl));
+    }
+
     int EffectDraw::drawDecals()
     {
         NEA_Material *atlas = static_cast<NEA_Material *>(hudDraw.decalMaterial());
@@ -922,7 +1041,8 @@ namespace hlrt
         for (int i = 0; i < kMaxDecals; ++i)
         {
             Decal &decal = a.decals[i];
-            if (!decal.active)
+            MarkShape *shape = decal.active ? shapeOf(i) : nullptr;
+            if (shape == nullptr)
                 continue;
             const bool shown = (decalShown_ >> i) & 1;
             fx at[3] = {decal.at[0], decal.at[1], decal.at[2]};
@@ -948,10 +1068,19 @@ namespace hlrt
             away = (d[2] < 0 ? -d[2] : d[2]) > away ? (d[2] < 0 ? -d[2] : d[2]) : away;
             if (!markInRange(away, decal.half, shown))
                 continue;
+            // (Its shape, made the first time it is near enough to be seen.
+            // A sign is a sprite of the map's: none until that is loaded.)
+            if (!shapeIs(*shape, decal))
+            {
+                const SpriteRef *sign = decal.picture == kDecalSign ? spriteCache.ref(decal.colour) : nullptr;
+                if ((decal.picture == kDecalSign && sign == nullptr) || !shapeMake(*shape, decal, sign))
+                    continue;
+            }
             const std::int16_t centre[3] = {static_cast<std::int16_t>(fxToInt(at[0] + decal.normal[0] * 2)),
                                             static_cast<std::int16_t>(fxToInt(at[1] + decal.normal[1] * 2)),
                                             static_cast<std::int16_t>(fxToInt(at[2] + decal.normal[2] * 2))};
-            if (!worldDraw.ballVisible(centre, decal.half + 2))
+            if (shape->leaf != 0 ? !worldDraw.ballVisibleIn(shape->leaf - 1, centre, decal.half + 2)
+                                 : !worldDraw.ballVisible(centre, decal.half + 2))
                 continue;
             // How square the eye meets its wall: `facing` is Q12 units, over
             // the distance the cosine in 4096ths.
@@ -971,6 +1100,8 @@ namespace hlrt
         int drawn = 0;
         bool bound = false;
         NEA_Material *boundMaterial = nullptr;
+        // (The eye in quarter units, as the corners are.)
+        const std::int32_t eye[3] = {camera.pos[0] >> 10, camera.pos[1] >> 10, camera.pos[2] >> 10};
         for (int next = 0; next < listed; ++next)
         {
             const int slot = list[next].slot;
@@ -980,14 +1111,7 @@ namespace hlrt
                 continue;
             }
             const Decal &decal = a.decals[slot];
-            const std::uint64_t bit = std::uint64_t(1) << slot;
-            fx at[3] = {decal.at[0], decal.at[1], decal.at[2]};
-            if (decal.brush >= 0)
-            {
-                for (int k = 0; k < 3; ++k)
-                    at[k] += brushes[decal.brush].pos[k];
-            }
-            // (A sign is a sprite of the map's: its own texture.)
+            const MarkShape &shape = *shapeOf(slot);
             const bool isSign = decal.picture == kDecalSign;
             const SpriteRef *signRef = isSign ? spriteCache.ref(decal.colour) : nullptr;
             if (isSign && signRef == nullptr)
@@ -1032,71 +1156,53 @@ namespace hlrt
             NEA_PolyFormat(alpha, kIdMarksFirst + slot % kIdMarksCount, static_cast<NEA_LightEnum>(0), NEA_CULL_NONE,
                            static_cast<NEA_OtherFormatEnum>(static_cast<int>(worldDraw.polygonMode()) |
                                                             (pull == 0 ? kDepthEqual : 0)));
+            // The picture's corners in its texture: a sign's its sprite's
+            // first frame; a mark's its place in the atlas, turned a
+            // quarter, a half or three quarters (the same picture, another
+            // mark).
+            int st[4][2];
+            int turn = 0;
             if (isSign)
             {
-                // Upright on a wall, as the game puts one: its "up" the
-                // world's, its "right" the viewer's right as they face it.
-                // (On a floor or a ceiling, its top towards the world's X.)
-                const fx *n = decal.normal;
-                const bool wall = n[2] < kFxOne * 7 / 10 && n[2] > -kFxOne * 7 / 10;
-                const fx up[3] = {0, 0, kFxOne};
-                const fx along[3] = {kFxOne, 0, 0};
-                const fx *ref = wall ? up : along;
-                // right = ref x n (a wall), up = n x right.
-                fx right[3] = {(ref[1] * n[2] - ref[2] * n[1]) >> 12, (ref[2] * n[0] - ref[0] * n[2]) >> 12,
-                               (ref[0] * n[1] - ref[1] * n[0]) >> 12};
-                const fx length = fxLength(right);
-                if (length < 64)
-                    continue;
-                for (fx &c : right)
-                    c = static_cast<fx>((static_cast<std::int64_t>(c) << 12) / length);
-                const std::int32_t u[3] = {right[0], right[1], right[2]};
-                const std::int32_t v[3] = {(n[1] * right[2] - n[2] * right[1]) >> 12,
-                                           (n[2] * right[0] - n[0] * right[2]) >> 12,
-                                           (n[0] * right[1] - n[1] * right[0]) >> 12};
+                int s0, t0, s1, t1;
+                cell(*signRef, 0, s0, t0, s1, t1);
+                const int corners[4][2] = {{s0, t1}, {s1, t1}, {s1, t0}, {s0, t0}};
+                std::memcpy(st, corners, sizeof(st));
                 GFX_COLOR = 0x7FFF;
-                picture(*signRef, 0, at, u, v, (signRef->worldWidth + 1) / 2, (signRef->worldHeight + 1) / 2);
-                shown |= bit;
-                ++drawn;
-                continue;
             }
-            // Two directions across the wall.
-            const fx *n = decal.normal;
-            const fx size[3] = {n[0] < 0 ? -n[0] : n[0], n[1] < 0 ? -n[1] : n[1], n[2] < 0 ? -n[2] : n[2]};
-            const int least = size[0] <= size[1] && size[0] <= size[2] ? 0 : (size[1] <= size[2] ? 1 : 2);
-            fx axis[3] = {0, 0, 0};
-            axis[least] = kFxOne;
-            fx u[3] = {(n[1] * axis[2] - n[2] * axis[1]) >> 12, (n[2] * axis[0] - n[0] * axis[2]) >> 12,
-                       (n[0] * axis[1] - n[1] * axis[0]) >> 12};
-            const fx length = fxLength(u);
-            if (length < 64)
-                continue;
-            for (fx &c : u)
-                c = static_cast<fx>((static_cast<std::int64_t>(c) << 12) / length);
-            const fx v[3] = {(n[1] * u[2] - n[2] * u[1]) >> 12, (n[2] * u[0] - n[0] * u[2]) >> 12,
-                             (n[0] * u[1] - n[1] * u[0]) >> 12};
-            const UiRect r = decalRect(decal.picture);
-            const int st[4][2] = {{r.x, r.y + r.h}, {r.x + r.w, r.y + r.h}, {r.x + r.w, r.y}, {r.x, r.y}};
-            const int sign[4][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}};
-            GFX_COLOR = decal.colour;
+            else
+            {
+                const UiRect r = decalRect(decal.picture);
+                const int corners[4][2] = {{r.x, r.y + r.h}, {r.x + r.w, r.y + r.h}, {r.x + r.w, r.y}, {r.x, r.y}};
+                std::memcpy(st, corners, sizeof(st));
+                turn = decal.turn;
+                GFX_COLOR = decal.colour;
+            }
+            // (On a brush: from where that is now.)
+            std::int32_t base[3] = {0, 0, 0};
+            if (decal.brush >= 0)
+            {
+                for (int i = 0; i < 3; ++i)
+                    base[i] = brushes[decal.brush].pos[i] >> 10;
+            }
             GFX_BEGIN = GL_QUADS;
             for (int k = 0; k < 4; ++k)
             {
-                fx p[3];
+                std::int32_t q[3];
                 for (int i = 0; i < 3; ++i)
                 {
-                    p[i] = at[i] + u[i] * decal.half * sign[k][0] + v[i] * decal.half * sign[k][1];
+                    q[i] = shape.corner[k][i] + base[i];
+                    // (Quarter units from the eye: a world's width times
+                    // 4096 still fits 32 bits.)
                     if (pull != 0)
-                        p[i] = camera.pos[i] +
-                               static_cast<fx>((static_cast<std::int64_t>(p[i] - camera.pos[i]) * (4096 - pull)) >> 12);
+                        q[i] = eye[i] + (((q[i] - eye[i]) * (4096 - pull)) >> 12);
                 }
-                // (Turned a quarter, a half or three quarters: the same
-                // picture, another mark.)
-                const int *coordinate = st[(k + decal.turn) & 3];
+                const int *coordinate = st[(k + turn) & 3];
                 GFX_TEX_COORD = TEXTURE_PACK(coordinate[0] << 4, coordinate[1] << 4);
-                corner(p);
+                GFX_VERTEX16 = ((static_cast<std::uint32_t>(q[1]) & 0xFFFF) << 16) | (static_cast<std::uint32_t>(q[0]) & 0xFFFF);
+                GFX_VERTEX16 = static_cast<std::uint32_t>(q[2]) & 0xFFFF;
             }
-            shown |= bit;
+            shown |= std::uint64_t(1) << slot;
             ++drawn;
         }
         decalShown_ = shown;

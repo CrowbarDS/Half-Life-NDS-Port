@@ -774,6 +774,23 @@ namespace hlrt
         return !sphereOutside(camera.planes, centre, radius, anyDistance ? Camera::kPlaneCount - 1 : Camera::kPlaneCount);
     }
 
+    int WorldDraw::leafAt(const std::int16_t *at) const
+    {
+        if (!level.loaded())
+            return -1;
+        const fx p[3] = {fxFromInt(at[0]), fxFromInt(at[1]), fxFromInt(at[2])};
+        return findLeaf(level.view, p);
+    }
+
+    bool WorldDraw::ballVisibleIn(int leaf, const std::int16_t *centre, int radius) const
+    {
+        if (leaf < 0 || !level.loaded() || leafFrame_ == nullptr)
+            return false;
+        if (leaf != 0 && leafFrame_[leaf] != visFrame_)
+            return false;
+        return !sphereOutside(camera.planes, centre, radius, Camera::kPlaneCount);
+    }
+
     bool WorldDraw::spend(int polygons, int vertices)
     {
         if (stats_.polygons + polygons > polygonBudget() || stats_.vertices + vertices > vertexBudget())
