@@ -9,6 +9,7 @@
 #include <dswifi9.h>
 #include <dswifi_dlplay.h>
 
+#include "DebugLog.hpp"
 #include "HlNet.hpp"
 #include "net/NetRelay.hpp"
 
@@ -132,7 +133,10 @@ namespace hlrt::netlink
                 return;
 #endif
             if (value == 0)
+            {
+                const hlrt::DebugLog::Perf::Timed timed(hlrt::DebugLog::Section::Radio);
                 Wifi_Update();
+            }
         }
 
         void waitForMode()

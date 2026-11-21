@@ -2989,10 +2989,16 @@ int main(int argc, char *argv[])
             step();
             holdIntermissionView();
             NEA_Process(drawScene);
-            hlrt::sound.frame();
+            {
+                const hlrt::DebugLog::Perf::Timed timed(hlrt::DebugLog::Section::Sound);
+                hlrt::sound.frame();
+            }
             // What is in view now says what to read for the next frames;
             // a few kilobytes a frame, more where the card is quicker.
-            hlrt::textureStream.update(isDSiMode() ? 8192 : 4096);
+            {
+                const hlrt::DebugLog::Perf::Timed timed(hlrt::DebugLog::Section::Stream);
+                hlrt::textureStream.update(isDSiMode() ? 8192 : 4096);
+            }
             // What the hardware made of the pass before this one, and the
             // budget corrected by it.
             {

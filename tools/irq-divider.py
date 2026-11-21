@@ -44,13 +44,14 @@ HANDLERS = [
     "Wifi_DlPlayFromClientHandler",
     "my_sys_counter",  # lwIP's clock (online play, a DSi's): a count, on timer 3
     "hlrt::DebugLog::Perf::(anonymous namespace)::sample()",  # HLDS_PROFILE's sampler, on timer 2
+    "(anonymous namespace)::profiledHblank()",  # HLDS_PROFILE's: NEA_HBLFunc, timed (source/Global.cpp)
 ]
 # (What the radio's interrupt calls by a pointer, each of these: fromHost's sink
 # is the child's sinkTake, which takes a map's pieces as they arrive.)
 HANDLER_PATTERN = re.compile(r"netlink::.*(fromClient|fromHost)\(|guest::.*sinkTake\(")
 # Handlers that only some programs have (the child sends nothing).
 OPTIONAL = {"Wifi_DlPlayFromClientHandler", "my_sys_counter",
-            "hlrt::DebugLog::Perf::(anonymous namespace)::sample()"}
+            "hlrt::DebugLog::Perf::(anonymous namespace)::sample()", "(anonymous namespace)::profiledHblank()"}
 # Who may install one. Anyone new may be installing a handler this cannot see:
 # it fails until that handler is in HANDLERS and its caller here.
 INSTALLERS = {

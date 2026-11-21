@@ -1,4 +1,5 @@
 #include "Global.hpp"
+#include "DebugLog.hpp"
 #include "render/BottomScreen.hpp"
 #include "Settings.hpp"
 #include <cerrno>
@@ -37,6 +38,7 @@ namespace
     /// NEA's own vblank work, plus the tick the game's clock runs on.
     void onVblank()
     {
+        const hlrt::DebugLog::Perf::Timed timed(hlrt::DebugLog::Section::Vblank);
         vblankCount = vblankCount + 1;
         // First: what is written to video memory has only until line 206.
         hlrt::vramWriter.onVblank();
@@ -49,6 +51,14 @@ namespace
         hlrt::BottomScreen::onVblank();
         NEA_VBLFunc();
     }
+#ifdef HLDS_PROFILE
+    // (Its time, apart: what the ARM9 does besides the game, DebugLog.)
+    void profiledHblank()
+    {
+        const hlrt::DebugLog::Perf::Timed timed(hlrt::DebugLog::Section::Hblank);
+        NEA_HBLFunc();
+    }
+#endif
 } // namespace
 
 std::uint32_t Global::vblanks()
@@ -181,7 +191,11 @@ void Global::Init(const char *launchedFrom)
 
     irqEnable(IRQ_HBLANK);
     irqSet(IRQ_VBLANK, onVblank);
+#ifdef HLDS_PROFILE
+    irqSet(IRQ_HBLANK, profiledHblank);
+#else
     irqSet(IRQ_HBLANK, NEA_HBLFunc);
+#endif
 
 #ifdef HLDS_CHILD
     // Sent the game: no card is looked for (on a console that has one, it is

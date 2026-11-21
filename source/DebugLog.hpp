@@ -30,6 +30,13 @@ namespace hlrt::DebugLog
         AiSched,  ///< ... their hearing, and their enemy looked to
         AiMove,   ///< ... their going about
         Keys,     ///< animation keys read off the card (data/KeyCache.cpp: a DS's key paging)
+        // What else the ARM9 does, for what the ARM7 could take (Perf::Timed:
+        // no phase of the I-cache profiler's).
+        Sound,  ///< Sound::frame, in the game's frame
+        Stream, ///< TextureStream::update: what is in view read off the card
+        Vblank, ///< the VBlank interrupt (video memory written, sprites)
+        Hblank, ///< the HBlank interrupt, every line (Nitro Engine's)
+        Radio,  ///< the wireless's word from the ARM7, in the FIFO interrupt (local play)
         Count
     };
 
@@ -101,6 +108,17 @@ namespace hlrt::DebugLog
             std::uint32_t outer;
 #endif
         };
+        /// A section's time and nothing else -- no phase: one an interrupt
+        /// may time.
+        struct Timed
+        {
+            explicit Timed(Section s) : section(s), start(now()) {}
+            ~Timed() { add(section, now() - start); }
+            Timed(const Timed &) = delete;
+            Timed &operator=(const Timed &) = delete;
+            Section section;
+            std::uint32_t start;
+        };
     } // namespace Perf
 #else
     namespace Perf
@@ -115,6 +133,10 @@ namespace hlrt::DebugLog
         struct Scope
         {
             explicit Scope(Section) {}
+        };
+        struct Timed
+        {
+            explicit Timed(Section) {}
         };
     } // namespace Perf
 #endif
