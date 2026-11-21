@@ -268,11 +268,13 @@ namespace hlrt
                                     {Kind::Button, kBack, ui::txt::menu::Cancel}};
         char question[40];
         namespace opt = ui::txt::options;
+        namespace lob = ui::txt::lobby;
+#ifndef HLDS_CHILD
+        namespace host = ui::txt::host;
+#endif
         using ui::TextRef;
         using ui::uiText;
         const TextRef kFirmName[kFirmActions] = {opt::Off, opt::FirmFire, opt::FirmUse, opt::FirmJump, opt::FirmAltFire};
-        /// "on" or "off", as most rows' values are.
-        const char *onOff(bool on) { return uiText(on ? opt::On : opt::Off); }
 
         // Where the rows are: the first page's are big and few, the
         // others' as many as the screen holds.
@@ -976,7 +978,7 @@ namespace hlrt
         void achStatus(const hldata::AchievementTracker &tracker, int id, char *out, std::size_t size)
         {
             if (tracker.has(id))
-                std::snprintf(out, size, "%s", uiText(ui::txt::ach_texts::Earned));
+                ui::putText(out, size, ui::txt::ach_texts::Earned);
             else if (hldata::kAchievements[id].goal != 0)
                 std::snprintf(out, size, "%d/%d", tracker.progress(id), hldata::kAchievements[id].goal);
             else
@@ -1148,14 +1150,15 @@ namespace hlrt
         }
         // --- PROFILE: the player as the others see them in a match, a sheet
         // of one page whose rows are settings' rows.
-        const Row kProfileRows[] = {{Kind::Value, kProfName, "Name"},
-                                    {Kind::Value, kProfModel, "Model"},
-                                    {Kind::Slider, kProfTop, "Top colour"},
-                                    {Kind::Slider, kProfBottom, "Bottom colour"},
-                                    {Kind::Value, kProfSpray, "Spray"},
-                                    {Kind::Value, kProfSprayColour, "Spray colour"}};
-        const char *const kSprayColourName[kSprayColours] = {"orange", "yellow",     "blue",  "light blue", "green",
-                                                             "red",    "brown",      "light grey", "dark grey"};
+        const Row kProfileRows[] = {{Kind::Value, kProfName, lob::RowName},
+                                    {Kind::Value, kProfModel, lob::RowModel},
+                                    {Kind::Slider, kProfTop, lob::RowTop},
+                                    {Kind::Slider, kProfBottom, lob::RowBottom},
+                                    {Kind::Value, kProfSpray, lob::RowSpray},
+                                    {Kind::Value, kProfSprayColour, lob::RowSprayColour}};
+        const TextRef kSprayColourName[kSprayColours] = {lob::SprayOrange, lob::SprayYellow,    lob::SprayBlue,
+                                                         lob::SprayLightBlue, lob::SprayGreen,  lob::SprayRed,
+                                                         lob::SprayBrown,  lob::SprayLightGrey, lob::SprayDarkGrey};
         /// The spray logos (ui/logos.hic), read while PROFILE is open.
         std::uint32_t *logoWords = nullptr;
         LogosView logos;
@@ -1199,22 +1202,22 @@ namespace hlrt
         constexpr int kPageSettings = 1, kPageHost = 8, kPageLobby = 10, kPageProfile = 17, kPageSend = 18,
                       kPageStarting = 19;
         /// HOST's MATCH: the settings of the match it is to start.
-        const Row kHostRows[] = {{Kind::Value, kNetMode, "Mode"},
-                                 {Kind::Value, kNetMap, "Map"},
-                                 {Kind::Value, kNetFrags, "Frag limit"},
-                                 {Kind::Value, kNetMinutes, "Time limit"},
-                                 {Kind::Value, kNetMost, "Players"},
-                                 {Kind::Value, kNetStay, "Weapons stay"},
-                                 {Kind::Value, kNetFall, "Fall damage"},
-                                 {Kind::Value, kNetFriendly, "Friendly fire"},
-                                 {Kind::Value, kNetLamp, "Flashlight"},
-                                 {Kind::Value, kNetAim, "Autoaim"},
+        const Row kHostRows[] = {{Kind::Value, kNetMode, lob::RowMode},
+                                 {Kind::Value, kNetMap, lob::RowMap},
+                                 {Kind::Value, kNetFrags, lob::RowFrags},
+                                 {Kind::Value, kNetMinutes, lob::RowMinutes},
+                                 {Kind::Value, kNetMost, lob::RowMost},
+                                 {Kind::Value, kNetStay, lob::RowStay},
+                                 {Kind::Value, kNetFall, lob::RowFall},
+                                 {Kind::Value, kNetFriendly, lob::RowFriendly},
+                                 {Kind::Value, kNetLamp, lob::RowLamp},
+                                 {Kind::Value, kNetAim, lob::RowAim},
 #ifndef HLDS_CHILD
-                                 {Kind::Value, kNetVoice, "Voice chat"},
-                                 {Kind::Value, kNetIdle, "Idle players"},
+                                 {Kind::Value, kNetVoice, host::RowVoice},
+                                 {Kind::Value, kNetIdle, host::RowIdle},
 #endif
-                                 {Kind::Value, kNetSkill, "Difficulty"},
-                                 {Kind::Value, kNetGuests, "Download Play players"}};
+                                 {Kind::Value, kNetSkill, lob::RowSkill},
+                                 {Kind::Value, kNetGuests, lob::RowGuests}};
 #ifndef HLDS_CHILD
         /// The chapters of HOST.
         constexpr int kHostMatch = 0, kHostNext = 1, kHostPlayers = 2;
@@ -1225,20 +1228,20 @@ namespace hlrt
             static Row rows[8 + kRotationMost];
             static char names[kRotationMost][8];
             count = 0;
-            rows[count++] = Row{Kind::Value, kNetNext, "Next map"};
+            rows[count++] = Row{Kind::Value, kNetNext, host::RowNext};
             if (settings.nextMode == kNextVote)
-                rows[count++] = Row{Kind::Value, kNetVoteTime, "Vote time"};
+                rows[count++] = Row{Kind::Value, kNetVoteTime, host::RowVoteTime};
             else if (settings.nextMode == kNextWinner || settings.nextMode == kNextTurns)
-                rows[count++] = Row{Kind::Value, kNetVoteTime, "Choice time"};
-            rows[count++] = Row{Kind::Value, kNetChat, "Scores shown"};
-            rows[count++] = Row{Kind::Value, kNetTotals, "Session totals"};
+                rows[count++] = Row{Kind::Value, kNetVoteTime, host::RowChoiceTime};
+            rows[count++] = Row{Kind::Value, kNetChat, host::RowScores};
+            rows[count++] = Row{Kind::Value, kNetTotals, host::RowTotals};
             if (settings.nextMode != kNextRotation)
                 return rows;
-            rows[count++] = Row{Kind::Value, kRotPick, "Map to add"};
-            rows[count++] = Row{Kind::Value, kRotAdd, "Add it"};
-            rows[count++] = Row{Kind::Value, kRotUp, "Move up"};
-            rows[count++] = Row{Kind::Value, kRotDown, "Move down"};
-            rows[count++] = Row{Kind::Value, kRotOut, "Take off"};
+            rows[count++] = Row{Kind::Value, kRotPick, host::RowPick};
+            rows[count++] = Row{Kind::Value, kRotAdd, host::RowAdd};
+            rows[count++] = Row{Kind::Value, kRotUp, host::RowUp};
+            rows[count++] = Row{Kind::Value, kRotDown, host::RowDown};
+            rows[count++] = Row{Kind::Value, kRotOut, host::RowOut};
             for (int n = 0; n < settings.rotationCount; ++n)
             {
                 std::snprintf(names[n], sizeof(names[n]), "%s%d", n == rotChosen ? "> " : "", n + 1);
@@ -1254,7 +1257,7 @@ namespace hlrt
                 if (nameHash(map.name.c_str()) == hash)
                     return map.name.c_str();
             }
-            return "(not on this card)";
+            return uiText(host::NotOnCard);
         }
 #else
         constexpr int kHostMatch = 0, kHostPlayers = 1;
@@ -1266,7 +1269,7 @@ namespace hlrt
             static Row rows[kNetPlayers + 1];
             count = 0;
             if (netGame.match().rules.teams())
-                rows[count++] = Row{Kind::Value, kNetTeam, "Your team"};
+                rows[count++] = Row{Kind::Value, kNetTeam, lob::RowTeam};
             const int most = netGame.match().rules.most;
             for (int n = 0; n < most && n < kNetPlayers; ++n)
                 rows[count++] = Row{Kind::Value, kSeat, ""};
@@ -1412,21 +1415,21 @@ namespace hlrt
             switch (id)
             {
             case kNetFriendly:
-                return settings.hostMode == kModeTeamplay ? nullptr : "Only in teamplay: there are no teams.";
+                return settings.hostMode == kModeTeamplay ? nullptr : uiText(lob::DeadFriendly);
 #ifndef HLDS_CHILD
             case kNetVoice:
-                return netGame.online() ? nullptr : "Online only: the local wireless has no room for voices.";
+                return netGame.online() ? nullptr : uiText(host::DeadVoice);
 #endif
             case kNetGuests:
                 return netAnyGuestMap(netGame.mapInfo(), netGame.guestRoom())
                            ? nullptr
-                           : "No map on this card fits a console without the game.";
+                           : uiText(lob::DeadGuests);
             case kNetMap:
 #ifndef HLDS_CHILD
                 if (settings.nextMode == kNextVote && playersHere() > 1)
-                    return "Next map is set to vote: START opens a vote for it.";
+                    return uiText(host::DeadVote);
 #endif
-                return netGame.mapInfo().empty() ? "No multiplayer map on the card." : nullptr;
+                return netGame.mapInfo().empty() ? uiText(lob::DeadNoMap) : nullptr;
             default:
                 return nullptr;
             }
@@ -1456,45 +1459,46 @@ namespace hlrt
 #endif
             switch (id)
             {
-            case kNetMode: std::snprintf(out, size, "%s", settings.hostMode == kModeTeamplay ? "teamplay" : "deathmatch"); break;
+            case kNetMode: ui::putText(out, size, settings.hostMode == kModeTeamplay ? lob::Teamplay : lob::Deathmatch); break;
             case kNetMap:
             {
                 const int at = hostIndex();
-                std::snprintf(out, size, "%s", at < 0 ? "none" : netGame.mapInfo()[static_cast<std::size_t>(at)].name.c_str());
+                std::snprintf(out, size, "%s", at < 0 ? uiText(lob::None) : netGame.mapInfo()[static_cast<std::size_t>(at)].name.c_str());
                 break;
             }
             case kNetFrags:
                 if (settings.fragLimit == 0)
-                    std::snprintf(out, size, "none");
+                    ui::putText(out, size, lob::None);
                 else
                     std::snprintf(out, size, "%d", settings.fragLimit);
                 break;
             case kNetMinutes:
                 if (settings.minuteLimit == 0)
-                    std::snprintf(out, size, "none");
+                    ui::putText(out, size, lob::None);
                 else
-                    std::snprintf(out, size, "%d minutes", settings.minuteLimit);
+                    std::snprintf(out, size, uiText(lob::Minutes), settings.minuteLimit);
                 break;
-            case kNetMost: std::snprintf(out, size, "up to %d", settings.maxPlayers); break;
+            case kNetMost: std::snprintf(out, size, uiText(lob::UpTo), settings.maxPlayers); break;
 #ifndef HLDS_CHILD
-            case kNetChat: std::snprintf(out, size, "%d seconds", settings.chatSeconds); break;
+            case kNetChat: std::snprintf(out, size, uiText(host::Seconds), settings.chatSeconds); break;
             case kNetVoteTime:
                 if (settings.voteSeconds < 60)
-                    std::snprintf(out, size, "%d seconds", settings.voteSeconds);
+                    std::snprintf(out, size, uiText(host::Seconds), settings.voteSeconds);
                 else if (settings.voteSeconds % 60 == 0)
-                    std::snprintf(out, size, "%d minute%s", settings.voteSeconds / 60, settings.voteSeconds == 60 ? "" : "s");
+                    std::snprintf(out, size, uiText(host::Minute), settings.voteSeconds / 60, settings.voteSeconds == 60 ? "" : "s");
                 else
-                    std::snprintf(out, size, "%d min %d", settings.voteSeconds / 60, settings.voteSeconds % 60);
+                    std::snprintf(out, size, uiText(host::MinSeconds), settings.voteSeconds / 60, settings.voteSeconds % 60);
                 break;
-            case kNetTotals: std::snprintf(out, size, "%s", settings.sessionTotals ? "on" : "off"); break;
+            case kNetTotals: ui::putText(out, size, settings.sessionTotals ? host::On : host::Off); break;
             case kNetNext:
             {
-                static const char *const kNames[kNextChoices] = {"host chooses", "rotation", "vote", "winner picks", "take turns"};
-                std::snprintf(out, size, "%s", kNames[settings.nextMode]);
+                static const TextRef kNames[kNextChoices] = {host::NextHost, host::NextRotation, host::NextVote,
+                                                             host::NextWinner, host::NextTurns};
+                ui::putText(out, size, kNames[settings.nextMode]);
                 break;
             }
             case kRotPick:
-                std::snprintf(out, size, "%s", netGame.mapInfo().empty() ? "none"
+                std::snprintf(out, size, "%s", netGame.mapInfo().empty() ? uiText(host::None)
                               : netGame.mapInfo()[static_cast<std::size_t>(rotPick) % netGame.mapInfo().size()].name.c_str());
                 break;
             case kRotAdd:
@@ -1502,34 +1506,33 @@ namespace hlrt
             case kRotDown:
             case kRotOut: out[0] = 0; break;
 #endif
-            case kNetStay: std::snprintf(out, size, "%s", settings.weaponsStay ? "on" : "off"); break;
-            case kNetFall: std::snprintf(out, size, "%s", settings.fallDamage != 0 ? "realistic" : "normal"); break;
-            case kNetFriendly: std::snprintf(out, size, "%s", settings.friendlyFire ? "on" : "off"); break;
-            case kNetLamp: std::snprintf(out, size, "%s", settings.flashlight ? "allowed" : "not allowed"); break;
-            case kNetAim: std::snprintf(out, size, "%s", settings.hostAutoaim ? "on" : "off"); break;
+            case kNetStay: ui::putText(out, size, settings.weaponsStay ? lob::On : lob::Off); break;
+            case kNetFall: ui::putText(out, size, settings.fallDamage != 0 ? lob::Realistic : lob::Normal); break;
+            case kNetFriendly: ui::putText(out, size, settings.friendlyFire ? lob::On : lob::Off); break;
+            case kNetLamp: ui::putText(out, size, settings.flashlight ? lob::Allowed : lob::NotAllowed); break;
+            case kNetAim: ui::putText(out, size, settings.hostAutoaim ? lob::On : lob::Off); break;
 #ifndef HLDS_CHILD
             case kNetVoice:
-                std::snprintf(out, size, "%s",
-                              settings.hostVoice == hldata::kHostVoiceOpenMic ? "open mic"
-                              : settings.hostVoice != hldata::kHostVoiceOff  ? "hold TALK"
-                                                                              : "off");
+                ui::putText(out, size, settings.hostVoice == hldata::kHostVoiceOpenMic ? host::VoiceOpen
+                                     : settings.hostVoice != hldata::kHostVoiceOff  ? host::VoiceHold
+                                                                                     : host::Off);
                 break;
             case kNetIdle:
                 if (settings.hostIdleMinutes == 0)
-                    std::snprintf(out, size, "kept");
+                    ui::putText(out, size, host::IdleKept);
                 else
-                    std::snprintf(out, size, "out after %d min", settings.hostIdleMinutes);
+                    std::snprintf(out, size, uiText(host::IdleOut), settings.hostIdleMinutes);
                 break;
 #endif
-            case kNetGuests: std::snprintf(out, size, "%s", settings.allowGuests ? "let in" : "not let in"); break;
+            case kNetGuests: ui::putText(out, size, settings.allowGuests ? lob::LetIn : lob::NotLetIn); break;
             case kNetTeam:
             {
                 const NetMatch &match = netGame.match();
                 const int team = match.profiles[match.me].team, asked = match.myProfile.asked;
                 if (team == 0)
-                    std::snprintf(out, size, "...");
+                    ui::putText(out, size, lob::TeamUnknown);
                 else if (asked != 0 && asked != team)
-                    std::snprintf(out, size, "%d (%d is full)", team, asked);
+                    std::snprintf(out, size, uiText(lob::TeamFull), team, asked);
                 else
                     std::snprintf(out, size, "%d", team);
                 break;
@@ -1537,78 +1540,76 @@ namespace hlrt
             case kProfName: std::snprintf(out, size, "%s", settings.playerName()); break;
             case kProfModel: std::snprintf(out, size, "%s", kCharacterNames[settings.playerModel % kCharacterCount]); break;
             case kProfSpray:
-                std::snprintf(out, size, "%s", logos.count() == 0 ? "none here" : logos.name(settings.spray % logos.count()));
+                std::snprintf(out, size, "%s", logos.count() == 0 ? uiText(lob::SprayNone) : logos.name(settings.spray % logos.count()));
                 break;
-            case kProfSprayColour: std::snprintf(out, size, "%s", kSprayColourName[settings.sprayColour % kSprayColours]); break;
-            case kDsp: std::snprintf(out, size, "%s", uiText(kRoomName[settings.roomEffects])); break;
-            case kOutput: std::snprintf(out, size, "%s", uiText(kOutputName[settings.outputMode])); break;
-            case kFocus: std::snprintf(out, size, "%s", uiText(kFocusName[settings.dialogueFocus])); break;
+            case kProfSprayColour: ui::putText(out, size, kSprayColourName[settings.sprayColour % kSprayColours]); break;
+            case kDsp: ui::putText(out, size, kRoomName[settings.roomEffects]); break;
+            case kOutput: ui::putText(out, size, kOutputName[settings.outputMode]); break;
+            case kFocus: ui::putText(out, size, kFocusName[settings.dialogueFocus]); break;
             case kQuality:
-                std::snprintf(out, size, "%s", uiText(isDSiMode() ? kQualityName[settings.soundQuality] : opt::QualityDs));
+                ui::putText(out, size, isDSiMode() ? kQualityName[settings.soundQuality] : opt::QualityDs);
                 break;
-            case kReadout: std::snprintf(out, size, "%s", onOff(settings.debugReadout)); break;
-            case kBob: std::snprintf(out, size, "%s", onOff(settings.viewBob)); break;
-            case kAutoaim: std::snprintf(out, size, "%s", onOff(settings.autoaim)); break;
-            case kPopups: std::snprintf(out, size, "%s", onOff(settings.achievementPopups)); break;
-            case kAutosave: std::snprintf(out, size, "%s", onOff(settings.autosave)); break;
-            case kHideMapName: std::snprintf(out, size, "%s", onOff(settings.hideMapName)); break;
+            case kReadout: ui::putText(out, size, settings.debugReadout ? opt::On : opt::Off); break;
+            case kBob: ui::putText(out, size, settings.viewBob ? opt::On : opt::Off); break;
+            case kAutoaim: ui::putText(out, size, settings.autoaim ? opt::On : opt::Off); break;
+            case kPopups: ui::putText(out, size, settings.achievementPopups ? opt::On : opt::Off); break;
+            case kAutosave: ui::putText(out, size, settings.autosave ? opt::On : opt::Off); break;
+            case kHideMapName: ui::putText(out, size, settings.hideMapName ? opt::On : opt::Off); break;
 #ifndef HLDS_CHILD
             case kVibration:
-                std::snprintf(out, size, "%s",
-                              uiText(!slot2::hasRumble()      ? opt::NoRumblePak
+                ui::putText(out, size, !slot2::hasRumble()      ? opt::NoRumblePak
                                      : settings.vibration == 0 ? opt::Off
                                      : settings.vibration == 1 ? opt::VibrationLight
-                                                               : opt::VibrationStrong));
+                                                               : opt::VibrationStrong);
                 break;
 #endif
-            case kCheats: std::snprintf(out, size, "%s", onOff(settings.cheats)); break;
+            case kCheats: ui::putText(out, size, settings.cheats ? opt::On : opt::Off); break;
             case kKeyboard:
-                std::snprintf(out, size, "%s", uiText(settings.keyboardLayout == hldata::kKeyboardAzerty ? opt::KeyboardAzerty : opt::KeyboardQwerty));
+                ui::putText(out, size, settings.keyboardLayout == hldata::kKeyboardAzerty ? opt::KeyboardAzerty : opt::KeyboardQwerty);
                 break;
-            case kFog: std::snprintf(out, size, "%s", uiText(kFogTypeName[settings.graphics.fog])); break;
-            case kFogColour: std::snprintf(out, size, "%s", uiText(kFogColourName[settings.graphics.fogColour])); break;
-            case kModelDetail: std::snprintf(out, size, "%s", uiText(kDetailName[settings.graphics.modelDetail])); break;
-            case kWorldDetail: std::snprintf(out, size, "%s", uiText(kDetailName[settings.graphics.worldDetail])); break;
+            case kFog: ui::putText(out, size, kFogTypeName[settings.graphics.fog]); break;
+            case kFogColour: ui::putText(out, size, kFogColourName[settings.graphics.fogColour]); break;
+            case kModelDetail: ui::putText(out, size, kDetailName[settings.graphics.modelDetail]); break;
+            case kWorldDetail: ui::putText(out, size, kDetailName[settings.graphics.worldDetail]); break;
             case kModelLimit:
                 if (settings.graphics.modelLimit == 0)
-                    std::snprintf(out, size, "%s", uiText(opt::Auto));
+                    ui::putText(out, size, opt::Auto);
                 else
                     std::snprintf(out, size, "%d", settings.graphics.modelLimit);
                 break;
-            case kDrawDistance: std::snprintf(out, size, "%s", uiText(kDrawDistanceName[settings.graphics.drawDistance])); break;
+            case kDrawDistance: ui::putText(out, size, kDrawDistanceName[settings.graphics.drawDistance]); break;
             case kScreen:
                 if (settings.screenShape == hldata::kScreenAuto)
                     std::snprintf(out, size, uiText(opt::ScreenAuto), uiText(camera.wide ? opt::ScreenWide : opt::ScreenNarrow));
                 else
-                    std::snprintf(out, size, "%s",
-                                  uiText(settings.screenShape == hldata::kScreenWide ? opt::ScreenWide : opt::ScreenNarrow));
+                    ui::putText(out, size, settings.screenShape == hldata::kScreenWide ? opt::ScreenWide : opt::ScreenNarrow);
                 break;
             // (Which side of the touch screen its column of buttons is, and
             // which hand has the pad and the trigger.)
-            case kHand: std::snprintf(out, size, "%s", uiText(settings.leftHanded ? opt::HandLeft : opt::HandRight)); break;
+            case kHand: ui::putText(out, size, settings.leftHanded ? opt::HandLeft : opt::HandRight); break;
             case kScheme:
-                std::snprintf(out, size, "%s",
-                              uiText(settings.controlScheme == hldata::kControlsModern    ? opt::LayoutModern
+                ui::putText(out, size, settings.controlScheme == hldata::kControlsModern    ? opt::LayoutModern
                                      : settings.controlScheme == hldata::kControlsCustom  ? opt::LayoutCustom
                                      : settings.controlScheme == hldata::kControlsButtons ? opt::LayoutButtons
-                                                                                          : opt::LayoutClassic));
+                                                                                          : opt::LayoutClassic);
                 break;
-            case kDuck: std::snprintf(out, size, "%s", uiText(settings.duckToggle ? opt::Toggle : opt::Hold)); break;
-            case kWalk: std::snprintf(out, size, "%s", uiText(settings.walkToggle ? opt::Toggle : opt::Hold)); break;
-            case kJumpButton: std::snprintf(out, size, "%s", uiText(settings.jumpWalks ? opt::JumpWalks : opt::JumpJumps)); break;
-            case kTapUse: std::snprintf(out, size, "%s", onOff(settings.tapUse)); break;
+            case kDuck: ui::putText(out, size, settings.duckToggle ? opt::Toggle : opt::Hold); break;
+            case kWalk: ui::putText(out, size, settings.walkToggle ? opt::Toggle : opt::Hold); break;
+            case kJumpButton: ui::putText(out, size, settings.jumpWalks ? opt::JumpWalks : opt::JumpJumps); break;
+            case kTapUse: ui::putText(out, size, settings.tapUse ? opt::On : opt::Off); break;
             case kTapJump:
                 // (Where nothing else jumps, it stays on: HlControls.hpp's tapJumps.)
-                std::snprintf(out, size, "%s",
-                              !hldata::jumpsOtherwise(settings.controls()) ? uiText(opt::OnNoOtherJump)
-                                                                           : onOff(settings.tapJump));
+                ui::putText(out, size,
+                            !hldata::jumpsOtherwise(settings.controls()) ? opt::OnNoOtherJump
+                            : settings.tapJump                           ? opt::On
+                                                                         : opt::Off);
                 break;
-            case kInvert: std::snprintf(out, size, "%s", onOff(settings.invertPitch)); break;
+            case kInvert: ui::putText(out, size, settings.invertPitch ? opt::On : opt::Off); break;
             case kFirmPress:
-                std::snprintf(out, size, "%s", uiText(Input::pressureSeen() ? kFirmName[settings.firmPress % kFirmActions] : opt::FirmNotHere));
+                ui::putText(out, size, Input::pressureSeen() ? kFirmName[settings.firmPress % kFirmActions] : opt::FirmNotHere);
                 break;
-            case kPadSide: std::snprintf(out, size, "%s", uiText(settings.padTurns ? opt::PadTurn : opt::PadSidestep)); break;
-            case kPadUp: std::snprintf(out, size, "%s", uiText(settings.padLooks ? opt::PadLook : opt::PadMove)); break;
+            case kPadSide: ui::putText(out, size, settings.padTurns ? opt::PadTurn : opt::PadSidestep); break;
+            case kPadUp: ui::putText(out, size, settings.padLooks ? opt::PadLook : opt::PadMove); break;
             case kKey:
             {
                 // Its buttons (or the question, while asked).
@@ -1682,6 +1683,38 @@ namespace hlrt
             default: return kNoLine;
             }
         }
+        /// What a row of MATCH, PLAYERS or PROFILE does: where its line of
+        /// text/ui/lobby.txt begins, or kNoLine.
+        std::uint16_t lobbyHelpLine(Id id)
+        {
+            switch (id)
+            {
+#ifdef HLDS_CHILD
+            case kProfName: return lob::HelpNameChild.at;
+#else
+            case kProfName: return lob::HelpName.at;
+#endif
+            case kNetMode: return lob::HelpMode.at;
+            case kNetMap: return lob::HelpMap.at;
+            case kNetFrags: return lob::HelpFrags.at;
+            case kNetMinutes: return lob::HelpMinutes.at;
+            case kNetMost: return lob::HelpMost.at;
+            case kNetStay: return lob::HelpStay.at;
+            case kNetFall: return lob::HelpFall.at;
+            case kNetFriendly: return lob::HelpFriendly.at;
+            case kNetLamp: return lob::HelpLamp.at;
+            case kNetAim: return lob::HelpAim.at;
+            case kNetSkill: return lob::HelpSkill.at;
+            case kNetGuests: return lob::HelpGuests.at;
+            case kNetTeam: return lob::HelpTeam.at;
+            case kProfModel: return lob::HelpModel.at;
+            case kProfTop: return lob::HelpTop.at;
+            case kProfBottom: return lob::HelpBottom.at;
+            case kProfSpray: return lob::HelpSpray.at;
+            case kProfSprayColour: return lob::HelpSprayColour.at;
+            default: return kNoLine;
+            }
+        }
         /// What a setting does, for the box under the list.
         const char *settingHelp(Id id)
         {
@@ -1692,59 +1725,34 @@ namespace hlrt
                 return uiText(opt::HelpQualityDsi);
             if (const std::uint16_t line = optionsHelpLine(id); line != kNoLine)
                 return uiText(TextRef{&ui::kTextOptions, line});
+#ifndef HLDS_CHILD
             switch (id)
             {
-#ifdef HLDS_CHILD
-            case kProfName: return "The name the others see in a match: this console's own.";
-#else
-            case kProfName: return "The name the others see in a match. Touch it again to type another.";
-#endif
-            case kNetMode:
-                return "Deathmatch: every one for themselves. Teamplay: two teams, the frags of each added up. Co-op: coming later.";
-            case kNetMap: return "Where the match is played. The top screen shows it.";
-            case kNetFrags: return "The match ends when a player (in teamplay, a team) has this many frags.";
-            case kNetMinutes: return "The match ends after this long.";
-            case kNetMost: return "How many may play, this console among them: the rest are told the game is full.";
-#ifndef HLDS_CHILD
-            case kNetChat: return "How long the final scores stay up when a match ends.";
-            case kNetVoteTime: return settings.nextMode == kNextVote ? "How long everyone has to vote for the next map."
-                                                              : "How long the player has to choose: then a map is drawn at random.";
-            case kNetTotals: return "Adds up each player's frags over the matches of this lobby.";
+            case kNetChat: return uiText(host::HelpScores);
+            case kNetVoteTime: return uiText(settings.nextMode == kNextVote ? host::HelpVoteTime : host::HelpChoiceTime);
+            case kNetTotals: return uiText(host::HelpTotals);
             case kNetNext:
                 switch (settings.nextMode)
                 {
-                case kNextRotation: return "The maps of a list you make, in order, round and round.";
-                case kNextVote: return "Everyone votes between maps drawn at random.";
-                case kNextWinner: return "The winner of each match chooses the next map.";
-                case kNextTurns: return "Each player in turn chooses the next map.";
-                default: return "Everyone comes back to this lobby, and you choose.";
+                case kNextRotation: return uiText(host::HelpNextRotation);
+                case kNextVote: return uiText(host::HelpNextVote);
+                case kNextWinner: return uiText(host::HelpNextWinner);
+                case kNextTurns: return uiText(host::HelpNextTurns);
+                default: return uiText(host::HelpNextHost);
                 }
-            case kRotPick: return "Touch to go through the maps; ADD IT puts this one at the end of the list.";
-            case kRotAdd: return "Puts the map above at the end of the list.";
+            case kRotPick: return uiText(host::HelpPick);
+            case kRotAdd: return uiText(host::HelpAdd);
             case kRotUp:
-            case kRotDown: return "Moves the map marked > in the list.";
-            case kRotOut: return "Takes the map marked > off the list.";
-#endif
-            case kNetStay: return "A weapon taken stays where it lay for the others; whoever has it cannot take it again.";
-            case kNetFall: return "Normal: any hard fall costs 10. Realistic: the harder the fall, the more it costs.";
-            case kNetFriendly: return "In teamplay: whether teammates' shots hurt each other.";
-            case kNetLamp: return "Whether the suit's flashlight may be lit in the match.";
-            case kNetAim: return "Whether the guns' aim bends towards a player near it.";
-#ifndef HLDS_CHILD
-            case kNetVoice: return "Online: whether the players may talk: holding TALK (in SPRAY's place), or with the microphone always open -- in the lobby and the votes too; each may mute theirs (START). Headphones keep the game out of it.";
-            case kNetIdle: return "Whether a player who neither moves, turns nor changes weapon is sent away, and after how long.";
-#endif
-            case kNetSkill: return "How hard the map's chargers and anything of its own are, on every console.";
-            case kNetGuests:
-                return "Consoles sent the game by Download Play can join: only the maps that fit them are offered.";
-            case kNetTeam: return "The team you would be on. The host puts you there if it keeps the teams even.";
-            case kProfModel: return "Who the others see you as. A console with no room for it sees the suit, in your colours.";
-            case kProfTop: return "The colour of the top of the suit, as the others see it.";
-            case kProfBottom: return "The colour of the rest of the suit.";
-            case kProfSpray: return "The picture sprayed on a wall in a match: the game's logos, and your own logos/.";
-            case kProfSprayColour: return "The colour it is sprayed in.";
-            default: return "";
+            case kRotDown: return uiText(host::HelpMove);
+            case kRotOut: return uiText(host::HelpOut);
+            case kNetVoice: return uiText(host::HelpVoice);
+            case kNetIdle: return uiText(host::HelpIdle);
+            default: break;
             }
+#endif
+            if (const std::uint16_t line = lobbyHelpLine(id); line != kNoLine)
+                return uiText(TextRef{&ui::kTextLobby, line});
+            return "";
         }
         /// A setting changed by a step (a value to its next or last, a
         /// slider a notch). True if it changed.
@@ -2157,11 +2165,13 @@ namespace hlrt
         const int chapter = sheetChapter();
         const char *name = page_ == Page::Achievements ? uiText(ui::txt::ach_chapters::line(static_cast<unsigned>(chapter)))
                            : page_ == Page::Settings   ? uiText(kSettingsChapterNames[chapter])
-                           : page_ == Page::Profile    ? "PROFILE"
-                           : page_ == Page::NetHost    ? (chapter == kHostMatch ? "MATCH" : chapter == kHostPlayers ? "PLAYERS" : "NEXT MAP")
-                           : page_ == Page::NetLobby   ? "LOBBY"
-                           : page_ == Page::NetSend    ? "SEND THE GAME"
-                           : page_ == Page::NetStarting ? "STARTING"
+                           : page_ == Page::Profile    ? uiText(lob::TitleProfile)
+                           : page_ == Page::NetHost    ? uiText(chapter == kHostMatch     ? lob::TitleMatch
+                                                                : chapter == kHostPlayers ? lob::TitlePlayers
+                                                                                          : lob::TitleNextMap)
+                           : page_ == Page::NetLobby   ? uiText(lob::TitleLobby)
+                           : page_ == Page::NetSend    ? uiText(lob::TitleSendGame)
+                           : page_ == Page::NetStarting ? uiText(lob::TitleStarting)
                            : saving_                   ? "SAVE GAME"
                                                        : "LOAD GAME";
         const int left = arrows ? kSheetLeftBox.x + kSheetLeftBox.w + 4 : 4;
@@ -2359,7 +2369,7 @@ namespace hlrt
         const int p = seatPlayer(seat);
         if (p < 0)
         {
-            drawText(band, small, x + 28, textY, "open", inkFor(small, kUiGrey));
+            drawText(band, small, x + 28, textY, uiText(lob::SeatOpen), inkFor(small, kUiGrey));
             return;
         }
         // The swatch: the first whole row of cells inside the row.
@@ -2378,7 +2388,7 @@ namespace hlrt
         }
         char name[40];
         std::snprintf(name, sizeof(name), "%s%s%s", match.names[p][0] != 0 ? match.names[p] : "...",
-                      p == 0 ? " (host)" : "", p == match.me ? " (you)" : "");
+                      p == 0 ? uiText(lob::SeatHost) : "", p == match.me ? uiText(lob::SeatYou) : "");
         drawFitted(band, small, x + 28, textY, name, inkFor(small, p == match.me ? kUiWhite : kUiOrange), 150);
         if (match.rules.teams() && match.profiles[p].team != 0)
         {
@@ -2447,26 +2457,23 @@ namespace hlrt
             switch (dlsend::state())
             {
             case dlsend::State::Gathering:
-                std::snprintf(said, sizeof(said), "%d console%s here%s. It is sent in a moment, or at START.",
-                              here, here == 1 ? "" : "s", dlsend::full() ? " (the most there is room for)"
-                                                                         : "; more can still come");
+                std::snprintf(said, sizeof(said), uiText(host::SendGathering), here, here == 1 ? "" : "s",
+                              uiText(dlsend::full() ? host::SendFull : host::SendMore));
                 break;
             case dlsend::State::Sending:
                 // (And what the radio is doing: the rate, and the counts that
                 // say why it is not more.)
-                std::snprintf(said, sizeof(said), "Sending the game: %d%%. %s", dlsend::percent(), dlsend::rate());
+                std::snprintf(said, sizeof(said), uiText(host::SendSending), dlsend::percent(), dlsend::rate());
                 break;
             case dlsend::State::Starting:
             case dlsend::State::Done:
-                std::snprintf(said, sizeof(said), "Starting the game on them. They join this one by themselves.");
+                ui::putText(said, sizeof(said), host::SendStarting);
                 break;
             case dlsend::State::Failed:
-                std::snprintf(said, sizeof(said), "It could not be sent. CANCEL, and try again.");
+                ui::putText(said, sizeof(said), host::SendFailed);
                 break;
             default:
-                std::snprintf(said, sizeof(said), "On the other consoles, open DS Download Play and choose HALF-LIFE "
-                                                  "DS. (A console needs FlashMe, or a Download Play that does not check "
-                                                  "signatures.)");
+                ui::putText(said, sizeof(said), host::SendHowTo);
                 break;
             }
             drawWrapped(canvas, small, x, y, g.line, 0, kLast, said, inkFor(small, kUiGrey), kWidth);
@@ -2483,12 +2490,11 @@ namespace hlrt
                 // (And what the radio is doing: how fast, and why not faster.)
                 char radio[64];
                 netGame.radioLine(radio, sizeof(radio));
-                std::snprintf(said, sizeof(said), "Sending %s to %d console%s: %d%%. %s", what, consoles,
+                std::snprintf(said, sizeof(said), uiText(lob::StartingSending), what, consoles,
                               consoles == 1 ? "" : "s", percent, radio);
             }
             else
-                std::snprintf(said, sizeof(said), "Every console loads the map; the match begins on all of them "
-                                                  "together. CANCEL: back to the lobby.");
+                ui::putText(said, sizeof(said), lob::StartingLoads);
             drawWrapped(canvas, small, x, y, g.line, 0, kLast, said, inkFor(small, kUiGrey), kWidth);
             return;
         }
@@ -2505,10 +2511,9 @@ namespace hlrt
                 if (sendWhy_[0] != 0)
                     std::snprintf(said, sizeof(said), "%s", sendWhy_);
                 else
-                    std::snprintf(said, sizeof(said), "Sending %s to %d console%s: %d%%.%s", what, consoles,
+                    std::snprintf(said, sizeof(said), uiText(lob::Sending), what, consoles,
                                   consoles == 1 ? "" : "s", percent,
-                                  netGame.phase() == NetGame::Phase::Serving ? " The match begins when they have it."
-                                                                             : "");
+                                  netGame.phase() == NetGame::Phase::Serving ? uiText(lob::SendingServing) : "");
                 drawWrapped(canvas, small, x, y, g.line, 0, kLast, said, inkFor(small, kUiWhite), kWidth);
                 return;
             }
@@ -2530,26 +2535,21 @@ namespace hlrt
             if (!chosen)
             {
                 if (page_ == Page::NetHost)
-                    std::snprintf(said, sizeof(said), "%s",
-                                  chapter != kHostPlayers ? "Touch a setting to change it. START when everyone is in; slide the "
-                                                 "list, or touch < >, for who is here."
-                                  : canSend()  ? "Who is in the game. SEND GAME first gives it to consoles without "
-                                                 "it, by DS Download Play; START when everyone is in."
-                                               : "Who is in the game, their colours, their team, how good their "
-                                                 "link is. START when everyone is in.");
+                    ui::putText(said, sizeof(said), chapter != kHostPlayers ? lob::HostHelpMatch
+                                         : canSend()             ? lob::HostHelpPlayersSend
+                                                                 : lob::HostHelpPlayers);
                 else
                 {
                     // What the host has set up, as its rules say.
                     const NetRules &rules = match.rules;
-                    std::snprintf(said, sizeof(said), "%s on %s, up to %d. Weapons %s, falls %s%s, flashlight %s. "
-                                                      "Waiting for the host to start.",
-                                  rules.teams() ? "Teamplay" : "Deathmatch",
-                                  netGame.lobbyMap()[0] != 0 ? netGame.lobbyMap() : "the host's map", rules.most,
-                                  rules.has(kRuleWeaponsStay) ? "stay" : "go when taken",
-                                  rules.has(kRuleRealisticFall) ? "realistic" : "normal",
-                                  rules.teams() ? (rules.has(kRuleFriendlyFire) ? ", friendly fire" : ", no friendly fire")
+                    std::snprintf(said, sizeof(said), uiText(lob::LobbyRules),
+                                  uiText(rules.teams() ? lob::RulesTeamplay : lob::RulesDeathmatch),
+                                  netGame.lobbyMap()[0] != 0 ? netGame.lobbyMap() : uiText(lob::RulesHostMap), rules.most,
+                                  uiText(rules.has(kRuleWeaponsStay) ? lob::RulesStay : lob::RulesGo),
+                                  uiText(rules.has(kRuleRealisticFall) ? lob::Realistic : lob::Normal),
+                                  rules.teams() ? uiText(rules.has(kRuleFriendlyFire) ? lob::RulesFriendly : lob::RulesNoFriendly)
                                                 : "",
-                                  rules.has(kRuleFlashlight) ? "allowed" : "not allowed");
+                                  uiText(rules.has(kRuleFlashlight) ? lob::Allowed : lob::NotAllowed));
                 }
                 drawWrapped(canvas, small, x, y, g.line, 0, kLast, said, inkFor(small, kUiGrey), kWidth);
                 return;
@@ -2561,28 +2561,27 @@ namespace hlrt
                 const int p = seatPlayer(sheetSelected_ - (sheetRows(static_cast<int>(page_), chapter, count)[0].id == kNetTeam ? 1 : 0));
                 if (p < 0)
                 {
-                    drawWrapped(canvas, small, x, y, g.line, 0, kLast, "An open place: a console looking for a game "
-                                "can join.", inkFor(small, kUiGrey), kWidth);
+                    drawWrapped(canvas, small, x, y, g.line, 0, kLast, uiText(lob::SeatOpenHelp), inkFor(small, kUiGrey), kWidth);
                     return;
                 }
-                static const char *const kLinks[] = {"lost", "weak", "fair", "good", "strong"};
+                static const TextRef kLinks[] = {lob::LinkLost, lob::LinkWeak, lob::LinkFair, lob::LinkGood, lob::LinkStrong};
                 const int bars = netGame.bars(p);
                 // (A console sent the game: its memory, and what of it is free.)
                 char room[56] = "";
                 if (const std::uint32_t kb = netGame.roomOf(p))
                 {
                     const std::uint32_t free = netGame.freeOf(p);
-                    std::snprintf(room, sizeof(room), " %s: %lu.%lu MB, %lu.%lu free.",
-                                  netGame.dsiTier(p) ? "DSi mode" : "Sent the game",
+                    std::snprintf(room, sizeof(room), uiText(lob::SeatRoom),
+                                  uiText(netGame.dsiTier(p) ? lob::SeatDsiMode : lob::SeatSentGame),
                                   static_cast<unsigned long>(kb / 1024), static_cast<unsigned long>(kb % 1024 * 10 / 1024),
                                   static_cast<unsigned long>(free / 1024),
                                   static_cast<unsigned long>(free % 1024 * 10 / 1024));
                 }
                 if (page_ == Page::NetHost && p > 0)
-                    std::strncat(room, " Touch again to kick.", sizeof(room) - std::strlen(room) - 1);
-                std::snprintf(said, sizeof(said), "%s: %d frags, %d deaths.%s%s%s", match.names[p][0] ? match.names[p] : "...",
-                              match.frags[p], match.deaths[p], bars >= 0 && p != match.me ? " Link: " : "",
-                              bars >= 0 && p != match.me ? kLinks[bars > 4 ? 4 : bars] : "", room);
+                    std::strncat(room, uiText(lob::SeatKick), sizeof(room) - std::strlen(room) - 1);
+                std::snprintf(said, sizeof(said), uiText(lob::SeatLine), match.names[p][0] ? match.names[p] : "...",
+                              match.frags[p], match.deaths[p], bars >= 0 && p != match.me ? uiText(lob::SeatLink) : "",
+                              bars >= 0 && p != match.me ? uiText(kLinks[bars > 4 ? 4 : bars]) : "", room);
                 drawWrapped(canvas, small, x, y, g.line, 0, kLast, said, inkFor(small, kUiWhite), kWidth);
                 return;
             }
@@ -2595,10 +2594,7 @@ namespace hlrt
         {
             if (!chosen)
             {
-                drawWrapped(canvas, small, x, y, g.line, 0, kLast,
-                            "How the others see you in a match: touch a row to change it, drag a colour. The top "
-                            "screen shows you in your colours.",
-                            inkFor(small, kUiGrey), kWidth);
+                drawWrapped(canvas, small, x, y, g.line, 0, kLast, uiText(lob::ProfileHelp), inkFor(small, kUiGrey), kWidth);
                 return;
             }
             int count = 0;
@@ -2730,17 +2726,17 @@ namespace hlrt
             // (START waits while a match's map is being sent; SEND GAME is
             // before anyone has come: the host's game is closed meanwhile.)
             const int buttons = sheetButtons();
-            drawSheetButton(sheetBarBox(0, buttons), "START", sheetPressed_ == kSheetBar,
+            drawSheetButton(sheetBarBox(0, buttons), uiText(lob::Start), sheetPressed_ == kSheetBar,
                             !(settings.nextMode == kNextVote && playersHere() > 1) &&
                                 (hostIndex() < 0 || netGame.phase() == NetGame::Phase::Serving || !hostMapFits()));
             if (canSend())
-                drawSheetButton(sheetBarBox(1, buttons), "SEND GAME", sheetPressed_ == kSheetBar - 1, playersHere() > 1);
+                drawSheetButton(sheetBarBox(1, buttons), uiText(lob::SendGame), sheetPressed_ == kSheetBar - 1, playersHere() > 1);
 #ifndef HLDS_CHILD
             // CHAT (a DSi's): what is said shows here, in the box above, and in a match.
             if (isDSiMode())
-                drawSheetButton(sheetBarBox(chatButton(), buttons), "CHAT", sheetPressed_ == kSheetBar - chatButton());
+                drawSheetButton(sheetBarBox(chatButton(), buttons), uiText(host::Chat), sheetPressed_ == kSheetBar - chatButton());
             if (micShown())
-                drawSheetButton(sheetBarBox(buttons - 2, buttons), voice::muted() ? "MIC OFF" : "MIC ON",
+                drawSheetButton(sheetBarBox(buttons - 2, buttons), uiText(voice::muted() ? host::MicOff : host::MicOn),
                                 sheetPressed_ == kSheetBar - (buttons - 2));
 #endif
             drawSheetButton(sheetBarBox(buttons - 1, buttons), "BACK", sheetPressed_ == kSheetBar - (buttons - 1));
@@ -2748,16 +2744,16 @@ namespace hlrt
         }
         if (page_ == Page::NetStarting)
         {
-            drawSheetButton(sheetBarBox(0, 1), "CANCEL", sheetPressed_ == kSheetBar);
+            drawSheetButton(sheetBarBox(0, 1), uiText(lob::Cancel), sheetPressed_ == kSheetBar);
             return;
         }
 #ifndef HLDS_CHILD
         if (page_ == Page::NetSend)
         {
             // (START once a console has come, and before it is being sent.)
-            drawSheetButton(sheetBarBox(0, 2), "START", sheetPressed_ == kSheetBar,
+            drawSheetButton(sheetBarBox(0, 2), uiText(lob::Start), sheetPressed_ == kSheetBar,
                             dlsend::state() != dlsend::State::Gathering);
-            drawSheetButton(sheetBarBox(1, 2), "CANCEL", sheetPressed_ == kSheetBar - 1);
+            drawSheetButton(sheetBarBox(1, 2), uiText(lob::Cancel), sheetPressed_ == kSheetBar - 1);
             return;
         }
 #endif
@@ -2766,16 +2762,16 @@ namespace hlrt
             // (PROFILE and OPTIONS without leaving: a console that was sent
             // the game has nowhere else to set them.)
             const int buttons = sheetButtons();
-            drawSheetButton(sheetBarBox(0, buttons), "PROFILE", sheetPressed_ == kSheetBar);
-            drawSheetButton(sheetBarBox(1, buttons), "OPTIONS", sheetPressed_ == kSheetBar - 1);
+            drawSheetButton(sheetBarBox(0, buttons), uiText(lob::Profile), sheetPressed_ == kSheetBar);
+            drawSheetButton(sheetBarBox(1, buttons), uiText(lob::Options), sheetPressed_ == kSheetBar - 1);
 #ifndef HLDS_CHILD
             if (isDSiMode())
-                drawSheetButton(sheetBarBox(chatButton(), buttons), "CHAT", sheetPressed_ == kSheetBar - chatButton());
+                drawSheetButton(sheetBarBox(chatButton(), buttons), uiText(host::Chat), sheetPressed_ == kSheetBar - chatButton());
             if (micShown())
-                drawSheetButton(sheetBarBox(buttons - 2, buttons), voice::muted() ? "MIC OFF" : "MIC ON",
+                drawSheetButton(sheetBarBox(buttons - 2, buttons), uiText(voice::muted() ? host::MicOff : host::MicOn),
                                 sheetPressed_ == kSheetBar - (buttons - 2));
 #endif
-            drawSheetButton(sheetBarBox(buttons - 1, buttons), "LEAVE", sheetPressed_ == kSheetBar - (buttons - 1));
+            drawSheetButton(sheetBarBox(buttons - 1, buttons), uiText(lob::Leave), sheetPressed_ == kSheetBar - (buttons - 1));
             return;
         }
         if (optionSheet())
@@ -3232,7 +3228,7 @@ namespace hlrt
             {
                 char question[40];
                 std::snprintf(question, sizeof(question), "RESET %s?",
-                              page_ == Page::Profile ? "PROFILE" : uiText(kSettingsChapterNames[settingsChapter_]));
+                              page_ == Page::Profile ? uiText(lob::TitleProfile) : uiText(kSettingsChapterNames[settingsChapter_]));
                 sheetAsk(kAskReset, question);
                 return Action::None;
             }

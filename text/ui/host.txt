@@ -1,0 +1,71 @@
+# HOST's NEXT MAP, the lobby's CHAT and microphone, and SEND THE GAME: what
+# only the full game has, not the Download Play child (source/ui/Menu.cpp).
+# Before play only.
+@home resident
+
+# NEXT MAP's rows.
+RowNext = Next map
+RowVoteTime = Vote time
+RowChoiceTime = Choice time
+RowScores = Scores shown
+RowTotals = Session totals
+RowPick = Map to add
+RowAdd = Add it
+RowUp = Move up
+RowDown = Move down
+RowOut = Take off
+# MATCH's, online.
+RowVoice = Voice chat
+RowIdle = Idle players
+
+# Their values.
+On = on
+Off = off
+None = none
+Seconds = %d seconds
+Minute = %d minute%s
+MinSeconds = %d min %d
+NextHost = host chooses
+NextRotation = rotation
+NextVote = vote
+NextWinner = winner picks
+NextTurns = take turns
+VoiceOpen = open mic
+VoiceHold = hold TALK
+IdleKept = kept
+IdleOut = out after %d min
+NotOnCard = (not on this card)
+
+# What each does.
+HelpScores = How long the final scores stay up when a match ends.
+HelpVoteTime = How long everyone has to vote for the next map.
+HelpChoiceTime = How long the player has to choose: then a map is drawn at random.
+HelpTotals = Adds up each player's frags over the matches of this lobby.
+HelpNextRotation = The maps of a list you make, in order, round and round.
+HelpNextVote = Everyone votes between maps drawn at random.
+HelpNextWinner = The winner of each match chooses the next map.
+HelpNextTurns = Each player in turn chooses the next map.
+HelpNextHost = Everyone comes back to this lobby, and you choose.
+HelpPick = Touch to go through the maps; ADD IT puts this one at the end of the list.
+HelpAdd = Puts the map above at the end of the list.
+HelpMove = Moves the map marked > in the list.
+HelpOut = Takes the map marked > off the list.
+HelpVoice = Online: whether the players may talk: holding TALK (in SPRAY's place), or with the microphone always open -- in the lobby and the votes too; each may mute theirs (START). Headphones keep the game out of it.
+HelpIdle = Whether a player who neither moves, turns nor changes weapon is sent away, and after how long.
+# Why a row can do nothing now.
+DeadVoice = Online only: the local wireless has no room for voices.
+DeadVote = Next map is set to vote: START opens a vote for it.
+
+# The bar's buttons.
+Chat = CHAT
+MicOn = MIC ON
+MicOff = MIC OFF
+
+# SEND THE GAME: the box under the list, as the sending goes.
+SendGathering = %d console%s here%s. It is sent in a moment, or at START.
+SendFull =  (the most there is room for)
+SendMore = ; more can still come
+SendSending = Sending the game: %d%%. %s
+SendStarting = Starting the game on them. They join this one by themselves.
+SendFailed = It could not be sent. CANCEL, and try again.
+SendHowTo = On the other consoles, open DS Download Play and choose HALF-LIFE DS. (A console needs FlashMe, or a Download Play that does not check signatures.)

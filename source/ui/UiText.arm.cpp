@@ -54,6 +54,18 @@ namespace hlrt::ui
         return made != nullptr ? made : "";
     }
 
+    void putText(char *out, std::size_t size, TextRef ref)
+    {
+        if (size == 0)
+            return;
+        const char *text = uiText(ref);
+        std::size_t length = std::strlen(text);
+        if (length >= size)
+            length = size - 1;
+        std::memcpy(out, text, length);
+        out[length] = '\0';
+    }
+
     const char *uiText(TextRef ref)
     {
         const TextGroupInfo &group = *ref.group;

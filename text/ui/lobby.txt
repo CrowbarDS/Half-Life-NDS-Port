@@ -1,0 +1,138 @@
+# A match before it begins: HOST's MATCH and PLAYERS, the lobby, STARTING,
+# and PROFILE (source/ui/Menu.cpp). Before play only; the Download Play
+# child has them too (host.txt: what only the full game has).
+@home resident
+
+# The sheets' titles.
+TitleMatch = MATCH
+TitlePlayers = PLAYERS
+TitleNextMap = NEXT MAP
+TitleLobby = LOBBY
+TitleSendGame = SEND THE GAME
+TitleStarting = STARTING
+TitleProfile = PROFILE
+
+# MATCH's rows.
+RowMode = Mode
+RowMap = Map
+RowFrags = Frag limit
+RowMinutes = Time limit
+RowMost = Players
+RowStay = Weapons stay
+RowFall = Fall damage
+RowFriendly = Friendly fire
+RowLamp = Flashlight
+RowAim = Autoaim
+RowSkill = Difficulty
+RowGuests = Download Play players
+# PLAYERS' first row, in teamplay.
+RowTeam = Your team
+
+# Their values.
+On = on
+Off = off
+Teamplay = teamplay
+Deathmatch = deathmatch
+None = none
+Minutes = %d minutes
+UpTo = up to %d
+Realistic = realistic
+Normal = normal
+Allowed = allowed
+NotAllowed = not allowed
+LetIn = let in
+NotLetIn = not let in
+# Your team: not yet known; the one asked for full.
+TeamUnknown = ...
+TeamFull = %d (%d is full)
+
+# What each does.
+HelpMode = Deathmatch: every one for themselves. Teamplay: two teams, the frags of each added up. Co-op: coming later.
+HelpMap = Where the match is played. The top screen shows it.
+HelpFrags = The match ends when a player (in teamplay, a team) has this many frags.
+HelpMinutes = The match ends after this long.
+HelpMost = How many may play, this console among them: the rest are told the game is full.
+HelpStay = A weapon taken stays where it lay for the others; whoever has it cannot take it again.
+HelpFall = Normal: any hard fall costs 10. Realistic: the harder the fall, the more it costs.
+HelpFriendly = In teamplay: whether teammates' shots hurt each other.
+HelpLamp = Whether the suit's flashlight may be lit in the match.
+HelpAim = Whether the guns' aim bends towards a player near it.
+HelpSkill = How hard the map's chargers and anything of its own are, on every console.
+HelpGuests = Consoles sent the game by Download Play can join: only the maps that fit them are offered.
+HelpTeam = The team you would be on. The host puts you there if it keeps the teams even.
+# Why a row can do nothing now.
+DeadFriendly = Only in teamplay: there are no teams.
+DeadGuests = No map on this card fits a console without the game.
+DeadNoMap = No multiplayer map on the card.
+
+# PLAYERS' and the lobby's rows: a place, and whose it is.
+SeatOpen = open
+SeatHost =  (host)
+SeatYou =  (you)
+SeatOpenHelp = An open place: a console looking for a game can join.
+# A player touched: how they do, and how good their link is.
+SeatLine = %s: %d frags, %d deaths.%s%s%s
+SeatLink =  Link:\x20
+LinkLost = lost
+LinkWeak = weak
+LinkFair = fair
+LinkGood = good
+LinkStrong = strong
+# ... and a console sent the game: its memory, and what of it is free.
+SeatRoom =  %s: %lu.%lu MB, %lu.%lu free.
+SeatDsiMode = DSi mode
+SeatSentGame = Sent the game
+SeatKick =  Touch again to kick.
+
+# The box under the list, with no row touched.
+HostHelpMatch = Touch a setting to change it. START when everyone is in; slide the list, or touch < >, for who is here.
+HostHelpPlayersSend = Who is in the game. SEND GAME first gives it to consoles without it, by DS Download Play; START when everyone is in.
+HostHelpPlayers = Who is in the game, their colours, their team, how good their link is. START when everyone is in.
+Sending = Sending %s to %d console%s: %d%%.%s
+SendingServing =  The match begins when they have it.
+# The lobby: what the host has set up, as its rules say.
+LobbyRules = %s on %s, up to %d. Weapons %s, falls %s%s, flashlight %s. Waiting for the host to start.
+RulesTeamplay = Teamplay
+RulesDeathmatch = Deathmatch
+RulesHostMap = the host's map
+RulesStay = stay
+RulesGo = go when taken
+RulesFriendly = , friendly fire
+RulesNoFriendly = , no friendly fire
+# STARTING.
+StartingSending = Sending %s to %d console%s: %d%%. %s
+StartingLoads = Every console loads the map; the match begins on all of them together. CANCEL: back to the lobby.
+
+# The bar's buttons.
+Start = START
+SendGame = SEND GAME
+Profile = PROFILE
+Options = OPTIONS
+Leave = LEAVE
+Cancel = CANCEL
+
+# PROFILE: its rows, their values, what each does.
+RowName = Name
+RowModel = Model
+RowTop = Top colour
+RowBottom = Bottom colour
+RowSpray = Spray
+RowSprayColour = Spray colour
+SprayNone = none here
+SprayOrange = orange
+SprayYellow = yellow
+SprayBlue = blue
+SprayLightBlue = light blue
+SprayGreen = green
+SprayRed = red
+SprayBrown = brown
+SprayLightGrey = light grey
+SprayDarkGrey = dark grey
+HelpNameChild = The name the others see in a match: this console's own.
+HelpName = The name the others see in a match. Touch it again to type another.
+HelpModel = Who the others see you as. A console with no room for it sees the suit, in your colours.
+HelpTop = The colour of the top of the suit, as the others see it.
+HelpBottom = The colour of the rest of the suit.
+HelpSpray = The picture sprayed on a wall in a match: the game's logos, and your own logos/.
+HelpSprayColour = The colour it is sprayed in.
+ProfileHelp = How the others see you in a match: touch a row to change it, drag a colour. The top screen shows you in your colours.

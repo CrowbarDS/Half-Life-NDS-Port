@@ -22,6 +22,9 @@ namespace hlrt::ui
 {
     /// The line `ref`: for this draw.
     const char *uiText(TextRef ref);
+    /// The line `ref` put in `out` (cut short to fit, as snprintf would):
+    /// a copy, to keep.
+    void putText(char *out, std::size_t size, TextRef ref);
 
     /// The main thread's, called once as the program starts (main.cpp): the
     /// thread uiText may be called from.
