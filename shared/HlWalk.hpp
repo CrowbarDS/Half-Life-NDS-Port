@@ -60,6 +60,37 @@ namespace hldata
         }
     }
 
+    /// Leave a mark (decalAdd) where a trace stopped, at `at` on the brush
+    /// entity `mover` (-1: the world). On a brush that moves it is kept from
+    /// where the brush is, and goes with it -- a door, a train, a lift; on
+    /// one that turns (a door on hinges, a fan) it would be left in the
+    /// air, so there is none.
+    [[gnu::noinline]] inline void markOn(ActorWorld &a, const MoveWorld &world, int mover, std::uint8_t picture,
+                                         const fx *at, const fx *normal, int half, std::uint16_t colour)
+    {
+        if (mover < 0 || world.brushes == nullptr || world.movers == nullptr || mover >= world.moverCount)
+        {
+            decalAdd(a, picture, at, normal, half, colour);
+            return;
+        }
+        const Brush &brush = world.brushes[mover];
+        if (brush.flags & kBrushHasPivot)
+            return;
+        // (Where the brush is, as its BrushState has it: a box's own space
+        // is centred on it -- logicPlaceBrushTurned.)
+        const MoverHull &hull = world.movers[mover];
+        const bool box = moverIsBox(hull);
+        fx local[3];
+        for (int k = 0; k < 3; ++k)
+        {
+            fx pos = hull.origin[k];
+            if (box)
+                pos -= (fxFromInt(brush.mins[k]) + fxFromInt(brush.maxs[k])) / 2 - brush.origin[k];
+            local[k] = at[k] - pos;
+        }
+        decalAdd(a, picture, local, normal, half, colour, mover);
+    }
+
     /// A shot (or, with `blow`, a swing) has landed on the world at the end
     /// of the line from `start` towards `end`: its hole and its dust. False
     /// if the line lands on nothing that takes a mark. Where, if asked:
@@ -69,8 +100,11 @@ namespace hldata
                          fx *atOut = nullptr, fx *normalOut = nullptr, int *mover = nullptr)
     {
         fx at[3], normal[3];
-        if (!traceShotWall(world, start, end, at, normal, mover))
+        int on = -1;
+        if (!traceShotWall(world, start, end, at, normal, &on))
             return false;
+        if (mover != nullptr)
+            *mover = on;
         for (int k = 0; atOut != nullptr && k < 3; ++k)
         {
             atOut[k] = at[k];
@@ -78,13 +112,14 @@ namespace hldata
         }
         if (blow)
         {
-            decalAdd(a, kDecalDent, at, normal, 8, kMarkShot);
+            markOn(a, world, on, kDecalDent, at, normal, 8, kMarkShot);
             specksAdd(a, at, normal, 2, static_cast<std::uint16_t>(13 | 13 << 5 | 13 << 10), 60);
         }
         else
         {
             a.seed = a.seed * 1664525u + 1013904223u;
-            decalAdd(a, static_cast<std::uint8_t>(kDecalShot + ((a.seed >> 9) % kDecalShots)), at, normal, 8, kMarkShot);
+            markOn(a, world, on, static_cast<std::uint8_t>(kDecalShot + ((a.seed >> 9) % kDecalShots)), at, normal, 8,
+                   kMarkShot);
             specksAdd(a, at, normal, 3, static_cast<std::uint16_t>(15 | 15 << 5 | 14 << 10));
         }
         return true;
@@ -101,11 +136,13 @@ namespace hldata
         const fx to[3] = {from[0] + along[0] * reach, from[1] + along[1] * reach,
                           from[2] + along[2] * reach - fxFromInt(reach / 3)};
         fx at[3], normal[3];
-        if (!traceShotWall(world, from, to, at, normal))
+        int on = -1;
+        if (!traceShotWall(world, from, to, at, normal, &on))
             return false;
         const std::uint8_t picture = alien ? ((a.seed >> 14) & 1 ? kDecalAlien : kDecalAlien2)
                                            : static_cast<std::uint8_t>(kDecalBlood + ((a.seed >> 14) % kDecalBloods));
-        decalAdd(a, picture, at, normal, (much ? 24 : 18) + static_cast<int>((a.seed >> 18) % 4), alien ? kMarkAlien : kMarkBlood);
+        markOn(a, world, on, picture, at, normal, (much ? 24 : 18) + static_cast<int>((a.seed >> 18) % 4),
+               alien ? kMarkAlien : kMarkBlood);
         return true;
     }
 
@@ -118,9 +155,10 @@ namespace hldata
         const fx from[3] = {at[0], at[1], at[2] + fxFromInt(4)};
         const fx to[3] = {at[0], at[1], at[2] - fxFromInt(drop)};
         fx on[3], normal[3];
-        if (!traceShotWall(world, from, to, on, normal) || normal[2] < kFxOne / 2)
+        int mover = -1;
+        if (!traceShotWall(world, from, to, on, normal, &mover) || normal[2] < kFxOne / 2)
             return false;
-        decalAdd(a, picture, on, normal, half, colour);
+        markOn(a, world, mover, picture, on, normal, half, colour);
         return true;
     }
 
@@ -131,9 +169,10 @@ namespace hldata
         const fx from[3] = {at[0], at[1], at[2] + fxFromInt(8)};
         const fx to[3] = {at[0], at[1], at[2] - fxFromInt(72)};
         fx on[3], normal[3];
-        if (!traceShotWall(world, from, to, on, normal))
+        int mover = -1;
+        if (!traceShotWall(world, from, to, on, normal, &mover))
             return;
-        decalAdd(a, kDecalScorch, on, normal, size < 32 ? 32 : (size > 56 ? 56 : size), kMarkSoot);
+        markOn(a, world, mover, kDecalScorch, on, normal, size < 32 ? 32 : (size > 56 ? 56 : size), kMarkSoot);
         specksAdd(a, on, normal, 5, static_cast<std::uint16_t>(6 | 5 << 5 | 4 << 10), 220);
     }
 

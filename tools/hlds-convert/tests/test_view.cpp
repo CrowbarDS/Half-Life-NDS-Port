@@ -958,6 +958,65 @@ namespace
     }
 } // namespace
 
+// A mark on a brush that moves goes with it (a door, a lift, a train); on
+// one that turns, there is none (it would be left in the air).
+void testMarksOnMovers(const char *dir)
+{
+    auto game = std::make_unique<Game>();
+    std::string error;
+    if (!game->bsp.load(std::string(dir) + "/maps/c1a0.bsp", error))
+    {
+        check(false, (std::string(dir) + "/maps/c1a0.bsp loads").c_str());
+        return;
+    }
+    finish(*game, nullptr, dir);
+    if (!game->ok)
+        return;
+    Game &g = *game;
+    ActorWorld &a = g.actors;
+    int sliding = -1, turning = -1;
+    for (int m = 0; m < g.move.moverCount; ++m)
+    {
+        const bool pivot = (g.move.brushes[m].flags & kBrushHasPivot) != 0;
+        if (!g.brushStates[m].active)
+            continue;
+        if (pivot && turning < 0)
+            turning = m;
+        if (!pivot && !moverIsBox(g.move.movers[m]) && sliding < 0)
+            sliding = m;
+    }
+    check(sliding >= 0, "c1a0 has a brush that moves without turning");
+    if (sliding < 0)
+        return;
+    const fx at[3] = {fxFromInt(100), fxFromInt(-40), fxFromInt(20)};
+    const fx up[3] = {0, 0, kFxOne};
+    markOn(a, g.move, sliding, kDecalShot, at, up, 8, kMarkShot);
+    const Decal *mark = nullptr;
+    for (const Decal &decal : a.decals)
+        mark = decal.active ? &decal : mark;
+    check(mark != nullptr && mark->brush == sliding &&
+              mark->at[0] + g.brushStates[sliding].pos[0] == at[0] &&
+              mark->at[2] + g.brushStates[sliding].pos[2] == at[2],
+          "a mark on a brush that moves is kept from where the brush is");
+    if (mark == nullptr)
+        return;
+    fx moved[3];
+    for (int k = 0; k < 3; ++k)
+        moved[k] = g.brushStates[sliding].pos[k] + (k == 2 ? fxFromInt(64) : 0);
+    logicPlaceBrush(g.logic, sliding, moved);
+    check(mark->at[2] + g.brushStates[sliding].pos[2] == at[2] + fxFromInt(64), "... and goes up with it");
+    if (turning >= 0)
+    {
+        int before = 0, after = 0;
+        for (const Decal &decal : a.decals)
+            before += decal.active;
+        markOn(a, g.move, turning, kDecalShot, at, up, 8, kMarkShot);
+        for (const Decal &decal : a.decals)
+            after += decal.active;
+        check(before == after, "a brush that turns takes no mark");
+    }
+}
+
 // Which marks are drawn (HlMarkPlan.hpp): a stain beside the eye does not
 // leave the rest of a corridor's out; none thins out to nothing.
 void testMarkChoice()
@@ -1036,6 +1095,7 @@ int main()
     {
         testLanding(dir);
         testMarks(dir);
+        testMarksOnMovers(dir);
         testImpactsOnMap(dir);
     }
     else
