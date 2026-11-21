@@ -3,6 +3,8 @@
 
 usage: icache_rank.py <measuring elf> <current elf> <from> <to> [<from> <to>...]
                       [--families=<file>[,<file>...]] [--family-elfs=<dir>] [--budget N] [--top N]
+                      [--by-phase --frames=N[,N...] --miss-cycles=C --copy-cycles=B --swaps=S --hz=F
+                       --groups=name:phase,phase...;name:...] [--exclude=word,word...]
 
 The measuring ELF is an HLDS_ITCM_OFF=1 build (build.py): the program's code in
 main memory, but for what stays in ITCM whatever (the interrupts', the divide's,
@@ -31,8 +33,33 @@ build) is filled greedily, best first, and set against what the current build
 has in ITCM: what would go in, what would come out -- and what share of the
 misses each of the two layouts would have kept off main memory.
 
+--by-phase (snapshots from the phase-counting profiler, a build with
+HLDS_ICACHE_PHASES: the misses of each part of the frame, by the profiling
+sections of source/DebugLog.hpp, and of the interrupts): whether an ITCM
+region swapped by phase would beat today's one fixed set. For each size of
+region R (4, 8, 12, 16 KB), a resident core of the budget less R is filled
+from all the misses, best first, and a region of R for each phase from that
+phase's misses (of what the core left); against it, the budget filled from
+all the misses at once. A layout's saving is its misses kept off main memory
+times what a miss costs (--miss-cycles, ARM9 cycles; tools/hwtest/itcmswap
+measures it on the console), less what copying the region in costs (R times
+--copy-cycles a byte, --swaps times a frame), per frame over --frames frames
+(the snapshots say how many: the profiler counts the game's frames; or
+--frames, for older ones). --groups puts phases together, one region's set
+for each group (a frame then swaps once a group: --swaps defaults to how
+many there are), the phases left out of every group served by the core
+alone -- "logic:1,2,3,9;draw:4,5,6,7", say: the game's side, then the
+drawing's. A model to decide by, not a measure: what it
+proposes is then built and timed on the console.
+
+--exclude leaves out, from the ranking and its totals, every function whose
+name holds one of the words: by default the measuring build's own code
+(the profiler's: DebugLog::Perf, hlProfileSite, the timers it reads), which
+a game played has none of; --exclude= (empty) keeps it.
+
 The profiling melonDS is for ranking only: its timings are not the console's.
 """
+EXCLUDE_DEFAULT = 'DebugLog::Perf,hlProfileSite,cpuStartTiming,cpuGetTiming,cpuEndTiming,hwMathCheck'
 import bisect
 import os
 import collections
@@ -66,8 +93,10 @@ def symbol(elf, name):
     return None
 
 
-def snapshot(path):
-    """{line address: (lookups, misses)}"""
+def snapshot(path, phase=None):
+    """{line address: (lookups, misses)}: all of them, or one phase's (a
+    phase-counting snapshot's lines are "addr phase lookups misses"; an older
+    one's, "addr lookups misses", are all phase 0)."""
     table = {}
     if path == '-':
         return table
@@ -76,8 +105,133 @@ def snapshot(path):
             continue
         part = line.split()
         if len(part) == 3:
-            table[int(part[0], 16)] = (int(part[1], 16), int(part[2], 16))
+            at, p, n, m = int(part[0], 16), 0, int(part[1], 16), int(part[2], 16)
+        elif len(part) == 4:
+            at, p, n, m = int(part[0], 16), int(part[1], 16), int(part[2], 16), int(part[3], 16)
+        else:
+            continue
+        if phase is not None and p != phase:
+            continue
+        n0, m0 = table.get(at, (0, 0))
+        table[at] = (n0 + n, m0 + m)
     return table
+
+
+def frames_at(path):
+    """How many frames had begun when a phase-counting snapshot was written
+    (its head: "# lookups N phases frames F"); None if it does not say."""
+    if path == '-':
+        return 0
+    with open(path) as f:
+        head = f.readline().split()
+    if 'frames' in head:
+        return int(head[head.index('frames') + 1])
+    return None
+
+
+def phases_in(path):
+    """The phases a snapshot has lines of."""
+    found = set()
+    for line in open(path):
+        part = line.split()
+        if len(part) == 4 and not line.startswith('#'):
+            found.add(int(part[1], 16))
+    return sorted(found)
+
+
+# What a phase is: source/DebugLog.hpp's sections, plus one; 15 the interrupts.
+PHASE_NAMES = {0: 'outside', 1: 'input', 2: 'logic', 3: 'move', 4: 'walk', 5: 'emit', 6: 'pose', 7: 'models',
+               8: 'frame', 9: 'monsters', 10: 'look', 11: 'hear', 12: 'going', 13: 'keys', 15: 'irq'}
+
+
+def fill(order, size, misses, room, exclude=()):
+    """Best first, what fits in `room` bytes: (the names, the bytes, their misses)."""
+    chosen, used = [], 0
+    for name in order:
+        if name in exclude:
+            continue
+        if used + size[name] <= room:
+            chosen.append(name)
+            used += size[name]
+    return chosen, used, sum(misses[n] for n in chosen)
+
+
+def by_phase(opts, pairs, program, family_files, family_elfs, size, stays, family, room, fixed):
+    """--by-phase: the per-phase misses, and the swapped region modelled."""
+    phase_misses = collections.defaultdict(collections.Counter)
+    phases = sorted(set(p for _, end in pairs for p in phases_in(end)))
+    for k, (start, end) in enumerate(pairs):
+        theirs = family_functions(family_files[k] if k < len(family_files) else '', family_elfs)
+        table = sorted(program + theirs)
+        for p in phases:
+            lookups = collections.Counter()
+            attribute(table, snapshot(start, p), snapshot(end, p), lookups, phase_misses[p])
+    total = collections.Counter()
+    for p in phases:
+        total.update(phase_misses[p])
+    grouped = None
+    if opts.get('groups'):
+        grouped = collections.OrderedDict()
+        for part in opts['groups'].split(';'):
+            gname, members = part.split(':')
+            grouped[gname] = [int(x) for x in members.split(',')]
+    if 'frames' in opts:
+        frames = sum(int(f) for f in opts['frames'].split(','))
+    else:
+        counted = [(frames_at(end), frames_at(start)) for start, end in pairs]
+        if any(e is None or b is None for e, b in counted):
+            print('(the snapshots do not count frames: --frames=N[,N...] gives them)', file=sys.stderr)
+            return 2
+        frames = sum(e - b for e, b in counted)
+    miss_cycles = float(opts.get('miss-cycles', 40))
+    copy_cycles = float(opts.get('copy-cycles', 1.0))
+    swaps = float(opts.get('swaps', len(opts.get('groups', '').split(';')) if opts.get('groups') else 2))
+    cpu_hz = float(opts.get('hz', 67027964))  # (a DSi in its own mode: 134055928)
+
+    def usable(names):
+        return [n for n in names if n not in stays and n not in family and n in size and size[n] > 0]
+
+    every = sum(total.values())
+    print('misses by phase (of %d), over %d frames:' % (every, frames))
+    for p in phases:
+        m = sum(phase_misses[p].values())
+        print('  %-9s %9d  %5.1f%%  %8.0f a frame' % (PHASE_NAMES.get(p, str(p)), m, 100.0 * m / max(every, 1), m / frames))
+    order_all = sorted(usable(total), key=lambda n: total[n] / size[n], reverse=True)
+    one, one_used, one_kept = fill(order_all, size, total, room)
+    print('\none fixed set of %d bytes: %d misses kept (%.1f%%), %.3f ms a frame at %.0f cycles a miss'
+          % (one_used, one_kept, 100.0 * one_kept / max(every, 1), one_kept / frames * miss_cycles / cpu_hz * 1000,
+             miss_cycles))
+    # The busiest phases' own sets: how much of one phase's best is another's.
+    busiest = sorted(phases, key=lambda p: -sum(phase_misses[p].values()))[:4]
+    print('\neach phase\'s best %d bytes, and what of it the others\' best hold:' % room)
+    best = {}
+    for p in busiest:
+        order = sorted(usable(phase_misses[p]), key=lambda n: phase_misses[p][n] / size[n], reverse=True)
+        best[p] = set(fill(order, size, phase_misses[p], room)[0])
+    for p in busiest:
+        others = ', '.join('%s %d%%' % (PHASE_NAMES.get(q, q),
+                                       100 * sum(size[n] for n in best[p] & best[q]) // max(sum(size[n] for n in best[p]), 1))
+                           for q in busiest if q != p)
+        print('  %-9s %s' % (PHASE_NAMES.get(p, p), others))
+    print('\nregion  core   kept by core  kept by region  vs one set   copies     net a frame')
+    for region in (4096, 8192, 12288, 16384):
+        if region >= room:
+            continue
+        core, core_used, core_kept = fill(order_all, size, total, room - region)
+        region_kept = 0
+        sets = [(g, members) for g, members in grouped.items()] if grouped else [(PHASE_NAMES.get(p, p), [p]) for p in phases]
+        for _g, members in sets:
+            theirs = collections.Counter()
+            for p in members:
+                theirs.update(phase_misses[p])
+            order = sorted(usable(theirs), key=lambda n: theirs[n] / size[n], reverse=True)
+            names, _, _ = fill(order, size, theirs, region, exclude=set(core))
+            region_kept += sum(theirs[n] for n in names)
+        gain = (core_kept + region_kept - one_kept) / frames * miss_cycles / cpu_hz * 1000
+        copy = swaps * region * copy_cycles / cpu_hz * 1000
+        print('%6d %6d %14d %15d %+10.3f ms %8.3f ms %+10.3f ms'
+              % (region, core_used, core_kept, region_kept, gain, copy, gain - copy))
+    return 0
 
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
@@ -146,8 +300,19 @@ def main(argv):
     budget = int(opts.get('budget', 32000))
     top = int(opts.get('top', 60))
 
-    program = functions(measuring)
+    excluded = [w for w in opts.get('exclude', EXCLUDE_DEFAULT).split(',') if w]
+    program = [(a, s, n) for a, s, n in functions(measuring) if not any(w in n for w in excluded)]
     size = {name: s for _, s, name in program}
+    if 'by-phase' in [a[2:] for a in argv[1:] if a.startswith('--')]:
+        low, high = symbol(measuring, '__itcm_start'), symbol(measuring, '__itcm_end')
+        fixed = (high - low) if low is not None and high is not None else 0
+        stays = {name for a, _, name in program if ITCM_LOW <= a < ITCM_HIGH}
+        family = set()
+        for k in range(len(pairs)):
+            for _, s, name in family_functions(family_files[k] if k < len(family_files) else '', family_elfs):
+                size[name] = s
+                family.add(name)
+        return by_phase(opts, pairs, program, family_files, family_elfs, size, stays, family, budget - fixed, fixed)
     lookups, misses = collections.Counter(), collections.Counter()
     lost = 0
     family = set()

@@ -688,6 +688,23 @@ Milestone 11, "levels of detail".
   in the cache it is 2 to 4 times quicker than the divider (`tools/hwtest/
   divmath/`), so it is never to be moved to the hardware, and it is under 1%
   of the misses.
+  Code swapped into an ITCM region by the part of the frame (the game's side,
+  then the drawing's) was weighed on 2026-11-21 and not built: the profiling
+  melonDS counts misses by the profiler's sections (a measuring build with
+  `HLDS_ICACHE_PHASES` says which part it is in; `icache_rank.py --by-phase`
+  models a resident core and a swapped region against one fixed set), and
+  the console says what a miss and a copy cost (`tools/hwtest/itcmswap/`, on
+  a DSi: a miss 88.8 cycles of 134 MHz, 0.66 us; a copy into ITCM 3.2 a byte,
+  main RAM's speed). The parts share little of their best code (a tenth at
+  most), but a region copied in twice a frame costs more than it keeps in
+  every scene tried (c1a3a, c3a1, c1a0, c2a5f): from 0.13 ms a frame worse
+  at 4 KB to 0.6 ms at 16 KB.
+  The same counts, the profiler's own code left out, have today's fixed set
+  keeping 15 to 27% of a scene's misses. Filled best first from three of the
+  four scenes and held to the fourth, the same budget keeps 7 points more:
+  0.35 ms a frame on c1a3a's DS, 0.24 on c2a5f, 0.21 on c1a0, 0.16 on c3a1's
+  DSi (a DS's miss taken to cost the same time as the DSi's). A third round
+  of the fixed set, not a swapped region, is where the room is.
   `HL_HOT` (shared code) and `HL_ITCM` put a function there; a file named
   `.itcm` is there whole. `HL_ARM` builds one function of a Thumb file as ARM
   (the effects, the head-up display and the other things drawn every frame
