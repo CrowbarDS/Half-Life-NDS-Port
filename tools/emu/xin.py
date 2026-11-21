@@ -147,9 +147,10 @@ for command in sys.argv[1].split(';'):
     elif a[0] == 'release':
         key(a[1], False)
     elif a[0] == 'ready':
-        # ready [seconds]: wait until the game is on the top screen (the
-        # emulator may take a long time over the card before it starts, and
-        # how long depends on what has changed on it), then a second more.
+        # ready [seconds]: wait until the game is on the screens -- in play,
+        # or a menu (the title) -- (the emulator may take a long time over
+        # the card before it starts, and how long depends on what has
+        # changed on it), then a second more.
         import tempfile
         from PIL import Image
         probe = os.path.join(tempfile.gettempdir(), 'xin_ready_%d.png' % os.getpid())
@@ -166,6 +167,12 @@ for command in sys.argv[1].split(';'):
                 # of the touch screen.)
                 text = whole.crop((0, 247, 256, 300)).histogram()
                 if sum(top[40:]) > 2000 and sum(top[230:]) < 16000 and (sum(pad[200:]) > 300 or sum(text[200:]) > 300):
+                    break
+                # (Or a menu -- the title, the pause: its orange words on the
+                # touch screen. The emulator's own splash has some orange in
+                # its logo, about 500 pixels; a menu, 1,600.)
+                menu = Image.open(probe).convert('RGB').crop((0, 247, 256, 450))
+                if sum(1 for r, g, b in menu.getdata() if r > 180 and 90 < g < 190 and b < 90) > 900:
                     break
             except OSError:
                 pass
