@@ -490,6 +490,11 @@ namespace hldata
         /// At its last think it was within reach of its goal: its next think's
         /// Move ends the move (AdvanceRoute, on the distance it starts with).
         bool moveNear = false;
+        /// What is left of this think's move (Move's flCheckDist): no further
+        /// than the way it was going when the think began -- onto that
+        /// waypoint and no further, 200 at most. -1 until its way is known
+        /// (aiMoveThink; walkTick takes it from there).
+        fx moveBudget = -1;
         AiMoveRound round;
         fx groundSpeed = 0;
         // Turning.

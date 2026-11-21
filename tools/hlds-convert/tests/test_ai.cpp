@@ -293,10 +293,13 @@ namespace
         const ActorState &a = g.actors.states[index];
         if (m == nullptr)
             return;
-        std::printf("  t=%5d st=%d sched=%-24s task=%d/%d act=%d ai=%d hp=%d pos=%.0f,%.0f,%.0f yaw=%u enemy=%d cond=%08x clip=%d fr=%u\n",
+        std::printf("  t=%5d st=%d sched=%-24s task=%d/%d act=%d ai=%d hp=%d pos=%.0f,%.0f,%.0f yaw=%u enemy=%d cond=%08x clip=%d fr=%u"
+                    " goal=%d node=%d/%d at=%.0f,%.0f budget=%.1f round=%d/%d\n",
                     ms, m->state, m->schedule != nullptr ? m->schedule->name : "-", m->scheduleIndex,
                     m->taskStatus, m->activity, a.ai, a.health, a.pos[0] / 4096.0, a.pos[1] / 4096.0,
-                    a.pos[2] / 4096.0, a.yaw, m->enemy, m->conditions, a.clip, a.frame >> 8);
+                    a.pos[2] / 4096.0, a.yaw, m->enemy, m->conditions, a.clip, a.frame >> 8, m->movementGoal,
+                    a.fromNode, a.goalNode, a.goal[0] / 4096.0, a.goal[1] / 4096.0, m->moveBudget / 4096.0,
+                    m->round.detouring, m->round.asking);
     }
 
     AiMonster &mind(Game &g, int index)
@@ -816,10 +819,14 @@ namespace
         aiMoveTick(c, ms);
         aiTurnTick(c, ms);
         actorPlaceBox(g.actors, index);
-        // (... and at a think, ten times a second, its Move sees whether it
-        // is at its goal.)
+        // (... and at a think, ten times a second, its Move goes on from a
+        // waypoint it is on, says how far it may go until the next, and
+        // sees whether it is at its goal.)
         if (g.actors.ai->now / 100 != (g.actors.ai->now - ms) / 100)
+        {
+            aiMoveThink(c);
             aiMoveArrives(c);
+        }
     }
 
     /// A straight walk of `length` from actor `index` along one of the
@@ -912,8 +919,10 @@ namespace
             held.detoured = held.detoured || m.round.detouring;
             if (held.reactedAt < 0 && (wait > 0 || m.round.detouring))
                 held.reactedAt = t;
-            // (On its goal it stands until its think sees it there: not held.)
-            const bool still = a.pos[0] == was[0] && a.pos[1] == was[1] && aiDist2D(a.pos, to) > 0;
+            // (On its goal it stands until its think sees it there: not held.
+            // Nor on a waypoint, its think's move spent: the game's monster
+            // stands on each for a think, walking as it does.)
+            const bool still = a.pos[0] == was[0] && a.pos[1] == was[1] && aiDist2D(a.pos, to) > 0 && m.moveBudget != 0;
             const bool going = m.activity == kActWalk || m.activity == kActRun;
             if (routed && still && m.movementGoal != kMoveGoalNone)
             {
@@ -1186,9 +1195,78 @@ namespace
         if (!open)
             return;
         h = blockedWalk(g, sci, other, 160, 40, false, 8000);
+        std::printf("test_ai: in the open: blocked at %d, reacted at %d, still %d frames, walking still %d, detoured %d, "
+                    "arrived %d\n",
+                    h.blockedAt, h.reactedAt, h.stillFrames, h.walkingStill, h.detoured, h.arrived);
         check(h.blockedAt >= 0 && h.walkingStill == 0, "in the open, held up, it stands");
         check(h.detoured, "and goes round the one that stands in its way");
         check(h.arrived, "and gets where it was going");
+    }
+
+    /// A think's move goes no further than the waypoint it began with, as
+    /// the game's Move: a walker on a node of its route at a think goes on
+    /// to the next one there, but has nothing left to walk until the think
+    /// after -- a think stood on each waypoint, as the game's monsters do.
+    void testWaypointThink(const char *dir)
+    {
+        auto game = load(dir, "c1a2a");
+        if (!game)
+            return;
+        Game &g = *game;
+        const int sci = findKind(g, ActorKind::Scientist);
+        if (sci < 0)
+            return;
+        alone(g, {sci});
+        g.player.origin[2] += fxFromInt(4096); // (out of the way)
+        ActorState &a = g.actors.states[sci];
+        // A node joined to another, a walk's length off.
+        int from = -1, to = -1;
+        for (int n = 0; n < g.actors.nodeCount && from < 0; ++n)
+        {
+            const PathNode &node = g.actors.nodes[n];
+            for (int l = node.firstLink; l < node.firstLink + node.linkCount && from < 0; ++l)
+            {
+                const PathLink &link = g.actors.links[l];
+                if ((link.flags & kPathLinkHuman) && !(g.actors.nodes[link.to].flags & kPathNodeAir) &&
+                    link.length >= 100 && link.length <= 300)
+                {
+                    from = n;
+                    to = link.to;
+                }
+            }
+        }
+        check(from >= 0, "c1a2a has two joined nodes");
+        if (from < 0)
+            return;
+        for (int k = 0; k < 3; ++k)
+            a.pos[k] = g.actors.nodes[from].pos[k];
+        actorPlaceBox(g.actors, sci);
+        AiMonster &m = mind(g, sci);
+        AiCtx c = aiCtx(g.logic, g.player, sci, m, *aiKindOf(a.kind));
+        m.moveWaitFinished = 0;
+        aiRouteClear(c);
+        aiMoveToLocation(c, kActWalk, 0, g.actors.nodes[to].pos);
+        aiSetActivity(c, m.movementActivity);
+        // Its route's first waypoint is the node it stands on.
+        a.hasGoal = true;
+        a.goalNode = static_cast<std::int16_t>(from);
+        a.fromNode = -1;
+        for (int k = 0; k < 3; ++k)
+            a.goal[k] = g.actors.nodes[from].pos[k];
+        a.thinkMs = 500;
+        m.movePlanned = true;
+        g.actors.ai->now = 1000; // (thinks at 1100, 1200...: moveFrame)
+        aiMoveThink(c);
+        check(a.fromNode == from && a.goalNode < 0 && m.moveBudget == 0,
+              "on its waypoint at a think: on to the next, with nothing left to walk this think");
+        const fx at[2] = {a.pos[0], a.pos[1]};
+        for (int f = 0; f < 3; ++f) // (to 1099: no think)
+            moveFrame(g, sci);
+        check(a.pos[0] == at[0] && a.pos[1] == at[1] && a.hasGoal,
+              "it stands on it until its next think, its next way already planned");
+        for (int f = 0; f < 3; ++f) // (the think at 1100, then on)
+            moveFrame(g, sci);
+        check(a.pos[0] != at[0] || a.pos[1] != at[1], "and sets off at the think after");
     }
 
     /// A bullet strikes through hit boxes, not the bounding box (the game's
@@ -1571,6 +1649,7 @@ int main()
         testMoveEndsShort(dir);
         testWallAhead(dir);
         testBlockedWalk(dir);
+        testWaypointThink(dir);
         testNoMerging(dir);
         testPlayerNoises();
         testShotBetweenLegs(dir);

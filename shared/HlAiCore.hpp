@@ -3845,20 +3845,12 @@ namespace hldata
             round.detouring = true;
             aiReplan(c);
         }
-        // On a detour: its waypoint first (MONSTER_CUT_CORNER_DIST), then
-        // on with the route from there.
+        // On a detour: its waypoint first, then on with the route from
+        // there (at a think: aiMoveThink).
         if (round.detouring)
         {
-            if (aiDist2D(round.apex, c.me.pos) <= fxFromInt(8))
-            {
-                round.detouring = false;
-                aiReplan(c);
-            }
-            else
-            {
-                for (int k = 0; k < 3; ++k)
-                    dest[k] = round.apex[k];
-            }
+            for (int k = 0; k < 3; ++k)
+                dest[k] = round.apex[k];
         }
         // Ten times a second, as the game moves it: a look along its way
         // for anyone in it (DIST_TO_CHECK).
@@ -3894,9 +3886,11 @@ namespace hldata
         const bool planDue = c.me.thinkMs <= ms;
         // (Move: MakeIdealYaw to the way it is going, and ChangeYaw at its
         // own yaw speed -- aiTurnTick, after this.)
+        // (No further this think than the way it was going when the think
+        // began: c.m.moveBudget.)
         const int went = walkTick(c.a, *c.w.world, c.index, aiHull(c), dest, speed, ms, &c.player, kind.half,
                                   kind.height, round.detouring || c.m.movementGoal == kMoveGoalLocation,
-                                  &c.m.idealYaw, c.m.movePlanned ? 0 : kAiRouteReach);
+                                  &c.m.idealYaw, c.m.movePlanned ? 0 : kAiRouteReach, &c.m.moveBudget);
         if (planDue && !c.m.movePlanned)
         {
             // (Made now; or, asked of the worker, made with that reach.)
@@ -3957,6 +3951,49 @@ namespace hldata
             }
         }
         aiHeldUp(c, blocker, 0, c.me.hasGoal ? c.me.goal : dest);
+    }
+
+    /// The game's Move at a think, on how far its waypoint is as the think
+    /// begins: within MONSTER_CUT_CORNER_DIST (8) it goes on to the next one
+    /// (ShouldAdvanceRoute, AdvanceRoute) -- a node, or a detour's waypoint;
+    /// and it goes no further this think than that distance, 200 at most
+    /// (flCheckDist: "quit moving farther than it has looked ahead"). So it
+    /// walks onto a waypoint and stops there; the next think goes on from it
+    /// but has nearly nothing to go, and the one after sets off: a think
+    /// lost at each, as the game's monsters lose it. The frames after the
+    /// think walk it (walkTick, c.m.moveBudget). A way not known yet -- made
+    /// this think -- is measured when it is. (Thumb: once a think.)
+    HL_COLD __attribute__((noinline)) void aiMoveThink(AiCtx &c)
+    {
+        c.m.moveBudget = -1;
+        if (c.m.movementGoal == kMoveGoalNone || (c.m.capability & kCapFly))
+            return;
+        AiMoveRound &round = c.m.round;
+        // A detour's waypoint reached: on with the route from there.
+        if (round.detouring)
+        {
+            const fx distance = aiDist2D(round.apex, c.me.pos);
+            if (distance <= fxFromInt(8))
+            {
+                round.detouring = false;
+                aiReplan(c);
+                c.m.moveBudget = distance;
+                return;
+            }
+        }
+        // The walk's own waypoint (a node, or the end of a straight walk --
+        // on a detour, by the nodes or straight to its waypoint).
+        const fx *way = c.me.hasGoal ? c.me.goal : (round.detouring ? round.apex : nullptr);
+        if (way == nullptr)
+            return;
+        const fx distance = aiDist2D(way, c.me.pos);
+        if (distance <= fxFromInt(8) && c.me.hasGoal && c.me.goalNode >= 0)
+        {
+            c.me.fromNode = c.me.goalNode;
+            c.me.goalNode = -1;
+            c.me.thinkMs = 0;
+        }
+        c.m.moveBudget = distance < fxFromInt(200) ? distance : fxFromInt(200);
     }
 
     /// The game's Move at a think, on how far it was when it began -- where
@@ -4113,6 +4150,7 @@ namespace hldata
             if (m->thinkMs <= 0)
                 m->thinkMs = kAiThinkMs;
             aiMonsterThink(c);
+            aiMoveThink(c);
             aiMoveArrives(c);
             if (kind->think == nullptr)
                 aiAnimEventsAhead(c);

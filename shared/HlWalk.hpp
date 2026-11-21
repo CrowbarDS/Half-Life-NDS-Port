@@ -921,6 +921,32 @@ namespace hldata
                    feet[2] <= player.origin[2] + tall && feet[2] + height >= player.origin[2] - tall;
         }
 
+        /// A first plan's nearest node that the walker stands on already
+        /// (within 8): on to the next, if that is a walk from here -- as the
+        /// game's RouteSimplify leaves out a first waypoint whose next can be
+        /// walked to, so that no think is lost on the node it is on. (Thumb,
+        /// in main memory: once a route.)
+        HL_COLD __attribute__((noinline)) void walkPastStoodNode(const ActorWorld &a, const MoveWorld &world, int index,
+                                                                 ActorState &actor, int small, int theirs, int reach)
+        {
+            const fx *node = a.nodes[actor.goalNode].pos;
+            const fx off[3] = {node[0] - actor.pos[0], node[1] - actor.pos[1], 0};
+            if (fxLength(off) > fxFromInt(8))
+                return;
+            const std::uint8_t next = pathStep(a, actor.goalNode, theirs, pathSizeOf(small), opensDoors(actor.kind));
+            if (next == kNoPathNode || next == actor.goalNode)
+                return;
+            // (Not through a shut door: that is asked for from the node, the
+            // way it always is.)
+            const int link = pathLinkBetween(a, actor.goalNode, next);
+            if (link >= 0 && a.linkShut != nullptr && a.linkShut[link] == kLinkDoor)
+                return;
+            if (!walkClear(world, &a, index, small, actor.pos, a.nodes[next].pos, reach / 16))
+                return;
+            actor.fromNode = actor.goalNode;
+            actor.goalNode = next;
+        }
+
         /// Work out where the walker at `index` should be making for on its
         /// way to `dest` (feet): `dest` itself, or a path node -- into
         /// `actor` (the walker, or a copy of it), with a shut door on the way
@@ -969,6 +995,8 @@ namespace hldata
                 else
                 {
                     actor.goalNode = static_cast<std::int16_t>(pathNearest(a, world, actor.pos, small, index));
+                    if (actor.goalNode >= 0)
+                        walkPastStoodNode(a, world, index, actor, small, theirs, reach);
                 }
             }
             if (actor.goalNode < 0)
@@ -992,51 +1020,13 @@ namespace hldata
             walkPlanInto(a, world, index, a.states[index], small, dest, reach, door);
             walkWantDoor(a, door);
         }
-    } // namespace detail
-
-    /// One tick of the walker at `index` going to `dest` (feet) at `speed`
-    /// units a second: it plans twice a second, turns to face its way, and
-    /// takes the step if it can. It does not walk into `player` (if given),
-    /// being `half` wide and `height` tall. Uses the actor's thinkMs,
-    /// stuckMs, goal and node fields.
-    ///
-    /// `idealYaw`, if given, is where the way it is going is put, for the
-    /// caller to turn it at its own pace (a monster: aiTurnTick, at its
-    /// yaw speed); with none it turns itself, a turn a second.
-    ///
-    /// `still` says `dest` does not move (a mark, not a player): then a
-    /// straight walk is looked for from further off, since it need be found
-    /// only once -- the plan is made again only on reaching a node or on
-    /// being held up.
-    ///
-    /// `reach`, if given, is how far a straight walk is looked for in a plan
-    /// made now, in place of walkReach's (a monster's first plan of a route,
-    /// which looks along the whole way as the game's BuildRoute does).
-#ifdef HL_DSL
-    // (In the game library, the engine's own, in ITCM: game/GameApi.hpp.)
-    int walkTick(ActorWorld &a, const MoveWorld &world, int index, int small, const fx *dest,
-                        fx speed, int ms, const PlayerState *player, fx half, fx height,
-                        bool still = false, std::uint16_t *idealYaw = nullptr, int reach = 0);
-#else
-    /// How far walkTick looks for a straight walk before it goes by the
-    /// nodes: 480 (1024 for something going to its mark, which asks less
-    /// often); half as far again on a DSi (farPlans).
-    inline int walkReach(const ActorWorld &a, bool still)
-    {
-        const int reach = still ? 1024 : 480;
-        return farPlans(a) ? reach * 3 / 2 : reach;
-    }
-
-    HL_HOT int walkTick(ActorWorld &a, const MoveWorld &world, int index, int small, const fx *dest,
-                        fx speed, int ms, const PlayerState *player, fx half, fx height,
-                        bool still = false, std::uint16_t *idealYaw = nullptr, int reach = 0)
-    {
-        if (reach <= 0)
-            reach = walkReach(a, still);
-        ActorState &actor = a.states[index];
-        actor.thinkMs -= ms;
-        if (actor.thinkMs <= 0)
+        /// Its plan, twice a second (walkTick): made now, or asked of the
+        /// worker and taken up once it is worked out. (Thumb, in main
+        /// memory: twice a second, not every frame.)
+        HL_COLD __attribute__((noinline)) void walkThink(ActorWorld &a, const MoveWorld &world, int index, int small,
+                                                         const fx *dest, bool still, int reach)
         {
+            ActorState &actor = a.states[index];
             ThinkSlot *slot = a.think != nullptr && a.think->deferred && index < a.think->count
                                   ? &a.think->slots[index]
                                   : nullptr;
@@ -1086,6 +1076,61 @@ namespace hldata
                     actor.thinkMs = still ? 1400 : 500;
             }
         }
+
+    } // namespace detail
+
+    /// One tick of the walker at `index` going to `dest` (feet) at `speed`
+    /// units a second: it plans twice a second, turns to face its way, and
+    /// takes the step if it can. It does not walk into `player` (if given),
+    /// being `half` wide and `height` tall. Uses the actor's thinkMs,
+    /// stuckMs, goal and node fields.
+    ///
+    /// `idealYaw`, if given, is where the way it is going is put, for the
+    /// caller to turn it at its own pace (a monster: aiTurnTick, at its
+    /// yaw speed); with none it turns itself, a turn a second.
+    ///
+    /// `still` says `dest` does not move (a mark, not a player): then a
+    /// straight walk is looked for from further off, since it need be found
+    /// only once -- the plan is made again only on reaching a node or on
+    /// being held up.
+    ///
+    /// `reach`, if given, is how far a straight walk is looked for in a plan
+    /// made now, in place of walkReach's (a monster's first plan of a route,
+    /// which looks along the whole way as the game's BuildRoute does).
+    ///
+    /// `budget`, if given, is what is left of a monster's move this think
+    /// (AiMonster::moveBudget, Move's flCheckDist): it goes no further, and
+    /// what it walks is taken off it; a negative one is the distance to its
+    /// way, taken when that is first known. Its think, not the walk, then
+    /// moves it on from a node (aiMoveThink). Without one, it goes on from a
+    /// node the moment it is there.
+#ifdef HL_DSL
+    // (In the game library, the engine's own, in ITCM: game/GameApi.hpp.)
+    int walkTick(ActorWorld &a, const MoveWorld &world, int index, int small, const fx *dest,
+                        fx speed, int ms, const PlayerState *player, fx half, fx height,
+                        bool still = false, std::uint16_t *idealYaw = nullptr, int reach = 0,
+                        fx *budget = nullptr);
+#else
+    /// How far walkTick looks for a straight walk before it goes by the
+    /// nodes: 480 (1024 for something going to its mark, which asks less
+    /// often); half as far again on a DSi (farPlans).
+    inline int walkReach(const ActorWorld &a, bool still)
+    {
+        const int reach = still ? 1024 : 480;
+        return farPlans(a) ? reach * 3 / 2 : reach;
+    }
+
+    HL_HOT int walkTick(ActorWorld &a, const MoveWorld &world, int index, int small, const fx *dest,
+                        fx speed, int ms, const PlayerState *player, fx half, fx height,
+                        bool still = false, std::uint16_t *idealYaw = nullptr, int reach = 0,
+                        fx *budget = nullptr)
+    {
+        if (reach <= 0)
+            reach = walkReach(a, still);
+        ActorState &actor = a.states[index];
+        actor.thinkMs -= ms;
+        if (actor.thinkMs <= 0)
+            detail::walkThink(a, world, index, small, dest, still, reach);
         if (!actor.hasGoal)
             return kWalkNoWay;
         const fx d[3] = {actor.goal[0] - actor.pos[0], actor.goal[1] - actor.pos[1], 0};
@@ -1093,7 +1138,8 @@ namespace hldata
         // Arrived at a node: on to the next when it next plans, which is now.
         // (Within MONSTER_CUT_CORNER_DIST, as the game's ShouldAdvanceRoute:
         // a corner cut any wider can take it into the wall the way turns by.)
-        if (actor.goalNode >= 0 && distance <= fxFromInt(8))
+        // A monster's think does it, with what is left of its move.
+        if (budget == nullptr && actor.goalNode >= 0 && distance <= fxFromInt(8))
         {
             actor.fromNode = actor.goalNode;
             actor.goalNode = -1;
@@ -1111,6 +1157,16 @@ namespace hldata
         fx step = fxTimesMs(speed, ms);
         if (step > distance)
             step = distance;
+        if (budget != nullptr)
+        {
+            // (Its way only now known: how far it was when it was.)
+            if (*budget < 0)
+                *budget = distance < fxFromInt(200) ? distance : fxFromInt(200);
+            if (step > *budget)
+                step = *budget;
+            if (step <= 0)
+                return kWalkMoved; // (on its waypoint until its next think)
+        }
         const fx dx = static_cast<fx>((static_cast<std::int64_t>(d[0]) * step) / distance);
         const fx dy = static_cast<fx>((static_cast<std::int64_t>(d[1]) * step) / distance);
         fx feet[3] = {actor.pos[0], actor.pos[1], actor.pos[2]};
@@ -1127,6 +1183,8 @@ namespace hldata
             const fx went[3] = {feet[0] - actor.pos[0], feet[1] - actor.pos[1], 0};
             for (int i = 0; i < 3; ++i)
                 actor.pos[i] = feet[i];
+            if (budget != nullptr)
+                *budget -= step;
             if (fxLength(went) * 4 >= step)
             {
                 actor.stuckMs = 0;

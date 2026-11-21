@@ -118,10 +118,11 @@ namespace hldata
         return hlEngine.actorAdvance(a, actor, ms);
     }
     int walkTick(ActorWorld &a, const MoveWorld &world, int index, int small, const fx *dest, fx speed, int ms,
-                 const PlayerState *player, fx half, fx height, bool still, std::uint16_t *idealYaw, int reach)
+                 const PlayerState *player, fx half, fx height, bool still, std::uint16_t *idealYaw, int reach,
+                 fx *budget)
     {
         return hlEngine.walkTick(a, world, index, small, dest, speed, ms, player, half, height, still, idealYaw,
-                                 reach);
+                                 reach, budget);
     }
 } // namespace hldata
 #endif
