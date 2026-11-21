@@ -530,11 +530,12 @@ namespace hldata
         volatile bool abort = false;
         int next = 0; ///< where the worker looks for the next question
         int picks = 0; ///< questions taken up, for kThinkTurnEvery
-        /// A DSi's monsters look further for their ways (the engine sets it
-        /// with the worker; not saved): ways round further out, a straight
-        /// walk tried further, more nodes tried as the nearest, a wall seen
-        /// sooner. The game's own limits when not (a DS; the host's tests).
-        bool farPlans = false;
+        /// A DSi's monsters take a worker's answer up the moment it is in,
+        /// not at their next think (the engine sets it with the worker; not
+        /// saved). They look no further for it than the game's do: its
+        /// limits are a DSi's too (ways round, a straight walk, the nearest
+        /// nodes, a wall seen coming).
+        bool answersAtOnce = false;
     };
 
     /// Where long work stops a moment for the frame (the console's worker
@@ -629,14 +630,13 @@ namespace hldata
         std::int16_t humanGibs = -1, alienGibs = -1;
     };
 
-    /// Whether this map's monsters look further for their ways: a DSi's
-    /// (ThinkQueue::farPlans).
+    /// Whether this map's monsters take a worker's answer up the moment it
+    /// is in: a DSi's (ThinkQueue::answersAtOnce).
 #ifdef HLDS_CHILD
-    // (Never in the Download Play child, which has no worker: the game's
-    // own limits, and none of the code for further ones.)
-    inline constexpr bool farPlans(const ActorWorld &) { return false; }
+    // (Never in the Download Play child, which has no worker.)
+    inline constexpr bool answersAtOnce(const ActorWorld &) { return false; }
 #else
-    inline bool farPlans(const ActorWorld &a) { return a.think != nullptr && a.think->farPlans; }
+    inline bool answersAtOnce(const ActorWorld &a) { return a.think != nullptr && a.think->answersAtOnce; }
 #endif
 
     inline const ModelView *actorModel(const ActorWorld &a, const ActorState &actor)

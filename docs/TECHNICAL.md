@@ -1969,7 +1969,7 @@ game's RouteSimplify leaves that one out.
 A route's first plan looks for a straight walk along the whole way, as far
 as a monster looks (2048), as the game's BuildRoute tries the straight line
 at any length; the plans made again on its way look no further than the
-walk's own reach (480, 720 on a DSi), which keeps their cost down. A grunt
+walk's own reach (480, a DSi's too), which keeps their cost down. A grunt
 500 units from the player runs straight at him, as the game's does, not
 round by the nodes. Held up with no way round -- by another, the player
 or a wall -- it does as the game's Move: makes its route again once, and

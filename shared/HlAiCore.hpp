@@ -3680,9 +3680,7 @@ namespace hldata
     /// round.apex) -- worked out outside the frame where there is a worker
     /// to do it (asked now, its answer taken up at a later look). True when
     /// there is one to go round by now.
-    inline constexpr int kAiLookAhead = 200; // (DIST_TO_CHECK)
-    /// ... half as far again on a DSi (farPlans).
-    inline int aiWallLookAhead(const AiCtx &c) { return farPlans(c.a) ? kAiLookAhead * 3 / 2 : kAiLookAhead; }
+    inline constexpr int kAiLookAhead = 200; // (DIST_TO_CHECK: a DSi's too)
     inline bool aiWallRound(AiCtx &c, const fx *aim)
     {
         AiMoveRound &round = c.m.round;
@@ -3691,7 +3689,7 @@ namespace hldata
         ThinkSlot *slot = q != nullptr && q->deferred && c.index < q->count ? &q->slots[c.index] : nullptr;
         if (slot == nullptr)
             return walkLookRound(*c.w.world, &c.a, c.index, aiHull(c), c.me.pos, aim, kind.half * 2,
-                                 fxFromInt(aiWallLookAhead(c)), round.apex);
+                                 fxFromInt(kAiLookAhead), round.apex);
         if (slot->kind == kThinkLook && slot->state == kThinkDone)
         {
             slot->state = kThinkFree;
@@ -3717,7 +3715,7 @@ namespace hldata
             slot->at[k] = aim[k];
         slot->small = static_cast<std::int16_t>(aiHull(c));
         slot->reach = static_cast<std::int16_t>(fxToInt(kind.half * 2));
-        slot->least = static_cast<std::int16_t>(aiWallLookAhead(c));
+        slot->least = static_cast<std::int16_t>(kAiLookAhead);
         slot->basis = -1;
         return false;
     }
@@ -4125,8 +4123,8 @@ namespace hldata
 #ifndef HLDS_CHILD
         // A DSi takes a search's answer up as soon as it is in, and makes
         // for the place at once -- as the game, which has it at once -- not
-        // at its next think (farPlans).
-        if (farPlans(a) && a.think->deferred && index < a.think->count && aiTaskIsRunning(c) &&
+        // at its next think (answersAtOnce).
+        if (answersAtOnce(a) && a.think->deferred && index < a.think->count && aiTaskIsRunning(c) &&
             !aiHas(c, kCondTaskFailed))
         {
             const ThinkSlot &slot = a.think->slots[index];

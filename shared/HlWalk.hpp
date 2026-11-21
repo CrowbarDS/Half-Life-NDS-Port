@@ -613,9 +613,8 @@ namespace hldata
             return walkClear(world, a, index, small, from, p, (fxLength(e) >> (kFxShift + 4)) + 2) &&
                    walkClear(world, a, index, small, p, far, (fxLength(g) >> (kFxShift + 4)) + 2);
         };
-        // (A DSi tries four more, further out still: farPlans.)
-        const int rounds = a != nullptr && farPlans(*a) ? 12 : 8;
-        for (int round = 0; round < rounds; ++round, out += size * 2)
+        // (Eight times, as the game's: a DSi too.)
+        for (int round = 0; round < 8; ++round, out += size * 2)
         {
             for (int side = 0; side < 2; ++side)
             {
@@ -696,12 +695,11 @@ namespace hldata
     inline int pathNearest(const ActorWorld &a, const MoveWorld &world, const fx *feet, int hull = -1,
                            int index = -1, bool air = false)
     {
-        // (Of the three nearest within 768, as the game's; a DSi the five
-        // nearest within 1024: farPlans.)
-        const int tries = farPlans(a) ? 5 : 3;
-        const fx within = fxFromInt(farPlans(a) ? 1024 : 768);
-        int best[5] = {-1, -1, -1, -1, -1};
-        fx bestD[5] = {0, 0, 0, 0, 0};
+        // (Of the three nearest within 768, as the game's -- a DSi too.)
+        constexpr int tries = 3;
+        const fx within = fxFromInt(768);
+        int best[tries] = {-1, -1, -1};
+        fx bestD[tries] = {0, 0, 0};
         for (int n = 0; n < a.nodeCount; ++n)
         {
             // (The nodes in the air are for what flies: `air`.)
@@ -1115,12 +1113,8 @@ namespace hldata
 #else
     /// How far walkTick looks for a straight walk before it goes by the
     /// nodes: 480 (1024 for something going to its mark, which asks less
-    /// often); half as far again on a DSi (farPlans).
-    inline int walkReach(const ActorWorld &a, bool still)
-    {
-        const int reach = still ? 1024 : 480;
-        return farPlans(a) ? reach * 3 / 2 : reach;
-    }
+    /// often) -- a DSi too.
+    inline int walkReach(bool still) { return still ? 1024 : 480; }
 
     HL_HOT int walkTick(ActorWorld &a, const MoveWorld &world, int index, int small, const fx *dest,
                         fx speed, int ms, const PlayerState *player, fx half, fx height,
@@ -1128,7 +1122,7 @@ namespace hldata
                         fx *budget = nullptr)
     {
         if (reach <= 0)
-            reach = walkReach(a, still);
+            reach = walkReach(still);
         ActorState &actor = a.states[index];
         actor.thinkMs -= ms;
         if (actor.thinkMs <= 0)

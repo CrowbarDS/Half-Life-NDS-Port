@@ -548,8 +548,8 @@ namespace
 
     /// `deferred`: their long thinking (ways somewhere) asked for and
     /// worked out between ticks, as the console's worker does it (HlThink.hpp)
-    /// -- the same fight, by the same rules. `dsi`: with a DSi's further
-    /// plans as well (farPlans).
+    /// -- the same fight, by the same rules. `dsi`: answers taken up the
+    /// moment they are in, as a DSi takes them (answersAtOnce).
     void testSquads(const char *dir, bool deferred = false, bool dsi = false)
     {
         auto game = load(dir, "c1a3a");
@@ -564,7 +564,7 @@ namespace
         int answered = 0;
         if (deferred)
             g.actors.think = &queue;
-        queue.farPlans = dsi;
+        queue.answersAtOnce = dsi;
         g.player.origin[2] += fxFromInt(30000);
         for (int n = 0; n < 10; ++n)
             tickStill(g);
@@ -694,7 +694,7 @@ namespace
         std::printf("test_soldiers: c1a3a, thirty seconds with a squad%s: %d woke; at most %d firing at once; "
                     "%d runs for cover (%d ticks headed somewhere in sight); %d grenades thrown (%d against the rules); "
                     "%d lines spoken; %d questions answered outside the frame\n",
-                    dsi ? " (thinking outside the frame, as far as a DSi)"
+                    dsi ? " (thinking outside the frame, answers taken at once, as a DSi)"
                     : deferred ? " (thinking outside the frame)"
                                : "",
                     woke, mostFiring, covers, badCover, tosses,
