@@ -14,9 +14,15 @@ A GROUP is a file, text/ui/<group>.txt:
   @home resident             where the group lives: resident (in the
                              program, always there) -- or, later, an
                              overlay's name
+  @unique                    no two lines of it alike (names of things)
+  @enum shared/X.hpp Kind kKindCount
+                             its first lines are named, in order, as the
+                             enumerators of enum Kind in that header (the
+                             last, a count, left out): line(k) is k's
   Resume = RESUME            Name = the text: a C identifier, then the text
   SavedAs = Saved as %s\\n    as it is to be shown, C's escapes (\\n \\t \\\\
-                             \\" \\x41) and printf's formats as they are
+                             \\" \\x41) and printf's formats as they are;
+                             never empty
 
 Each group becomes one table, its strings one after another, each with its
 terminating NUL (a text two lines share is kept once), and a descriptor the
@@ -24,6 +30,9 @@ program refers to, `kText<Group>`. A reference to one line is
 `txt::<group>::<Name>` (a TextRef: the group's descriptor and where the line
 begins in its text, so that no table of where is needed), and only the groups
 whose text is used are linked: the Download Play child takes only its own.
+Where a line is chosen by a number (an achievement's), `txt::<group>::
+line(n)` is the group's nth line, through a table of where each begins that
+is linked only where it is used.
 """
 import os
 import re
@@ -34,6 +43,7 @@ TEXT_DIR = os.path.join(ROOT, 'text', 'ui')
 OUT_HPP = os.path.join(ROOT, 'source', 'ui', 'UiText.gen.hpp')
 OUT_CPP = os.path.join(ROOT, 'source', 'ui', 'UiText.gen.cpp')
 HOMES = ('resident',)
+RESERVED = ('kLines', 'kCount', 'line')
 
 
 class TextError(ValueError):
@@ -67,11 +77,34 @@ def unescape(text, where):
     return ''.join(out)
 
 
-def parse(name, source):
+def read_root(path):
+    with open(os.path.join(ROOT, path), encoding='latin-1') as f:
+        return f.read()
+
+
+def enumerators(header, enum, where):
+    """The names of `enum` in a C++ header, in order (none given a value)."""
+    text = re.sub(r'//[^\n]*|/\*.*?\*/', '', header, flags=re.S)
+    m = re.search(r'\benum\s+(?:class\s+)?%s\b[^{;]*\{(.*?)\}' % re.escape(enum), text, re.S)
+    if not m:
+        raise TextError('%s: no enum %s there' % (where, enum))
+    names = []
+    for item in m.group(1).split(','):
+        item = item.strip()
+        if not item:
+            continue
+        if not re.fullmatch(r'[A-Za-z_]\w*', item):
+            raise TextError('%s: enum %s: %r (a value given: not followed)' % (where, enum, item))
+        names.append(item)
+    return names
+
+
+def parse(name, source, read=read_root):
     """(home, [(Name, text)]) of one group's file."""
     if not re.fullmatch(r'[a-z][a-z0-9_]*', name):
         raise TextError('group %r: lower case letters, digits, _' % name)
     home, lines, seen = None, [], set()
+    unique, named = False, None
     for number, raw in enumerate(source.split('\n'), 1):
         where = '%s.txt:%d' % (name, number)
         line = raw.rstrip('\r')
@@ -84,6 +117,23 @@ def parse(name, source):
             if home not in HOMES:
                 raise TextError('%s: home %r (one of %s)' % (where, home, ', '.join(HOMES)))
             continue
+        if line.strip() == '@unique':
+            unique = True
+            continue
+        if line.startswith('@enum '):
+            parts = line.split()
+            if len(parts) not in (3, 4) or named is not None:
+                raise TextError('%s: @enum <header> <enum> [<count left out>], once' % where)
+            try:
+                header = read(parts[1])
+            except OSError:
+                raise TextError('%s: no header %s' % (where, parts[1]))
+            named = enumerators(header, parts[2], where)
+            if len(parts) == 4:
+                if not named or named[-1] != parts[3]:
+                    raise TextError('%s: %s is not the last of enum %s' % (where, parts[3], parts[2]))
+                named.pop()
+            continue
         m = re.match(r'([A-Za-z_][A-Za-z0-9_]*) = (.*)$', line)
         if not m:
             raise TextError('%s: not "Name = text": %r' % (where, line))
@@ -92,6 +142,10 @@ def parse(name, source):
             raise TextError('%s: %s twice' % (where, key))
         if '\0' in text:
             raise TextError('%s: a NUL in the text' % where)
+        if not text:
+            raise TextError('%s: %s is empty' % (where, key))
+        if key in RESERVED:
+            raise TextError('%s: %s is a name the group already has' % (where, key))
         seen.add(key)
         lines.append((key, text))
     if home is None:
@@ -100,6 +154,18 @@ def parse(name, source):
         raise TextError('%s.txt: no lines' % name)
     if len(lines) > 0xFFFF:
         raise TextError('%s.txt: too many lines' % name)
+    if unique:
+        texts = {}
+        for key, text in lines:
+            if text in texts:
+                raise TextError('%s.txt: %s and %s say the same' % (name, texts[text], key))
+            texts[text] = key
+    if named is not None:
+        keys = [key for key, _ in lines[:len(named)]]
+        if keys != named:
+            wrong = next((i for i, (a, b) in enumerate(zip(keys, named)) if a != b), len(keys))
+            raise TextError('%s.txt: line %d of the enum\'s should be %s' % (
+                name, wrong + 1, named[wrong] if wrong < len(named) else '(none)'))
     return home, lines
 
 
@@ -153,6 +219,11 @@ def make(groups):
         hpp.append('    {')
         for i, (key, _text) in enumerate(lines):
             hpp.append('        inline constexpr TextRef %s{&kText%s, %d};' % (key, group, at[i]))
+        hpp.append('        inline constexpr unsigned kCount = %d;' % len(lines))
+        hpp.append('        /// (Linked only where line() is: where each line begins.)')
+        hpp.append('        inline constexpr std::uint16_t kLines[kCount] = {%s};' % ', '.join(str(a) for a in at))
+        hpp.append('        /// The nth line, in the file\'s order.')
+        hpp.append('        constexpr TextRef line(unsigned n) { return TextRef{&kText%s, kLines[n]}; }' % group)
         hpp.append('    }')
         cpp.append('    namespace')
         cpp.append('    {')
@@ -215,6 +286,29 @@ def self_test():
     _hpp, cpp = make({'opts': ('resident', [('On', 'on'), ('Off', 'off'), ('Again', 'on')])})
     expect('Again{&kTextOpts, 0}' in _hpp and 'Off{&kTextOpts, 3}' in _hpp and cpp.count('"on"') == 1,
            'a text two lines share kept once')
+    expect('kLines[kCount] = {0, 3, 0}' in _hpp and 'kCount = 3;' in _hpp, 'the table of where, by number')
+    fake = {'k.hpp': 'enum Kind : int // the kinds\n{\n    kA, ///< one\n    kB,\n    kKindCount\n};\n',
+            'v.hpp': 'enum Kind { kA = 2, kB };'}
+
+    def read(path):
+        if path not in fake:
+            raise OSError(path)
+        return fake[path]
+    _home, lines = parse('k', '@home resident\n@enum k.hpp Kind kKindCount\nkA = a\nkB = b\nMore = c\n', read)
+    expect([k for k, _ in lines] == ['kA', 'kB', 'More'], 'an enum\'s lines, then others')
+    for bad in ('@home resident\n@enum k.hpp Kind kKindCount\nkB = b\nkA = a\n',
+                '@home resident\n@enum k.hpp Kind kKindCount\nkA = a\n',
+                '@home resident\n@enum k.hpp Kind\nkA = a\nkB = b\n',
+                '@home resident\n@enum k.hpp Other\nkA = a\n',
+                '@home resident\n@enum v.hpp Kind\nkA = a\n',
+                '@home resident\n@enum none.hpp Kind\nkA = a\n',
+                '@home resident\n@unique\nA = same\nB = same\n',
+                '@home resident\nA = \n', '@home resident\nkLines = x\n'):
+        try:
+            parse('k', bad, read)
+            expect(False, 'refused: %r' % bad)
+        except TextError:
+            pass
     for f in failures:
         print('uitext.py self-test FAILED: ' + f, file=sys.stderr)
     print('uitext.py self-test: %s' % ('ok' if not failures else '%d failed' % len(failures)))
