@@ -10,7 +10,9 @@
 //
 // Those functions are kept out of line in such a build only
 // (HL_TRACE_NOINLINE), so that the return address is the caller's: inlined,
-// it would be the caller's caller. Nothing of it elsewhere: not the host, not
+// it would be the caller's caller. The think worker's time away -- stopped
+// at a thinkPoint while the frame has the CPU -- is not counted to the trace
+// it stopped in (hlProfileAway). Nothing of it elsewhere: not the host, not
 // the game's families (a family's own inline traces are not counted; the
 // engine's traceAll they call is), not the Download Play child.
 
@@ -32,6 +34,8 @@ namespace hldata
 // (source/DebugLog.cpp: its clock, and where a trace is counted.)
 extern "C" std::uint32_t hlProfileNow();
 extern "C" void hlProfileTrace(std::uint32_t at, std::uint32_t kind, std::uint32_t ticks);
+/// The think worker's time away so far, all of it (source/game/Think.cpp).
+extern "C" std::uint32_t hlProfileAway;
 
 namespace hldata
 {
@@ -39,9 +43,12 @@ namespace hldata
     /// line that called it.
     struct TraceSpent
     {
-        std::uint32_t at, kind, start;
-        TraceSpent(std::uint32_t caller, std::uint32_t which) : at(caller), kind(which), start(hlProfileNow()) {}
-        ~TraceSpent() { hlProfileTrace(at, kind, hlProfileNow() - start); }
+        std::uint32_t at, kind, start, away;
+        TraceSpent(std::uint32_t caller, std::uint32_t which)
+            : at(caller), kind(which), start(hlProfileNow()), away(hlProfileAway)
+        {
+        }
+        ~TraceSpent() { hlProfileTrace(at, kind, hlProfileNow() - start - (hlProfileAway - away)); }
     };
 } // namespace hldata
 

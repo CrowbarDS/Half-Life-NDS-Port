@@ -9,6 +9,7 @@
 #include <nds/cothread.h>
 
 #include "game/GameApi.hpp"
+#include "HlTraceCount.hpp"
 
 namespace hlrt
 {
@@ -72,7 +73,16 @@ namespace hlrt
         void pause()
         {
             if (!queue.abort && cothread_get_current() != mainThread)
+            {
+#if defined(HLDS_PROFILE)
+                // (Its time away, not the trace's it stopped in: HlTraceCount.hpp.)
+                const std::uint32_t left = hlProfileNow();
                 cothread_yield();
+                hlProfileAway += hlProfileNow() - left;
+#else
+                cothread_yield();
+#endif
+            }
         }
 
         // A question asked: the worker woken (from the frame's own thread).

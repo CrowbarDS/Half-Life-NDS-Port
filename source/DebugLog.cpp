@@ -480,6 +480,10 @@ extern "C" void hlProfileSite(std::uint32_t at, int kind, std::uint32_t wide)
 // line that called it. (From the frame's thread or the think worker's, never
 // an interrupt; they take turns only at their yields, so no lock.)
 extern "C" std::uint32_t hlProfileNow() { return hlrt::DebugLog::Perf::now(); }
+extern "C"
+{
+    std::uint32_t hlProfileAway = 0;
+}
 
 extern "C" void hlProfileTrace(std::uint32_t at, std::uint32_t kind, std::uint32_t ticks)
 {
