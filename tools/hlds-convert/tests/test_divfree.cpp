@@ -57,6 +57,79 @@ namespace
         return true;
     }
 
+    void traceBoxesBefore(const MoveWorld &world, const fx *start, const fx *end, fx growXY, fx growZ, Trace &best)
+    {
+        for (int n = 0; n < world.boxCount; ++n)
+        {
+            const SolidBox &box = world.boxes[n];
+            if (!box.active)
+                continue;
+            std::int64_t enter = -1;
+            std::int64_t leave = kFractionOne;
+            int axis = -1;
+            bool inside = true, miss = false;
+            for (int i = 0; i < 3 && !miss; ++i)
+            {
+                const fx grow = i == 2 ? growZ : growXY;
+                const fx lo = box.mins[i] - grow, hi = box.maxs[i] + grow;
+                const fx d = end[i] - start[i];
+                if (start[i] <= lo || start[i] >= hi)
+                    inside = false;
+                if (d == 0)
+                {
+                    miss = start[i] <= lo || start[i] >= hi;
+                    continue;
+                }
+                std::int64_t t0 = (static_cast<std::int64_t>(lo - start[i]) << kFractionShift) / d;
+                std::int64_t t1 = (static_cast<std::int64_t>(hi - start[i]) << kFractionShift) / d;
+                if (t0 > t1)
+                {
+                    const std::int64_t swap = t0;
+                    t0 = t1;
+                    t1 = swap;
+                }
+                if (t0 > enter)
+                {
+                    enter = t0;
+                    axis = i;
+                }
+                if (t1 < leave)
+                    leave = t1;
+                miss = enter > leave;
+            }
+            if (miss || inside || axis < 0 || enter < 0 || enter >= best.fraction)
+                continue;
+            const fx d = end[axis] - start[axis];
+            const std::int64_t back = (static_cast<std::int64_t>(kFxOne / 32) << kFractionShift) / (d < 0 ? -d : d);
+            const std::int64_t fraction = enter > back ? enter - back : 0;
+            best.fraction = static_cast<std::int32_t>(fraction);
+            for (int i = 0; i < 3; ++i)
+            {
+                best.endPos[i] = start[i] + static_cast<fx>((static_cast<std::int64_t>(end[i] - start[i]) * fraction) >>
+                                                            kFractionShift);
+                best.normal[i] = 0;
+            }
+            best.normal[axis] = d > 0 ? -(1 << kNormalShift) : (1 << kNormalShift);
+            {
+                const fx grow = axis == 2 ? growZ : growXY;
+                best.dist = d > 0 ? -(box.mins[axis] - grow) : box.maxs[axis] + grow;
+            }
+            best.mover = -1;
+            best.box = static_cast<std::int16_t>(n);
+            best.hit = true;
+        }
+    }
+
+    bool sameTrace(const Trace &a, const Trace &b)
+    {
+        bool same = a.allSolid == b.allSolid && a.startSolid == b.startSolid && a.inOpen == b.inOpen &&
+                    a.inWater == b.inWater && a.hit == b.hit && a.fraction == b.fraction && a.dist == b.dist &&
+                    a.mover == b.mover && a.box == b.box;
+        for (int i = 0; i < 3; ++i)
+            same = same && a.endPos[i] == b.endPos[i] && a.normal[i] == b.normal[i];
+        return same;
+    }
+
     // ------------------------------------------------ the cases
 
     /// A coordinate near a face at `face`: on it, a raw unit or two either
@@ -123,11 +196,53 @@ namespace
         check(entered > 100000, "... over lines that enter as well as miss");
     }
 
+    void testTraceBoxes()
+    {
+        std::mt19937 rng(112026);
+        constexpr int kBoxes = 6;
+        SolidBox boxes[kBoxes];
+        MoveWorld world;
+        world.boxes = boxes;
+        world.boxCount = kBoxes;
+        long mismatch = 0, hits = 0;
+        for (long n = 0; n < 1500000; ++n)
+        {
+            for (SolidBox &box : boxes)
+            {
+                randomBox(rng, box.mins, box.maxs);
+                box.active = rng() % 6 != 0;
+            }
+            fx a[3], b[3];
+            const SolidBox &aim = boxes[rng() % kBoxes];
+            randomLine(rng, aim.mins, aim.maxs, a, b);
+            // (The player's sizes, or none, or a large hull's.)
+            static const fx grows[][2] = {{fxFromInt(16), fxFromInt(36)}, {0, 0}, {fxFromInt(32), fxFromInt(18)}};
+            const fx *grow = grows[rng() % 3];
+            // What the world left of the move first: all of it, or less, or
+            // nothing (a fraction is never more than all of it).
+            Trace before;
+            switch (rng() % 3)
+            {
+            case 0: before.fraction = kFractionOne; break;
+            case 1: before.fraction = static_cast<std::int32_t>(rng() % (kFractionOne + 1u)); break;
+            default: before.fraction = rng() % 2 ? 0 : kFractionOne - 1; break;
+            }
+            Trace now = before;
+            traceBoxesBefore(world, a, b, grow[0], grow[1], before);
+            detail::traceBoxes(world, a, b, grow[0], grow[1], now);
+            mismatch += !sameTrace(before, now);
+            hits += before.box >= 0;
+        }
+        std::printf("test_divfree: traceBoxes, 1500000 moves, %ld met a box, %ld differ\n", hits, mismatch);
+        check(mismatch == 0, "traceBoxes answers as it did, whole Trace and all");
+        check(hits > 50000, "... over moves that meet a box as well as miss");
+    }
 } // namespace
 
 int main()
 {
     testSlabs();
+    testTraceBoxes();
     std::printf("test_divfree: %s\n", failures == 0 ? "all passed" : "FAILED");
     return failures == 0 ? 0 : 1;
 }

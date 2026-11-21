@@ -509,6 +509,25 @@ namespace hldata
                 const SolidBox &box = world.boxes[n];
                 if (!box.active)
                     continue;
+                // A move wholly beyond a face of it never comes into it: what
+                // the slab test below finds -- a miss, or an entry at its very
+                // end or before its start, which a trace never takes (its
+                // fraction is at most kFractionOne) -- without its divides.
+                // Its end may lie on the face; not its start, from which the
+                // slab test can find it met at once, at a corner.
+                // (Below a face: the start under it and the end at or under
+                // it. Above, the same the other way. A line along the face
+                // itself is the slab test's, which needs no divide for it.)
+                bool beyond = false;
+                for (int i = 0; i < 3 && !beyond; ++i)
+                {
+                    const fx grow = i == 2 ? growZ : growXY;
+                    const fx lo = box.mins[i] - grow, hi = box.maxs[i] + grow;
+                    const fx s = start[i], e = end[i];
+                    beyond = (s < lo && e <= lo) || (s > hi && e >= hi);
+                }
+                if (beyond)
+                    continue;
                 std::int64_t enter = -1; // Q30; -1 = from before the start
                 std::int64_t leave = kFractionOne;
                 int axis = -1;

@@ -631,6 +631,13 @@ Milestone 11, "levels of detail".
   (`beamReach`), the world's line traces 62 -- of which only 60 had both
   numbers fitting 32 bits; and 176 roots, 128 of them the bones' turns
   (`sampleTrack`).
+  A line or a move tested against a box now passes over a box it lies
+  wholly beyond, a face at a time, before the slab test's divides
+  (`lineEntersBox`, `traceBoxes`): the same answers, bit for bit
+  (`test_divfree` holds each to its old self; the diag replays are
+  unchanged), and c1a3a's fight down to 320 divides a frame. Only the
+  end of a move may lie on a face: one that starts on it is met at once,
+  at a corner.
   A 64-bit divide by a constant whose numerator fits 32 bits is done in 32
   bits, where the compiler makes it a multiply (the fine sines had eight
   trips to the divider each). Products of two 16-bit values -- a bone's
