@@ -21,6 +21,7 @@
 #include "render/BottomScreen.hpp"
 #include "render/Camera.hpp"
 #include "render/HudDraw.hpp"
+#include "net/DlSend.hpp"
 #include "render/ProfileView.hpp"
 #include "render/ScreenFade.hpp"
 #include "render/TopText.hpp"
@@ -124,6 +125,12 @@ namespace hlrt
 #if HL_OVL_COUNT > 0
         ovl::setLeaveCheck(ovl::Id::Front, []() {
             profileView.close();
+#ifndef HLDS_CHILD
+            // (SEND THE GAME's work is there too: a sending still going on
+            // stops, its memory let go -- the radio is the map's to open.)
+            if (dlsend::state() != dlsend::State::Off && dlsend::state() != dlsend::State::Done)
+                dlsend::end();
+#endif
             return true;
         });
         ovl::setLeaveCheck(ovl::Id::Map, []() { return !NEA_NpacIsMounted("map"); });

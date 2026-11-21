@@ -116,12 +116,13 @@ import ovl
 # only through its gates (source/render/ProfileView.cpp, source/Global.cpp).
 OVERLAYS = {'regions': [
     {'name': 'A', 'overlays': [
-        {'name': 'front', 'id': 'Front', 'mode': 'code', 'files': ['*/source/render/ProfileViewBody.cpp.o']},
+        {'name': 'front', 'id': 'Front', 'mode': 'code',
+         'files': ['*/source/render/ProfileViewBody.cpp.o', '*/source/net/DlSendBody.cpp.o']},
         {'name': 'map', 'id': 'Map', 'mode': 'bss', 'sizer': True},
     ]},
 ]}
 # (Their sources last on the link line: architectds's link_last.)
-OVL_SOURCES = ['source/render/ProfileViewBody.cpp']
+OVL_SOURCES = ['source/render/ProfileViewBody.cpp', 'source/net/DlSendBody.cpp']
 OVL_DIR = os.path.join('build', 'ld')
 OVL_PACK = os.path.join(OVL_DIR, 'arm9.ovl')
 OVL_MANIFEST = os.path.join(OVL_DIR, 'overlays.json')
