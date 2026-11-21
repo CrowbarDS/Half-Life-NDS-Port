@@ -515,6 +515,9 @@ namespace hldata
         std::int16_t goalNode = -1;
         std::int16_t fromNode = -1;
         std::int16_t door = -1; ///< a shut door on the way, to be asked to open (a brush)
+        /// The frame it was asked in (ThinkQueue::frame): how long its answer
+        /// took, when taken up (thinkTaken).
+        std::uint32_t askedFrame = 0;
     };
 
     /// The questions of all of them. `deferred`: asked and answered later
@@ -536,7 +539,28 @@ namespace hldata
         /// limits are a DSi's too (ways round, a straight walk, the nearest
         /// nodes, a wall seen coming).
         bool answersAtOnce = false;
+        /// Frames gone by since the map was set up (monstersTick), and how
+        /// long the answers took, asked to taken up -- for perf.txt, which
+        /// reads and clears them (thinkTaken, ThinkWaits).
+        std::uint32_t frame = 0;
+        std::uint32_t taken = 0;       ///< answers taken up
+        std::uint32_t takenFrames = 0; ///< ... the frames they took, in all
+        std::uint32_t longest = 0;     ///< ... the longest
+        std::uint32_t dropped = 0;     ///< answers to a walk's plan from where it no longer was
+        std::uint32_t gaveUp = 0;      ///< questions not taken up in time: the asker worked them out
     };
+
+    /// A question asked: when.
+    inline void thinkAsked(const ThinkQueue &q, ThinkSlot &slot) { slot.askedFrame = q.frame; }
+    /// Its answer taken up: how long it took, for perf.txt.
+    inline void thinkTaken(ThinkQueue &q, const ThinkSlot &slot)
+    {
+        const std::uint32_t wait = q.frame - slot.askedFrame;
+        ++q.taken;
+        q.takenFrames += wait;
+        if (wait > q.longest)
+            q.longest = wait;
+    }
 
     /// Where long work stops a moment for the frame (the console's worker
     /// sets it; null: never).

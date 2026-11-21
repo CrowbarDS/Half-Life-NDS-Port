@@ -1040,8 +1040,11 @@ namespace hldata
                 // Worked out outside the frame: taken up, if it was worked
                 // out from where the walker still is on its way.
                 slot->state = kThinkFree;
-                if (slot->basis == actor.fromNode)
+                if (slot->basis != actor.fromNode)
+                    ++a.think->dropped;
+                else
                 {
+                    thinkTaken(*a.think, *slot);
                     actor.hasGoal = slot->found;
                     actor.goalNode = slot->goalNode;
                     actor.fromNode = slot->fromNode;
@@ -1056,6 +1059,7 @@ namespace hldata
                 // Asked; meanwhile on as it was going.
                 slot->kind = kThinkPlan;
                 slot->state = kThinkAsked;
+                thinkAsked(*a.think, *slot);
                 for (int i = 0; i < 3; ++i)
                     slot->at[i] = dest[i];
                 slot->small = static_cast<std::int16_t>(small);

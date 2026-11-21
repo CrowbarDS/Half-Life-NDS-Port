@@ -201,6 +201,14 @@ namespace hlrt::DebugLog::Perf
                 std::fprintf(log, ", %s %lu/%lu", kNames[i],
                              static_cast<unsigned long>(toMicros(summed[i] / static_cast<unsigned>(framesIn))),
                              static_cast<unsigned long>(toMicros(worst[i])));
+            // (How long the worker's answers took, asked to taken up, in
+            // frames: whether asking sooner would be worth it.)
+            const Think::Waits waits = think.takeWaits();
+            std::fprintf(log, ", answers taken %lu, waited %lu frames each, longest %lu, dropped %lu, gave up %lu",
+                         static_cast<unsigned long>(waits.taken),
+                         static_cast<unsigned long>(waits.taken != 0 ? waits.frames / waits.taken : 0),
+                         static_cast<unsigned long>(waits.longest), static_cast<unsigned long>(waits.dropped),
+                         static_cast<unsigned long>(waits.gaveUp));
             std::fprintf(log, ", answered %lu, think stack %lu, key reads %lu, longest read %lu, keys in worst frame %lu\n",
                          static_cast<unsigned long>(think.answered), static_cast<unsigned long>(think.stackPeak()),
                          static_cast<unsigned long>(keyReads), static_cast<unsigned long>(toMicros(keyLongest)),

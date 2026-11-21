@@ -1403,6 +1403,7 @@ namespace hldata
         if (slot->kind == what && slot->state == kThinkDone)
         {
             slot->state = kThinkFree;
+            thinkTaken(*q, *slot);
             c.ai.lastCoverSearch = slot->fromNode;
             const int n = slot->goalNode;
             if (n < 0 || n >= c.a.nodeCount)
@@ -1429,6 +1430,7 @@ namespace hldata
             if (++slot->waited < kAiAskPatience)
                 return kAiAskWaiting;
             slot->state = kThinkFree;
+            ++q->gaveUp;
             return here();
         }
         // (Its own question of another kind, or this one being worked out.)
@@ -1437,6 +1439,7 @@ namespace hldata
         aiCoverRange(minDist, maxDist);
         slot->kind = what;
         slot->state = kThinkAsked;
+        thinkAsked(*q, *slot);
         slot->waited = 0;
         slot->band = kThinkBandFight;
         for (int k = 0; k < 3; ++k)
@@ -3652,6 +3655,7 @@ namespace hldata
             if (slot->kind != kThinkDetour || slot->state != kThinkDone)
                 return false;
             slot->state = kThinkFree;
+            thinkTaken(*c.a.think, *slot);
             round.asking = false;
             found = slot->found;
             for (int k = 0; k < 3; ++k)
@@ -3663,6 +3667,7 @@ namespace hldata
             return false;
         slot->kind = kThinkDetour;
         slot->state = kThinkAsked;
+        thinkAsked(*c.a.think, *slot);
         slot->band = c.m.state == kStateCombat ? kThinkBandFight : kThinkBandWalk;
         for (int k = 0; k < 3; ++k)
             slot->at[k] = far[k];
@@ -3693,6 +3698,7 @@ namespace hldata
         if (slot->kind == kThinkLook && slot->state == kThinkDone)
         {
             slot->state = kThinkFree;
+            thinkTaken(*q, *slot);
             if (!slot->found)
             {
                 // (Nothing in the way, or no way round it: not asked again
@@ -3710,6 +3716,7 @@ namespace hldata
             return false;
         slot->kind = kThinkLook;
         slot->state = kThinkAsked;
+        thinkAsked(*q, *slot);
         slot->band = c.m.state == kStateCombat ? kThinkBandFight : kThinkBandWalk;
         for (int k = 0; k < 3; ++k)
             slot->at[k] = aim[k];

@@ -31,6 +31,15 @@ namespace hlrt
         /// Questions the worker has answered (perf.txt counts them and
         /// sets this back to 0).
         std::uint32_t answered = 0;
+        /// How long the answers took to be taken up, asked to taken (in
+        /// frames), since this was last asked; and those dropped (a walk's
+        /// plan from where it no longer was) or not taken up in time (the
+        /// asker worked them out itself). Read and cleared by perf.txt.
+        struct Waits
+        {
+            std::uint32_t taken = 0, frames = 0, longest = 0, dropped = 0, gaveUp = 0;
+        };
+        Waits takeWaits();
         /// The deepest the worker's stack has been (perf.txt; 0 unless
         /// profiling).
         std::uint32_t stackPeak() const;

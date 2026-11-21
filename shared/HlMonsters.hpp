@@ -3983,6 +3983,9 @@ namespace hldata
         if (w.actors == nullptr || w.world == nullptr)
             return;
         ActorWorld &a = *w.actors;
+        // (The worker's questions' clock: how long their answers take.)
+        if (a.think != nullptr)
+            ++a.think->frame;
         detail::suitTick(w, player, ms);
         if (player.gib.value != 0)
             detail::playerGibs(w, player);

@@ -170,6 +170,18 @@ namespace hlrt
         world = &w;
     }
 
+    Think::Waits Think::takeWaits()
+    {
+        Waits w;
+        w.taken = queue.taken;
+        w.frames = queue.takenFrames;
+        w.longest = queue.longest;
+        w.dropped = queue.dropped;
+        w.gaveUp = queue.gaveUp;
+        queue.taken = queue.takenFrames = queue.longest = queue.dropped = queue.gaveUp = 0;
+        return w;
+    }
+
     void Think::detach()
     {
         // (Whatever is half worked out is finished now -- it no longer stops
