@@ -588,7 +588,7 @@ namespace hldata
     inline bool lineEntersBox(const fx *from, const fx *to, const fx *mins, const fx *maxs, std::int64_t &enter);
     inline void shakeStart(LogicWorld &w, fx amplitude, int ms);
     inline void explodeAt(LogicWorld &w, PlayerState &player, const fx *at, int size, bool fireball, bool sound,
-                          bool hurts, int smoke, bool showers, const fx *pushFrom);
+                          bool hurts, int smoke, bool showers, const fx *pushFrom, const fx *scorch);
     /// What a grenade's blast throws up, a moment after it: one of three,
     /// at a little over half of full (CGrenade::Explode). Every grenade's:
     /// a hand grenade, the MP5's, a satchel, a tripmine, a rocket.
@@ -610,9 +610,16 @@ namespace hldata
         /// (ExplodeTouch), along `velocity`, 32 back to 32 on. No face met,
         /// where it is.
         /// ... the face found by a line `from`..`to` (a tripmine's: from 8
-        /// out from its wall to 64 behind it).
-        [[gnu::noinline]] inline void blastSpotOn(const MoveWorld &world, fx *pos, const fx *from, const fx *to, int damage)
+        /// out from its wall to 64 behind it). That line, if `line` is
+        /// given (from, then to): the game marks its scorch along it.
+        [[gnu::noinline]] inline void blastSpotOn(const MoveWorld &world, fx *pos, const fx *from, const fx *to, int damage,
+                                                  fx *line = nullptr)
         {
+            for (int i = 0; line != nullptr && i < 3; ++i)
+            {
+                line[i] = from[i];
+                line[3 + i] = to[i];
+            }
             const Trace t = tracePoint(world, from, to);
             if (!t.hit || t.startSolid)
                 return;
@@ -620,7 +627,7 @@ namespace hldata
             for (int i = 0; i < 3; ++i)
                 pos[i] = t.endPos[i] + static_cast<fx>((static_cast<std::int64_t>(t.normal[i]) * lift) >> kNormalShift);
         }
-        inline void blastSpot(const MoveWorld &world, fx *pos, const fx *velocity, int damage)
+        inline void blastSpot(const MoveWorld &world, fx *pos, const fx *velocity, int damage, fx *line = nullptr)
         {
             fx from[3] = {pos[0], pos[1], pos[2] + fxFromInt(8)};
             fx to[3] = {pos[0], pos[1], pos[2] - fxFromInt(32)};
@@ -634,7 +641,7 @@ namespace hldata
                     to[i] = pos[i] + along;
                 }
             }
-            blastSpotOn(world, pos, from, to, damage);
+            blastSpotOn(world, pos, from, to, damage, line);
         }
     } // namespace detail
     inline void monsterHurt(LogicWorld &w, int index, int damage, bool bullet, int group = kHitBody,
@@ -1981,8 +1988,10 @@ namespace hldata
                                            shot.pos[2] + shot.velocity[2] * 8};
                         const fx behind[3] = {shot.pos[0] - shot.velocity[0] * 64, shot.pos[1] - shot.velocity[1] * 64,
                                               shot.pos[2] - shot.velocity[2] * 64};
-                        blastSpotOn(*w.world, at, out, behind, kMineBlast);
-                        explodeAt(w, player, at, kMineBlast, true, true, true, grenadeSmoke(kMineBlast), true, shot.pos);
+                        fx line[6];
+                        blastSpotOn(*w.world, at, out, behind, kMineBlast, line);
+                        explodeAt(w, player, at, kMineBlast, true, true, true, grenadeSmoke(kMineBlast), true, shot.pos,
+                                  line);
                         grenadeDebris(w, at);
                         continue;
                     }
@@ -2318,8 +2327,9 @@ namespace hldata
                         // Off, where it met something: 100, to 250 units.
                         shot.active = false;
                         const fx met[3] = {shot.pos[0], shot.pos[1], shot.pos[2]};
-                        blastSpot(*w.world, shot.pos, shot.velocity, 100);
-                        explodeAt(w, player, shot.pos, 100, true, true, true, grenadeSmoke(100), true, met);
+                        fx line[6];
+                        blastSpot(*w.world, shot.pos, shot.velocity, 100, line);
+                        explodeAt(w, player, shot.pos, 100, true, true, true, grenadeSmoke(100), true, met, line);
                         grenadeDebris(w, shot.pos);
                         continue;
                     }
@@ -2506,8 +2516,10 @@ namespace hldata
                     {
                         shot.active = false;
                         const fx met[3] = {shot.pos[0], shot.pos[1], shot.pos[2]};
-                        blastSpot(*w.world, shot.pos, shot.velocity, kGrenadeBlast);
-                        explodeAt(w, player, shot.pos, kGrenadeBlast, true, true, true, grenadeSmoke(kGrenadeBlast), true, met);
+                        fx line[6];
+                        blastSpot(*w.world, shot.pos, shot.velocity, kGrenadeBlast, line);
+                        explodeAt(w, player, shot.pos, kGrenadeBlast, true, true, true, grenadeSmoke(kGrenadeBlast), true, met,
+                                  line);
                         grenadeDebris(w, shot.pos);
                     }
                     else if ((shot.leftMs + timed) / 200 != shot.leftMs / 200)
@@ -2596,8 +2608,10 @@ namespace hldata
                         {
                             shot.active = false;
                             const fx lay[3] = {shot.pos[0], shot.pos[1], shot.pos[2]};
-                            blastSpot(*w.world, shot.pos, nullptr, kSatchelBlast);
-                            explodeAt(w, player, shot.pos, kSatchelBlast, true, true, true, grenadeSmoke(kSatchelBlast), true, lay);
+                            fx line[6];
+                            blastSpot(*w.world, shot.pos, nullptr, kSatchelBlast, line);
+                            explodeAt(w, player, shot.pos, kSatchelBlast, true, true, true, grenadeSmoke(kSatchelBlast), true,
+                                      lay, line);
                             grenadeDebris(w, shot.pos);
                         }
                         continue;
@@ -2608,9 +2622,10 @@ namespace hldata
                         if (gib)
                             continue; // (what was thrown out is simply gone)
                         const fx lay[3] = {shot.pos[0], shot.pos[1], shot.pos[2]};
-                        blastSpot(*w.world, shot.pos, nullptr, kGrenadeBlast);
+                        fx line[6];
+                        blastSpot(*w.world, shot.pos, nullptr, kGrenadeBlast, line);
                         effectAdd(a, kEffectBurst, shot.pos, nullptr, 96, 450);
-                        markBlast(a, *w.world, shot.pos, 48);
+                        markBlast(a, *w.world, shot.pos, 48, line);
                         aiSound(a, kSoundCombat, shot.pos, kNormalExplosionVolume, 3000);
                         if (w.heard != nullptr)
                             w.heard->add(CommonSound::Explode, shot.pos, 127, 2000);
@@ -3311,7 +3326,11 @@ namespace hldata
                 actorPlaceBox(a, index);
                 const fx at[3] = {mine.pos[0] + forward[0] * 8, mine.pos[1] + forward[1] * 8,
                                   mine.pos[2] + forward[2] * 8};
-                explodeAt(w, player, at, kMineBlast, true, true, true, grenadeSmoke(kMineBlast), true);
+                // (Its scorch on its wall: 8 out from it to 64 behind,
+                // CTripmineGrenade::DelayDeathThink.)
+                const fx line[6] = {at[0], at[1], at[2], mine.pos[0] - forward[0] * 64, mine.pos[1] - forward[1] * 64,
+                                    mine.pos[2] - forward[2] * 64};
+                explodeAt(w, player, at, kMineBlast, true, true, true, grenadeSmoke(kMineBlast), true, nullptr, line);
                 grenadeDebris(w, at);
                 return;
             }

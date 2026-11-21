@@ -90,8 +90,10 @@ namespace hldata
     /// (tenths of the sprite's size: grenadeSmoke, explosionSmoke) it
     /// leaves smoke, a third of a second later; with `showers`, none to
     /// three showers of sparks (a grenade's and an env_explosion's).
+    /// `scorch`: the line its scorch is looked for along (markBlast), or
+    /// null for under it.
     inline void explodeAt(LogicWorld &w, PlayerState &player, const fx *at, int size, bool fireball, bool sound,
-                          bool hurts, int smoke, bool showers, const fx *pushFrom)
+                          bool hurts, int smoke, bool showers, const fx *pushFrom, const fx *scorch)
     {
         if (smoke > 0)
             smokeAt(w, at, smoke, 12, 300);
@@ -100,7 +102,7 @@ namespace hldata
         if (w.actors != nullptr && fireball)
             effectAdd(*w.actors, kEffectBurst, at, nullptr, size < 48 ? 48 : (size > 160 ? 160 : size), 450);
         if (w.actors != nullptr && w.world != nullptr && fireball)
-            markBlast(*w.actors, *w.world, at, size / 2);
+            markBlast(*w.actors, *w.world, at, size / 2, scorch);
         if (sound && w.heard != nullptr)
             w.heard->add(CommonSound::Explode, at, 127, 2000);
         if (w.actors != nullptr && (sound || hurts))

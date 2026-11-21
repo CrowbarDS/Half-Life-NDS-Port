@@ -163,11 +163,17 @@ namespace hldata
     }
 
     /// A blast at `at`: its scorch on the floor under it (or the nearest
-    /// wall straight down), and what it throws up.
-    inline void markBlast(ActorWorld &a, const MoveWorld &world, const fx *at, int size)
+    /// wall straight down), and what it throws up. Or, with `line` (from,
+    /// then to: six values), on what that line meets, and none if it meets
+    /// nothing -- the line a grenade's blast was put off its face by
+    /// (blastSpot), as the game marks it: under one that lay still, where
+    /// one that flew hit, the wall behind a tripmine.
+    inline void markBlast(ActorWorld &a, const MoveWorld &world, const fx *at, int size, const fx *line = nullptr)
     {
-        const fx from[3] = {at[0], at[1], at[2] + fxFromInt(8)};
-        const fx to[3] = {at[0], at[1], at[2] - fxFromInt(72)};
+        const fx under[3] = {at[0], at[1], at[2] + fxFromInt(8)};
+        const fx down[3] = {at[0], at[1], at[2] - fxFromInt(72)};
+        const fx *from = line != nullptr ? line : under;
+        const fx *to = line != nullptr ? line + 3 : down;
         fx on[3], normal[3];
         int mover = -1;
         if (!traceShotWall(world, from, to, on, normal, &mover, true))
