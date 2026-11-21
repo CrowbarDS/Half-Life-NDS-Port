@@ -18,12 +18,12 @@ A GROUP is a file, text/ui/<group>.txt:
   SavedAs = Saved as %s\\n    as it is to be shown, C's escapes (\\n \\t \\\\
                              \\" \\x41) and printf's formats as they are
 
-Each group becomes one table: its strings one after another, each with its
-terminating NUL, and where each begins (u16); and a descriptor the program
-refers to, `kText<Group>`. A reference to one line is
-`txt::<group>::<Name>` (a TextRef: the group's descriptor and the line's
-number), so that only the groups whose text is used are linked: the
-Download Play child takes only its own.
+Each group becomes one table, its strings one after another, each with its
+terminating NUL (a text two lines share is kept once), and a descriptor the
+program refers to, `kText<Group>`. A reference to one line is
+`txt::<group>::<Name>` (a TextRef: the group's descriptor and where the line
+begins in its text, so that no table of where is needed), and only the groups
+whose text is used are linked: the Download Play child takes only its own.
 """
 import os
 import re
@@ -136,29 +136,32 @@ def make(groups):
     for name in names:
         home, lines = groups[name]
         group = camel(name)
-        hpp.append('    extern const TextGroupInfo kText%s; ///< text/ui/%s.txt (%s)' % (group, name, home))
-        hpp.append('    namespace txt::%s' % name)
-        hpp.append('    {')
-        for i, (key, _text) in enumerate(lines):
-            hpp.append('        inline constexpr TextRef %s{&kText%s, %d};' % (key, group, i))
-        hpp.append('    }')
-        blob, at = [], []
+        blob, at, seen = [], [], {}
         offset = 0
         for _key, text in lines:
+            if text in seen:
+                at.append(seen[text])
+                continue
+            seen[text] = offset
             at.append(offset)
             blob.append(text)
             offset += len(text.encode('latin-1')) + 1
         if offset > 0xFFFF:
             raise TextError('%s: more than 64 KB of text' % name)
+        hpp.append('    extern const TextGroupInfo kText%s; ///< text/ui/%s.txt (%s)' % (group, name, home))
+        hpp.append('    namespace txt::%s' % name)
+        hpp.append('    {')
+        for i, (key, _text) in enumerate(lines):
+            hpp.append('        inline constexpr TextRef %s{&kText%s, %d};' % (key, group, at[i]))
+        hpp.append('    }')
         cpp.append('    namespace')
         cpp.append('    {')
         cpp.append('        const char k%sChars[] =' % group)
         for i, text in enumerate(blob):
             cpp.append('            %s%s' % (c_literal(text), ' "\\0"' if i + 1 < len(blob) else ''))
         cpp.append('            ;')
-        cpp.append('        const std::uint16_t k%sAt[] = {%s};' % (group, ', '.join(str(a) for a in at)))
         cpp.append('    }')
-        cpp.append('    const TextGroupInfo kText%s = {"%s", k%sChars, k%sAt, %d};' % (group, name, group, group, len(lines)))
+        cpp.append('    const TextGroupInfo kText%s = {"%s", k%sChars, %d};' % (group, name, group, offset))
     hpp += ['} // namespace hlrt::ui', '']
     cpp += ['} // namespace hlrt::ui', '']
     return '\n'.join(hpp), '\n'.join(cpp)
@@ -204,12 +207,14 @@ def self_test():
             pass
     hpp, cpp = make({'menu': ('resident', [('Resume', 'RESUME'), ('Quit', 'QUIT "now"\n')]),
                      'front_end': ('resident', [('Host', 'HOST')])})
-    expect('inline constexpr TextRef Resume{&kTextMenu, 0};' in hpp and 'inline constexpr TextRef Quit{&kTextMenu, 1};' in hpp,
-           'a reference per line, numbered in order')
+    expect('inline constexpr TextRef Resume{&kTextMenu, 0};' in hpp and 'inline constexpr TextRef Quit{&kTextMenu, 7};' in hpp,
+           'a reference per line, where it begins')
     expect('namespace txt::front_end' in hpp and 'kTextFrontEnd' in hpp, 'a group name made a C++ name')
     expect('"RESUME" "\\0"' in cpp and '"QUIT \\"now\\"\\n"' in cpp, 'the strings, NUL after each, escaped again')
-    expect('kMenuAt[] = {0, 7}' in cpp, 'where each line begins')
-    expect('{"menu", kMenuChars, kMenuAt, 2}' in cpp, 'the descriptor')
+    expect('{"menu", kMenuChars, 19}' in cpp, 'the descriptor, the size with the last NUL')
+    _hpp, cpp = make({'opts': ('resident', [('On', 'on'), ('Off', 'off'), ('Again', 'on')])})
+    expect('Again{&kTextOpts, 0}' in _hpp and 'Off{&kTextOpts, 3}' in _hpp and cpp.count('"on"') == 1,
+           'a text two lines share kept once')
     for f in failures:
         print('uitext.py self-test FAILED: ' + f, file=sys.stderr)
     print('uitext.py self-test: %s' % ('ok' if not failures else '%d failed' % len(failures)))

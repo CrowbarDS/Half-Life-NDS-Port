@@ -40,11 +40,11 @@ namespace hlrt::ui
         const TextGroupInfo *group = nullptr;
         union
         {
-            std::uint16_t id; ///< (group) which line
+            std::uint16_t at; ///< (group) where its line begins
             const char *made = nullptr;
         };
         constexpr Label() = default;
-        constexpr Label(TextRef r) : group(r.group), id(r.id) {}
+        constexpr Label(TextRef r) : group(r.group), at(r.at) {}
         constexpr Label(const char *line) : made(line) {}
         /// For this draw.
         const char *text() const;

@@ -50,21 +50,21 @@ namespace hlrt::ui
     const char *Label::text() const
     {
         if (group != nullptr)
-            return uiText(TextRef{group, id});
+            return uiText(TextRef{group, at});
         return made != nullptr ? made : "";
     }
 
     const char *uiText(TextRef ref)
     {
         const TextGroupInfo &group = *ref.group;
-        const char *text = ref.id < group.count ? group.chars + group.at[ref.id] : "";
+        const char *text = ref.at < group.size ? group.chars + ref.at : "";
 #ifdef HLDS_DEBUG_BUILD
         if (inInterrupt())
             hlOvlHalt("UI text asked for from an interrupt:", group.name);
         if (started && cothread_get_current() != mainThread)
             hlOvlHalt("UI text asked for off the main thread:", group.name);
-        if (ref.id >= group.count)
-            hlOvlHalt("UI text asked for past its group's end:", group.name);
+        if (ref.at >= group.size || (ref.at > 0 && group.chars[ref.at - 1] != '\0'))
+            hlOvlHalt("UI text asked for where no line of it begins:", group.name);
         const std::uint32_t length = static_cast<std::uint32_t>(std::strlen(text)) + 1;
         if (length > kRing)
             return text;

@@ -9,13 +9,12 @@
 namespace hlrt::ui
 {
     /// One group of text, text/ui/<name>.txt: its lines one after another,
-    /// each ending in a NUL, and where each begins.
+    /// each ending in a NUL.
     struct TextGroupInfo
     {
         const char *name;
         const char *chars;
-        const std::uint16_t *at;
-        std::uint16_t count;
+        std::uint16_t size; ///< bytes, the last NUL with them
     };
 
     /// One line of it: what is kept where text is to be shown later (a
@@ -24,6 +23,6 @@ namespace hlrt::ui
     struct TextRef
     {
         const TextGroupInfo *group;
-        std::uint16_t id;
+        std::uint16_t at; ///< where the line begins in the group's text (so no table of where)
     };
 } // namespace hlrt::ui
