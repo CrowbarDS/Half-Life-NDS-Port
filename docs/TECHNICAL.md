@@ -1529,16 +1529,10 @@ begins. BlocksDS has no overlays; these are the port's own
   constructors, exception tables or `atexit` in one; and the sizer is the
   largest. The interrupt walk (`tools/irq-divider.py`) fails a handler that
   reaches a region; the families are refused if they would point into one.
-- **The pack** (`ovl/arm9.ovl` in NitroFS, written by the link) has each
-  overlay's bytes and their sum, and the program's ID. `hlrt::loadGame` opens
-  it once for good and checks it against the program; a load is a seek and a
-  read on that handle, no heap, then the caches made to agree, the zeroed
-  data cleared and the sum checked. Never from an interrupt.
-- **Or the ROM's own overlay table** (`HLDS_OVL_ROM=1 ./make.sh`; to replace
-  the pack once a DSi and a DS flashcart have run it): the ARM9 overlay table
-  retail games have, after the ARM9 binary and ndstool's 12-byte footer, and
-  one file per overlay read from the card (`ovl/overlay_NNNN.bin`), which
-  ndstool makes the FAT's first files -- NitroFS's own come after them. A
+- **The ROM's own overlay table**: the ARM9 overlay table retail games
+  have, after the ARM9 binary and ndstool's 12-byte footer, and one file per
+  overlay read from the card (`ovl/overlay_NNNN.bin`), which ndstool makes
+  the FAT's first files -- NitroFS's own come after them. A
   zeroed-data overlay has no entry and no file. The files hold the loaded
   bytes alone; their sums are stamped into the program after the link
   (`hlOvlSums`, before its ID, which then covers them). The loader opens each
@@ -1547,6 +1541,14 @@ begins. BlocksDS has no overlays; these are the port's own
   NitroFS's mark in its top bits, which `open` adds; the loader adds it.)
   `make.sh`'s `romcheck --mode rom` checks the table, the footer, each file
   and its sum, and that NitroFS's files begin after the overlays'.
+  The overlay probe (`tools/hwtest/ovlprobe/`, `make OVL_MODE=rom`) passes
+  on a DSi through TWiLight Menu++ (2026-11-21).
+- **Or a pack** (`HLDS_OVL_PACK=1 ./make.sh`, as before 2026-11-21:
+  `ovl/arm9.ovl` in NitroFS, written by the link) with each overlay's bytes,
+  their sums and the program's ID, opened once and checked against the
+  program; a load is a seek and a read on that handle, no heap, then the
+  caches made to agree, the zeroed data cleared and the sum checked. Never
+  from an interrupt (from the table's files neither).
 - **Leave checks.** Before an overlay gives its region up, what it holds is
   let go of (or the load refused, or halted on).
 
