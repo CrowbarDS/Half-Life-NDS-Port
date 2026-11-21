@@ -200,6 +200,14 @@ namespace hldata
         /// The actors' boxes.
         const SolidBox *boxes = nullptr;
         int boxCount = 0;
+        /// A walk's own look at the world (walkClear), if given: only these
+        /// movers and these of the boxes, in their order -- every one that
+        /// could be near any step of it; the others are not asked. (Not the
+        /// movers that are water: pointContents asks all of them.)
+        const std::uint16_t *moversOnly = nullptr;
+        int moversOnlyCount = 0;
+        const std::uint16_t *boxesOnly = nullptr;
+        int boxesOnlyCount = 0;
         /// The level's brushes (one per mover, in order) and models: what a
         /// shot meets of a mover is its model's own box. None: its hull.
         const Brush *brushes = nullptr;
@@ -423,9 +431,10 @@ namespace hldata
         struct MoversNear
         {
             int count = -1;
+            const std::uint16_t *ids = nullptr; ///< `list`, or the world's moversOnly
             std::uint16_t list[kMoversNearMax];
             int size(const MoveWorld &world) const { return count < 0 ? world.moverCount : count; }
-            int at(int k) const { return count < 0 ? k : list[k]; }
+            int at(int k) const { return count < 0 ? k : ids[k]; }
         };
         // (In main memory, and one copy of it, not one in each file that
         // traces -- once a trace, not in its inner loop: ITCM has no room.)
@@ -433,6 +442,14 @@ namespace hldata
                                                                MoversNear &near)
         {
             near.count = -1;
+            near.ids = near.list;
+            if (world.moversOnly != nullptr)
+            {
+                // (A walk's own: already those near it.)
+                near.count = world.moversOnlyCount;
+                near.ids = world.moversOnly;
+                return;
+            }
             if (world.groupReach == nullptr || world.moverCount > kMoversNearBits)
                 return;
             std::uint32_t bits[kMoversNearBits / 32];
@@ -654,8 +671,10 @@ namespace hldata
             // (A move that starts inside one passes through it, as with a
             // brush: nobody is ever frozen inside an actor who walked up to
             // them.)
-            for (int n = 0; n < world.boxCount; ++n)
+            const int count = world.boxesOnly != nullptr ? world.boxesOnlyCount : world.boxCount;
+            for (int k = 0; k < count; ++k)
             {
+                const int n = world.boxesOnly != nullptr ? world.boxesOnly[k] : k;
                 const SolidBox &box = world.boxes[n];
                 if (!box.active)
                     continue;

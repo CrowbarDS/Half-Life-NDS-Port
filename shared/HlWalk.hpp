@@ -301,6 +301,7 @@ namespace hldata
             const fx to[3] = {end[0] + shift, end[1] + shift, end[2]};
             MoveWorld bare = world;
             bare.boxCount = 0;
+            bare.boxesOnly = nullptr;
             Trace t = traceAll(bare, small, from, to);
             t.endPos[0] -= shift;
             t.endPos[1] -= shift;
@@ -353,8 +354,10 @@ namespace hldata
             z = found ? top - static_cast<fx>((static_cast<std::int64_t>(top - bottom) * hit) >> kFractionShift)
                       : bottom;
             const int ux = x >> kFxShift, uy = y >> kFxShift;
-            for (int m = 0; m < world.moverCount; ++m)
+            const int count = world.moversOnly != nullptr ? world.moversOnlyCount : world.moverCount;
+            for (int k = 0; k < count; ++k)
             {
+                const int m = world.moversOnly != nullptr ? world.moversOnly[k] : k;
                 if (world.reach != nullptr)
                 {
                     // (Whole units, rounded outwards: never "no" for a yes.)
@@ -481,6 +484,8 @@ namespace hldata
 #ifndef HLDS_CHILD
         if (index >= 0)
         {
+            // (All of them, not a walk's own few (MoveWorld::boxesOnly): a
+            // dozen instructions each, against ITCM's room for both ways.)
             for (int n = 0; n < world.boxCount; ++n)
             {
                 const SolidBox &box = world.boxes[n];
@@ -542,46 +547,138 @@ namespace hldata
         return true;
     }
 
+    namespace detail
+    {
+        /// What a walk from `from` to `to` in at most `steps` steps can come
+        /// near: the movers and the actors' boxes there, into `look` -- a copy
+        /// of `world` that asks only those (MoveWorld::moversOnly). Its steps
+        /// keep to the line between (each goes 16 units towards `to` from
+        /// where the last ended), and up or down a stair at most each; what
+        /// they ask reaches out from there by a hull, a stair and a walker's
+        /// footing at most -- 64 units across, more than any. Too many of
+        /// either near: those are all asked, as without.
+        struct WalkLook
+        {
+            MoveWorld world;
+            std::uint16_t movers[kMoversNearMax];
+            std::uint16_t boxes[kMoversNearMax];
+        };
+        [[gnu::noinline]] HL_WARM void walkLookAt(const MoveWorld &world, const fx *from, const fx *to, int steps,
+                                                   WalkLook &look)
+        {
+            look.world = world;
+            const fx rise = static_cast<fx>((steps + 2) * kStepSize) + fxFromInt(128);
+            SegmentReach reach;
+            for (int i = 0; i < 3; ++i)
+            {
+                const fx lo = (from[i] < to[i] ? from[i] : to[i]) - (i == 2 ? rise : fxFromInt(64));
+                const fx hi = (from[i] < to[i] ? to[i] : from[i]) + (i == 2 ? rise : fxFromInt(64));
+                reach.lo[i] = lo >> kFxShift;
+                reach.hi[i] = (hi + kFxOne - 1) >> kFxShift;
+            }
+            MoversNear near;
+            moversNear(world, reach, near);
+            if (near.count >= 0)
+            {
+                for (int k = 0; k < near.count; ++k)
+                    look.movers[k] = near.ids[k];
+                look.world.moversOnly = look.movers;
+                look.world.moversOnlyCount = near.count;
+            }
+            int count = 0;
+            for (int n = 0; n < world.boxCount && count >= 0; ++n)
+            {
+                // (Its bounds as they are, active or not: whether it is, is
+                // asked as ever.)
+                const SolidBox &box = world.boxes[n];
+                bool apart = false;
+                for (int i = 0; i < 3 && !apart; ++i)
+                    apart = (box.maxs[i] >> kFxShift) + 1 < reach.lo[i] || (box.mins[i] >> kFxShift) - 1 > reach.hi[i];
+                if (apart)
+                    continue;
+                if (count == kMoversNearMax)
+                    count = -1;
+                else
+                    look.boxes[count++] = static_cast<std::uint16_t>(n);
+            }
+            if (count >= 0)
+            {
+                look.world.boxesOnly = look.boxes;
+                look.world.boxesOnlyCount = count;
+            }
+        }
+    } // namespace detail
+
+    namespace detail
+    {
+        /// walkClear's steps, on `whole` -- or, `look` given, on what is near
+        /// the way (walkLookAt), looked at again after each stop for the
+        /// frame, which moves the movers and the actors: as a walk on all of
+        /// it would find them then.
+        inline bool walkClearSteps(const MoveWorld &whole, WalkLook *look, const ActorWorld *a, int index, int small,
+                                   const fx *from, const fx *to, int steps)
+        {
+            if (look != nullptr)
+                walkLookAt(whole, from, to, steps, *look);
+            const MoveWorld &world = look != nullptr ? look->world : whole;
+            fx at[3] = {from[0], from[1], from[2]};
+            int pause = 0;
+            for (int n = 0; n <= steps; ++n)
+            {
+                thinkPoint(pause, 5); // (three hull traces a step, and its footing)
+                if (look != nullptr && pause == 0 && n > 0 && thinkYield != nullptr)
+                    walkLookAt(whole, at, to, steps - n, *look);
+                const fx d[3] = {to[0] - at[0], to[1] - at[1], 0};
+                const fx distance = fxLength(d);
+                if (distance <= kWalkStep)
+                {
+                    const fx dz = to[2] - at[2];
+                    return dz < fxFromInt(40) && dz > -fxFromInt(40);
+                }
+                const fx dx = static_cast<fx>((static_cast<std::int64_t>(d[0]) * kWalkStep) / distance);
+                const fx dy = static_cast<fx>((static_cast<std::int64_t>(d[1]) * kWalkStep) / distance);
+                int by = -1;
+                if (!walkStep(world, a, index, small, at, dx, dy, 0, &by))
+                {
+                    // Stopped by whoever stands where it is going -- the place
+                    // it walks to is in their very body: they are what it goes
+                    // for -- as good as there (CheckLocalMove: a step into the
+                    // target is legal).
+#ifndef HLDS_CHILD
+                    if (by >= 0 && by < world.boxCount)
+                    {
+                        const SolidBox &box = world.boxes[by];
+                        return to[0] >= box.mins[0] && to[0] <= box.maxs[0] && to[1] >= box.mins[1] &&
+                               to[1] <= box.maxs[1] && to[2] >= box.mins[2] - fxFromInt(40) &&
+                               to[2] <= box.maxs[2] + fxFromInt(40);
+                    }
+#endif
+                    return false;
+                }
+            }
+            return false;
+        }
+    } // namespace detail
+
     /// Whether something that size can walk from `from` to `to` (feet, both)
-    /// in a straight line, in at most `steps` steps of 16 units.
+    /// in a straight line, in at most `steps` steps of 16 units. (Asking
+    /// only what is near the way: walkLookAt.)
     inline HL_TRACE_NOINLINE bool walkClear(const MoveWorld &world, const ActorWorld *a, int index, int small,
                           const fx *from, const fx *to, int steps)
     {
         HL_TRACE_SPENT(kTraceWalkClear);
-        fx at[3] = {from[0], from[1], from[2]};
-        int pause = 0;
-        for (int n = 0; n <= steps; ++n)
+        detail::WalkLook look;
+        const bool clear = detail::walkClearSteps(world, &look, a, index, small, from, to, steps);
+#ifndef __arm__
+        // (Off the console: what it finds is what a walk asking everything
+        // finds.)
+        if (clear != detail::walkClearSteps(world, nullptr, a, index, small, from, to, steps))
         {
-            thinkPoint(pause, 5); // (three hull traces a step, and its footing)
-            const fx d[3] = {to[0] - at[0], to[1] - at[1], 0};
-            const fx distance = fxLength(d);
-            if (distance <= kWalkStep)
-            {
-                const fx dz = to[2] - at[2];
-                return dz < fxFromInt(40) && dz > -fxFromInt(40);
-            }
-            const fx dx = static_cast<fx>((static_cast<std::int64_t>(d[0]) * kWalkStep) / distance);
-            const fx dy = static_cast<fx>((static_cast<std::int64_t>(d[1]) * kWalkStep) / distance);
-            int by = -1;
-            if (!walkStep(world, a, index, small, at, dx, dy, 0, &by))
-            {
-                // Stopped by whoever stands where it is going -- the place
-                // it walks to is in their very body: they are what it goes
-                // for -- as good as there (CheckLocalMove: a step into the
-                // target is legal).
-#ifndef HLDS_CHILD
-                if (by >= 0 && by < world.boxCount)
-                {
-                    const SolidBox &box = world.boxes[by];
-                    return to[0] >= box.mins[0] && to[0] <= box.maxs[0] && to[1] >= box.mins[1] &&
-                           to[1] <= box.maxs[1] && to[2] >= box.mins[2] - fxFromInt(40) &&
-                           to[2] <= box.maxs[2] + fxFromInt(40);
-                }
-#endif
-                return false;
-            }
+            std::fprintf(stderr, "walkClear: asking what is near the way found %d, asking all %d\n", clear, !clear);
+            std::abort();
         }
-        return false;
+#endif
+        return clear;
     }
 
     /// FTriangulate: a place beside what is in the way of a walker going
@@ -645,6 +742,7 @@ namespace hldata
         MoveWorld bare = world;
         bare.boxes = nullptr;
         bare.boxCount = 0;
+        bare.boxesOnly = nullptr;
         const fx whole[3] = {to[0] - from[0], to[1] - from[1], 0};
         const fx length = fxLength(whole);
         if (length <= kWalkStep)
