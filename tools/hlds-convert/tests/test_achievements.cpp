@@ -36,7 +36,7 @@ namespace
         int hidden = 0, counted = 0;
         for (const AchievementInfo &info : kAchievements)
         {
-            apis.insert(info.api);
+            apis.insert(kAchievementApis[&info - kAchievements]);
             titles.insert(info.title);
             hidden += info.hidden ? 1 : 0;
             counted += info.goal != 0 ? 1 : 0;
@@ -46,8 +46,8 @@ namespace
         check(apis.size() == 68 && titles.size() == 68, "each named once");
         check(hidden == 4, "four hidden (both ends of the game, Cheater, Signature move)");
         check(counted == 5, "five that count");
-        check(std::string(kAchievements[kAchInit].api) == "INIT", "the ids are the table's rows");
-        check(std::string(kAchievements[kAch5Tur].api) == "5TUR" && kAchievements[kAch5Tur].goal == 5,
+        check(std::string(kAchievementApis[kAchInit]) == "INIT", "the ids are the table's rows");
+        check(std::string(kAchievementApis[kAch5Tur]) == "5TUR" && kAchievements[kAch5Tur].goal == 5,
               "the turrets: five");
         for (int c = 0; c < kAchCounterCount; ++c)
             check(kAchievements[kCounterAchievement[c]].goal != 0, "a counter counts towards one with a goal");
@@ -307,7 +307,7 @@ namespace
         {
             const std::string map = mapOf(maps, rule.map);
             check(!map.empty() && entitiesOf(maps, map, entities) && named(entities, rule.name),
-                  ("a name listened for is in " + map + ": " + kAchievements[rule.id].api).c_str());
+                  ("a name listened for is in " + map + ": " + kAchievementApis[rule.id]).c_str());
         }
         for (const ach::KillRule &rule : ach::kKillRules)
         {
@@ -317,7 +317,7 @@ namespace
             check(!map.empty() && entitiesOf(maps, map, entities), "a monster's map");
             if (rule.name != 0)
                 check(named(entities, rule.name, "monster_"),
-                      ("the monster is in " + map + ": " + kAchievements[rule.id].api).c_str());
+                      ("the monster is in " + map + ": " + kAchievementApis[rule.id]).c_str());
         }
         for (const ach::BoxRule &rule : ach::kBoxRules)
         {
@@ -336,7 +336,7 @@ namespace
                     in = in && o[k] >= rule.mins[k] && o[k] <= rule.maxs[k];
                 found = found || in;
             }
-            check(found, ("something lies in the place in " + map + ": " + kAchievements[rule.id].api).c_str());
+            check(found, ("something lies in the place in " + map + ": " + kAchievementApis[rule.id]).c_str());
         }
     }
 
