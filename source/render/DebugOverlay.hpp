@@ -22,6 +22,7 @@ namespace hlrt
         const char *mapName_ = "";
         int countdown_ = 0;
         int row_ = 0;
+        bool hblank_ = false; ///< the HBlank interrupt on, for the CPU meter
     };
 
     extern DebugOverlay debugOverlay;

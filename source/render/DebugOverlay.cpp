@@ -37,6 +37,17 @@ namespace hlrt
 
     void DebugOverlay::frame()
     {
+        // The CPU meter counts lines in the HBlank interrupt: on only while
+        // the readout is shown (Global::Init). (Its own cost, some 3% of the
+        // ARM9, is then in what it shows.)
+        if (settings.debugReadout != hblank_)
+        {
+            hblank_ = settings.debugReadout;
+            if (hblank_)
+                irqEnable(IRQ_HBLANK);
+            else
+                irqDisable(IRQ_HBLANK);
+        }
         if (!settings.debugReadout || --countdown_ > 0)
             return;
         countdown_ = kInterval;

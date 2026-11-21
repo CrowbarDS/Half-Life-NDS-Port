@@ -189,7 +189,11 @@ void Global::Init(const char *launchedFrom)
     // The GBA slot: an Expansion Pak or a Rumble Pak (none in DSi mode).
     hlrt::slot2::init();
 
-    irqEnable(IRQ_HBLANK);
+    // (The HBlank interrupt is set, not turned on: it counts lines for Nitro
+    // Engine's CPU meter, all it does here -- the game sets none of its line
+    // effects -- and costs some 3% of the ARM9, every line of every frame.
+    // The readout, which shows the meter, turns it on while it is shown:
+    // DebugOverlay.)
     irqSet(IRQ_VBLANK, onVblank);
 #ifdef HLDS_PROFILE
     irqSet(IRQ_HBLANK, profiledHblank);
