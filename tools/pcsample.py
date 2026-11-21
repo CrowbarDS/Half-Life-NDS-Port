@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Where the ARM9 spends its time, by function, from perf.txt's "pcs:" lines.
 
-usage: pcsample.py <perf.txt> [<map name>] [--last N]
+usage: pcsample.py <perf.txt> [<map name>] [--last N] [--worst] [--elf E]
 
 A profiling build (HLDS_PROFILE=1) samples where the ARM9 is, several
 thousand times a second (source/DebugLog.cpp), and writes the busiest
@@ -10,6 +10,11 @@ thousand times a second (source/DebugLog.cpp), and writes the busiest
 game library, linked at 0). Here they are named from build/arm9/arm9.elf and
 build/hl/hl.elf -- the ELFs of the build that wrote them -- and summed by
 function. two functions is named after the first and the last it holds.
+
+--worst: the "worstpcs:" lines instead -- each period's worst frame of the
+monsters', a sample at a time: what a spike is made of, by function.
+--elf E: the program's ELF, if build/arm9/arm9.elf is no longer the build
+that wrote perf.txt (make.sh keeps each in build/elf/<name>/).
 """
 import bisect
 import collections
@@ -40,6 +45,31 @@ def name_at(table, address):
     return table[i][1] if i >= 0 else '?'
 
 
+def worst(lines, map_name, prog, dsl, text_start):
+    """Each period's worst frame of the monsters', by function."""
+    current = None
+    found = 0
+    for line in lines:
+        if line.startswith('time:'):
+            current = line.split()[1]
+            continue
+        if not line.startswith('worstpcs:') or (map_name is not None and current != map_name):
+            continue
+        m = re.match(r'worstpcs: monsters (\d+), frame (\d+), (\d+) samples', line)
+        by_function = collections.Counter()
+        for kind, offset in re.findall(r'(itcm|prog|dsl)\+([0-9a-f]+)', line):
+            at = int(offset, 16)
+            table, base = (prog, 0x01000000) if kind == 'itcm' else (prog, text_start) if kind == 'prog' else (dsl, 0)
+            by_function[name_at(table, base + at)] += 1
+        total = int(m.group(3))
+        found += 1
+        print('%s: worst monsters frame %s us (the frame %s us), %d samples' % (current, m.group(1), m.group(2), total))
+        for name, count in by_function.most_common(15):
+            print('  %5.1f%%  %s' % (100.0 * count / max(total, 1), name[:110]))
+    if found == 0:
+        sys.exit('pcsample: no "worstpcs:" lines%s' % (' for ' + map_name if map_name else ''))
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
     if not args:
@@ -48,11 +78,18 @@ def main():
     if '--last' in sys.argv:
         last = int(sys.argv[sys.argv.index('--last') + 1])
         args = [a for a in args if a != str(last)]
+    elf = os.path.join(ROOT, 'build', 'arm9', 'arm9.elf')
+    if '--elf' in sys.argv:
+        elf = sys.argv[sys.argv.index('--elf') + 1]
+        args = [a for a in args if a != elf]
     perf, map_name = args[0], (args[1] if len(args) > 1 else None)
-    prog = symbols(os.path.join(ROOT, 'build', 'arm9', 'arm9.elf'))
+    prog = symbols(elf)
     dsl = symbols(os.path.join(ROOT, 'build', 'hl', 'hl.elf'))
     text_start = next(a for a, n in prog if n == '__text_start') if any(n == '__text_start' for _, n in prog) else 0x02000800
     lines = open(perf).read().splitlines()
+    if '--worst' in sys.argv:
+        worst(lines, map_name, prog, dsl, text_start)
+        return
     chosen = []
     for i, line in enumerate(lines):
         if line.startswith('pcs:') and i > 0 and lines[i - 1].startswith('time:'):

@@ -51,6 +51,16 @@ namespace hlrt::DebugLog::Perf
         volatile std::uint32_t outside = 0;    // samples in none of them
         volatile std::uint32_t idle = 0;       // ... asleep (the threads' sleep: CP15_WaitForInterrupt)
         std::uint32_t idleAt = 0;
+        // The worst frame of the monsters' since the last line: where each of
+        // its samples was (the sampler fills framePcs as the frame goes;
+        // endFrame keeps it, if it was the worst), for "worstpcs:" -- what a
+        // spike is, which the whole period's pieces cannot say. (A frame of
+        // 64 ms at most: past that its samples are not kept.)
+        constexpr std::uint32_t kFramePcs = 256;
+        std::uint32_t framePcs[kFramePcs];
+        volatile std::uint32_t frameSampled = 0;
+        std::uint32_t worstPcs[kFramePcs];
+        std::uint32_t worstCount = 0, worstMonsters = 0, worstFrameTicks = 0;
 
         // (An interrupt handler: no divider, no root -- tools/irq-divider.py.)
         void sample()
@@ -63,6 +73,14 @@ namespace hlrt::DebugLog::Perf
             {
                 idle = idle + 1;
                 return;
+            }
+            {
+                const std::uint32_t n = frameSampled;
+                if (n < kFramePcs)
+                {
+                    framePcs[n] = pc;
+                    frameSampled = n + 1;
+                }
             }
             std::uint32_t piece;
             if (pc - 0x01000000u < 0x8000u)
@@ -84,6 +102,51 @@ namespace hlrt::DebugLog::Perf
             {
                 outside = outside + 1;
             }
+        }
+
+        // Where `pc` is, as the pieces say it: "itcm", "prog" or "dsl" and
+        // its offset; false if in none of them.
+        bool placeOf(std::uint32_t pc, const char *&where, std::uint32_t &offset)
+        {
+            if (pc - 0x01000000u < 0x8000u || pc - 0x01FF8000u < 0x8000u)
+            {
+                where = "itcm";
+                offset = (pc - 0x01000000u < 0x8000u) ? pc - 0x01000000u : pc - 0x01FF8000u;
+            }
+            else if (pc - textStart < textBytes)
+            {
+                where = "prog";
+                offset = pc - textStart;
+            }
+            else if (pc - libraryStart < libraryBytes)
+            {
+                where = "dsl";
+                offset = pc - libraryStart;
+            }
+            else
+            {
+                return false;
+            }
+            return true;
+        }
+
+        std::uint32_t toMicros(std::uint64_t ticks);
+
+        // The worst frame of the monsters': its time and the frame's, and
+        // where each of its samples was.
+        void writeWorst(std::FILE *log)
+        {
+            std::fprintf(log, "worstpcs: monsters %lu, frame %lu, %lu samples",
+                         static_cast<unsigned long>(toMicros(worstMonsters)),
+                         static_cast<unsigned long>(toMicros(worstFrameTicks)), static_cast<unsigned long>(worstCount));
+            for (std::uint32_t i = 0; i < worstCount; ++i)
+            {
+                const char *where;
+                std::uint32_t offset;
+                if (placeOf(worstPcs[i], where, offset))
+                    std::fprintf(log, ", %s+%lx", where, static_cast<unsigned long>(offset));
+            }
+            std::fprintf(log, "\n");
         }
 
         // The busiest pieces since the last line, where each is ("itcm",
@@ -216,6 +279,7 @@ namespace hlrt::DebugLog::Perf
                          static_cast<unsigned long>(keyReads), static_cast<unsigned long>(toMicros(keyLongest)),
                          static_cast<unsigned long>(toMicros(keysInWorstFrame)));
             writePieces(log);
+            writeWorst(log);
             writeSites(log, "divsites", divSites, kDivSites);
             writeSites(log, "rootsites", rootSites, kRootSites);
             std::fclose(log);
@@ -235,6 +299,7 @@ namespace hlrt::DebugLog::Perf
         }
         think.answered = 0;
         think.idleWakes = 0;
+        worstCount = worstMonsters = worstFrameTicks = 0;
         keyReads = keyLongest = keysInWorstFrame = 0;
         for (int i = 0; i < kCount; ++i)
         {
@@ -307,6 +372,21 @@ namespace hlrt::DebugLog::Perf
 
     void endFrame()
     {
+        // (The monsters' worst frame yet: where its samples were, kept.)
+        {
+            const int saved = enterCriticalSection();
+            const std::uint32_t monsters = running[static_cast<int>(Section::Monsters)];
+            if (monsters > worstMonsters)
+            {
+                worstMonsters = monsters;
+                worstFrameTicks = running[static_cast<int>(Section::Frame)];
+                worstCount = frameSampled;
+                for (std::uint32_t i = 0; i < worstCount; ++i)
+                    worstPcs[i] = framePcs[i];
+            }
+            frameSampled = 0;
+            leaveCriticalSection(saved);
+        }
         // (The worst frame yet: what of it was reading keys.)
         if (running[static_cast<int>(Section::Frame)] > worst[static_cast<int>(Section::Frame)])
             keysInWorstFrame = running[static_cast<int>(Section::Keys)];
