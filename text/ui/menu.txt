@@ -22,3 +22,15 @@ Difficulty = Difficulty
 PlayHalfLife = PLAY HALF-LIFE
 PlayUplink = PLAY UPLINK
 Cancel = CANCEL
+
+# The pause menu's title, and NEW GAME's (asked from the title or the pause).
+Paused = PAUSED
+NewGameTitle = NEW GAME
+# An expansion's row for its own game (a DSi's).
+PlayGame = PLAY %s
+# Why a row can do nothing (NEW GAME's games, the pause's COMMAND).
+NoGame = The game is not on the card
+NoHazard = The Hazard Course is not on the card
+NoUplink = Uplink is not on the card
+CommandChild = Not on a console sent the game
+CommandTitle = The console is for a game being played

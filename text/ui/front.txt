@@ -27,3 +27,29 @@ Stop = STOP
 LeftHand = LEFT HAND
 RightHand = RIGHT HAND
 LookAgain = LOOK AGAIN
+
+# The pages' titles.
+Heading = HALF-LIFE
+TitleChooseGame = CHOOSE GAME
+TitleMultiplayer = MULTIPLAYER
+TitleHand = WHICH HAND?
+# Why a row can do nothing.
+NoSave = No saved game to go on with
+NoMpMap = No multiplayer map on the card
+NoDemoMaps = No demo's maps are on the card
+NoHazardMaps = The Hazard Course's maps are not on the card
+NoUplinkMaps = Uplink's maps are not on the card
+# JOIN: what it is doing, and why a game found cannot be joined.
+Joining = Joining...
+Looking = Looking for games...
+ChildDsi = DSi mode, 16 MB
+ChildDs = DS mode
+OtherVersion = Another version of the game: it cannot be joined from this one
+Full = Full
+OnlyWithGame = It lets in only consoles with the game
+# MULTIPLAYER, when HOST or JOIN fails.
+NoWireless = The wireless would not start (%d)
+# The title's last line: the version, what is in the GBA slot, whose data.
+SlotExpansion =  + Expansion Pak
+SlotRumble =  + Rumble Pak
+VersionData = %s%s, card data %s

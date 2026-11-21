@@ -1,6 +1,6 @@
-# HOST's NEXT MAP, the lobby's CHAT and microphone, and SEND THE GAME: what
-# only the full game has, not the Download Play child (source/ui/Menu.cpp).
-# Before play only.
+# What only the full game's multiplayer has, not the Download Play child:
+# HOST's NEXT MAP, the lobby's CHAT and microphone, SEND THE GAME, ONLINE and
+# the demos (source/ui/Menu.cpp). Before play only.
 @home resident
 
 # NEXT MAP's rows.
@@ -69,3 +69,35 @@ SendSending = Sending the game: %d%%. %s
 SendStarting = Starting the game on them. They join this one by themselves.
 SendFailed = It could not be sent. CANCEL, and try again.
 SendHowTo = On the other consoles, open DS Download Play and choose HALF-LIFE DS. (A console needs FlashMe, or a Download Play that does not check signatures.)
+
+# The pages' titles.
+TitleSendDemo = SEND DEMO
+TitleOnline = ONLINE
+TitleConnecting = CONNECTING
+TitleServing = SERVING THE DEMO
+# JOIN, online.
+AskingHost = Asking the host...
+# ONLINE, under its rows.
+OnlineRelay = Through the relay in server.ini,
+OnlineWifi = on the console's saved Wi-Fi.
+# SEND DEMO, under its rows.
+DemoNoData = Other consoles need no data.
+DemoDsiOnly = They must be a DSi or 3DS, in DSi mode.
+# SERVING THE DEMO, before any has come.
+ServeWaiting = Waiting for consoles. Stay near them.
+# Why a row can do nothing, or why it did not.
+LocalBlocked = Restart the game for the local wireless
+NoGameToSend = This program has no game to send
+DemoHasGame = A demo is for a console without the game
+NoWirelessAgain = The wireless would not start again.
+NoWirelessDemo = The wireless would not start
+NoNextMap = No map could come next: choose one.
+NextDoesNotFit = The next map does not fit a console here.
+# What the other consoles' DS Download Play shows of what is sent.
+SendDemoAbout = %s demo: DSi or 3DS
+SendUplink = Uplink
+SendHazard = Hazard Course
+SendMatchAbout = %s on %s
+SendTeamplay = Teamplay
+SendDeathmatch = Deathmatch
+SendHostMap = the host's map
