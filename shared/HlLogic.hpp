@@ -2817,7 +2817,8 @@ namespace hldata
             // At rest on a floor with nobody at it, there is nothing to work
             // out: the floor is looked at again only twice a second (it may
             // be something that breaks). state.speed counts down to that.
-            if (state.bits == 1 && v[0] == 0 && v[1] == 0 && v[2] == 0 &&
+            // The same for one wedged where it is (3, below).
+            if ((state.bits == 1 || state.bits == 3) && v[0] == 0 && v[1] == 0 && v[2] == 0 &&
                 player.touchedMover != brush)
             {
                 state.speed -= ms;
@@ -2879,8 +2880,14 @@ namespace hldata
             const fx under[3] = {middle[0], middle[1], middle[2] - fxFromInt(2)};
             const fx above[3] = {middle[0], middle[1], middle[2] + fxFromInt(8)};
             Trace floor = boxTrace(w, brush, crouched, above, under, true);
-            if (floor.startSolid)
-                floor = trace(middle, under); // no room above it to look from
+            // (No room above it to look from -- or something upright stops the
+            // look where it starts: another box it is set against, as two of
+            // c1a3a's are, 2 units into each other. Then from where it is.
+            // Found there, it rests, as the game's does; not found, it would
+            // fall every frame onto the floor it stands on, never at rest and
+            // traced in full each time.)
+            if (floor.startSolid || (floor.fraction == 0 && floor.normal[2] < kFloorNormalZ))
+                floor = trace(middle, under);
             // (On it, not over it: one with floor a little way under it falls
             // to it -- as one does, picked up a unit when it is spawned.)
             bool resting = !floor.startSolid && floor.fraction < kFractionOne &&
@@ -2905,8 +2912,9 @@ namespace hldata
                 resting = byCorner;
             }
             // (1: at rest on the world, which stays where it is; 2: on
-            // something that may move, which has to be watched. On by a
-            // corner, the world's: the probe found no floor to be raised to.)
+            // something that may move, which has to be watched; 3, set by the
+            // move below: wedged in the world, nowhere to go. On by a corner,
+            // the world's: the probe found no floor to be raised to.)
             state.bits = resting ? (!byCorner && floor.mover >= 0 ? 2 : 1) : 0;
             bool raised = false;
             if (resting)
@@ -2972,6 +2980,18 @@ namespace hldata
                 const Trace tr = trace(at, to);
                 if (tr.startSolid || tr.allSolid)
                 {
+                    // Wedged where the map put it -- a little into the
+                    // world's floor or a wall, as some of the game's are --
+                    // and only falling, nobody pushing: it stays, as it
+                    // would, but is looked at again twice a second, as one
+                    // at rest is, not every frame for nothing (each look, a
+                    // box's corners traced: dozens of traces). A touch or a
+                    // shove looks at once.
+                    if (!resting && v[0] == 0 && v[1] == 0 && bump == 0)
+                    {
+                        state.bits = 3;
+                        state.speed = 500;
+                    }
                     v[0] = v[1] = v[2] = 0;
                     break;
                 }
