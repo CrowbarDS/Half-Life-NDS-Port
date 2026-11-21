@@ -518,6 +518,29 @@ static void testClipTime()
     clip.flags = 0;
     frame = advanceClip(clip, 15u << 8, 1500, finished);
     check(frame == (30u << 8) && finished, "one that does not stops on its last frame, finished");
+
+    // Frames of 16 and 17 ms, its remainder carried: a grunt's kick
+    // (35 frames a second) comes to 896/256 of a frame each tenth of a
+    // second, exactly -- each think's window of events starts where the last
+    // one ended, none given twice -- and to its whole fps in a second.
+    ModelClip kick{};
+    kick.frameCount = 64; // (long enough not to end within the second)
+    kick.fps = 35 << 8;
+    std::uint32_t at = 0, truncated = 0;
+    std::uint16_t rest = 0;
+    bool exact = true;
+    const int steps[6] = {16, 17, 17, 16, 17, 17}; // (a think at 60 frames a second)
+    for (int think = 1; think <= 10; ++think)
+    {
+        for (int ms : steps)
+        {
+            at = advanceClip(kick, at, ms, finished, &rest);
+            truncated = advanceClip(kick, truncated, ms, finished);
+        }
+        exact = exact && at == static_cast<std::uint32_t>(think) * 896u;
+    }
+    check(exact && at == kick.fps, "a tenth of a second's frames, its remainder kept, are a tenth of its fps");
+    check(truncated < at, "(and without the remainder it falls behind)");
 }
 
 int main()

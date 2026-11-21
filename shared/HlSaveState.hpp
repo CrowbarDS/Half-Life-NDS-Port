@@ -51,7 +51,7 @@ namespace hldata
     HL_FIELDS(Hull, 4);
     HL_FIELDS(MoverHull, 11);
     HL_FIELDS(LadderVolume, 3);
-    HL_FIELDS(ActorState, 71);
+    HL_FIELDS(ActorState, 72);
     HL_FIELDS(Projectile, 6);
     HL_FIELDS(Effect, 8);
     HL_FIELDS(Gib, 10);

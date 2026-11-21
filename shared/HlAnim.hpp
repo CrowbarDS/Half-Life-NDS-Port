@@ -512,8 +512,14 @@ namespace hldata
 
     /// How far into a clip `ms` more milliseconds takes `frame` (Q8). A clip
     /// that loops goes round; one that does not stops on its last frame, and
-    /// `finished` says so.
-    inline std::uint32_t advanceClip(const ModelClip &clip, std::uint32_t frame, int ms, bool &finished)
+    /// `finished` says so. `rest`, if given, carries what is left below a Q8
+    /// frame (thousandths) from one call to the next: frames of 16 and 17 ms
+    /// then come to exactly a tenth of a second's worth a think, and a think's
+    /// window of the clip's events starts where the last one ended
+    /// (aiAnimEventsAhead) -- not 2/256 of a frame back, where an event could
+    /// be given twice.
+    inline std::uint32_t advanceClip(const ModelClip &clip, std::uint32_t frame, int ms, bool &finished,
+                                     std::uint16_t *rest = nullptr)
     {
         finished = false;
         const std::uint32_t end = (clip.frameCount - 1u) << 8;
@@ -521,8 +527,20 @@ namespace hldata
         // (Up to 65535 ms the product fits 32 bits, where a divide by a
         // constant is a multiply; beyond, it takes the divider.)
         const std::uint32_t msU = static_cast<std::uint32_t>(ms);
-        std::uint64_t next = frame + (msU <= 0xFFFFu ? (clip.fps * msU) / 1000u
-                                                     : (static_cast<std::uint64_t>(clip.fps) * msU) / 1000);
+        std::uint64_t next;
+        if (msU <= 0xFFFFu)
+        {
+            const std::uint32_t total = clip.fps * msU + (rest != nullptr ? *rest : 0u);
+            next = frame + total / 1000u;
+            if (rest != nullptr)
+                *rest = static_cast<std::uint16_t>(total % 1000u);
+        }
+        else
+        {
+            next = frame + (static_cast<std::uint64_t>(clip.fps) * msU) / 1000;
+            if (rest != nullptr)
+                *rest = 0;
+        }
         if (end == 0)
         {
             finished = !(clip.flags & kClipLoops);

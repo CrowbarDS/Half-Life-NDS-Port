@@ -1920,7 +1920,17 @@ whole degrees cut toward zero (`fxVecToYawTurns`); and a clip's events --
 a bite, a leap -- are given at the think, for the tenth of a second of the
 clip ahead (the game's DispatchAnimEvents), with whether the clip ends in
 it, not as its frames pass. (A kind that thinks its own way still gives
-them as they pass.) A monster in the air (a leap, a hop) falls as the
+them as they pass.) The clip's frames go by the milliseconds exactly, what
+is left below a Q8 frame carried from one to the next (`advanceClip`'s
+`rest`, `ActorState::frameRest`), so each think's tenth starts where the
+last ended and no event is given twice. An event right on the line between
+two tenths still falls either side of it by a hair: a grunt's kick (frame
+14 of a 35-frames-a-second clip, 3.5 frames a tenth) is one of them. The
+game's float clock puts it in the earlier tenth until its time passes 32
+seconds and in the later one after; the port, on the console's vblank
+(59.83 a second, a hair over a tenth every six frames), in the earlier.
+Its kicks are on the game's frames in a map's first half minute and a
+think early after it. A monster in the air (a leap, a hop) falls as the
 engine's step monsters do: gravity, then the move, sliding along what it
 meets (SV_FlyMove), and on landing it goes on, slowing to a stop, rather
 than stopping dead -- a headcrab's leap lands where the game's does.
