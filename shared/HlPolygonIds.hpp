@@ -5,7 +5,7 @@
 // same ID: two things drawn one over the other must have different ones, and
 // one thing's own faces the same one -- a glass box's back does not darken
 // its front. The world, the effects and the models all take theirs from here
-// (the head-up display is sprites: it has none). 57..61 and 63 are free.
+// (the head-up display is sprites: it has none). 63 is free.
 
 namespace hldata
 {
@@ -20,10 +20,11 @@ namespace hldata
     /// See-through monsters (a hologram), round and round.
     inline constexpr int kIdGlassFirst = 53;
     inline constexpr int kIdGlassCount = 4; ///< 53..56
-    /// Marks on the walls, round and round by their place, so that two that
-    /// overlap blend (the hardware does not blend two polygons of one ID).
+    /// Marks on the walls: each one none of those it overlaps has, so that
+    /// two that overlap blend (the hardware does not blend two polygons of
+    /// one ID). Chosen once, as its shape is made (EffectDraw).
     inline constexpr int kIdMarksFirst = 57;
-    inline constexpr int kIdMarksCount = 3; ///< 57..59
+    inline constexpr int kIdMarksCount = 5; ///< 57..61
     inline constexpr int kIdLamp = 62;     ///< the lamp's light on the world
 
     static_assert(kIdSeeThroughFirst + kIdSeeThroughCount <= kIdFadeFirst);

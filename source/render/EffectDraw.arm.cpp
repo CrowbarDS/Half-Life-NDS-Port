@@ -466,6 +466,7 @@ namespace hlrt
             std::int16_t brush;      ///< ... on which (its brush + 1; 0 the world)
             std::uint8_t half;       ///< 0: not made
             std::uint8_t picture, turn;
+            std::uint8_t id;         ///< its polygon ID
             std::int16_t leaf;       ///< a world mark's leaf + 1 (0: look each pass)
             std::int16_t corner[4][3];
         };
@@ -489,10 +490,49 @@ namespace hlrt
                    shape.at[2] == static_cast<std::int16_t>(decal.at[2] >> 10);
         }
 
+        /// A polygon ID for the mark in `slot` that none of the marks it
+        /// overlaps has (of those whose shapes are made): on the same thing,
+        /// facing about the same way, their middles nearer than their sizes
+        /// together. (Five to choose from: more than five one on another,
+        /// and two of them share one.)
+        std::uint8_t shapeId(const ActorWorld &a, int slot)
+        {
+            const Decal &decal = a.decals[slot];
+            unsigned used = 0;
+            for (int j = 0; j < kMaxDecals; ++j)
+            {
+                const Decal &other = a.decals[j];
+                const MarkShape *its = j != slot && other.active ? shapeOf(j) : nullptr;
+                if (its == nullptr || its->half == 0 || other.brush != decal.brush)
+                    continue;
+                const std::int64_t facing = static_cast<std::int64_t>(other.normal[0]) * decal.normal[0] +
+                                            static_cast<std::int64_t>(other.normal[1]) * decal.normal[1] +
+                                            static_cast<std::int64_t>(other.normal[2]) * decal.normal[2];
+                if (facing < (static_cast<std::int64_t>(kFxOne) * kFxOne * 9) / 10)
+                    continue;
+                const std::int32_t reach = decal.half + other.half;
+                bool apart = false;
+                for (int k = 0; k < 3 && !apart; ++k)
+                {
+                    const std::int32_t gap = fxToInt(other.at[k] - decal.at[k]);
+                    apart = gap > reach || gap < -reach;
+                }
+                if (!apart)
+                    used |= 1u << (its->id - kIdMarksFirst);
+            }
+            for (int id = 0; id < kIdMarksCount; ++id)
+            {
+                if (!(used & (1u << id)))
+                    return static_cast<std::uint8_t>(kIdMarksFirst + id);
+            }
+            return static_cast<std::uint8_t>(kIdMarksFirst + slot % kIdMarksCount);
+        }
+
         /// Make `decal`'s shape (a sign: of `sign`, its sprite). False if it
         /// has none (a normal that is no direction).
-        bool shapeMake(MarkShape &shape, const Decal &decal, const SpriteRef *sign)
+        bool shapeMake(MarkShape &shape, const ActorWorld &a, int slot, const SpriteRef *sign)
         {
+            const Decal &decal = a.decals[slot];
             shape.half = 0;
             const fx *n = decal.normal;
             std::int32_t u[3], v[3];
@@ -558,6 +598,7 @@ namespace hlrt
             shape.picture = decal.picture;
             shape.turn = decal.turn;
             shape.half = decal.half;
+            shape.id = shapeId(a, slot);
             return true;
         }
     } // namespace
@@ -1073,7 +1114,7 @@ namespace hlrt
             if (!shapeIs(*shape, decal))
             {
                 const SpriteRef *sign = decal.picture == kDecalSign ? spriteCache.ref(decal.colour) : nullptr;
-                if ((decal.picture == kDecalSign && sign == nullptr) || !shapeMake(*shape, decal, sign))
+                if ((decal.picture == kDecalSign && sign == nullptr) || !shapeMake(*shape, a, i, sign))
                     continue;
             }
             const std::int16_t centre[3] = {static_cast<std::int16_t>(fxToInt(at[0] + decal.normal[0] * 2)),
@@ -1153,7 +1194,7 @@ namespace hlrt
                 pull = (2 * tangent + 4096) / 128;
                 pull = pull < 16 ? 16 : (pull > 2048 ? 2048 : pull);
             }
-            NEA_PolyFormat(alpha, kIdMarksFirst + slot % kIdMarksCount, static_cast<NEA_LightEnum>(0), NEA_CULL_NONE,
+            NEA_PolyFormat(alpha, shape.id, static_cast<NEA_LightEnum>(0), NEA_CULL_NONE,
                            static_cast<NEA_OtherFormatEnum>(static_cast<int>(worldDraw.polygonMode()) |
                                                             (pull == 0 ? kDepthEqual : 0)));
             // The picture's corners in its texture: a sign's its sprite's
