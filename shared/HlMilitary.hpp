@@ -70,7 +70,7 @@ namespace hldata
             return false;
         }
         const fx from[3] = {grunt.pos[0], grunt.pos[1], grunt.pos[2] + kStandingFeet};
-        const fx to[3] = {from[0], from[1], from[2] + static_cast<fx>((static_cast<std::int64_t>(grunt.velocity[2]) * ms) / 1000)};
+        const fx to[3] = {from[0], from[1], from[2] + fxTimesMs(grunt.velocity[2], ms)};
         const Trace t = detail::walkerTrace(world, &a, i, false, from, to);
         if (!t.startSolid)
             grunt.pos[2] = t.endPos[2] - kStandingFeet;
@@ -448,10 +448,10 @@ namespace hldata
                 if (!c.me.active)
                     return;
                 const fx g = gravityOf(c.player) * 3 / 10;
-                c.me.velocity[2] -= static_cast<fx>((static_cast<std::int64_t>(g) * ms) / 1000);
+                c.me.velocity[2] -= fxTimesMs(g, ms);
                 fx to[3];
                 for (int k = 0; k < 3; ++k)
-                    to[k] = c.me.pos[k] + static_cast<fx>((static_cast<std::int64_t>(c.me.velocity[k]) * ms) / 1000);
+                    to[k] = c.me.pos[k] + fxTimesMs(c.me.velocity[k], ms);
                 const Shot shot = traceShot(*c.w.world, c.me.pos, to);
                 for (int k = 0; k < 3; ++k)
                     c.me.pos[k] += static_cast<fx>((static_cast<std::int64_t>(to[k] - c.me.pos[k]) * shot.fraction) >> kFractionShift);
@@ -1424,18 +1424,18 @@ namespace hldata
             fx *av = c.m.vec1;
             if (c.m.flag2)
             {
-                c.me.velocity[2] -= static_cast<fx>((static_cast<std::int64_t>(gravityOf(c.player) * 3 / 10) * ms) / 1000);
+                c.me.velocity[2] -= fxTimesMs(gravityOf(c.player) * 3 / 10, ms);
                 for (int k = 0; k < 3; ++k)
                     av[k] += static_cast<fx>((static_cast<std::int64_t>(av[k]) * 2 * ms) / 10000); // (1.02 a tenth)
             }
-            c.me.wantPitch = static_cast<std::uint16_t>(c.me.wantPitch + turnsOf(static_cast<fx>((static_cast<std::int64_t>(av[0]) * ms) / 1000)));
-            c.me.yaw = static_cast<std::uint16_t>(c.me.yaw + turnsOf(static_cast<fx>((static_cast<std::int64_t>(av[1]) * ms) / 1000)));
+            c.me.wantPitch = static_cast<std::uint16_t>(c.me.wantPitch + turnsOf(fxTimesMs(av[0], ms)));
+            c.me.yaw = static_cast<std::uint16_t>(c.me.yaw + turnsOf(fxTimesMs(av[1], ms)));
             c.m.turning = false; // (its own turn: none of ChangeYaw's under way)
-            c.me.wantYaw = static_cast<std::uint16_t>(c.me.wantYaw + turnsOf(static_cast<fx>((static_cast<std::int64_t>(av[2]) * ms) / 1000)));
+            c.me.wantYaw = static_cast<std::uint16_t>(c.me.wantYaw + turnsOf(fxTimesMs(av[2], ms)));
             c.m.idealYaw = c.me.yaw;
             fx to[3];
             for (int k = 0; k < 3; ++k)
-                to[k] = c.me.pos[k] + static_cast<fx>((static_cast<std::int64_t>(c.me.velocity[k]) * ms) / 1000);
+                to[k] = c.me.pos[k] + fxTimesMs(c.me.velocity[k], ms);
             fx at[3], normal[3];
             const bool met = traceShotWall(*c.w.world, c.me.pos, to, at, normal);
             if (!met)

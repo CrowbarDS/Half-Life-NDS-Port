@@ -169,7 +169,7 @@ namespace hldata
                 piece.velocity[2] = -fxFromInt(120);
             fx to[3];
             for (int i = 0; i < 3; ++i)
-                to[i] = piece.pos[i] + static_cast<fx>((static_cast<std::int64_t>(piece.velocity[i]) * ms) / 1000);
+                to[i] = piece.pos[i] + fxTimesMs(piece.velocity[i], ms);
             // (Specks are too many and too brief to be worth a line each.)
             if (piece.kind == kPieceSpeck)
             {
@@ -1108,7 +1108,7 @@ namespace hldata
             *idealYaw = fxVecToYawTurns(d[1], d[0]); // (MakeIdealYaw's whole degrees)
         else
             detail::faceTo(actor, d[0], d[1], ms, 65536); // a turn a second
-        fx step = static_cast<fx>((static_cast<std::int64_t>(speed) * ms) / 1000);
+        fx step = fxTimesMs(speed, ms);
         if (step > distance)
             step = distance;
         const fx dx = static_cast<fx>((static_cast<std::int64_t>(d[0]) * step) / distance);

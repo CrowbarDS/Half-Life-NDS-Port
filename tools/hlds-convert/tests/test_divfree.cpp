@@ -336,6 +336,58 @@ namespace
         check(mismatch == 0, "boxTrace's box against another answers as it did");
         check(met > 100000 && inside > 1000, "... over moves that meet it, from outside and from in it");
     }
+    /// fxTimesMs against the 64-bit sum it took the place of.
+    void testTimesMs()
+    {
+        auto before = [](std::int32_t v, int ms) { return static_cast<fx>((static_cast<std::int64_t>(v) * ms) / 1000); };
+        long mismatch = 0, wide = 0;
+        // (The edges: a product just inside 32 bits and just outside, either
+        // sign; a time step of nothing, of one, of a long frame, negative.)
+        const int steps[] = {0, 1, -1, 16, 17, 33, 34, 100, 250, 1000, 65535, -1000, 2147483647, -2147483647 - 1};
+        const std::int32_t values[] = {0, 1, -1, 999, -999, 1000, -1000, 4096, -4096, 2147483647, -2147483647 - 1,
+                                       1073741824, -1073741824, 2147483, -2147483, 2147484, -2147484};
+        for (int ms : steps)
+        {
+            for (std::int32_t v : values)
+            {
+                mismatch += fxTimesMs(v, ms) != before(v, ms);
+                // (Right at the edge of 32 bits: v near INT32_MAX / ms.)
+                if (ms != 0)
+                {
+                    const std::int32_t edge = static_cast<std::int32_t>(2147483647 / (ms < 0 ? -static_cast<std::int64_t>(ms) : ms));
+                    for (std::int32_t d = -2; d <= 2; ++d)
+                    {
+                        const std::int64_t near = static_cast<std::int64_t>(edge) + d;
+                        if (near > 2147483647 || near < -2147483647 - 1)
+                            continue;
+                        mismatch += fxTimesMs(static_cast<std::int32_t>(near), ms) != before(static_cast<std::int32_t>(near), ms);
+                        mismatch += fxTimesMs(static_cast<std::int32_t>(-near), ms) != before(static_cast<std::int32_t>(-near), ms);
+                    }
+                }
+            }
+        }
+        std::mt19937 rng(1000);
+        for (long n = 0; n < 20000000; ++n)
+        {
+            const std::int32_t v = static_cast<std::int32_t>(rng());
+            const int ms = n % 4 == 0 ? static_cast<int>(rng()) : static_cast<int>(rng() % 200u) - 20;
+            const std::int64_t product = static_cast<std::int64_t>(v) * ms;
+            wide += product > 2147483647 || product < -2147483647 - 1;
+            mismatch += fxTimesMs(v, ms) != before(v, ms);
+        }
+        // (What the callers give it besides: 16-bit numbers, unsigned.)
+        for (int v = -32768; v <= 65535; v += 7)
+        {
+            const auto small = static_cast<std::int16_t>(v);
+            const auto unsignedSmall = static_cast<std::uint16_t>(v);
+            mismatch += fxTimesMs(small, 33) != before(small, 33);
+            mismatch += fxTimesMs(unsignedSmall, 33) != before(unsignedSmall, 33);
+        }
+        std::printf("test_divfree: fxTimesMs, 20000000 random (%ld past 32 bits) and the edges, %ld differ\n", wide,
+                    mismatch);
+        check(mismatch == 0, "fxTimesMs is v * ms / 1000 as the 64-bit sum gave it");
+        check(wide > 1000000, "... with products past 32 bits as well as within");
+    }
 } // namespace
 
 int main()
@@ -343,6 +395,7 @@ int main()
     testSlabs();
     testTraceBoxes();
     testBoxMeetsBox();
+    testTimesMs();
     std::printf("test_divfree: %s\n", failures == 0 ? "all passed" : "FAILED");
     return failures == 0 ? 0 : 1;
 }

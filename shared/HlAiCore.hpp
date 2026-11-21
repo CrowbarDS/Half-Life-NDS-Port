@@ -3414,7 +3414,7 @@ namespace hldata
     {
         const bool small = monsterHull(c.me.kind) == kWalkCrouched;
         const fx feet = small ? kCrouchedFeet : kStandingFeet;
-        c.me.velocity[2] -= static_cast<fx>((static_cast<std::int64_t>(gravityOf(c.player)) * ms) / 1000);
+        c.me.velocity[2] -= fxTimesMs(gravityOf(c.player), ms);
         const fx was[3] = {c.me.pos[0], c.me.pos[1], c.me.pos[2]};
         Trace onHead;
         const int met = aiFlyMove(c, small, feet, ms, onHead);

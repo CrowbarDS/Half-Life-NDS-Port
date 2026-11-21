@@ -638,6 +638,11 @@ Milestone 11, "levels of detail".
   to its old self; the diag replays are unchanged), and c1a3a's fight down
   to 166 divides a frame. Only the end of a move may lie on a face: one
   that starts on it is met at once, at a corner.
+  How far a speed goes in a frame (`v * ms / 1000`, some forty places:
+  what is thrown, gibs, things that fly) is `fxTimesMs`: in 32 bits where
+  the product fits, as it nearly always does, else as before -- the same
+  answer, and one copy out of line (inline it was more code than the
+  divide's call).
   A 64-bit divide by a constant whose numerator fits 32 bits is done in 32
   bits, where the compiler makes it a multiply (the fine sines had eight
   trips to the divider each). Products of two 16-bit values -- a bone's

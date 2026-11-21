@@ -117,6 +117,29 @@ namespace hldata
     /// Rounds towards minus infinity, like the shift it is.
     constexpr int fxToInt(fx value) { return value >> kFxShift; }
 
+    /// How far `perSecond` goes in `ms` milliseconds: perSecond * ms / 1000,
+    /// as the 64-bit sum gives it, rounded towards zero. Where the product
+    /// fits 32 bits (nearly always: a speed of a few thousand units a second
+    /// over a frame) it is divided in 32 bits, which the compiler makes a
+    /// multiply, not a trip to the divider; else in 64. The same answer
+    /// either way (test_divfree). One copy, out of line: inline at each of
+    /// its forty-odd places it cost the program more than the divide's call.
+    HL_WARM __attribute__((noinline)) constexpr fx fxTimesMs32(std::int32_t perSecond, int ms)
+    {
+        const std::int64_t product = static_cast<std::int64_t>(perSecond) * ms;
+        if (product >= INT32_MIN && product <= INT32_MAX)
+            return static_cast<fx>(static_cast<std::int32_t>(product) / 1000);
+        return static_cast<fx>(product / 1000);
+    }
+    /// ... for any whole number that a 32-bit signed one holds as it is:
+    /// nothing wider, and no unsigned 32-bit one, which would not.
+    template <class T> constexpr fx fxTimesMs(T perSecond, int ms)
+    {
+        static_assert(std::is_integral_v<T> && (sizeof(T) < 4 || (sizeof(T) == 4 && std::is_signed_v<T>)),
+                      "fxTimesMs: a number a 32-bit signed one holds");
+        return fxTimesMs32(static_cast<std::int32_t>(perSecond), ms);
+    }
+
     /// Q12 * Q12 -> Q12, through 64 bits.
     constexpr fx fxMul(fx a, fx b)
     {

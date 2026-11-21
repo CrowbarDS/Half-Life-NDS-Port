@@ -146,7 +146,7 @@ namespace hldata
                     move(c, ms - done > 100 ? 100 : ms - done);
                 return;
             }
-            fx step = static_cast<fx>((static_cast<std::int64_t>(speed) * ms) / 1000);
+            fx step = fxTimesMs(speed, ms);
             const bool arrives = far <= step;
             if (arrives)
                 step = far;
@@ -974,7 +974,7 @@ namespace hldata
                                                 static_cast<std::int64_t>(want[k]) * (1024 - keep)) >> 10);
         fx step[3], from[3], to[3];
         for (int k = 0; k < 3; ++k)
-            step[k] = static_cast<fx>((static_cast<std::int64_t>(c.me.velocity[k]) * ms) / 1000);
+            step[k] = fxTimesMs(c.me.velocity[k], ms);
         if ((step[0] | step[1] | step[2]) == 0)
             return;
         for (int k = 0; k < 3; ++k)
@@ -2617,7 +2617,7 @@ namespace hldata
                 }
             }
             for (int k = 0; k < 3; ++k)
-                to[k] = c.me.pos[k] + static_cast<fx>((static_cast<std::int64_t>(c.me.velocity[k]) * ms) / 1000);
+                to[k] = c.me.pos[k] + fxTimesMs(c.me.velocity[k], ms);
             // (The player is in its way, as a box is in the game's: it stops
             // against them -- and has touched them.)
             bool blocked = false;
@@ -4121,7 +4121,7 @@ namespace hldata
                 }
                 fx to[3];
                 for (int k = 0; k < 3; ++k)
-                    to[k] = shot.pos[k] + static_cast<fx>((static_cast<std::int64_t>(shot.velocity[k]) * ms) / 1000);
+                    to[k] = shot.pos[k] + fxTimesMs(shot.velocity[k], ms);
                 const Shot wall = traceShot(*c.w.world, shot.pos, to);
                 if (wall.fraction < kFractionOne || shot.leftMs <= 0)
                 {
@@ -4452,7 +4452,7 @@ namespace hldata
             if (c.m.flag3)
             {
                 for (int k = 0; k < 3; ++k)
-                    c.me.pos[k] += static_cast<fx>((static_cast<std::int64_t>(c.me.velocity[k]) * ms) / 1000);
+                    c.me.pos[k] += fxTimesMs(c.me.velocity[k], ms);
                 c.me.yaw = static_cast<std::uint16_t>(
                     c.me.yaw + static_cast<std::int32_t>((static_cast<std::int64_t>(c.m.vec1[1]) * 65536 * ms) / (360LL * kFxOne * 1000)));
                 c.m.turning = false; // (its own turn: none of ChangeYaw's under way)
@@ -4816,10 +4816,10 @@ namespace hldata
             if (!c.m.flag2 && c.me.ai < kAiDying)
                 return;
             if (c.me.ai >= kAiDying)
-                c.me.velocity[2] -= static_cast<fx>((static_cast<std::int64_t>(gravityOf(c.player)) * ms) / 1000);
+                c.me.velocity[2] -= fxTimesMs(gravityOf(c.player), ms);
             fx to[3];
             for (int k = 0; k < 3; ++k)
-                to[k] = c.me.pos[k] + static_cast<fx>((static_cast<std::int64_t>(c.me.velocity[k]) * ms) / 1000);
+                to[k] = c.me.pos[k] + fxTimesMs(c.me.velocity[k], ms);
             const Shot wall = traceShot(*c.w.world, c.me.pos, to);
             if (wall.fraction >= kFractionOne)
             {

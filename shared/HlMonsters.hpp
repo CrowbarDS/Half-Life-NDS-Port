@@ -1633,10 +1633,10 @@ namespace hldata
         {
             ActorWorld &a = *w.actors;
             shot.leftMs -= ms;
-            shot.velocity[2] -= static_cast<fx>((static_cast<std::int64_t>(gravityOf(player)) * ms) / 1000);
+            shot.velocity[2] -= fxTimesMs(gravityOf(player), ms);
             fx to[3];
             for (int i = 0; i < 3; ++i)
-                to[i] = shot.pos[i] + static_cast<fx>((static_cast<std::int64_t>(shot.velocity[i]) * ms) / 1000);
+                to[i] = shot.pos[i] + fxTimesMs(shot.velocity[i], ms);
             const Shot line = traceShot(*w.world, shot.pos, to);
             std::int64_t reach = line.fraction;
             bool met = line.fraction < kFractionOne;
@@ -1837,10 +1837,10 @@ namespace hldata
                 }
                 if (gib.resting)
                     continue;
-                gib.velocity[2] -= static_cast<fx>((static_cast<std::int64_t>(gravityOf(player)) * ms) / 1000);
+                gib.velocity[2] -= fxTimesMs(gravityOf(player), ms);
                 fx to[3];
                 for (int i = 0; i < 3; ++i)
-                    to[i] = gib.pos[i] + static_cast<fx>((static_cast<std::int64_t>(gib.velocity[i]) * ms) / 1000);
+                    to[i] = gib.pos[i] + fxTimesMs(gib.velocity[i], ms);
                 gib.yaw = static_cast<std::uint16_t>(gib.yaw + gib.spin * ms);
                 gib.pitch = static_cast<std::uint16_t>(gib.pitch + (gib.spin / 2) * ms);
                 const Trace t = traceAll(*w.world, true, gib.pos, to);
@@ -1916,7 +1916,7 @@ namespace hldata
                     }
                     fx to[3];
                     for (int i = 0; i < 3; ++i)
-                        to[i] = shot.pos[i] + static_cast<fx>((static_cast<std::int64_t>(shot.velocity[i]) * ms) / 1000);
+                        to[i] = shot.pos[i] + fxTimesMs(shot.velocity[i], ms);
                     const Shot line = traceShot(*w.world, shot.pos, to);
                     std::int64_t reach = line.fraction;
                     int struck = -1;
@@ -2116,10 +2116,10 @@ namespace hldata
                     shot.sprite = static_cast<std::uint16_t>(snarkBites(shot) | (wait << 8));
                     // It falls at half the world's pull, and where it lands it
                     // hops at what it is after.
-                    shot.velocity[2] -= static_cast<fx>((static_cast<std::int64_t>(gravityOf(player) / 2) * ms) / 1000);
+                    shot.velocity[2] -= fxTimesMs(gravityOf(player) / 2, ms);
                     fx to[3];
                     for (int i = 0; i < 3; ++i)
-                        to[i] = shot.pos[i] + static_cast<fx>((static_cast<std::int64_t>(shot.velocity[i]) * ms) / 1000);
+                        to[i] = shot.pos[i] + fxTimesMs(shot.velocity[i], ms);
                     // (A monstermaker's goes as the game's does: a few units
                     // across, a point -- out of the vents a person's box never
                     // fits; the player's, as a crouching person's box.)
@@ -2198,7 +2198,7 @@ namespace hldata
                     {
                         if (shot.sprite == 0)
                         {
-                            shot.velocity[2] -= static_cast<fx>((static_cast<std::int64_t>(gravityOf(player) / 2) * ms) / 1000);
+                            shot.velocity[2] -= fxTimesMs(gravityOf(player) / 2, ms);
                             if (shot.leftMs <= 30000 - 400)
                             {
                                 shot.sprite = 1;
@@ -2267,7 +2267,7 @@ namespace hldata
                     }
                     fx to[3];
                     for (int i = 0; i < 3; ++i)
-                        to[i] = shot.pos[i] + static_cast<fx>((static_cast<std::int64_t>(shot.velocity[i]) * ms) / 1000);
+                        to[i] = shot.pos[i] + fxTimesMs(shot.velocity[i], ms);
                     const Shot line = traceShot(*w.world, shot.pos, to);
                     std::int64_t reach = line.fraction;
                     int struck = -1;
@@ -2422,7 +2422,7 @@ namespace hldata
                     }
                     fx to[3];
                     for (int i = 0; i < 3; ++i)
-                        to[i] = shot.pos[i] + static_cast<fx>((static_cast<std::int64_t>(shot.velocity[i]) * ms) / 1000);
+                        to[i] = shot.pos[i] + fxTimesMs(shot.velocity[i], ms);
                     if (!head)
                     {
                         // ExplodeTouch: what it runs into, a little hurt.
@@ -2476,10 +2476,10 @@ namespace hldata
                     // A launcher's grenade: an arc at half gravity, and off
                     // at the first thing it meets -- the world, or anything
                     // that fights, or (a soldier's) the player.
-                    shot.velocity[2] -= static_cast<fx>((static_cast<std::int64_t>(gravityOf(player) / 2) * ms) / 1000);
+                    shot.velocity[2] -= fxTimesMs(gravityOf(player) / 2, ms);
                     fx to[3];
                     for (int i = 0; i < 3; ++i)
-                        to[i] = shot.pos[i] + static_cast<fx>((static_cast<std::int64_t>(shot.velocity[i]) * ms) / 1000);
+                        to[i] = shot.pos[i] + fxTimesMs(shot.velocity[i], ms);
                     const Shot line = traceShot(*w.world, shot.pos, to);
                     std::int64_t reach = line.fraction;
                     bool met = line.fraction < kFractionOne || shot.leftMs <= 0;
@@ -2527,11 +2527,10 @@ namespace hldata
                 // has met anything: SatchelSlide.)
                 const bool whole = gib || (satchel && shot.sprite == 0xFFFE);
                 if (grenade)
-                    shot.velocity[2] -= static_cast<fx>(
-                        (static_cast<std::int64_t>(whole ? gravityOf(player) : gravityOf(player) / 2) * ms) / 1000);
+                    shot.velocity[2] -= fxTimesMs(whole ? gravityOf(player) : gravityOf(player) / 2, ms);
                 fx to[3];
                 for (int i = 0; i < 3; ++i)
-                    to[i] = shot.pos[i] + static_cast<fx>((static_cast<std::int64_t>(shot.velocity[i]) * ms) / 1000);
+                    to[i] = shot.pos[i] + fxTimesMs(shot.velocity[i], ms);
                 if (grenade)
                 {
                     // It bounces, hardly at all, and rolls to a stop on a
@@ -3525,7 +3524,7 @@ namespace hldata
             {
                 // (The game's gravity, 800 units a second each second.)
                 actor.velocity[2] -= fxFromInt(800) * ms / 1000;
-                const fx step = static_cast<fx>((static_cast<std::int64_t>(actor.velocity[2]) * ms) / 1000);
+                const fx step = fxTimesMs(actor.velocity[2], ms);
                 const fx from[3] = {actor.pos[0], actor.pos[1], actor.pos[2] + fxFromInt(36)};
                 const fx to[3] = {from[0], from[1], from[2] + step};
                 const Trace tr = traceAll(world, false, from, to);
@@ -3947,8 +3946,8 @@ namespace hldata
                 if (record.kind != static_cast<std::uint8_t>(LogicKind::TriggerPush) || state.running || state.dead ||
                     (record.flags & kLogicFireOnce) || !logicMasterAllows(w, i))
                     continue;
-                const fx dx = static_cast<fx>((static_cast<std::int64_t>(record.move[0]) * ms) / 1000);
-                const fx dy = static_cast<fx>((static_cast<std::int64_t>(record.move[1]) * ms) / 1000);
+                const fx dx = fxTimesMs(record.move[0], ms);
+                const fx dy = fxTimesMs(record.move[1], ms);
                 if (dx == 0 && dy == 0)
                     continue;
                 for (int n = 0; n < a.count; ++n)

@@ -593,7 +593,7 @@ namespace hldata
                     const fx d[3] = {target[0] - c.me.pos[0], target[1] - c.me.pos[1], target[2] - c.me.pos[2]};
                     const std::int64_t ms = static_cast<std::int64_t>(fxToInt(fxLength(d))) * 1000 / skillOf(c.w).hgruntGspeed;
                     for (int k = 0; k < 3; ++k)
-                        target[k] += static_cast<fx>((static_cast<std::int64_t>(t.velocity[k]) * ms) / 1000);
+                        target[k] += fxTimesMs(t.velocity[k], ms);
                 }
             }
             // Not onto his own squad, nor at his own feet.

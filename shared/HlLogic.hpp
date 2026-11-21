@@ -2940,7 +2940,7 @@ namespace hldata
             {
                 // (Its foot only in water, it falls as if it weren't: the
                 // game adds gravity for that, and again for the float below.)
-                v[2] -= static_cast<fx>((static_cast<std::int64_t>(fxFromInt(800)) * ms) / 1000);
+                v[2] -= fxTimesMs(fxFromInt(800), ms);
             }
             // Afloat: gravity, and the water's lift, as deep as it is in it
             // times its buoyancy. At the surface its bobbing dies away within
@@ -2952,7 +2952,7 @@ namespace hldata
             {
                 const fx lift = fxMul(depth, record.speed) - fxFromInt(800);
                 if (!resting || lift > 0)
-                    v[2] += static_cast<fx>((static_cast<std::int64_t>(lift) * ms) / 1000);
+                    v[2] += fxTimesMs(lift, ms);
                 if (depth < fxFromInt(built.maxs[2] - built.mins[2]))
                     v[2] -= static_cast<fx>((static_cast<std::int64_t>(v[2]) * 4 * ms) / 1000);
             }
@@ -3485,8 +3485,7 @@ namespace hldata
                 // and there it stops and says so.
                 const fx left[3] = {ahead[0] - pos[0], ahead[1] - pos[1], ahead[2] - pos[2]};
                 const fx distance = fxLength(left);
-                const fx step = static_cast<fx>(
-                    (static_cast<std::int64_t>(backwards ? -state.speed : state.speed) * ms) / 1000);
+                const fx step = fxTimesMs(backwards ? -state.speed : state.speed, ms);
                 if (distance > step && step > 0)
                 {
                     fx to[3];
@@ -4185,7 +4184,7 @@ namespace hldata
                 const bool round = actor.target[0] != mark[0] || actor.target[1] != mark[1] || actor.target[2] != mark[2];
                 const fx d[3] = {actor.target[0] - actor.pos[0], actor.target[1] - actor.pos[1], 0};
                 const fx distance = fxLength(d);
-                const fx step = static_cast<fx>((static_cast<std::int64_t>(actor.speed) * ms) / 1000);
+                const fx step = fxTimesMs(actor.speed, ms);
                 actor.moveMs -= ms;
                 // Round it: on to the mark.
                 if (round && (distance <= step || distance < fxFromInt(6)))
@@ -4807,8 +4806,7 @@ namespace hldata
             const int axis = static_cast<int>(record.extra[0] % 3);
             std::uint16_t angles[3] = {0, 0, 0};
             const std::uint16_t before = static_cast<std::uint16_t>(state.bits);
-            const auto turn =
-                static_cast<std::int32_t>((static_cast<std::int64_t>(state.speed) * ms) / 1000);
+            const auto turn = fxTimesMs(state.speed, ms);
             angles[axis] = static_cast<std::uint16_t>(before + turn);
             // With the player nowhere near, only how it is DRAWN is kept up:
             // where its faces are for the collision is worked out again when

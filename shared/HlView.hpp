@@ -133,7 +133,7 @@ namespace hldata
         fx length = fxLength(view.punch);
         if (length > 0)
         {
-            fx less = static_cast<fx>((static_cast<std::int64_t>(10 * kViewDegree + length / 2) * ms) / 1000);
+            fx less = fxTimesMs(10 * kViewDegree + length / 2, ms);
             less = less > length ? length : less;
             for (fx &angle : view.punch)
                 angle -= static_cast<fx>((static_cast<std::int64_t>(angle) * less) / length);
