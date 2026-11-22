@@ -1482,6 +1482,11 @@ namespace hlrt
 
         HL_OVL_GATED const char *hostDead(Id id)
         {
+            // (Every sheet's rows are asked, OPTIONS's in play too, a map
+            // holding the overlay's memory: only HOST's and the lobby's
+            // can be dead, and those show with no map up.)
+            if (id != kNetFriendly && id != kNetVoice && id != kNetGuests && id != kNetMap)
+                return nullptr;
             HL_MENU_FRONT();
             return hostDeadBody(id);
         }
