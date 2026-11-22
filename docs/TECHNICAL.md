@@ -554,11 +554,18 @@ Milestone 11, "levels of detail".
   `env_render` making a brush see-through or unseen, and fades of the
   screen (`env_fade`): in their colour and timed as the game's screen fade
   is. A fade from a colour lifts from its first moment, and its hold time
-  only matters to a fade into one. Black and white are the hardware's
-  brightness. Any other colour is BG1, one colour out of Bank D, blended over
-  the 3D picture and the sprites (which sit at priority 1 for it, so the HUD
-  is under it too). The hardware's 16 steps of either are smoothed by
-  showing the step below and the one above in turn, frame by frame.
+  only matters to a fade into one. White is the hardware's brightness. Any
+  other colour, black too, is a see-through quad of that colour, the last
+  polygon of the 3D picture: in front of everything in it, the weapon in
+  hand too (it is drawn through a projection whose near plane is an eighth
+  as far as the world's, nearer than the weapon's own). The HUD and the
+  glows, sprites added to the picture, are under it as well: the sprites'
+  blend adds only what the fade lets through, set in the blank their
+  picture is shown from. The map's writing (TopText) is in front of it,
+  drawn solid while it is up. The hardware's 16 steps of either are
+  smoothed by showing the step below and the one above in turn, frame by
+  frame. (It was a layer of one colour out of Bank D, which is now
+  textures: the same picture, within two or three levels of 255.)
 - The port's own effects are drawn with the game's pictures: a grenade's
   fireball, an alien slave's lightning, a turret's tracer and muzzle flash,
   a bullsquid's spit, a houndeye's shock wave; a flash at the player's own
@@ -1184,8 +1191,11 @@ Milestone 11, "levels of detail".
   3D picture left on the screen is drawn by the hardware again every frame
   out of video memory, and a load writes over video memory: so the screen
   is captured first and the capture shown in front of the 3D layer. That
-  takes video memory, Bank D, which textures do not use (every map
-  fits without it). The very first load has no picture to keep and shows
+  takes video memory, Bank D, which in play holds the textures that are
+  not 4x4 (see "Bank D" below): it is lent for the capture, and what is
+  drawn from it is missing from the kept picture (a texture whose memory is
+  not a texture slot reads as nothing, or its palette's colour 0:
+  tools/hwtest/slot3, the same on a console). The very first load has no picture to keep and shows
   the game's own loading picture (cooked from your `cached.wad`).
   That first picture is itself captured and its texture let go, so nothing
   drawn out of texture memory is on the screen while a map's textures are
@@ -2114,6 +2124,42 @@ polygons counted, with the hardware drawing the same -- and the walk took
 console's clock for the geometry engine, and only a console's numbers
 (the walk's time on the overlay, `perf.txt`'s `box-out-mean`) can say
 whether it should be on.
+
+## Bank D
+
+Texture memory is Banks A to D, 128 KB each. A 4x4 texture's texels can only
+be in A or C, its index in B. Every other texture (the marks, the sprites,
+see-through and light textures, the flat stand-ins of streamed ones,
+players' skins and sprays: 45 to 57 KB on the maps measured) used to go in
+there too, in B's free index first and then from the top of C, where it
+took 4x4 room and its index's share. Now, in play, Bank D is texture slot 3
+and holds all of them (`render/BankD.hpp`; NEA's
+`NEA_TextureSetPlainBanks`), and banks A to C are the 4x4 textures' alone.
+What that gives goes to the streamed textures by itself (their room is what
+NEA has left once the map is in): on c1a0, 166 KB became 197 KB.
+
+Bank D is also the only bank a display capture can write that is not in
+use: the frozen picture of a map change and the map's picture
+(`HlPreview.hpp`) are taken through it. While it is lent so:
+
+- it is in LCD mode, and what is drawn from it is missing from the picture
+  (tools/hwtest/slot3: the same on a console);
+- a texture that is not 4x4 loaded meanwhile (all of them, while a map
+  loads) is given its place there, but not written
+  (`NEA_TextureSetPlainDeferred`);
+- when it comes back, behind the curtain, every texture in it is written
+  again: read again off the card from the very member and offset it was
+  read from (or made again, for the flat stand-in and the sprays), through
+  the streaming's staging buffer. That is why sprites, the marks' sheet and
+  players' skins are stored uncompressed in the archives, as the map's
+  textures are (a card packed before reads a compressed one whole). perf.txt
+  (`HLDS_PROFILE`) says how many were written again and how many failed.
+
+In the menus Bank D is no texture slot and such textures go to A to C as
+before: the menus have room, and the title's picture, held over the first
+load, is drawn from neither. A console sent the game keeps Bank D out of
+the texture memory: its maps were measured without it, and it has no card
+to read a texture again from.
 
 ## Streaming textures
 
