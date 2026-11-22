@@ -1183,17 +1183,8 @@ namespace hlrt
             // whole marks at 20 degrees where the test kept none of the far
             // ones; 4 units at 20 degrees, as the test's own at 45).
             // (Signs keep the test: seldom seen edge-on.)
-            int pull = 0; // of 4096: how much nearer the eye
-            if (cosine < kMarkSteep && !isSign)
-            {
-                // tan = sin / cos (a pixel is 1/128 of the distance across;
-                // the depth changes by that times the tangent).
-                const int c = cosine < 82 ? 82 : cosine;
-                const int sine = static_cast<int>(isqrt64(static_cast<std::uint64_t>(4096 * 4096 - c * c)));
-                const int tangent = sine * 4096 / c;
-                pull = (2 * tangent + 4096) / 128;
-                pull = pull < 16 ? 16 : (pull > 2048 ? 2048 : pull);
-            }
+            // (Of 4096: how much nearer the eye. HlMarkPlan.hpp.)
+            const int pull = cosine < kMarkSteep && !isSign ? markPull(cosine) : 0;
             NEA_PolyFormat(alpha, shape.id, static_cast<NEA_LightEnum>(0), NEA_CULL_NONE,
                            static_cast<NEA_OtherFormatEnum>(static_cast<int>(worldDraw.polygonMode()) |
                                                             (pull == 0 ? kDepthEqual : 0)));

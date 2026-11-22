@@ -22,6 +22,8 @@
 
 #include <cstdint>
 
+#include "HlFixed.hpp"
+
 namespace hldata
 {
     /// The screen's share of the marks, in pixels (a DSi; a DS less).
@@ -67,6 +69,25 @@ namespace hldata
     constexpr int markAlpha(std::int32_t leftMs)
     {
         return leftMs >= 3000 ? kMarkAlpha : 1 + static_cast<int>((leftMs * (kMarkAlpha - 1)) / 3000);
+    }
+
+    /// How much nearer the eye (of 4096) to draw something lying on a wall
+    /// seen at `cosine` (4096ths: square on is 4096), each corner along its
+    /// own line of sight (the same pixels), with the ordinary depth test:
+    /// by as much as the depth changes across two pixels there and 1/128 of
+    /// the distance more. Seen at a low angle the "same depth" test eats it
+    /// in patches -- a pixel there spans more depth than the test allows
+    /// (tools/hwtest/markpull, lamppatch). What it costs: it shows over what
+    /// stands that close in front of its wall.
+    inline int markPull(int cosine)
+    {
+        // tan = sin / cos (a pixel is 1/128 of the distance across; the
+        // depth changes by that times the tangent).
+        const int c = cosine < 82 ? 82 : (cosine > 4096 ? 4096 : cosine);
+        const int sine = static_cast<int>(isqrt64(static_cast<std::uint64_t>(4096 * 4096 - c * c)));
+        const int tangent = sine * 4096 / c;
+        const int pull = (2 * tangent + 4096) / 128;
+        return pull < 16 ? 16 : (pull > 2048 ? 2048 : pull);
     }
 
     /// A mark facing the eye, in range and in the view: what the choice
