@@ -97,6 +97,15 @@ INTEGER_STDIO = ['-Wl,--undefined=__i_vfprintf', '-Wl,--undefined=__i_vfscanf',
 # thread's -- each with room for the interrupts that come in on it: its
 # default, 4 KB.
 DTCM_DATA_SIZE = 4096
+# The stack each CPU's interrupt handlers run on, all of them, whichever
+# thread they cut off (libnds's, since 2026-11-22). The ARM9's is at the top
+# of DTCM, over its own data: what it takes, the program's stack has not;
+# the ARM7's takes from the room its heap and stack share in DS mode. Found
+# 104 bytes deep on the ARM9 at most, 52 on the ARM7 (c1a3a, DS and DSi:
+# perf.txt's "irq stack"): libnds's own size, 512, is plenty.
+# (The child sets the same: child/build.py.)
+IRQ_STACK_ARM9 = 512
+IRQ_STACK_ARM7 = 512
 
 # The wireless library with its IP stack, for online play (a DSi's only):
 # its Internet half moved to the DSi-only part of the program, which a DS
@@ -204,6 +213,7 @@ arm9 = Arm9Binary(
         # DTCM's own data and its heap (dtcm_malloc), at the top of DTCM;
         # the stack has the rest under it.
         ['-Wl,--defsym=__dtcm_data_size=' + str(DTCM_DATA_SIZE)] +
+        ['-Wl,--defsym=__irq_user_stack_size=' + str(IRQ_STACK_ARM9)] +
         # The linker script with the overlay regions (above), after the
         # stock specs: its *link: is the one used. The relocations kept, for
         # tools/ovl.py's check of what refers into an overlay.
@@ -281,6 +291,7 @@ arm7 = Arm7Binary(
     libs=['nds7', 'dswifi_dl7'],
     libdirs=['${BLOCKSDS}/libs/libnds', '${BLOCKSDSEXT}/dswifi_dl'],
     cxxflags='-Wall -O2 -std=gnu++20 -fno-exceptions -fno-rtti',
+    ldflags='-Wl,--defsym=__irq_user_stack_size=' + str(IRQ_STACK_ARM7),
 )
 arm7.specs = '-specs=' + os.path.abspath(os.path.join(OVL_DIR, 'hl_arm7.specs'))
 arm7.generate_elf()
