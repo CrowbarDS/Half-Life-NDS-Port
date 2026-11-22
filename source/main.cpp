@@ -39,6 +39,7 @@
 #include "game/GameApi.hpp"
 #include "game/Input.hpp"
 #include "game/Player.hpp"
+#include "game/Think.hpp"
 #include "game/GameChoice.hpp"
 #include "game/SaveGame.hpp"
 #include "render/BottomScreen.hpp"
@@ -2617,8 +2618,9 @@ int main(int argc, char *argv[])
 
     while (true)
     {
-        // (The wait is when the actors' thinking is done: game/Think.cpp.)
-        NEA_WaitForVBL(NEA_UPDATE_TASKS);
+        // (The wait is when the actors' thinking is done, the world let go
+        // to the worker for it: game/Think.cpp.)
+        hlrt::think.waitForScreen([] { NEA_WaitForVBL(NEA_UPDATE_TASKS); });
         // What was drawn off the screen last frame, put on it while it is
         // not being shown: the display's numbers, the sliding weapon list.
         hlrt::hudDraw.present();

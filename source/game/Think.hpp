@@ -27,6 +27,14 @@ namespace hlrt
         /// once and dropped, and nothing more is asked of the worker.
         void detach();
         bool running() const { return started_; }
+        /// The frame's wait for the screen (`wait`), the one time the world
+        /// is let go to the worker: the frame's thread holds it otherwise,
+        /// and takes it back as it wakes -- at the worker's next pause, if it
+        /// is in the middle of a question. (libnds cuts threads off at any
+        /// interrupt: the world changes only between the worker's pauses.)
+        void waitForScreen(void (*wait)());
+        /// Whether the frame's thread holds the world now (the guard asks).
+        bool frameHolds() const { return frameHolds_; }
         /// Whether what runs now is the worker (perf.txt's trace counts).
         bool onWorker() const;
 
@@ -54,6 +62,7 @@ namespace hlrt
 
     private:
         bool started_ = false;
+        bool frameHolds_ = false;
     };
 
     HL_ENGINE_OBJECT(Think, think);

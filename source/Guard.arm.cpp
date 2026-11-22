@@ -738,22 +738,16 @@ namespace hlrt::guard
 
     // The program's statics are made without a lock (-fno-threadsafe-statics,
     // source/StdHalts.cpp), and the think worker reads the world the frame
-    // changes: right only while the two take turns. libnds cuts a thread off
-    // at an interrupt (cothread_preemption_enabled, on since its 2026-11-20
-    // threads); until the frame and the worker share the world under a lock,
-    // the worker is not started then (game/Think.cpp), and the game stops
-    // here if it is running all the same. (libnds's own FIFO thread, which
-    // cuts the frame off, does what its interrupt did before: what the
-    // FIFO's handlers touch is what they always did.)
-    // (Exported by libnds -- source/common/cothread/threads.c, read by its
-    // interrupt dispatcher -- but not in its header: an update of libnds may
-    // drop or rename it, and the link then fails here, which is as it should
-    // be: the check is then to be made again by the new name.)
-    extern "C" bool cothread_preemption_enabled;
+    // changes. libnds cuts a thread off at an interrupt (since its
+    // 2026-11-20 threads): the two share the world under a lock, the frame's
+    // thread holding it but while it waits for the screen (game/Think.cpp).
+    // Here, in the frame, it must hold it; the game stops if not. (libnds's
+    // own FIFO thread, which cuts the frame off, does what its interrupt did
+    // before: what the FIFO's handlers touch is what they always did.)
     static void checkTakingTurns()
     {
-        if (cothread_preemption_enabled && think.running())
-            crash("THREADS: the worker cut off by the frame; the world has no lock");
+        if (think.running() && !think.frameHolds())
+            crash("THREADS: the frame without the world's lock; the worker may be in it");
     }
 
     void install()

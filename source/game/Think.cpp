@@ -22,20 +22,26 @@ namespace hlrt
         // Counted up for each question asked (ThinkQueue::posted): the worker
         // sleeps on it, rather than waking every frame to find nothing.
         cosema_t asked = 0;
-        // Held by the worker while it works a question out: what detach()
-        // waits for before what the question reads goes.
+        // The world, held: by the frame's thread all the time but while it
+        // waits for the screen (waitForScreen), by the worker while it works
+        // a question out but at its pauses. libnds cuts a thread off at any
+        // interrupt; under this, the world still only changes between the
+        // worker's pauses -- the frame, woken in the middle of a question,
+        // waits for the next one (a few milliseconds at most).
         comutex_t thinking = 0;
-        // (comutex and cosema hold the interrupts off a moment and put them
-        // back as they were -- on the pinned libnds; a later one turns them
-        // on regardless. Neither is ever used with the interrupts held off,
-        // nor from an interrupt: there, cothread_send_signal only.)
+        // The worker in the middle of a question (set and cleared holding
+        // the world), and told when it is out of one: detach() waits for it.
+        volatile bool busy = false;
+        cosema_t questionOver = 0;
+        // (comutex and cosema hold the interrupts off a moment, by CPSR.I,
+        // and put them back on. Neither is ever used with the interrupts held
+        // off, nor from an interrupt: there, cothread_send_signal only.)
 
         /// The worker answers the questions while the frame waits for the
         /// screen. (Off, every question is answered as it is asked, inside
         /// the frame, as it was until 2026-11-16.) Not in the Download Play
         /// child: what it would add to its program is room a guest's map
         /// needs, and it only meets monsters in the demo.
-        /// (Switched on or off, it only ever takes turns: see start().)
 #ifdef HLDS_CHILD
         constexpr bool kUseWorker = false;
 #else
@@ -66,10 +72,12 @@ namespace hlrt
 #ifndef HLDS_CHILD
         cothread_t mainThread = -1;
 
-        // Where long work stops a moment: the frame, if the screen has woken
-        // it, has the CPU at once; if not, the worker goes straight on. Not on
-        // the frame's own thread (a question answered as it is asked), and not
-        // while a map is being left (then it is finished without stopping).
+        // Where long work stops a moment, the world let go: the frame, if
+        // the screen has woken it, has it then -- and the CPU, being above
+        // -- and gives it back as it waits for the screen again; if not, the
+        // worker goes straight on. Not on the frame's own thread (a question
+        // answered as it is asked), and not while a map is being left (then
+        // it is finished without stopping).
         void pause()
         {
             if (!queue.abort && cothread_get_current() != mainThread)
@@ -77,10 +85,12 @@ namespace hlrt
 #if defined(HLDS_PROFILE)
                 // (Its time away, not the trace's it stopped in: HlTraceCount.hpp.)
                 const std::uint32_t left = hlProfileNow();
+#endif
+                comutex_release(&thinking);
                 cothread_yield();
+                comutex_acquire(&thinking);
+#if defined(HLDS_PROFILE)
                 hlProfileAway += hlProfileNow() - left;
-#else
-                cothread_yield();
 #endif
             }
         }
@@ -105,8 +115,11 @@ namespace hlrt
                 while (world != nullptr && !queue.abort)
                 {
                     comutex_acquire(&thinking);
+                    busy = true;
                     const bool did = world != nullptr && !queue.abort && gameApi.thinkRunOne(*world, pause);
+                    busy = false;
                     comutex_release(&thinking);
+                    cosema_signal(&questionOver);
                     if (!did)
                         break;
                     any = true;
@@ -121,16 +134,9 @@ namespace hlrt
 #endif
     } // namespace
 
-    // (libnds's, as Guard.arm.cpp reads it.)
-    extern "C" bool cothread_preemption_enabled;
-
     void Think::start()
     {
-        // (Not while libnds cuts threads off at an interrupt: the frame would
-        // change the world under a question half answered. Every question
-        // is answered inside the frame then, until the two share it under a
-        // lock. Guard.arm.cpp.)
-        if (started_ || !kUseWorker || cothread_preemption_enabled)
+        if (started_ || !kUseWorker)
             return;
 #ifndef HLDS_CHILD
 #ifdef HLDS_PROFILE
@@ -141,17 +147,41 @@ namespace hlrt
             stack[i] = kGuardMark ^ i;
         mainThread = cothread_get_current();
         cosema_init(&asked, 0);
+        cosema_init(&questionOver, 0);
         comutex_init(&thinking);
-        // (It takes turns with the main thread, at its cothread_yield calls:
-        // never cut off by it, nor it by this. The program's statics count
-        // on that -- they are made without a lock, source/StdHalts.cpp -- and
-        // the guard stops the game if libnds's preemption is ever switched
-        // on, Guard.arm.cpp.)
+        // (The world is the frame's from here on, but while it waits for the
+        // screen. The program's statics are made without a lock as well --
+        // source/StdHalts.cpp -- and are first made by whichever holds it.)
+        comutex_acquire(&thinking);
+        frameHolds_ = true;
         const cothread_t thread = cothread_create_manual(work, nullptr, stack, kStackBytes, 0);
         if (thread < 0)
+        {
+            comutex_release(&thinking);
+            frameHolds_ = false;
             return;
+        }
         cothread_set_priority(thread, kWorkerPriority);
         started_ = true;
+#endif
+    }
+
+    void Think::waitForScreen(void (*wait)())
+    {
+#ifndef HLDS_CHILD
+        if (!started_)
+        {
+            wait();
+            return;
+        }
+        frameHolds_ = false;
+        comutex_release(&thinking);
+        wait();
+        // (Woken in the middle of a question: back at its next pause.)
+        comutex_acquire(&thinking);
+        frameHolds_ = true;
+#else
+        wait();
 #endif
     }
 
@@ -231,15 +261,20 @@ namespace hlrt
     void Think::detach()
     {
         // (Whatever is half worked out is finished now -- it no longer stops
-        // -- before what it reads goes. The frame waits for it asleep: the
-        // worker, under it, would never have the CPU if the frame only
-        // yielded.)
+        // -- before what it reads goes: the world let go, and the frame asleep
+        // until the worker is out of its question. Asleep: the worker, under
+        // it, would never have the CPU if the frame only yielded.)
         queue.abort = true;
 #ifndef HLDS_CHILD
-        if (started_)
+        if (started_ && busy)
         {
-            comutex_acquire(&thinking);
+            while (cosema_try_wait(&questionOver))
+            {
+            }
             comutex_release(&thinking);
+            while (busy)
+                cosema_wait(&questionOver);
+            comutex_acquire(&thinking);
         }
 #endif
         if (world != nullptr && world->actors != nullptr)

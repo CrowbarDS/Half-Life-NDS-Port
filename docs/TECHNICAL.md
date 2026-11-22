@@ -1448,19 +1448,26 @@ asked for in `source/game/GameDll.arm.cpp`):
 The think worker (`source/game/Think.cpp`, `shared/HlThink.hpp`) is a
 thread under the frame's, which answers the monsters' long questions -- a
 walk's plan, a way round, a cover spot -- while the frame waits for the
-screen; the two take turns only at their yields (libnds's preemption is
-off on the pinned libnds, and the guard stops the game if it is ever on).
-It sleeps on a semaphore that each question asked counts up
-(`ThinkQueue::posted`), rather than waking every frame to find nothing,
-and holds a mutex while it works one out, which a map's leaving waits for
-before what the question reads goes. libnds's comutex and cosema hold the
-interrupts off a moment and put them back as they were (on the pinned
-libnds; a later one turns them on regardless): neither is used with the
-interrupts held off, nor from an interrupt, where only
-`cothread_send_signal` is. In a fight on a DS its answers are taken up
-2 or 3 frames after they are asked (`perf.txt`, HLDS_PROFILE: "answers
-taken", "woken for none"); its stack, 6 KB of its own, is 4.2 KB deep at
-most.
+screen. libnds cuts a thread off at any interrupt, so the two share the
+world under a mutex: the frame's thread holds it all the time but while it
+waits for the screen (`Think::waitForScreen`), the worker while it works a
+question out but at its pauses (`thinkYield`). The world so changes only
+between the worker's pauses: the frame, woken in the middle of a question,
+waits for the next one, a few milliseconds at most. The guard stops the
+game if a frame runs without the mutex. A map's leaving lets the worker
+finish its question first, without pauses, before what the question reads
+goes. The worker sleeps on a semaphore that each question asked counts up
+(`ThinkQueue::posted`), rather than waking every frame to find nothing.
+What it calls may use the divider and the square-root unit only through
+`source/HwMath.s`, which holds the interrupts off while it does: a switch
+of threads does not save the units (`tools/irq-divider.py` checks it).
+libnds's comutex and cosema are not used with the interrupts held off, nor
+from an interrupt, where only `cothread_send_signal` is. The frame's wait
+is for the next VBlank, as ever: libnds remembers one no thread waited for
+and does not sleep for it, so one that came during a long frame is taken
+first. In a fight its answers are taken up 2 or 3 frames after they are
+asked, on a DS and a DSi (`perf.txt`, HLDS_PROFILE: "answers taken",
+"woken for none"); its stack, 6 KB of its own, is 4.5 KB deep at most.
 
 ### The families
 
