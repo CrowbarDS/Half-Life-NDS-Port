@@ -986,7 +986,11 @@ namespace hlrt
             planner.retryFailed();
 #ifdef HLDS_PROFILE
         if (frameNo % 1024 == 0)
+        {
+            // (The log written, out of the stream's figure: DebugLog.hpp.)
+            const DebugLog::Perf::Aside aside(DebugLog::Section::Stream);
             report("every 1024 frames");
+        }
 #endif
         if (frameNo % 4 == 0 || frameNo < 16)
             planner.rebuild();
@@ -1088,6 +1092,7 @@ namespace hlrt
                 f.longest = frames;
                 f.longestBlanks = blanks;
             }
+            const DebugLog::Perf::Aside aside(DebugLog::Section::Stream);
             if (frames >= 30 && (log = std::fopen(global.dataPath("perf.txt").c_str(), "a")) != nullptr)
                 std::fprintf(log, "tex flat: from frame %lu, %lu frames (%lu blanks), at most %d in view\n",
                              static_cast<unsigned long>(frameNo - frames), static_cast<unsigned long>(frames),
@@ -1099,6 +1104,7 @@ namespace hlrt
                                    guard::playRise() != riseWritten ||
                                    guard::reserveState().letGoPlay != reserveWritten))
         {
+            const DebugLog::Perf::Aside aside(DebugLog::Section::Stream);
             if (log == nullptr)
                 log = std::fopen(global.dataPath("perf.txt").c_str(), "a");
             const FlatSpells &f = flatSpells;
@@ -1127,7 +1133,10 @@ namespace hlrt
             }
         }
         if (log != nullptr)
+        {
+            const DebugLog::Perf::Aside aside(DebugLog::Section::Stream);
             std::fclose(log);
+        }
     }
 
     StreamStats TextureStream::stats() const

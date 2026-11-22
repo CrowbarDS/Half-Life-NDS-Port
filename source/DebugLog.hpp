@@ -37,6 +37,7 @@ namespace hlrt::DebugLog
         Vblank, ///< the VBlank interrupt (video memory written, sprites)
         Hblank, ///< the HBlank interrupt, every line (Nitro Engine's)
         Radio,  ///< the wireless's word from the ARM7, in the FIFO interrupt (local play)
+        Card,   ///< reads off the card (data/CardRead.hpp), wherever they are made
         Count
     };
 
@@ -119,6 +120,25 @@ namespace hlrt::DebugLog
             Section section;
             std::uint32_t start;
         };
+        /// The profiler's own work in the middle of a section -- its log
+        /// written to the card, milliseconds on a DSi's SD -- taken back out
+        /// of that section and of the frame's: what they say is the game's.
+        /// (Within the frame that is timed: the sums are taken at its end.)
+        struct Aside
+        {
+            explicit Aside(Section s) : section(s), start(now()) {}
+            ~Aside()
+            {
+                const std::uint32_t spent = now() - start;
+                add(section, 0u - spent);
+                if (section != Section::Frame)
+                    add(Section::Frame, 0u - spent);
+            }
+            Aside(const Aside &) = delete;
+            Aside &operator=(const Aside &) = delete;
+            Section section;
+            std::uint32_t start;
+        };
     } // namespace Perf
 #else
     namespace Perf
@@ -137,6 +157,10 @@ namespace hlrt::DebugLog
         struct Timed
         {
             explicit Timed(Section) {}
+        };
+        struct Aside
+        {
+            explicit Aside(Section) {}
         };
     } // namespace Perf
 #endif

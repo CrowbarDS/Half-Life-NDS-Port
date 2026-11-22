@@ -36,7 +36,7 @@ namespace hlrt::DebugLog::Perf
 
         constexpr const char *kNames[kCount] = {"input", "logic", "move", "walk",
                                                 "emit",  "pose",  "models", "frame", "monsters", "look", "hear", "going",
-                                                "keys", "sound", "stream", "vblank", "hblank", "radio"};
+                                                "keys", "sound", "stream", "vblank", "hblank", "radio", "card"};
         // Key reads since the last line: how many, the longest one, and what
         // of the worst frame was reading keys (does a read make that frame?).
         std::uint32_t keyReads = 0, keyLongest = 0, keysInWorstFrame = 0;
@@ -431,6 +431,14 @@ namespace hlrt::DebugLog::Perf
 
     void endFrame()
     {
+        // (A section the profiler took its own time out of (Perf::Aside) but
+        // did not time this frame -- its log written outside it -- would be
+        // below nothing: it is nothing.)
+        for (std::uint32_t &r : running)
+        {
+            if (r >= 0x80000000u)
+                r = 0;
+        }
         // (The monsters' worst frame yet: where its samples were, kept.)
         {
             const int saved = enterCriticalSection();

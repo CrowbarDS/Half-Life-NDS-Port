@@ -14,6 +14,8 @@
 #include <NEAMain.h>
 #endif
 
+#include "DebugLog.hpp"
+
 namespace hlrt
 {
     inline constexpr std::size_t kCardPiece = 8 * 1024;
@@ -21,6 +23,7 @@ namespace hlrt
     /// fread's, `bytes` of them, in pieces: how many were read.
     inline std::size_t cardRead(void *to, std::size_t bytes, std::FILE *file)
     {
+        const DebugLog::Perf::Timed timed(DebugLog::Section::Card);
         auto *at = static_cast<unsigned char *>(to);
         std::size_t done = 0;
         while (done < bytes)
@@ -48,6 +51,7 @@ namespace hlrt
     /// undone, which reads the card 512 bytes at a time.
     inline bool cardReadMember(const NEA_NpacMember &member, std::uint32_t from, void *to, std::uint32_t bytes)
     {
+        const DebugLog::Perf::Timed timed(DebugLog::Section::Card);
         if (member.method != NEA_NPAC_STORED)
             return NEA_NpacMemberRead(&member, from, to, bytes) == 0;
         auto *at = static_cast<unsigned char *>(to);
