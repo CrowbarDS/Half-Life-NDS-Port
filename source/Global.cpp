@@ -27,6 +27,7 @@ extern "C" {
 #include "render/WaterWobble.hpp"
 #include "render/Camera.hpp"
 #include "game/Think.hpp"
+#include "render/BankD.hpp"
 #include "render/GpuStats.hpp"
 #include "render/ScreenFade.hpp"
 
@@ -411,10 +412,10 @@ void Global::InitVideo()
 
     // Room for a map's worth of textures: NEA's defaults (128 materials, 64
     // palettes) are below what one retail map uses, and every 4x4 compressed
-    // texture has a palette of its own. The banks must be defined explicitly:
-    // "all of them" would hand Bank D to the texture allocator, and Bank D
-    // is held back. Every map fits without it. (Compressed textures live in
-    // Banks A and C with their indexes in Bank B.)
+    // texture has a palette of its own. All four banks: compressed textures
+    // live in Banks A and C with their indexes in Bank B, and in play the
+    // others in Bank D (render/BankD.hpp, which says where they go when).
+    // (Sent the game, Bank D is held back, as its maps were measured.)
     // (Every split of NEA's VRAM lists takes a node and every merge gives one
     // back: from a reserve set aside once, so loading and freeing textures in
     // play never goes to the heap. Sized from what the heaviest maps use.)
@@ -425,8 +426,12 @@ void Global::InitVideo()
     if (!chunksReserved)
         chunksReserved = NEA_AllocReserveChunks(kNeaChunks) == 0;
 #endif
+#ifdef HLDS_CHILD
     NEA_TextureSystemReset(512, 1024, NEA_VRAM_ABC);
-    vramSetBankD(VRAM_D_LCD);
+#else
+    NEA_TextureSystemReset(512, 1024, NEA_VRAM_ABCD);
+#endif
+    hlrt::bankD.reset();
 
     // The projection the world is drawn through. NEA rebuilds it every frame
     // from these, so they are set once.

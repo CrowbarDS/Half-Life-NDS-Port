@@ -55,6 +55,7 @@
 #include "render/ModelDraw.hpp"
 #include "render/HudDraw.hpp"
 #include "render/FrameFreeze.hpp"
+#include "render/BankD.hpp"
 #include "render/ScreenFade.hpp"
 #include "render/TopText.hpp"
 #include "ui/Menu.hpp"
@@ -960,6 +961,10 @@ namespace
         // Textures before models: if video memory runs short it is a model
         // that goes without its skin, not a wall. Models before the game:
         // actors are set up from their models.
+        // (Those that are not 4x4 in Bank D, from here on: BankD. The marks'
+        // sheet there with them, the first time.)
+        hlrt::bankD.enterPlay();
+        hlrt::hudDraw.loadDecals();
         hlrt::modelDraw.forgetPoses();
 #ifdef HLDS_CHILD
         // (Sent the game, every texture is in video memory at once: the

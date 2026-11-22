@@ -24,6 +24,7 @@
 #ifdef HLDS_CHILD
 #include "net/AirDevice.hpp"
 #endif
+#include "render/BankD.hpp"
 #include "render/WorldDraw.hpp"
 #include <cstddef>
 extern "C" {
@@ -764,6 +765,15 @@ namespace hlrt
         }
     }
 
+    std::uint8_t *TextureStream::borrowStage(std::uint32_t &bytes)
+    {
+        bytes = 0;
+        if (stagedCount != 0 || !vramWriter.idle())
+            return nullptr;
+        bytes = kStageBytes;
+        return stage;
+    }
+
     void TextureStream::retire(NEA_Material *material, NEA_Palette *palette)
     {
         if (material == nullptr && palette == nullptr)
@@ -1195,8 +1205,10 @@ namespace hlrt
                      p.largest, p.slotsUsed, p.slotsMax);
         // Textures that are not 4x4 (marks, sprites, see-through and light
         // textures, flats), by bank: in A, B or C they take 4x4 room.
-        std::fprintf(log, "  not 4x4: A %d, B %d, C %d, D %d bytes\n", t.plainIn[0], t.plainIn[1], t.plainIn[2],
-                     t.plainIn[3]);
+        const BankD::Stats &d = bankD.stats();
+        std::fprintf(log, "  not 4x4: A %d, B %d, C %d, D %d bytes; bank D: %d to write again, %d written, %d failed, "
+                          "%d not noted\n",
+                     t.plainIn[0], t.plainIn[1], t.plainIn[2], t.plainIn[3], d.noted, d.written, d.failed, d.overflow);
         // Which of what is in view is flat, and why.
         int listed = 0;
         for (int id = 0; id < planner.count() && listed < 16; ++id)

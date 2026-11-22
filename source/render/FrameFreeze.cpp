@@ -4,6 +4,7 @@
 
 #include "Global.hpp"
 
+#include "render/BankD.hpp"
 #include "render/ScreenFade.hpp"
 
 #include "HlPreview.hpp"
@@ -13,12 +14,14 @@ namespace hlrt
 {
     FrameFreeze frameFreeze;
 
-    // The next whole frame of the screen into Bank D, which
-    // must be the hardware's to write just now; every pixel of it marked
-    // solid, since a bitmap layer leaves out those that are not.
+    // The next whole frame of the screen into Bank D, lent for it in the
+    // blank before (BankD: what is drawn from it is missing from that frame,
+    // and only that one); every pixel of it marked solid, since a bitmap
+    // layer leaves out those that are not.
     static void capture()
     {
         Global::waitVBlank();
+        bankD.lend();
         REG_DISPCAPCNT = DCAP_BANK(DCAP_BANK_VRAM_D) | DCAP_SIZE(DCAP_SIZE_256x192) | DCAP_MODE(DCAP_MODE_A) |
                          DCAP_SRC_A(DCAP_SRC_A_COMPOSITED) | DCAP_ENABLE;
         for (int n = 0; n < 4 && (n < 2 || (REG_DISPCAPCNT & DCAP_ENABLE)); ++n)
@@ -40,10 +43,10 @@ namespace hlrt
             return true;
         frozen_ = true;
 
-        // The screen as it is, into bank D, which is kept free for this
-        // (a fade's colour has it otherwise: that layer goes).
+        // The screen as it is, into bank D (BankD: in play, the textures
+        // that are not 4x4 -- missing from this picture -- written again
+        // when it is given back). A fade's quad goes with the 3D picture.
         screenFade.layerLost();
-        vramSetBankD(VRAM_D_LCD);
         capture();
 
         // Shown as a layer in place of the 3D one, which is switched off
@@ -72,17 +75,17 @@ namespace hlrt
 #endif
         if (frozen_)
             return false;
-        screenFade.layerLost();
-        vramSetBankD(VRAM_D_LCD);
         Global::waitVBlank();
+        bankD.lend();
         REG_DISPCAPCNT = DCAP_BANK(DCAP_BANK_VRAM_D) | DCAP_SIZE(DCAP_SIZE_256x192) | DCAP_MODE(DCAP_MODE_A) |
                          DCAP_SRC_A(DCAP_SRC_A_3DONLY) | DCAP_ENABLE;
         for (int n = 0; n < 4 && (n < 2 || (REG_DISPCAPCNT & DCAP_ENABLE)); ++n)
             Global::waitVBlank();
-        if (REG_DISPCAPCNT & DCAP_ENABLE)
-            return false;
-        hldata::previewShrink(VRAM_D, out);
-        return true;
+        const bool taken = !(REG_DISPCAPCNT & DCAP_ENABLE);
+        if (taken)
+            hldata::previewShrink(VRAM_D, out);
+        bankD.giveBack();
+        return taken;
     }
 
     void FrameFreeze::thaw()
@@ -92,6 +95,6 @@ namespace hlrt
         frozen_ = false;
         REG_DISPCNT = savedControl_;
         REG_BG0CNT = savedBg0_;
-        vramSetBankD(VRAM_D_LCD);
+        bankD.giveBack();
     }
 } // namespace hlrt

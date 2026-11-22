@@ -5,7 +5,8 @@
 // What the screen shows when nothing is being drawn is the 3D layer, and the
 // hardware goes on drawing that out of texture memory: which loads write over.
 // Capture the screen first into bank D, then display it in front of the 3D layer
-// until the new map's first picture is ready.
+// until the new map's first picture is ready. (In play Bank D holds textures:
+// it is lent for this, BankD.hpp.)
 
 #include <cstdint>
 

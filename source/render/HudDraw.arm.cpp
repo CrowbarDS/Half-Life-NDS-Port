@@ -22,6 +22,7 @@
 #include "game/Player.hpp"
 #include "render/Camera.hpp"
 #include "render/MapCard.hpp"
+#include "render/BankD.hpp"
 #include "render/ProfileView.hpp"
 
 namespace hlrt
@@ -478,8 +479,9 @@ namespace hlrt
         }
     } // namespace
 
-    void HudDraw::load()
+    void HudDraw::loadDecals()
     {
+        // (In play: in Bank D, where it stays from map to map -- BankD.)
         if (decalMaterial_ == nullptr && global.hasData)
         {
             NEA_Material *material = nullptr;
@@ -491,6 +493,14 @@ namespace hlrt
                 decalPalette_ = palette;
             }
         }
+    }
+
+    void HudDraw::load()
+    {
+#ifdef HLDS_CHILD
+        // (Sent the game: what it was sent is read while it starts up.)
+        loadDecals();
+#endif
         // The display's pictures: read, not uploaded (its sprites are made
         // from them: draw()). The 640 set's if the card has it, else the
         // 320 set's.
@@ -1200,6 +1210,8 @@ namespace hlrt
 
     bool HudDraw::showMenu()
     {
+        // (The menus' textures in banks A to C, Bank D no texture slot: BankD.)
+        bankD.enterMenus();
         // (The game's, on a card or sent by a host: a console that was sent
         // it has the background, and no animated name.)
         if (!global.hasData)

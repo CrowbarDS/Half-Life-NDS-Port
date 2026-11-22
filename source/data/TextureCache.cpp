@@ -13,6 +13,7 @@
 #include "HlTexture.hpp"
 #include "HlTextureStream.hpp"
 #include "data/LevelFile.hpp"
+#include "render/BankD.hpp"
 
 namespace hlrt
 {
@@ -131,6 +132,17 @@ namespace hlrt
                 flatTexture_ = nullptr;
                 return false;
             }
+#ifndef HLDS_CHILD
+            // (In Bank D: made again, after the bank has held a picture.)
+            bankD.noteMade(
+                flatTexture_,
+                [](std::uint32_t, std::uint8_t *to, std::uint32_t bytes)
+                {
+                    std::memset(to, 0, bytes);
+                    return true;
+                },
+                0, sizeof(kZeros));
+#endif
         }
         NEA_Palette *palette = NEA_PaletteCreate();
         const std::uint16_t colours[4] = {colour, colour, colour, colour};
@@ -295,6 +307,10 @@ namespace hlrt
                 peek(header, data + sizeof(header), context);
             ok = ok && create(header, data + sizeof(header), liquid, outMaterial, outPalette, tint, ramBacked);
             std::free(data);
+            // (One that is not 4x4, in Bank D: where it is read again from,
+            // after the bank has held a picture -- BankD.)
+            if (ok && !ramBacked && (header.flags & (hldata::kTexturePal256 | hldata::kTextureA3I5)))
+                bankD.noteFile(outMaterial, member, sizeof(header), header.texelBytes);
             return ok;
         }
 #endif

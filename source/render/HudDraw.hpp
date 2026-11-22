@@ -38,9 +38,12 @@ namespace hlrt
         static constexpr int kLampVerticesDs = 240;
         bool lampAlight() const { return lampOn_; }
 
-        /// Load the display's texture. After the 3D engine is brought up
+        /// Load the display's pictures. After the 3D engine is brought up
         /// (and again each time it is: forget() first).
         void load();
+        /// The marks' sheet, if it is not there yet: as a map loads, in
+        /// Bank D with the map's textures that are not 4x4 (BankD).
+        void loadDecals();
         void forget();
 #ifndef HLDS_CHILD
         /// Another game chosen: what load() read of the last one's common

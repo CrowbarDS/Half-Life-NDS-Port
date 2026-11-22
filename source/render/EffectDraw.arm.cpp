@@ -25,6 +25,7 @@
 #include "HlNetGame.hpp"
 #include "HlSettings.hpp"
 #include "net/NetGame.hpp"
+#include "render/BankD.hpp"
 
 namespace hlrt
 {
@@ -1247,19 +1248,13 @@ namespace hlrt
         return drawn;
     }
 
-    void EffectDraw::loadSprays(const NetMatch &match)
+    namespace
     {
-        static_assert(kMaxSprays >= kNetPlayers);
-        dropSprays();
-        for (int p = 0; p < kNetPlayers; ++p)
+        /// A player's spray as texels: how solid the paint is (the logo's
+        /// four levels: nothing, a third, two thirds, all of it), in one
+        /// colour -- A3I5, all of them the palette's first.
+        void sprayTexels(const NetProfile &profile, std::uint8_t *texels)
         {
-            const NetProfile &profile = match.profiles[p];
-            if (!profile.sprayWhole())
-                continue;
-            // How solid the paint is (the logo's four levels: nothing, a
-            // third, two thirds, all of it), in one colour: A3I5, all its
-            // texels the palette's first.
-            static std::uint8_t texels[32 * 32];
             static constexpr std::uint8_t kAlpha[4] = {0, 3 << 5, 5 << 5, 7 << 5};
             for (int y = 0; y < 32; ++y)
             {
@@ -1270,6 +1265,20 @@ namespace hlrt
                     texels[y * 32 + x] = kAlpha[(byte >> ((x & 3) * 2)) & 3];
                 }
             }
+        }
+    } // namespace
+
+    void EffectDraw::loadSprays(const NetMatch &match)
+    {
+        static_assert(kMaxSprays >= kNetPlayers);
+        dropSprays();
+        for (int p = 0; p < kNetPlayers; ++p)
+        {
+            const NetProfile &profile = match.profiles[p];
+            if (!profile.sprayWhole())
+                continue;
+            static std::uint8_t texels[32 * 32];
+            sprayTexels(profile, texels);
             const std::uint8_t *rgb = kSprayColour[profile.sprayColour % kSprayColours];
             std::uint16_t colours[32];
             for (std::uint16_t &c : colours)
@@ -1283,6 +1292,21 @@ namespace hlrt
                 NEA_MaterialSetPalette(material, palette);
                 sprayMaterials_[p] = material;
                 sprayPalettes_[p] = palette;
+#ifndef HLDS_CHILD
+                // (In Bank D: made again from the match's profile, after
+                // the bank has held a picture -- BankD.)
+                bankD.noteMade(
+                    material,
+                    [](std::uint32_t player, std::uint8_t *to, std::uint32_t bytes)
+                    {
+                        const NetProfile &again = netGame.match().profiles[player];
+                        if (bytes != 32 * 32 || !again.sprayWhole())
+                            return false;
+                        sprayTexels(again, to);
+                        return true;
+                    },
+                    static_cast<std::uint32_t>(p), 32 * 32);
+#endif
                 continue;
             }
             // (No room: that one is not seen.)

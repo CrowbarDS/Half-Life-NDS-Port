@@ -108,6 +108,11 @@ namespace hlrt
         /// waits to be written, as far as the staging buffer goes).
         void update(int budgetBytes);
 
+        /// The staging buffer, `bytes` of it, for another reader to use
+        /// at once (BankD: the textures it writes again) -- if nothing waits
+        /// in it to be written; else null.
+        std::uint8_t *borrowStage(std::uint32_t &bytes);
+
         StreamStats stats() const;
         /// A build that measures (HLDS_PROFILE): what the streaming and the
         /// texture memory are like, and which textures in view are flat and
