@@ -18,6 +18,9 @@
 #include "Global.hpp"
 #include "HlGxBounds.hpp"
 #include "HlLamp.hpp"
+#include "HlLampPatch.hpp"
+#include "HlMarkPlan.hpp"
+#include "HlTexture.hpp"
 #include "HlPlaneMath.hpp"
 #include "game/Game.hpp"
 #include "data/LevelFile.hpp"
@@ -567,10 +570,12 @@ namespace hlrt
         // as a darker patch -- and lets a glow show through a pane.
         // (Their room was set aside before the walk -- EffectDraw::reserve
         // -- and is counted in already.)
+        // (The lamp's light first: the marks and sprays lie on the wall as
+        // it is lit.)
+        lampPass();
         effectDraw.drawDecals();
         effectDraw.drawSprays();
         effectDraw.drawSolid();
-        lampPass();
         const int effects = effectDraw.begin();
         int k = 0, e = 0, id = 0;
         while (k < laterCount || e < effects)
@@ -598,78 +603,123 @@ namespace hlrt
 
     void WorldDraw::lampPass()
     {
-        NEA_Material *light = static_cast<NEA_Material *>(hudDraw.lampMaterial());
-        if (!game.lampLit || light == nullptr)
+        if (!game.lampLit)
         {
             lampLastPolygons_ = -1;
             return;
         }
         const LevelView &view = level.view;
-        const LampBeam &beam = game.lampBeam;
-        // The hardware's "draw where the depth is the same" (a polygon
-        // attribute NEA has no name for): the light is drawn on the very
-        // polygons it lights -- the same vertices through the same
-        // matrices -- and nowhere else.
-        constexpr int kDepthEqual = 1 << 14;
-        constexpr int kLampId = kIdLamp;
-        int polygons = 0, vertices = 0;
+        // The game ADDS its lamp's light to a wall's light (R_AddDynamicLights):
+        // here the lit part of each wall in the light is drawn again, in its
+        // own texture, its corners as bright as the game makes them -- a
+        // patch (shared/HlLampPatch.hpp: the game's octagon of light, cut to
+        // the surface's own triangles). All but solid (alpha 30): drawn after
+        // everything solid, so that its wall is always there first (the
+        // hardware draws the solid in an order of its own), and leaving the
+        // depth as it was for the marks drawn on it after. Where the eye
+        // meets its wall at 30 degrees or more, by the "same depth" test --
+        // on its wall and nowhere else; under that, pulled toward the eye as
+        // the marks are (tools/hwtest/lamppatch: the test keeps 99% of it at
+        // 30 degrees, 69% at 10; pulled, 99% at any).
+        constexpr int kDepthEqual = NEA_DEPTH_TEST_EQUAL;
+        constexpr int kLampSteep = 2048; ///< the cosine of 60 degrees off its wall's normal
+        const int strength = lampFalloff(game.lampDistance);
+        const int most = HudDraw::kLampPolygons >> (modelDraw.strained() ? 1 : 0);
+        int polygons = 0;
+        bool room = true;
+        unsigned bound = ~0u;
 
-        NEA_MaterialUse(light);
-        GFX_COLOR = 0x7FFF;
-        // One surface: lit by how squarely it faces the lamp, its geometry
-        // sent again with the projection's constant for a texture
-        // coordinate. `from` and `axis` are the lamp's in the surface's own
-        // space. False when there is no more room.
-        auto lightSurface = [&](const Surface &surface, const fx *from, const fx *axis, std::uint32_t texCoord) -> bool
+        // One surface, in a space where the light is at `at` and the eye at
+        // `eye` (Q12 units).
+        auto lightSurface = [&](const Surface &surface, const fx *at, const fx *eye, bool switched)
         {
+            if (surface.texture == kNoTexture ||
+                (view.textures[surface.texture].flags & (kTextureScroll | kTextureSky | kTextureLiquid)))
+                return;
             const std::uint32_t planeIndex = surface.planeRef & kSurfacePlaneMask;
             const Plane &plane = view.planes[planeIndex];
+            const std::uint8_t type = view.planeTypes[planeIndex];
             const bool back = (surface.planeRef & kSurfacePlaneBack) != 0;
-            const fx side = planeDistance(plane, view.planeTypes[planeIndex], from);
+            const fx side = planeDistance(plane, type, eye);
             if (back ? side >= 0 : side <= 0)
-                return true; // it faces away
-            // (Two unit vectors in Q12: 16-bit parts.)
-            const std::int32_t normal[3] = {plane.normal[0] >> 18, plane.normal[1] >> 18, plane.normal[2] >> 18};
-            std::int64_t facing = dotShort(normal, 1, axis, 1);
-            facing = (back ? facing : -facing) >> 12; // Q12: 4096 met head-on
-            if (facing <= 0)
-                return true;
-            if (polygons + surface.polygons > (HudDraw::kLampPolygons >> (modelDraw.strained() ? 1 : 0)) ||
-                stats_.polygons + surface.polygons > polygonBudget() ||
-                stats_.vertices + surface.vertices > vertexBudget())
-                return false;
-            // (A wall skimmed still has a quarter of what one met head-on
-            // has: the picture's own thinning does the rest.)
-            int alpha = static_cast<int>(beam.strength * (1024 + facing * 3 / 4) >> 12);
-            alpha = alpha < 1 ? 1 : (alpha > 30 ? 30 : alpha);
-            NEA_PolyFormat(alpha, kLampId, static_cast<NEA_LightEnum>(0), kCull,
-                           static_cast<NEA_OtherFormatEnum>(static_cast<int>(polygonMode()) | kDepthEqual));
-            // In the wall's own colour at full light, not in a colour of
-            // the lamp's: what is seen is the wall, brighter.
-            lampStream(level.gxAt(surface), surface.gxWords, texCoord,
-                       [](std::uint32_t word) { GFX_FIFO = word; }, textureCache.tint(surface.texture));
-            polygons += surface.polygons;
-            vertices += surface.vertices;
-            stats_.polygons += surface.polygons;
-            stats_.vertices += surface.vertices;
-            return true;
+                return; // it faces away
+            const fx off = planeDistance(plane, type, at);
+            if (off >= fxFromInt(kLampPatchRadius) || off <= -fxFromInt(kLampPatchRadius))
+                return; // the light is too far off its plane
+            // (Its normal toward the eye, Q12.)
+            fx normal[3];
+            for (int k = 0; k < 3; ++k)
+                normal[k] = back ? -(plane.normal[k] >> 18) : (plane.normal[k] >> 18);
+            // How squarely the eye meets it where the light falls.
+            fx toEye[3];
+            for (int k = 0; k < 3; ++k)
+                toEye[k] = eye[k] - (at[k] - static_cast<fx>((static_cast<std::int64_t>(plane.normal[k] >> 18) * off) >> 12));
+            // (The eye's distance from the plane over its distance from
+            // there: the cosine, 4096ths.)
+            const fx length = fxLength(toEye);
+            const fx front = back ? -side : side;
+            const int cosine = length > 0 ? static_cast<int>((static_cast<std::int64_t>(front) << 12) / length) : 4096;
+            const bool steep = cosine >= kLampSteep;
+            const int pull = steep ? 0 : markPull(cosine);
+            const unsigned picture = textureCache.shown(surface.texture, switched);
+            if (picture != bound)
+            {
+                bound = picture;
+                textureCache.use(picture);
+            }
+            NEA_PolyFormat(30, kIdLamp, static_cast<NEA_LightEnum>(0), NEA_CULL_NONE,
+                           static_cast<NEA_OtherFormatEnum>(static_cast<int>(polygonMode()) | (steep ? kDepthEqual : 0)));
+            const LampLight light{{at[0], at[1], at[2]}, strength};
+            // A corner, pulled toward the eye if it is to be.
+            auto corner = [&](const LampCorner &c)
+            {
+                fx p[3] = {c.pos[0], c.pos[1], c.pos[2]};
+                for (int k = 0; pull != 0 && k < 3; ++k)
+                    p[k] = eye[k] + static_cast<fx>((static_cast<std::int64_t>(p[k] - eye[k]) * (4096 - pull)) >> 12);
+                GFX_COLOR = c.colour;
+                GFX_TEX_COORD = c.texCoord;
+                GFX_VERTEX16 = ((static_cast<std::uint32_t>(p[1] >> 10) & 0xFFFF) << 16) |
+                               (static_cast<std::uint32_t>(p[0] >> 10) & 0xFFFF);
+                GFX_VERTEX16 = static_cast<std::uint32_t>(p[2] >> 10) & 0xFFFF;
+            };
+            GFX_BEGIN = GL_TRIANGLES;
+            lampStreamTriangles(level.gxAt(surface), surface.gxWords, [&](const LampCorner *tri) {
+                if (!room)
+                    return;
+                lampPatchTriangle(tri, normal, light, [&](const LampCorner *c, int n) {
+                    for (int i = 1; i + 1 < n && room; ++i)
+                    {
+                        if (polygons >= most || stats_.polygons + 1 > polygonBudget() ||
+                            stats_.vertices + 3 > vertexBudget())
+                        {
+                            room = false;
+                            return;
+                        }
+                        corner(c[0]);
+                        corner(c[i]);
+                        corner(c[i + 1]);
+                        ++polygons;
+                        ++stats_.polygons;
+                        stats_.vertices += 3;
+                    }
+                });
+            });
         };
-        auto project = [&](const fx *from, const fx *u, const fx *v) -> std::uint32_t
+        // Whether a ball (whole units) is within the light's reach.
+        auto near = [&](const std::int32_t *centre, std::int32_t radius, const fx *at)
         {
-            const LampProjection p = lampProjection(from, u, v, beam.radius, HudDraw::kLampTexels);
-            MATRIX_CONTROL = GL_TEXTURE;
-            const std::int32_t m[16] = {p.s[0], p.t[0], 0, 0, p.s[1], p.t[1], 0, 0,
-                                        p.s[2], p.t[2], 0, 0, 0,      0,      0, 4096};
-            for (std::int32_t value : m)
-                MATRIX_LOAD4x4 = value;
-            MATRIX_CONTROL = GL_MODELVIEW;
-            return p.texCoord;
+            std::int64_t square = 0;
+            for (int k = 0; k < 3; ++k)
+            {
+                const std::int64_t d = centre[k] - fxToInt(at[k]);
+                square += d * d;
+            }
+            const std::int64_t reach = radius + kLampPatchRadius;
+            return square < reach * reach;
         };
 
         // The world's surfaces that were drawn this pass.
         camera.apply();
-        const std::uint32_t worldCoord = project(beam.from, beam.u, beam.v);
-        bool room = true;
         for (std::uint32_t w = 0; w < chosenWords_ && room; ++w)
         {
             std::uint32_t bits = chosen_[w];
@@ -679,14 +729,13 @@ namespace hlrt
                 bits &= bits - 1;
                 const Surface &surface = view.surfaces[(w << 5) + b];
                 const std::int32_t centre[3] = {surface.center[0], surface.center[1], surface.center[2]};
-                if (!lampTouches(beam, centre, surface.radius))
-                    continue;
-                room = lightSurface(surface, beam.from, beam.axis, worldCoord);
+                if (near(centre, surface.radius, game.lampAt))
+                    lightSurface(surface, game.lampAt, camera.pos, false);
             }
         }
 
-        // ... and the solid brushes: the lamp brought into each one's own
-        // space, as drawBrush brings the eye.
+        // ... and the solid brushes: the light and the eye brought into each
+        // one's own space, as drawBrush brings the eye.
         for (int n = 0; n < lampBrushCount_ && room; ++n)
         {
             const std::uint32_t index = lampBrushes_[n];
@@ -700,19 +749,18 @@ namespace hlrt
                 centre[a] = (brush.mins[a] + brush.maxs[a]) / 2 + fxToInt(pos[a] - brush.origin[a]);
                 reach += (brush.maxs[a] - brush.mins[a]) / 2;
             }
-            if (!lampTouches(beam, centre, reach))
+            if (!near(centre, reach, game.lampAt))
                 continue;
             static const std::uint16_t kNotTurned[3] = {0, 0, 0};
             const std::uint16_t *angles = brushState_ != nullptr ? brushState_[index].angles : kNotTurned;
             const bool turned = angles[0] != 0 || angles[1] != 0 || angles[2] != 0;
-            fx from[3] = {beam.from[0] - pos[0], beam.from[1] - pos[1], beam.from[2] - pos[2]};
-            fx axis[3] = {beam.axis[0], beam.axis[1], beam.axis[2]};
-            fx u[3] = {beam.u[0], beam.u[1], beam.u[2]}, v[3] = {beam.v[0], beam.v[1], beam.v[2]};
+            fx at[3] = {game.lampAt[0] - pos[0], game.lampAt[1] - pos[1], game.lampAt[2] - pos[2]};
+            fx eye[3] = {camera.pos[0] - pos[0], camera.pos[1] - pos[1], camera.pos[2] - pos[2]};
             std::int32_t axes[9]; // Q30
             if (turned)
             {
                 anglesToAxes(angles, axes);
-                for (fx *vector : {from, axis, u, v})
+                for (fx *vector : {at, eye})
                 {
                     const fx d[3] = {vector[0], vector[1], vector[2]};
                     for (int j = 0; j < 3; ++j)
@@ -724,7 +772,6 @@ namespace hlrt
                     }
                 }
             }
-            const std::uint32_t texCoord = project(from, u, v);
             const bool moved = pos[0] != 0 || pos[1] != 0 || pos[2] != 0 || turned;
             if (moved)
             {
@@ -741,22 +788,18 @@ namespace hlrt
                     glMultMatrix3x3(&turn);
                 }
             }
+            const bool switched = brushState_ != nullptr && brushState_[index].frame != 0;
             const Surface *surface = view.surfaces + model.firstSurface;
             for (int k = model.surfaceCount; k > 0 && room; --k, ++surface)
-                room = lightSurface(*surface, from, axis, texCoord);
+                lightSurface(*surface, at, eye, switched);
             if (moved)
                 glPopMatrix(1);
         }
 
         lampLastPolygons_ = polygons;
-        lampLastVertices_ = vertices;
+        lampLastVertices_ = polygons * 3;
         GFX_TEX_FORMAT = 0;
         NEA_PolyFormat(31, 0, static_cast<NEA_LightEnum>(0), kCull, polygonMode());
-        // The texture matrix back to what the rest of the frame is drawn
-        // with: the beam's projection left in it would put the textures of
-        // whatever is drawn after (see-through brushes, liquids, effects)
-        // anywhere.
-        sway();
     }
 
     HL_ITCM bool WorldDraw::ballVisible(const std::int16_t *centre, int radius, bool anyDistance) const

@@ -28,8 +28,8 @@ namespace hlrt
     class HudDraw
     {
     public:
-        /// What the lamp's light may cost a frame, while it is
-        /// alight: the surfaces in its beam are drawn twice.
+        /// What the lamp's light may cost a frame, while it is alight: the
+        /// patches of the walls it lights, drawn again (WorldDraw::lampPass).
         static constexpr int kLampPolygons = 120;
         static constexpr int kLampVertices = 480;
         bool lampAlight() const { return lampOn_; }
@@ -108,11 +108,6 @@ namespace hlrt
         /// The marks' texture (an NEA_Material: HlUi.hpp, kDecalAtlasFile),
         /// or null on a card that has not got it.
         void *decalMaterial() const { return decalMaterial_; }
-        /// The lamp's picture of light (an NEA_Material, kLampTexels a
-        /// side), which the world's lamp pass projects; null if it could
-        /// not be made.
-        void *lampMaterial() const { return lampMaterial_; }
-        static constexpr int kLampTexels = 32;
 
         /// Put the loading picture on the top screen and leave it there:
         /// returns once it is what the screen shows. False if the card has
@@ -140,7 +135,6 @@ namespace hlrt
         bool atlas_ = false; ///< the display's pictures are read (HudDraw.arm.cpp)
         bool spritesLive_ = false;
         bool atlas640_ = false; ///< ... and they are the 640 set's (kHud640File)
-        void *lampMaterial_ = nullptr;
         bool train_ = false; ///< the pictures of a driven train's speed are read (kHudTrainFile)
         void *decalMaterial_ = nullptr;
         void *decalPalette_ = nullptr;

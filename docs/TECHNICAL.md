@@ -1128,27 +1128,33 @@ Milestone 11, "levels of detail".
 - The suit's lamp, by the game's rules: it wants the suit; two minutes
   alight, twenty seconds to be full again; it starts at 99 of a hundred,
   lights with whatever is in it, and what is in it is kept from map to
-  map and in a save. Its light is the game's too: a ball eighty units
-  from middle to edge at the point the middle of the view meets (out to
-  2000 units), the same size however far off, fading evenly from its
-  middle, full strength to 500 units and fainter beyond. The world's
-  light is baked into its vertices and cannot be relit, so the light is
-  *projected*: the surfaces in it are drawn a second time with one small
-  round picture of light, and the hardware itself works out where on
-  that picture each vertex is from where the vertex is in the world (its
-  texture matrix, in the mode that takes the vertex --
-  `NEA_TEXGEN_POSITION`; `WorldDraw::lampPass`, `shared/HlLamp.hpp`). So
-  it lies on the walls as a light does: round a corner or a pillar, long
-  on a floor it skims. The surface's own packed geometry is sent again
-  through a small filter (vertices as they are, the projection's
-  constant for a texture coordinate, and for a colour the wall's own
-  texture's average, so that the wall is lit towards what it is and not
-  towards white) and drawn only where the depth is the very same. Doors
-  and other solid brushes are lit the same way; whoever stands in the
-  light is lit by a hardware light along the view. What it is not: added
-  light (the DS blends towards a colour -- the wall's texture is seen
-  fainter in the light's middle, where the game shows it brighter), or a
-  caster of shadows. Its button is in the touch screen's column between
+  map and in a save. Its light is the game's too (CL_UpdateFlashlight and
+  R_AddDynamicLights, as an open re-implementation of the engine has
+  them): at the point the middle of the view meets (out to 2000 units),
+  full strength to 500 units and fainter beyond, and ADDED to a wall's
+  own light, before that is made into what is seen -- 80 units less how
+  far the light is off the wall's plane at its middle, less again with
+  every unit out, by a distance that is not round but an octagon's
+  (max + min/2 of the offsets along the texture). The world's light is
+  baked into its vertices and the DS cannot add one picture to another,
+  so the lit part of each wall is drawn again, in its own texture, as a
+  patch: the octagon, in rings, cut to the surface's own triangles, each
+  corner made given its colour and texture place from its triangle and
+  the light added through the converter's own curve
+  (`shared/HlLampPatch.hpp`, `WorldDraw::lampPass`). So the wall is seen
+  brighter and its texture as it is (measured beside the game with
+  `tools/ref/measure.py --delta`: the game adds 42.6 a patch of picture
+  where the light is, the port 42.1; the old way, which blended towards
+  the wall's average colour, 20). The patch is all but solid (alpha 30),
+  so it is drawn after everything solid -- the hardware draws the solid
+  in an order of its own, which would put a solid patch before its wall
+  -- and leaves the depth as it was for the marks drawn on it after; by
+  the "same depth" test where the eye meets its wall at 30 degrees or
+  more, and pulled toward the eye below that, as the marks are
+  (`tools/hwtest/lamppatch`). Doors and other solid brushes are lit the
+  same way; whoever stands in the light is lit by a hardware light along
+  the view. What it is not: a caster of shadows. Its button is in the
+  touch screen's column between
   JUMP and DUCK, with what is left in it; Select switches it too; the
   game's lamp icon is at the top right of the top screen whenever the
   suit is worn, dim while the lamp is off.

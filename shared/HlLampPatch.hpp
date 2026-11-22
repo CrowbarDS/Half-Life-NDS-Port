@@ -53,6 +53,18 @@ namespace hldata
 
     inline constexpr int kLampPatchRadius = 80; ///< the game's flashlight (CL_UpdateFlashlight)
 
+    /// How strong the game's light is (of 256) when it lands `distance`
+    /// units off: full to 500, then 500 over the distance, squared
+    /// (CL_UpdateFlashlight's falloff); none past its reach of 2000.
+    constexpr int lampFalloff(int distance)
+    {
+        if (distance >= 2000)
+            return 0;
+        if (distance <= 500)
+            return 256;
+        return static_cast<int>(256LL * 500 * 500 / (static_cast<long long>(distance) * distance));
+    }
+
     /// One channel's colour (0..31, in 256ths: a corner's colour run from its
     /// triangle's) with `add` sixteenths of light added: the colour seen.
     constexpr int lampLift(std::int32_t colour256, std::int32_t add)
@@ -107,8 +119,8 @@ namespace hldata
 
         /// Cut the convex polygon `in` (n corners) to the inside of the
         /// line p->q (left of it, as seen with `sign` 1; right with -1).
-        inline int clipToLine(const PatchPoint *in, int n, const PatchPoint &p, const PatchPoint &q, int sign,
-                              PatchPoint *out)
+        [[gnu::noinline]] inline int clipToLine(const PatchPoint *in, int n, const PatchPoint &p, const PatchPoint &q,
+                                                int sign, PatchPoint *out)
         {
             int made = 0;
             for (int i = 0; i < n; ++i)
@@ -133,6 +145,201 @@ namespace hldata
         }
 
         inline std::int32_t absolute(std::int32_t v) { return v < 0 ? -v : v; }
+
+        /// One triangle with the light on it: where the light falls on its
+        /// plane, the texture's two directions there, its corners in them,
+        /// and how big the light is on it.
+        struct PatchFrame
+        {
+            const LampCorner *tri;
+            fx impact[3], sAxis[3], tAxis[3];
+            PatchPoint corner[3];
+            std::int64_t area;
+            int sign;
+            fx rad;
+            int strength;
+        };
+
+        /// Set up `f` for the triangle `tri` (facing `normal`, Q12 unit).
+        /// False if the light is too far off its plane, or not on it.
+        [[gnu::noinline]] inline bool patchFrame(const LampCorner *tri, const fx *normal, const LampLight &light,
+                                                 PatchFrame &f)
+        {
+            if (light.strength <= 0)
+                return false;
+            f.tri = tri;
+            f.strength = light.strength;
+            // How far the light is off the plane, and where it falls on it.
+            std::int64_t off64 = 0;
+            for (int k = 0; k < 3; ++k)
+                off64 += static_cast<std::int64_t>(light.at[k] - tri[0].pos[k]) * normal[k];
+            const fx off = static_cast<fx>(off64 >> 12);
+            f.rad = fxFromInt(kLampPatchRadius) - (off < 0 ? -off : off);
+            if (f.rad <= fxFromInt(1))
+                return false;
+            for (int k = 0; k < 3; ++k)
+                f.impact[k] = light.at[k] - static_cast<fx>((static_cast<std::int64_t>(normal[k]) * off) >> 12);
+
+            // The texture's direction "s" in the plane (the gradient of s
+            // over the triangle: s1 (e2 x n) + s2 (n x e1), turned by the
+            // triangle's own turn), and "t" square to it in the plane.
+            const std::int32_t s0 = static_cast<std::int16_t>(tri[0].texCoord & 0xFFFF);
+            const std::int32_t sd1 = static_cast<std::int16_t>(tri[1].texCoord & 0xFFFF) - s0;
+            const std::int32_t sd2 = static_cast<std::int16_t>(tri[2].texCoord & 0xFFFF) - s0;
+            std::int64_t e1[3], e2[3];
+            for (int k = 0; k < 3; ++k)
+            {
+                e1[k] = (tri[1].pos[k] - tri[0].pos[k]) >> 8; // (sixteenths of a unit)
+                e2[k] = (tri[2].pos[k] - tri[0].pos[k]) >> 8;
+            }
+            const std::int64_t n[3] = {normal[0], normal[1], normal[2]};
+            std::int64_t turn = 0;
+            std::int64_t g[3];
+            for (int k = 0; k < 3; ++k)
+            {
+                const int k1 = (k + 1) % 3, k2 = (k + 2) % 3;
+                turn += (e1[k1] * e2[k2] - e1[k2] * e2[k1]) * n[k];
+                g[k] = sd1 * (e2[k1] * n[k2] - e2[k2] * n[k1]) + sd2 * (n[k1] * e1[k2] - n[k2] * e1[k1]);
+            }
+            if (turn == 0)
+                return false; // (no area)
+            // (To Q12 for its length, its largest part made a unit first;
+            // one along an edge if the texture says nothing -- its
+            // coordinates all the same.)
+            std::int64_t big = 0;
+            for (int pass = 0; pass < 2 && big == 0; ++pass)
+            {
+                for (int k = 0; k < 3; ++k)
+                {
+                    if (pass == 1)
+                        g[k] = e1[k];
+                    else if (turn < 0)
+                        g[k] = -g[k];
+                    big = (g[k] < 0 ? -g[k] : g[k]) > big ? (g[k] < 0 ? -g[k] : g[k]) : big;
+                }
+            }
+            if (big == 0)
+                return false;
+            fx raw[3];
+            for (int k = 0; k < 3; ++k)
+                raw[k] = static_cast<fx>((g[k] << 12) / big);
+            const fx length = fxLength(raw);
+            if (length <= 0)
+                return false;
+            for (int k = 0; k < 3; ++k)
+                f.sAxis[k] = static_cast<fx>((static_cast<std::int64_t>(raw[k]) << 12) / length);
+            for (int k = 0; k < 3; ++k)
+            {
+                const int k1 = (k + 1) % 3, k2 = (k + 2) % 3;
+                f.tAxis[k] = static_cast<fx>((normal[k1] * static_cast<std::int64_t>(f.sAxis[k2]) -
+                                              normal[k2] * static_cast<std::int64_t>(f.sAxis[k1])) >> 12);
+            }
+            std::int32_t lo[2] = {0, 0}, hi[2] = {0, 0};
+            for (int c = 0; c < 3; ++c)
+            {
+                std::int64_t a = 0, b = 0;
+                for (int k = 0; k < 3; ++k)
+                {
+                    a += static_cast<std::int64_t>(tri[c].pos[k] - f.impact[k]) * f.sAxis[k];
+                    b += static_cast<std::int64_t>(tri[c].pos[k] - f.impact[k]) * f.tAxis[k];
+                }
+                f.corner[c] = PatchPoint{static_cast<std::int32_t>(a >> 12), static_cast<std::int32_t>(b >> 12)};
+                lo[0] = c == 0 || f.corner[c].a < lo[0] ? f.corner[c].a : lo[0];
+                hi[0] = c == 0 || f.corner[c].a > hi[0] ? f.corner[c].a : hi[0];
+                lo[1] = c == 0 || f.corner[c].b < lo[1] ? f.corner[c].b : lo[1];
+                hi[1] = c == 0 || f.corner[c].b > hi[1] ? f.corner[c].b : hi[1];
+            }
+            // Not on this triangle at all: the octagon's square box clear of it.
+            if (lo[0] >= f.rad || hi[0] <= -f.rad || lo[1] >= f.rad || hi[1] <= -f.rad)
+                return false;
+            f.area = edgeSide(f.corner[0], f.corner[1], f.corner[2]);
+            f.sign = f.area > 0 ? 1 : -1;
+            return f.area != 0;
+        }
+
+        /// A corner of the patch at `p`: where, its colour, its place in the
+        /// texture -- the triangle's, run to here -- and the light added.
+        [[gnu::noinline]] inline LampCorner patchCorner(const PatchFrame &f, const PatchPoint &p)
+        {
+            const LampCorner *tri = f.tri;
+            // (Its share of each of the triangle's corners.)
+            std::int64_t w[3];
+            w[0] = edgeSide(f.corner[1], f.corner[2], p);
+            w[1] = edgeSide(f.corner[2], f.corner[0], p);
+            w[2] = f.area - w[0] - w[1];
+            LampCorner out{};
+            for (int k = 0; k < 3; ++k)
+                out.pos[k] = f.impact[k] + static_cast<fx>((static_cast<std::int64_t>(f.sAxis[k]) * p.a +
+                                                            static_cast<std::int64_t>(f.tAxis[k]) * p.b) >> 12);
+            // The light the game adds here: (rad - dist) * strength, in
+            // sixteenths of the lightmap's, which counts 264 for each 256 of
+            // a wall's own (style "m").
+            const std::int32_t a = absolute(p.a), b = absolute(p.b);
+            const std::int32_t over = f.rad - ((a > b ? a : b) + (a > b ? b : a) / 2); // (Q12 units)
+            const std::int32_t add =
+                over <= 0 ? 0 : static_cast<std::int32_t>((static_cast<std::int64_t>(over) * f.strength * 255 * 16) / (264LL * 256 * 4096));
+            // Five things run from the corners: s, t, and three channels.
+            std::int32_t mixed[5];
+            for (int m = 0; m < 5; ++m)
+            {
+                std::int64_t sum = 0;
+                for (int c = 0; c < 3; ++c)
+                {
+                    const std::int32_t v = m == 0   ? static_cast<std::int16_t>(tri[c].texCoord & 0xFFFF)
+                                           : m == 1 ? static_cast<std::int16_t>(tri[c].texCoord >> 16)
+                                                    : ((tri[c].colour >> (5 * (m - 2))) & 31) * 256;
+                    sum += v * w[c];
+                }
+                mixed[m] = static_cast<std::int32_t>(sum / f.area);
+            }
+            out.texCoord = (static_cast<std::uint32_t>(mixed[0]) & 0xFFFF) | (static_cast<std::uint32_t>(mixed[1]) << 16);
+            std::uint16_t colour = 0;
+            for (int c = 0; c < 3; ++c)
+                colour |= static_cast<std::uint16_t>(lampLift(mixed[2 + c], add) << (5 * c));
+            out.colour = colour;
+            return out;
+        }
+
+        /// The k-th of the patch's 16 pieces (the fan of eight in the middle,
+        /// then the ring of eight round it) cut to the triangle, its corners
+        /// into `out`: how many (fewer than 3: none of it on the triangle).
+        [[gnu::noinline]] inline int patchPiece(const PatchFrame &f, int k, LampCorner *out)
+        {
+            // The octagon's corners, and the ring's at half of it.
+            const std::int32_t r = f.rad, r23 = f.rad * 2 / 3, h = f.rad / 2, h23 = f.rad / 3;
+            const std::int8_t kWay[8][2] = {{1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}, {0, -1}, {1, -1}};
+            auto ring = [&](int j, bool outer) {
+                const std::int8_t *way = kWay[j % 8];
+                const std::int32_t along = way[0] != 0 && way[1] != 0 ? (outer ? r23 : h23) : (outer ? r : h);
+                return PatchPoint{way[0] * along, way[1] * along};
+            };
+            const int j = k % 8;
+            PatchPoint a[12], b[12];
+            int count;
+            if (k < 8)
+            {
+                a[0] = PatchPoint{0, 0};
+                a[1] = ring(j, false);
+                a[2] = ring(j + 1, false);
+                count = 3;
+            }
+            else
+            {
+                a[0] = ring(j, false);
+                a[1] = ring(j, true);
+                a[2] = ring(j + 1, true);
+                a[3] = ring(j + 1, false);
+                count = 4;
+            }
+            count = clipToLine(a, count, f.corner[0], f.corner[1], f.sign, b);
+            if (count >= 3)
+                count = clipToLine(b, count, f.corner[1], f.corner[2], f.sign, a);
+            if (count >= 3)
+                count = clipToLine(a, count, f.corner[2], f.corner[0], f.sign, b);
+            for (int i = 0; count >= 3 && i < count; ++i)
+                out[i] = patchCorner(f, b[i]);
+            return count;
+        }
     } // namespace detail
 
     /// The patch of the lamp's light on one triangle of a surface (corners
@@ -143,176 +350,162 @@ namespace hldata
     template <class Emit>
     inline int lampPatchTriangle(const LampCorner *tri, const fx *normal, const LampLight &light, Emit &&emit)
     {
-        using detail::PatchPoint;
-        if (light.strength <= 0)
+        detail::PatchFrame f;
+        if (!detail::patchFrame(tri, normal, light, f))
             return 0;
-        // How far the light is off the plane, and where it falls on it.
-        std::int64_t off64 = 0;
-        for (int k = 0; k < 3; ++k)
-            off64 += static_cast<std::int64_t>(light.at[k] - tri[0].pos[k]) * normal[k];
-        const fx off = static_cast<fx>(off64 >> 12);
-        const fx rad = fxFromInt(kLampPatchRadius) - (off < 0 ? -off : off);
-        if (rad <= fxFromInt(1))
-            return 0;
-        fx impact[3];
-        for (int k = 0; k < 3; ++k)
-            impact[k] = light.at[k] - static_cast<fx>((static_cast<std::int64_t>(normal[k]) * off) >> 12);
-
-        // The texture's direction "s" in the plane (the gradient of s over
-        // the triangle: s1 (e2 x n) + s2 (n x e1), turned by the triangle's
-        // own turn), and "t" square to it in the plane.
-        const std::int32_t s0 = static_cast<std::int16_t>(tri[0].texCoord & 0xFFFF);
-        const std::int32_t sd1 = static_cast<std::int16_t>(tri[1].texCoord & 0xFFFF) - s0;
-        const std::int32_t sd2 = static_cast<std::int16_t>(tri[2].texCoord & 0xFFFF) - s0;
-        std::int64_t e1[3], e2[3];
-        for (int k = 0; k < 3; ++k)
-        {
-            e1[k] = (tri[1].pos[k] - tri[0].pos[k]) >> 8; // (sixteenths of a unit)
-            e2[k] = (tri[2].pos[k] - tri[0].pos[k]) >> 8;
-        }
-        const std::int64_t n[3] = {normal[0], normal[1], normal[2]};
-        const std::int64_t e2xn[3] = {e2[1] * n[2] - e2[2] * n[1], e2[2] * n[0] - e2[0] * n[2], e2[0] * n[1] - e2[1] * n[0]};
-        const std::int64_t nxe1[3] = {n[1] * e1[2] - n[2] * e1[1], n[2] * e1[0] - n[0] * e1[2], n[0] * e1[1] - n[1] * e1[0]};
-        const std::int64_t cross[3] = {e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]};
-        const std::int64_t turn = cross[0] * n[0] + cross[1] * n[1] + cross[2] * n[2];
-        if (turn == 0)
-            return 0; // (no area)
-        std::int64_t g[3];
-        for (int k = 0; k < 3; ++k)
-            g[k] = (sd1 * e2xn[k] + sd2 * nxe1[k]) * (turn > 0 ? 1 : -1);
-        fx sAxis[3];
-        {
-            // (To Q12 for its length; one along an edge if the texture says
-            // nothing -- its coordinates all the same.)
-            std::int64_t big = 0;
-            for (int k = 0; k < 3; ++k)
-                big = (g[k] < 0 ? -g[k] : g[k]) > big ? (g[k] < 0 ? -g[k] : g[k]) : big;
-            if (big == 0)
-            {
-                for (int k = 0; k < 3; ++k)
-                    g[k] = e1[k];
-                big = 1;
-                for (int k = 0; k < 3; ++k)
-                    big = (g[k] < 0 ? -g[k] : g[k]) > big ? (g[k] < 0 ? -g[k] : g[k]) : big;
-            }
-            // (Its largest part made a unit before its length is taken.)
-            fx raw[3];
-            for (int k = 0; k < 3; ++k)
-                raw[k] = static_cast<fx>((g[k] << 12) / big);
-            const fx length = fxLength(raw);
-            if (length <= 0)
-                return 0;
-            for (int k = 0; k < 3; ++k)
-                sAxis[k] = static_cast<fx>((static_cast<std::int64_t>(raw[k]) << 12) / length);
-        }
-        const fx tAxis[3] = {static_cast<fx>((normal[1] * static_cast<std::int64_t>(sAxis[2]) - normal[2] * static_cast<std::int64_t>(sAxis[1])) >> 12),
-                             static_cast<fx>((normal[2] * static_cast<std::int64_t>(sAxis[0]) - normal[0] * static_cast<std::int64_t>(sAxis[2])) >> 12),
-                             static_cast<fx>((normal[0] * static_cast<std::int64_t>(sAxis[1]) - normal[1] * static_cast<std::int64_t>(sAxis[0])) >> 12)};
-        auto toPlane = [&](const fx *p) {
-            std::int64_t a = 0, b = 0;
-            for (int k = 0; k < 3; ++k)
-            {
-                a += static_cast<std::int64_t>(p[k] - impact[k]) * sAxis[k];
-                b += static_cast<std::int64_t>(p[k] - impact[k]) * tAxis[k];
-            }
-            return PatchPoint{static_cast<std::int32_t>(a >> 12), static_cast<std::int32_t>(b >> 12)};
-        };
-        const PatchPoint corner[3] = {toPlane(tri[0].pos), toPlane(tri[1].pos), toPlane(tri[2].pos)};
-
-        // Not on this triangle at all: the octagon's square box clear of it.
-        {
-            std::int32_t lo[2] = {corner[0].a, corner[0].b}, hi[2] = {corner[0].a, corner[0].b};
-            for (const PatchPoint &c : corner)
-            {
-                lo[0] = c.a < lo[0] ? c.a : lo[0];
-                hi[0] = c.a > hi[0] ? c.a : hi[0];
-                lo[1] = c.b < lo[1] ? c.b : lo[1];
-                hi[1] = c.b > hi[1] ? c.b : hi[1];
-            }
-            if (lo[0] >= rad || hi[0] <= -rad || lo[1] >= rad || hi[1] <= -rad)
-                return 0;
-        }
-        const std::int64_t area = detail::edgeSide(corner[0], corner[1], corner[2]);
-        if (area == 0)
-            return 0;
-        const int sign = area > 0 ? 1 : -1;
-
-        // The octagon's corners, and the ring's at half of it.
-        const std::int32_t r = rad, r23 = rad * 2 / 3, h = rad / 2, h23 = rad / 3;
-        const PatchPoint outer[8] = {{r, 0}, {r23, r23}, {0, r}, {-r23, r23}, {-r, 0}, {-r23, -r23}, {0, -r}, {r23, -r23}};
-        const PatchPoint inner[8] = {{h, 0}, {h23, h23}, {0, h}, {-h23, h23}, {-h, 0}, {-h23, -h23}, {0, -h}, {h23, -h23}};
-
-        // A corner's colour, texture place and light.
-        auto make = [&](const PatchPoint &p) {
-            // (Its share of each of the triangle's corners.)
-            const std::int64_t w0 = detail::edgeSide(corner[1], corner[2], p);
-            const std::int64_t w1 = detail::edgeSide(corner[2], corner[0], p);
-            const std::int64_t w2 = area - w0 - w1;
-            LampCorner out{};
-            for (int k = 0; k < 3; ++k)
-                out.pos[k] = impact[k] + static_cast<fx>((static_cast<std::int64_t>(sAxis[k]) * p.a + static_cast<std::int64_t>(tAxis[k]) * p.b) >> 12);
-            auto mix = [&](std::int32_t v0, std::int32_t v1, std::int32_t v2) {
-                return static_cast<std::int32_t>((v0 * w0 + v1 * w1 + v2 * w2) / area);
-            };
-            // The texture: the triangle's, run to here.
-            const std::int32_t s = mix(static_cast<std::int16_t>(tri[0].texCoord & 0xFFFF),
-                                       static_cast<std::int16_t>(tri[1].texCoord & 0xFFFF),
-                                       static_cast<std::int16_t>(tri[2].texCoord & 0xFFFF));
-            const std::int32_t t = mix(static_cast<std::int16_t>(tri[0].texCoord >> 16),
-                                       static_cast<std::int16_t>(tri[1].texCoord >> 16),
-                                       static_cast<std::int16_t>(tri[2].texCoord >> 16));
-            out.texCoord = (static_cast<std::uint32_t>(s) & 0xFFFF) | (static_cast<std::uint32_t>(t) << 16);
-            // The light the game adds here: (rad - dist) * strength, in
-            // sixteenths of the lightmap's, which counts 264 for each 256 of
-            // a wall's own (style "m").
-            const std::int32_t a = detail::absolute(p.a), b = detail::absolute(p.b);
-            const std::int32_t dist = (a > b ? a : b) + (a > b ? b : a) / 2;
-            const std::int32_t over = rad - dist; // (Q12 units)
-            const std::int32_t add =
-                over <= 0 ? 0 : static_cast<std::int32_t>((static_cast<std::int64_t>(over) * light.strength * 255 * 16) / (264LL * 256 * 4096));
-            std::uint16_t colour = 0;
-            for (int c = 0; c < 3; ++c)
-            {
-                // (Each channel run to here, in 256ths of a level.)
-                const std::int64_t v = (static_cast<std::int64_t>((tri[0].colour >> (5 * c)) & 31) * w0 +
-                                        static_cast<std::int64_t>((tri[1].colour >> (5 * c)) & 31) * w1 +
-                                        static_cast<std::int64_t>((tri[2].colour >> (5 * c)) & 31) * w2) *
-                                       256 / area;
-                colour |= static_cast<std::uint16_t>(lampLift(static_cast<std::int32_t>(v), add) << (5 * c));
-            }
-            out.colour = colour;
-            return out;
-        };
-
         int triangles = 0;
-        auto piece = [&](const PatchPoint *shape, int n) {
-            PatchPoint a[12], b[12];
-            for (int i = 0; i < n; ++i)
-                a[i] = shape[i];
-            int count = n;
-            count = detail::clipToLine(a, count, corner[0], corner[1], sign, b);
-            if (count < 3)
-                return;
-            count = detail::clipToLine(b, count, corner[1], corner[2], sign, a);
-            if (count < 3)
-                return;
-            count = detail::clipToLine(a, count, corner[2], corner[0], sign, b);
-            if (count < 3)
-                return;
+        for (int k = 0; k < 16; ++k)
+        {
             LampCorner made[12];
-            for (int i = 0; i < count; ++i)
-                made[i] = make(b[i]);
+            const int count = detail::patchPiece(f, k, made);
+            if (count < 3)
+                continue;
             emit(static_cast<const LampCorner *>(made), count);
             triangles += count - 2;
-        };
-        const PatchPoint middle{0, 0};
-        for (int k = 0; k < 8; ++k)
-        {
-            const PatchPoint fan[3] = {middle, inner[k], inner[(k + 1) % 8]};
-            piece(fan, 3);
-            const PatchPoint ring[4] = {inner[k], outer[k], outer[(k + 1) % 8], inner[(k + 1) % 8]};
-            piece(ring, 4);
         }
         return triangles;
+    }
+
+    /// A surface's geometry, as the level packs it for the hardware (its
+    /// GxStream: runs of triangles, quads, strips of either, each vertex
+    /// with its colour and texture coordinate, in quarter units in one of
+    /// six forms -- the converter's GxPacker), read a triangle at a time
+    /// (three LampCorners, Q12 units).
+    class LampStreamReader
+    {
+    public:
+        LampStreamReader(const std::uint32_t *words, int count) : words_(words), count_(count) {}
+        /// The next triangle into `out`; false at the end, or at a word that
+        /// is not one of the level's.
+        [[gnu::noinline]] bool next(LampCorner *out)
+        {
+            if (queued_)
+            {
+                queued_ = false;
+                for (int i = 0; i < 3; ++i)
+                    out[i] = queue_[i];
+                return true;
+            }
+            for (;;)
+            {
+                if (slot_ >= 4 || ((header_ >> (8 * slot_)) & 0xFF) == 0)
+                {
+                    if (at_ >= count_)
+                        return false;
+                    header_ = words_[at_++];
+                    slot_ = 0;
+                    continue;
+                }
+                const std::uint32_t code = (header_ >> (8 * slot_++)) & 0xFF;
+                const int params = code == 0x23 ? 2 : 1;
+                if (at_ + params > count_)
+                    return false;
+                const std::uint32_t p0 = words_[at_], p1 = params == 2 ? words_[at_ + 1] : 0;
+                at_ += params;
+                const auto lo = static_cast<std::int16_t>(p0 & 0xFFFF), hi = static_cast<std::int16_t>(p0 >> 16);
+                switch (code)
+                {
+                case 0x40: // a run begins: triangles, quads, a strip of each
+                    type_ = static_cast<int>(p0 & 3);
+                    inRun_ = 0;
+                    continue;
+                case 0x20: pending_.colour = static_cast<std::uint16_t>(p0 & 0x7FFF); continue;
+                case 0x22: pending_.texCoord = p0; continue;
+                case 0x23: q_[0] = lo; q_[1] = hi; q_[2] = static_cast<std::int16_t>(p1 & 0xFFFF); break;
+                case 0x24: q_[0] = ten(p0) * 64; q_[1] = ten(p0 >> 10) * 64; q_[2] = ten(p0 >> 20) * 64; break;
+                case 0x25: q_[0] = lo; q_[1] = hi; break;
+                case 0x26: q_[0] = lo; q_[2] = hi; break;
+                case 0x27: q_[1] = lo; q_[2] = hi; break;
+                case 0x28: q_[0] += ten(p0); q_[1] += ten(p0 >> 10); q_[2] += ten(p0 >> 20); break;
+                default: return false;
+                }
+                for (int a = 0; a < 3; ++a)
+                    pending_.pos[a] = static_cast<fx>(q_[a] * 1024); // (quarter units to Q12)
+                if (vertex(out))
+                    return true;
+            }
+        }
+
+    private:
+        static std::int32_t ten(std::uint32_t v) { return static_cast<std::int32_t>((v & 0x3FF) ^ 0x200) - 0x200; }
+
+        /// The vertex just read is one of its run's: true with a triangle
+        /// in `out` (and perhaps another queued) when there are enough.
+        bool vertex(LampCorner *out)
+        {
+            auto give = [&](const LampCorner &x, const LampCorner &y, const LampCorner &z) {
+                out[0] = x;
+                out[1] = y;
+                out[2] = z;
+            };
+            switch (type_)
+            {
+            case 0: // triangles
+                run_[inRun_++] = pending_;
+                if (inRun_ < 3)
+                    return false;
+                inRun_ = 0;
+                give(run_[0], run_[1], run_[2]);
+                return true;
+            case 1: // quads
+                run_[inRun_++] = pending_;
+                if (inRun_ < 4)
+                    return false;
+                inRun_ = 0;
+                give(run_[0], run_[1], run_[2]);
+                queue_[0] = run_[0];
+                queue_[1] = run_[2];
+                queue_[2] = run_[3];
+                queued_ = true;
+                return true;
+            case 2: // a strip of triangles: each vertex makes one with the two before
+                if (inRun_ < 2)
+                {
+                    run_[inRun_++] = pending_;
+                    return false;
+                }
+                give(run_[0], run_[1], pending_);
+                run_[0] = run_[1];
+                run_[1] = pending_;
+                return true;
+            default: // a strip of quads: each two vertices make one with the two before
+                run_[inRun_++] = pending_;
+                if (inRun_ < 4)
+                    return false;
+                // (Its corners in order are the first two, then the new two
+                // the other way round.)
+                give(run_[0], run_[1], run_[3]);
+                queue_[0] = run_[0];
+                queue_[1] = run_[3];
+                queue_[2] = run_[2];
+                queued_ = true;
+                run_[0] = run_[2];
+                run_[1] = run_[3];
+                inRun_ = 2;
+                return true;
+            }
+        }
+
+        const std::uint32_t *words_;
+        int count_;
+        int at_ = 0;
+        std::uint32_t header_ = 0;
+        int slot_ = 4;
+        LampCorner pending_{};
+        LampCorner run_[4];
+        LampCorner queue_[3];
+        bool queued_ = false;
+        int type_ = 0, inRun_ = 0;
+        std::int32_t q_[3] = {0, 0, 0}; // (the last vertex, quarter units)
+    };
+
+    /// Each triangle of a surface's geometry given to `emit` (LampStreamReader).
+    template <class Emit>
+    inline void lampStreamTriangles(const std::uint32_t *words, int count, Emit &&emit)
+    {
+        LampStreamReader reader(words, count);
+        LampCorner tri[3];
+        while (reader.next(tri))
+            emit(static_cast<const LampCorner *>(tri));
     }
 } // namespace hldata

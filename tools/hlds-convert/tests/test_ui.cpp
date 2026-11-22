@@ -24,6 +24,7 @@
 #include "hlds/UiCook.hpp"
 #include "hlds/AtomicWrite.hpp"
 #include "hlds/TitlesFile.hpp"
+#include "hlds/GxStream.hpp"
 
 using namespace hlds;
 using namespace hldata;
@@ -705,6 +706,63 @@ namespace
         check(polygons > 8 && made + made2 < 80, "a patch is a few dozen triangles");
     }
 
+    // A surface's packed geometry read back a triangle at a time, as the
+    // lamp's patches read it (lampStreamTriangles): every form of vertex the
+    // converter packs, in every kind of run.
+    void testLampStream()
+    {
+        // A strip of quads along x, its vertices on a grid so that the
+        // packer takes each of its forms (16-bit, ten-bit, two axes, a
+        // difference).
+        std::vector<GxVertex> grid;
+        for (int k = 0; k < 6; ++k)
+        {
+            for (int side = 0; side < 2; ++side)
+            {
+                GxVertex v;
+                v.x = static_cast<std::int16_t>(k * (k % 2 ? 37 : 64) * 4);
+                v.y = static_cast<std::int16_t>(side * 64 * 4);
+                v.z = static_cast<std::int16_t>(k == 3 ? 12 : (k == 4 ? 12 : -64 * 4));
+                v.s = static_cast<std::int16_t>(k * 16);
+                v.t = static_cast<std::int16_t>(side * 16);
+                v.colour = static_cast<std::uint16_t>(k + side * 32);
+                grid.push_back(v);
+            }
+        }
+        for (const GxPrimitive type : {GxPrimitive::QuadStrip, GxPrimitive::TriangleStrip, GxPrimitive::Triangles,
+                                       GxPrimitive::Quads})
+        {
+            GxPacker packer;
+            packer.begin(type);
+            for (const GxVertex &v : grid)
+                packer.vertex(v);
+            const std::vector<std::uint32_t> words = packer.finish();
+            std::vector<GxRun> runs;
+            std::string error;
+            const bool decoded = decodeGxStream(words.data(), words.size(), runs, error);
+            std::vector<std::array<int, 6>> mine;
+            const bool read = true;
+            lampStreamTriangles(words.data(), static_cast<int>(words.size()), [&](const LampCorner *t) {
+                for (int i = 0; i < 3; ++i)
+                    mine.push_back({static_cast<int>(t[i].pos[0] >> 10), static_cast<int>(t[i].pos[1] >> 10),
+                                    static_cast<int>(t[i].pos[2] >> 10), t[i].colour,
+                                    static_cast<std::int16_t>(t[i].texCoord & 0xFFFF), static_cast<std::int16_t>(t[i].texCoord >> 16)});
+            });
+            // Every corner given is one of the run's own, as it was packed.
+            bool same = decoded && read && !mine.empty();
+            for (const auto &c : mine)
+            {
+                bool found = false;
+                for (const GxVertex &v : runs[0].vertices)
+                    found = found || (c[0] == v.x && c[1] == v.y && c[2] == v.z && c[3] == v.colour && c[4] == v.s && c[5] == v.t);
+                same = same && found;
+            }
+            const int wanted = type == GxPrimitive::QuadStrip ? 10 : type == GxPrimitive::TriangleStrip ? 10 : type == GxPrimitive::Triangles ? 4 : 6;
+            check(same && static_cast<int>(mine.size()) == wanted * 3,
+                  "a surface's packed geometry is read back a triangle at a time, as it was packed");
+        }
+    }
+
     void testLamp()
     {
         LampState lamp;
@@ -740,53 +798,6 @@ namespace
         check(lampOn(200, 0, 200) > lampOn(200, 40, 200) && lampOn(200, 40, 200) > 0 && lampOn(200, 80, 200) == 0 &&
                   lampOn(100, 0, 200) == 0 && lampOn(150, 0, 200) > 0,
               "on whoever stands in it: by how near its middle, and not at all outside it");
-        // The beam: along +X from the origin, a hundred units long.
-        LampBeam beam;
-        beam.axis[0] = beam.u[1] = beam.v[2] = kFxOne;
-        beam.radius = 30;
-        beam.near = 0;
-        beam.reach = 100;
-        const std::int32_t inIt[3] = {50, 10, 0}, beside[3] = {50, 60, 0}, big[3] = {50, 60, 0}, behind[3] = {-40, 0, 0},
-                           beyond[3] = {150, 0, 0};
-        check(lampTouches(beam, inIt, 5) && !lampTouches(beam, beside, 5) && lampTouches(beam, big, 40) &&
-                  !lampTouches(beam, behind, 10) && lampTouches(beam, behind, 50) && !lampTouches(beam, beyond, 10),
-              "what is in the beam is what is beside its line within the two radii, not behind it or past its reach");
-        // The projection: a vertex on the beam's line is the middle of the
-        // picture, one a radius to the side is its edge -- wherever in the
-        // map the lamp is (the hardware's sixteen bits go round, and so do
-        // these).
-        for (const int where : {0, 3000, -7000})
-        {
-            const fx from[3] = {fxFromInt(where), fxFromInt(where / 2), fxFromInt(40)};
-            const LampProjection p = lampProjection(from, beam.u, beam.v, beam.radius, 32);
-            auto coordinate = [&](int x, int y, int z, int which)
-            {
-                // (As the hardware does it: quarter units, times the
-                // matrix, sixteen bits kept.)
-                const std::int64_t vx = (where + x) * 4, vy = (where / 2 + y) * 4, vz = (40 + z) * 4;
-                const std::int32_t *m = which == 0 ? p.s : p.t;
-                const std::int64_t made = (vx * m[0] + vy * m[1] + vz * m[2]) >> 24;
-                return static_cast<std::int16_t>(made + ((p.texCoord >> (which * 16)) & 0xFFFF));
-            };
-            const int midS = coordinate(77, 0, 0, 0), midT = coordinate(77, 0, 0, 1);
-            const int edgeS = coordinate(77, 30, 0, 0), topT = coordinate(77, 0, -30, 1);
-            check(midS >= 254 && midS <= 258 && midT >= 254 && midT <= 258 && edgeS >= 508 && edgeS <= 514 &&
-                      topT >= -2 && topT <= 4,
-                  "the projection puts the beam's line in the middle of the picture and its radius at the edge");
-        }
-        // A surface's commands for the light's pass: the vertices as they
-        // were, colours white, texture coordinates the projection's.
-        {
-            // (colour, texture coordinate, a begin, a 16-bit vertex | then a
-            // 10-bit vertex and nothing.)
-            const std::uint32_t stream[] = {0x23402220u, 0x1234, 0x00050006, 1, 0x00100020, 0x0030,
-                                            0x00000024u, 0x0ABCDEF0};
-            std::vector<std::uint32_t> out;
-            lampStream(stream, 8, 0xAAAA5555u, [&](std::uint32_t word) { out.push_back(word); });
-            check(out.size() == 8 && out[0] == stream[0] && out[1] == 0x7FFF && out[2] == 0xAAAA5555u && out[3] == 1 &&
-                      out[4] == 0x00100020 && out[5] == 0x0030 && out[6] == stream[6] && out[7] == 0x0ABCDEF0,
-                  "the light's pass sends a surface's vertices as they are, white, with the projection's coordinate");
-        }
         check(lampOn(100, 0, 100) > lampOn(1200, 0, 1200) && lampOn(100, 0, 100) > lampOn(100, 30, 100) &&
                   lampOn(100, 200, 100) == 0 && lampOn(-10, 0, 100) == 0 && lampOn(kLampReach + 1, 0, kLampReach + 1) == 0 &&
                   lampOn(60, 0, 60) <= 31,
@@ -1439,6 +1450,7 @@ int main()
     testLayout();
     testLamp();
     testLampPatch();
+    testLampStream();
     testLogos();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir != nullptr && dir[0] != '\0')

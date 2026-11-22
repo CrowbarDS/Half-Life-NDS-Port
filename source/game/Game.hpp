@@ -53,10 +53,11 @@ namespace hlrt
         hldata::ActorState held;
         /// What has been heard and not yet played (audio/Sound empties it).
         hldata::SoundQueue heard;
-        /// The suit's lamp; and, while it is alight, its beam as it is this
-        /// frame (`lampLit`: it has one).
+        /// The suit's lamp; and, while it is alight, where its light is this
+        /// frame (`lampLit`: it has one): on what the middle of the view
+        /// meets, Q12 units.
         hldata::LampState lamp;
-        hldata::LampBeam lampBeam;
+        hldata::fx lampAt[3] = {0, 0, 0};
         /// The COMMAND line's cheats, for the session (not saved): the
         /// player's state points here.
         hldata::Cheats cheats;

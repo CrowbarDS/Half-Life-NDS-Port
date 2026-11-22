@@ -1064,21 +1064,10 @@ namespace hlrt
                 const LampAim aim = lampAim(world, eye, camera.forward);
                 if (aim.hit)
                 {
-                    const int distance = aim.distance;
-                    LampBeam &beam = lampBeam;
                     for (int a = 0; a < 3; ++a)
-                    {
-                        beam.from[a] = eye[a];
-                        beam.axis[a] = camera.forward[a];
-                        beam.u[a] = camera.right[a];
-                        beam.v[a] = camera.up[a];
-                    }
-                    beam.radius = lampRadius(distance);
-                    beam.near = distance - beam.radius;
-                    beam.reach = distance + beam.radius;
-                    beam.strength = lampStrength(distance);
-                    lampDistance = distance;
-                    lampLit = beam.strength > 0;
+                        lampAt[a] = aim.at[a];
+                    lampDistance = aim.distance;
+                    lampLit = lampStrength(aim.distance) > 0;
                 }
             }
             bottomScreen.setLamp(suit, lamp.on, lampPercent(lamp));

@@ -480,44 +480,6 @@ namespace hlrt
 
     void HudDraw::load()
     {
-        if (lampMaterial_ == nullptr)
-        {
-            // The lamp's light: a round picture, solid at its middle and
-            // thinning evenly to nothing at its rim, in thirty-two steps (and
-            // nothing at all along its edges: past them the hardware goes
-            // on with the edge). Made here: it is not the game's.
-            static std::uint8_t texels[kLampTexels * kLampTexels];
-            // (White: what colour the light is drawn in is the wall's own,
-            // given with each surface -- WorldDraw's lampPass.)
-            static const std::uint16_t colours[8] = {0x7FFF, 0x7FFF, 0x7FFF, 0x7FFF, 0x7FFF, 0x7FFF, 0x7FFF, 0x7FFF};
-            const int mid2 = kLampTexels - 1; // twice the middle
-            for (int y = 0; y < kLampTexels; ++y)
-            {
-                for (int x = 0; x < kLampTexels; ++x)
-                {
-                    const int dx = 2 * x - mid2, dy = 2 * y - mid2;
-                    // (Of 256: how far from the middle to the rim, one texel
-                    // short of the edge.)
-                    const int far = static_cast<int>(isqrt64(static_cast<std::uint64_t>(dx * dx + dy * dy) << 16)) /
-                                    (mid2 - 2);
-                    // (The game's light: brightest at its very middle, and
-                    // less by the same amount for every step out.)
-                    int solid = far >= 256 ? 0 : 31 * (256 - far) / 256;
-                    if (x == 0 || y == 0 || x == kLampTexels - 1 || y == kLampTexels - 1)
-                        solid = 0;
-                    texels[y * kLampTexels + x] = static_cast<std::uint8_t>(solid << 3);
-                }
-            }
-            NEA_Material *material = NEA_MaterialCreate();
-            NEA_Palette *palette = NEA_PaletteCreate();
-            if (material != nullptr && palette != nullptr &&
-                NEA_MaterialTexLoad(material, NEA_A5PAL8, kLampTexels, kLampTexels, NEA_TEXGEN_POSITION, texels) == 1 &&
-                NEA_PaletteLoad(palette, colours, 8, NEA_A5PAL8) == 1)
-            {
-                NEA_MaterialSetPalette(material, palette);
-                lampMaterial_ = material;
-            }
-        }
         if (decalMaterial_ == nullptr && global.hasData)
         {
             NEA_Material *material = nullptr;
@@ -590,7 +552,6 @@ namespace hlrt
     void HudDraw::forget()
     {
         // (NEA has let go of them itself, with everything else.)
-        lampMaterial_ = nullptr;
         decalMaterial_ = decalPalette_ = nullptr;
         loadingMaterial_ = loadingPalette_ = nullptr;
         loadingShown = nullptr;
