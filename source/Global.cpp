@@ -77,9 +77,12 @@ namespace
     // waits for one too, now and then: so not always). Every wait for
     // VBlank is again for the next one: the game's, a menu's, Nitro
     // Engine's, which put the textures into video memory then. (Woken, it
-    // waits again at once; an interrupt that comes in that moment runs on
-    // this stack.)
-    alignas(8) std::uint32_t vblankWaiterStack[1024 / 4];
+    // waits again at once. Its stack is its two calls': 16 bytes, measured
+    // as by their frames (perf.txt's "waiter stack"). Interrupts have a
+    // stack of their own, and a thread's registers are kept out of its
+    // stack, in libnds's record of it; a debug libnds puts 8 bytes of
+    // pattern at each end.)
+    alignas(8) std::uint32_t vblankWaiterStack[256 / 4];
 #ifdef HLDS_PROFILE
     constexpr std::uint32_t kWaiterPaint = 0x7A17E25Bu;
 #endif
