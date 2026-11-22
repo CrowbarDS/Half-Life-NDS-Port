@@ -236,11 +236,14 @@ namespace hlrt
             lampPolygons_ = lampVertices_ = 0;
             if (hudDraw.lampAlight())
             {
-                const int mostPolygons = HudDraw::kLampPolygons >> (modelDraw.strained() ? 1 : 0);
+                const bool dsi = isDSiMode();
+                const int mostPolygons =
+                    (dsi ? HudDraw::kLampPolygonsDsi : HudDraw::kLampPolygonsDs) >> (modelDraw.strained() ? 1 : 0);
+                const int mostVertices = dsi ? HudDraw::kLampVerticesDsi : HudDraw::kLampVerticesDs;
                 lampPolygons_ = lampLastPolygons_ < 0 ? mostPolygons : lampLastPolygons_ + 24;
-                lampVertices_ = lampLastPolygons_ < 0 ? HudDraw::kLampVertices : lampLastVertices_ + 96;
+                lampVertices_ = lampLastPolygons_ < 0 ? mostVertices : lampLastVertices_ + 64;
                 lampPolygons_ = lampPolygons_ > mostPolygons ? mostPolygons : lampPolygons_;
-                lampVertices_ = lampVertices_ > HudDraw::kLampVertices ? HudDraw::kLampVertices : lampVertices_;
+                lampVertices_ = lampVertices_ > mostVertices ? mostVertices : lampVertices_;
             }
             // (... and the marks and small things there are: nothing, with
             // none.)

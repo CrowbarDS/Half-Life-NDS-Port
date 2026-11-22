@@ -29,9 +29,13 @@ namespace hlrt
     {
     public:
         /// What the lamp's light may cost a frame, while it is alight: the
-        /// patches of the walls it lights, drawn again (WorldDraw::lampPass).
-        static constexpr int kLampPolygons = 120;
-        static constexpr int kLampVertices = 480;
+        /// walls it lights, drawn again on the game's grid (WorldDraw::
+        /// lampPass) -- every 16 texels on a DSi, 32 on a DS: about 70 and
+        /// 20 polygons for one wall's light.
+        static constexpr int kLampPolygonsDsi = 200;
+        static constexpr int kLampVerticesDsi = 600;
+        static constexpr int kLampPolygonsDs = 80;
+        static constexpr int kLampVerticesDs = 240;
         bool lampAlight() const { return lampOn_; }
 
         /// Load the display's texture. After the 3D engine is brought up

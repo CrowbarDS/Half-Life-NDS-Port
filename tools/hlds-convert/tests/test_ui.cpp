@@ -16,6 +16,7 @@
 #include "HlFont.hpp"
 #include "HlLamp.hpp"
 #include "HlLampPatch.hpp"
+#include "HlLampGrid.hpp"
 #include "HlTopLayout.hpp"
 #include "HlKeyWords.hpp"
 #include "HlSettings.hpp"
@@ -704,6 +705,281 @@ namespace
         none += lampPatchTriangle(first, up, light, take);
         check(none == 0, "no patch for a light 80 off the floor, or beside it");
         check(polygons > 8 && made + made2 < 80, "a patch is a few dozen triangles");
+    }
+
+    // The lamp's light on the game's grid (HlLampGrid.hpp): squares of the
+    // texture's own grid, lit as the game lights its light map, meeting
+    // without a gap or a seam however the surface is cut.
+    namespace lampgrid
+    {
+        /// What the builder sent: each polygon (a strip's quads one by
+        /// one), its corners with their texture coordinates put back.
+        struct Taken
+        {
+            std::vector<std::vector<LampVertex>> polygons;
+            int sent = 0; ///< polygons as the hardware counts them
+            bool strip(const LampVertex *const *v, int n, std::int32_t ds, std::int32_t dt)
+            {
+                for (int i = 0; i + 3 < n; i += 2)
+                {
+                    std::vector<LampVertex> q = {*v[i], *v[i + 1], *v[i + 3], *v[i + 2]};
+                    for (LampVertex &x : q)
+                    {
+                        x.s += ds;
+                        x.t += dt;
+                    }
+                    polygons.push_back(q);
+                    ++sent;
+                }
+                return true;
+            }
+            bool polygon(const LampVertex *const *v, int n, std::int32_t ds, std::int32_t dt)
+            {
+                std::vector<LampVertex> q;
+                for (int i = 0; i < n; ++i)
+                {
+                    LampVertex x = *v[i];
+                    x.s += ds;
+                    x.t += dt;
+                    q.push_back(x);
+                }
+                polygons.push_back(q);
+                ++sent;
+                return true;
+            }
+        };
+
+        /// A floor at z 0, a texel a unit (s = 16 x, t = 16 y), its light
+        /// running from 8 at x -256 to 24 at 256 (red only; green 10, blue
+        /// 5): one quad per box (x0, y0, x1, y1) given, each moved by
+        /// `shift` whole repeats of a 64-texel texture if asked.
+        std::vector<std::uint32_t> floorOf(const std::vector<std::array<int, 4>> &boxes, int shiftedBox = -1, int shift = 0)
+        {
+            GxPacker packer;
+            packer.begin(GxPrimitive::Quads);
+            int index = 0;
+            for (const auto &b : boxes)
+            {
+                const int xs[4] = {b[0], b[2], b[2], b[0]}, ys[4] = {b[1], b[1], b[3], b[3]};
+                for (int i = 0; i < 4; ++i)
+                {
+                    GxVertex v;
+                    v.x = static_cast<std::int16_t>(xs[i] * 4);
+                    v.y = static_cast<std::int16_t>(ys[i] * 4);
+                    v.z = 0;
+                    const int moved = index == shiftedBox ? shift * 64 * 16 : 0;
+                    v.s = static_cast<std::int16_t>(xs[i] * 16 + moved);
+                    v.t = static_cast<std::int16_t>(ys[i] * 16);
+                    const int red = 8 + (xs[i] + 256) * 16 / 512;
+                    v.colour = static_cast<std::uint16_t>(red | 10 << 5 | 5 << 10);
+                    packer.vertex(v);
+                }
+                ++index;
+            }
+            return packer.finish();
+        }
+
+        /// The same floor as two triangles, cut corner to corner.
+        std::vector<std::uint32_t> floorOfTriangles()
+        {
+            GxPacker packer;
+            packer.begin(GxPrimitive::Triangles);
+            const int corners[6][2] = {{-256, -256}, {256, -256}, {256, 256}, {-256, -256}, {256, 256}, {-256, 256}};
+            for (const auto &c : corners)
+            {
+                GxVertex v;
+                v.x = static_cast<std::int16_t>(c[0] * 4);
+                v.y = static_cast<std::int16_t>(c[1] * 4);
+                v.s = static_cast<std::int16_t>(c[0] * 16);
+                v.t = static_cast<std::int16_t>(c[1] * 16);
+                const int red = 8 + (c[0] + 256) * 16 / 512;
+                v.colour = static_cast<std::uint16_t>(red | 10 << 5 | 5 << 10);
+                packer.vertex(v);
+            }
+            return packer.finish();
+        }
+
+        /// The wall's own light at x (as floorOf makes it), red in 256ths.
+        double redAt(double x) { return (8 + (x + 256) * 16 / 512) * 256; }
+    } // namespace lampgrid
+
+    void testLampGrid()
+    {
+        using namespace lampgrid;
+        static LampGrid grid; // (as the console has it: not on the stack)
+        const fx up[3] = {0, 0, kFxOne};
+        const LampGridTexture texture{64, 64, 64, 64};
+        const LampLight light{{fxFromInt(10), fxFromInt(5), fxFromInt(10)}, 256};
+
+        // The game's light, worked out apart: rad 70 (80 less the light's
+        // 10 above the floor), dist max + min / 2 in texels from (10, 5),
+        // 255 for each unit in a light map counting 264 for 256 of the
+        // wall's, in sixteenths -- through the converter's curve.
+        auto gameAdd = [](double x, double y) {
+            const double a = std::fabs(x - 10), b = std::fabs(y - 5);
+            const double over = 70 - (std::max(a, b) + std::min(a, b) / 2);
+            return over <= 0 ? 0.0 : over * 255.0 / 264.0 * 16;
+        };
+
+        auto run = [&](const std::vector<std::uint32_t> &words, int step, Taken &taken, LampGridCounts &counts,
+                       const LampGridTexture &tex) {
+            return grid.build(words.data(), static_cast<int>(words.size()), up, light, tex, step, taken, &counts);
+        };
+        auto areaOf = [](const std::vector<LampVertex> &q) {
+            double area = 0;
+            for (std::size_t i = 0; i < q.size(); ++i)
+            {
+                const LampVertex &a = q[i], &b = q[(i + 1) % q.size()];
+                area += (static_cast<double>(a.s) * b.t - static_cast<double>(b.s) * a.t) / 2;
+            }
+            return std::fabs(area);
+        };
+
+        // Cut three ways: whole; two quads meeting off the grid; and four,
+        // one of whose corners lies in the middle of another's side, on a
+        // grid line (y 0) -- a corner a square's side must have too.
+        const std::vector<std::vector<std::array<int, 4>>> cuts = {
+            {{-256, -256, 256, 256}},
+            {{-256, -256, 40, 256}, {40, -256, 256, 256}},
+            {{-256, 0, 256, 256}, {-256, -256, 40, 0}, {40, -256, 256, 0}},
+        };
+        for (int step : {16, 32})
+        {
+            for (std::size_t cut = 0; cut <= cuts.size(); ++cut)
+            {
+                Taken taken;
+                LampGridCounts counts;
+                // (The last: two triangles, their diagonal across the light.)
+                const std::vector<std::uint32_t> words = cut < cuts.size() ? floorOf(cuts[cut]) : floorOfTriangles();
+                run(words, step, taken, counts, texture);
+                // The lit squares' area, square by square, against what was
+                // sent: all of it, nothing twice.
+                double want = 0;
+                for (int m = 0; m + 1 < grid.columns(); ++m)
+                {
+                    for (int n = 0; n + 1 < grid.rows(); ++n)
+                    {
+                        if (grid.addAt(m, n) > 0 || grid.addAt(m + 1, n) > 0 || grid.addAt(m, n + 1) > 0 ||
+                            grid.addAt(m + 1, n + 1) > 0)
+                            want += static_cast<double>(grid.lineS(m + 1) - grid.lineS(m)) * (grid.lineT(n + 1) - grid.lineT(n));
+                    }
+                }
+                double area = 0;
+                for (const auto &q : taken.polygons)
+                    area += areaOf(q);
+                char what[160];
+                std::snprintf(what, sizeof what, "grid %d, cut %zu: the light covers its lit squares, once (%.0f of %.0f)",
+                              step, cut, area, want);
+                check(want > 0 && std::fabs(area - want) < 1, what);
+
+                // Every vertex at one place is the same vertex: one place, one
+                // colour, whichever polygon or square made it.
+                bool same = true, flat = true, colours = true, rims = true, texels = true;
+                std::vector<LampVertex> all;
+                for (const auto &q : taken.polygons)
+                {
+                    for (const LampVertex &v : q)
+                    {
+                        for (const LampVertex &o : all)
+                        {
+                            if (o.s == v.s && o.t == v.t)
+                                same = same && o.colour == v.colour && o.pos[0] == v.pos[0] && o.pos[1] == v.pos[1];
+                        }
+                        all.push_back(v);
+                        flat = flat && v.pos[2] == 0;
+                        // Where it is, by its texture coordinate (a texel a unit).
+                        const double x = v.s / 16.0, y = v.t / 16.0;
+                        texels = texels && std::fabs(v.pos[0] / 4096.0 - x) < 0.07 && std::fabs(v.pos[1] / 4096.0 - y) < 0.07;
+                        // At a grid crossing: the game's light added to the wall's.
+                        const bool onGrid = (v.s % (step * 16)) == 0 && (v.t % (step * 16)) == 0;
+                        const double add = gameAdd(x, y);
+                        if (onGrid)
+                        {
+                            const int red = lampLift(static_cast<std::int32_t>(std::lround(redAt(x))), static_cast<std::int32_t>(std::lround(add)));
+                            colours = colours && std::abs((v.colour & 31) - red) <= 1;
+                        }
+                        if (onGrid && add == 0)
+                            rims = rims && std::abs((v.colour & 31) * 256 - redAt(x)) <= 256;
+                    }
+                }
+                std::snprintf(what, sizeof what, "grid %d, cut %zu: one place, one vertex -- the same colour and position", step, cut);
+                check(same, what);
+                check(flat, "... on the floor exactly");
+                check(texels, "... where its texture coordinate says");
+                check(colours, "... at each crossing, the floor's light and the game's added, through the curve");
+                check(rims, "... and outside the light, the floor as it was");
+
+                // No vertex in the middle of another polygon's side (the
+                // hardware leaves a pixel's gap there).
+                bool joined = true;
+                for (const auto &q : taken.polygons)
+                {
+                    for (std::size_t i = 0; i < q.size(); ++i)
+                    {
+                        const LampVertex &a = q[i], &b = q[(i + 1) % q.size()];
+                        const double len = std::hypot(b.s - a.s, b.t - a.t);
+                        for (const LampVertex &v : all)
+                        {
+                            const double cross = (static_cast<double>(b.s) - a.s) * (v.t - a.t) - (static_cast<double>(b.t) - a.t) * (v.s - a.s);
+                            const double along = (static_cast<double>(v.s) - a.s) * (b.s - a.s) + (static_cast<double>(v.t) - a.t) * (b.t - a.t);
+                            if (std::fabs(cross) <= len * 1.5 && along > len * 1.5 && along < len * len - len * 1.5)
+                                joined = false;
+                        }
+                    }
+                }
+                std::snprintf(what, sizeof what, "grid %d, cut %zu: no vertex in the middle of a side", step, cut);
+                check(joined, what);
+                std::printf("test_ui: lamp grid %d, cut %zu: %d polygons (%d whole squares in strips, %d cut)\n", step, cut,
+                            taken.sent, counts.cells, counts.pieces);
+                std::snprintf(what, sizeof what, "grid %d, cut %zu: %d polygons for a light 140 across", step, cut, taken.sent);
+                check(taken.sent > 0 && taken.sent <= (step == 16 ? 150 : 50), what);
+            }
+        }
+
+        // A face moved by whole repeats (a group too wide for the
+        // hardware's coordinates): the same light, its own coordinates.
+        {
+            Taken plain, moved;
+            LampGridCounts counts;
+            run(floorOf(cuts[1]), 16, plain, counts, texture);
+            run(floorOf(cuts[1], 1, 3), 16, moved, counts, texture);
+            bool same = plain.polygons.size() == moved.polygons.size();
+            for (std::size_t i = 0; same && i < plain.polygons.size(); ++i)
+            {
+                for (std::size_t k = 0; same && k < plain.polygons[i].size(); ++k)
+                {
+                    const LampVertex &a = plain.polygons[i][k], &b = moved.polygons[i][k];
+                    const int ds = b.s - a.s;
+                    same = a.pos[0] == b.pos[0] && a.pos[1] == b.pos[1] && a.colour == b.colour && a.t == b.t &&
+                           (ds == 0 || ds == 3 * 64 * 16);
+                }
+            }
+            check(same, "a face moved by whole repeats gets the same light, in its own coordinates");
+        }
+
+        // A texture cooked at half the game's size: the grid is the game's
+        // texels, twice as far apart in the cooked ones.
+        {
+            Taken taken;
+            LampGridCounts counts;
+            run(floorOf(cuts[0]), 16, taken, counts, LampGridTexture{64, 64, 128, 128});
+            bool onGame = grid.columns() > 2;
+            for (int m = 0; m < grid.columns(); ++m)
+                onGame = onGame && grid.lineS(m) % 128 == 0;
+            check(onGame, "a texture cooked smaller: the grid on the game's texels");
+        }
+
+        // No light: 80 above the floor, or off beside it.
+        {
+            Taken taken;
+            LampGridCounts counts;
+            const LampLight high{{0, 0, fxFromInt(81)}, 256};
+            const std::vector<std::uint32_t> words = floorOf(cuts[0]);
+            grid.build(words.data(), static_cast<int>(words.size()), up, high, texture, 16, taken, &counts);
+            const LampLight beside{{fxFromInt(600), 0, fxFromInt(10)}, 256};
+            grid.build(words.data(), static_cast<int>(words.size()), up, beside, texture, 16, taken, &counts);
+            check(taken.polygons.empty(), "no light 80 off the floor, or beside it");
+        }
     }
 
     // A surface's packed geometry read back a triangle at a time, as the
@@ -1442,6 +1718,7 @@ int main()
     testLayout();
     testLamp();
     testLampPatch();
+    testLampGrid();
     testLampStream();
     testLogos();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
