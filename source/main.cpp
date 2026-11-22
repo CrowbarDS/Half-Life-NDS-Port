@@ -4,6 +4,7 @@
 #include "net/NetGame.hpp"
 #include "net/NetLink.hpp"
 #include "net/NetRelay.hpp"
+#include "audio/Arm7Audio.hpp"
 #include "audio/Voice.hpp"
 #include "global_header.hpp"
 
@@ -342,6 +343,18 @@ namespace
         if (!perfLogging())
             return;
         hlrt::gpuStats.writeLog(currentMap.c_str(), "1P");
+#ifdef HLDS_PROFILE
+        // The ARM7's sound, still going: its blocks so far (2 ms each),
+        // what it last said it was doing, and its blocks late.
+        if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
+        {
+            std::fprintf(log, "arm7: sound blocks %lu, where %lu, late %lu\n",
+                         static_cast<unsigned long>(hlrt::arm7Audio.blocksDone()),
+                         static_cast<unsigned long>(hlrt::arm7Audio.where()),
+                         static_cast<unsigned long>(hlrt::arm7Audio.late()));
+            std::fclose(log);
+        }
+#endif
         // With the DSi's DSP in use, how it got on over that map.
         if (hlrt::sound.extended())
         {
