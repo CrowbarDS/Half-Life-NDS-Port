@@ -93,5 +93,7 @@ fi
 if [ -f build/arm9/arm9.elf ]; then
     tools/arm9-report.sh --summary || true
 fi
+# The ARM7 program loaded where it runs, every section (tools/arm7_ld.py).
+python tools/arm7_ld.py check build/arm7/arm7.elf
 # No interrupt handler may reach the divider or the square-root unit (AGENTS.md).
 python tools/irq-divider.py build/arm9/arm9.elf child/build/arm9/arm9.elf

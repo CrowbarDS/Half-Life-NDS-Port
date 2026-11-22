@@ -268,6 +268,10 @@ for family in ('boss', 'military', 'net', 'shift'):
 # the wireless library of the same build as the ARM9's: the two share the
 # structures they talk through, and the library refuses a pair that do not
 # match.
+# Linked by BlocksDS's script made to keep each section's load address in
+# step with where it runs (tools/arm7_ld.py; make.sh checks the result).
+import arm7_ld
+arm7_ld.write(os.path.expandvars('${BLOCKSDS}'), OVL_DIR)
 arm7 = Arm7Binary(
     sourcedirs=['arm7/source'],
     includedirs=['shared'],
@@ -275,6 +279,7 @@ arm7 = Arm7Binary(
     libdirs=['${BLOCKSDS}/libs/libnds', '${BLOCKSDSEXT}/dswifi_dl'],
     cxxflags='-Wall -O2 -std=gnu++20 -fno-exceptions -fno-rtti',
 )
+arm7.specs = '-specs=' + os.path.abspath(os.path.join(OVL_DIR, 'hl_arm7.specs'))
 arm7.generate_elf()
 
 
