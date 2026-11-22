@@ -124,7 +124,8 @@ namespace
         // Folders in the order of a load, each one's files together.
         static const char *const kOrder[] = {"tex/", "spr/", "mdl/", "snd/"};
         int folder = 0;
-        bool ordered = true, same = true, soundsStored = true, texturesStored = true, keysStored = true;
+        bool ordered = true, same = true, soundsStored = true, texturesStored = true, spritesStored = true,
+             keysStored = true;
         int compressed = 0, apart = 0;
         for (std::size_t i = next; i < members.size(); ++i)
         {
@@ -137,6 +138,8 @@ namespace
                 soundsStored = soundsStored && m.method == hlds::kNpacStored;
             if (folder == 0)
                 texturesStored = texturesStored && m.method == hlds::kNpacStored;
+            if (folder == 1)
+                spritesStored = spritesStored && m.method == hlds::kNpacStored;
             // (A model's file is in the stage under its map.)
             fs::path source = stage / m.path;
             if (folder == 2 && m.path.size() > 4 && m.path.substr(m.path.size() - 4) == ".hmd")
@@ -172,6 +175,7 @@ namespace
         check(ordered, "then textures, sprites, models and sounds, in that order");
         check(same, "every member is the staged file (a DS's model without its keys, where they are apart)");
         check(keysStored, "keys apart are never compressed: a clip's are read at a time");
+        check(spritesStored, "sprites are never compressed: read again a piece at a time after a load");
         check(!keysApart || apart != 0, "keys apart: beside the models");
         check(soundsStored, "sounds are never compressed");
         check(texturesStored, "nor are textures: they are read during play");

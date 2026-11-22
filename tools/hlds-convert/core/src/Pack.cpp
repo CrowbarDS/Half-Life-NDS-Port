@@ -337,7 +337,10 @@ namespace hlds
                 if (ref.frames == 0)
                     continue;
                 const std::string name = hldata::spriteFile(ref.name, ref.width, ref.height);
-                packing.add(stage / "spr" / name, "spr/" + name, true);
+                // (Never compressed: the console reads its texels again, a
+                // piece at a time, after a picture has been held in their
+                // memory (bank D) while a map loads.)
+                packing.add(stage / "spr" / name, "spr/" + name, false);
             }
 
             // Models as a DS reads them, their skins, then the files a DSi reads
@@ -1293,7 +1296,10 @@ namespace hlds
                     return false;
                 }
             }
-            packing.add(file, "ui/" + file.filename().string(), true);
+            // (The marks' sheet never compressed: read again a piece at a
+            // time, as the sprites are.)
+            const std::string member = "ui/" + file.filename().string();
+            packing.add(file, member, member != hldata::kDecalAtlasFile);
         }
         // The common sounds' stems, for the console to name them by (a level
         // has them by their rate alone): stored, read a record at a time.
@@ -1417,9 +1423,10 @@ namespace hlds
         {
             const std::string name = hldata::kCharacterFiles[c];
             packing.add(stage / "chr" / (name + ".hmd"), "chr/" + name + ".hmd", true, false);
-            packing.add(stage / "chr" / (name + ".htx"), "chr/" + name + ".htx", true, false);
+            // (Skins never compressed: read again, as the sprites are.)
+            packing.add(stage / "chr" / (name + ".htx"), "chr/" + name + ".htx", false, false);
             packing.add(stage / "chr" / (name + ".dsi.hmd"), "chr/" + name + ".dsi.hmd", true, false);
-            packing.add(stage / "chr" / (name + ".dsi.htx"), "chr/" + name + ".dsi.htx", true, false);
+            packing.add(stage / "chr" / (name + ".dsi.htx"), "chr/" + name + ".dsi.htx", false, false);
         }
         if (packing.members.empty())
         {
