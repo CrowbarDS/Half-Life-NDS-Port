@@ -370,40 +370,21 @@ namespace hlrt
         }
         // Lit by the one light: how bright the actor stands sets its colour.
         const int bright = actor.light > 31 ? 31 : actor.light;
-        // The lamp is a light of the hardware's own on whatever is in its
-        // beam -- the second: it shines the way the view looks -- and what
-        // it falls on shines back a little where it is turned to the eye
-        // (the material's specular colour, by the shininess table). Not on
-        // what is in hand, which is behind it.
-        int lamp = 0;
-        if (game.lamp.on && id != -1)
+        // The lamp's light, if it falls near (lampShade): the second light,
+        // its way set in view space -- with the direction matrix at identity
+        // the hardware takes the vector as it is given (every bone's own is
+        // loaded after) -- and a colour on every vertex.
+        const LampShade lamp = game.lampLit ? lampShade(actor) : LampShade{};
+        if (lamp.colour != 0)
         {
-            // The game's lamp shines on whoever the view meets as it does
-            // on a wall: so the light is where THEY are, if the middle of
-            // the view is near them (their chest, more or less, is what
-            // counts) -- or where it has fallen on the wall, if they stand
-            // in that.
-            const int d[3] = {fxToInt(actor.pos[0] - camera.pos[0]), fxToInt(actor.pos[1] - camera.pos[1]),
-                              fxToInt(actor.pos[2] - camera.pos[2]) +
-                                  (actor.kind == static_cast<std::uint8_t>(ActorKind::Player) ? 0 : 36)};
-            const int along = (d[0] * camera.forward[0] + d[1] * camera.forward[1] + d[2] * camera.forward[2]) >> 12;
-            if (along > 0 && along < kLampReach)
-            {
-                const int square = d[0] * d[0] + d[1] * d[1] + d[2] * d[2] - along * along;
-                const int aside = static_cast<int>(isqrt64(static_cast<std::uint64_t>(square > 0 ? square : 0)));
-                lamp = lampOn(along, aside, along);
-                if (game.lampLit)
-                {
-                    const int onWall = lampOn(along, aside, game.lampDistance);
-                    lamp = onWall > lamp ? onWall : lamp;
-                }
-            }
+            MATRIX_CONTROL = GL_MODELVIEW;
+            MATRIX_IDENTITY = 0;
+            GFX_LIGHT_VECTOR = lamp.vector;
         }
         GFX_LIGHT_COLOR = RGB15(bright, bright, bright); // light 0
-        GFX_LIGHT_COLOR = RGB15(lamp, lamp * 30 / 31, lamp * 25 / 31) | (1u << 30); // light 1
+        GFX_LIGHT_COLOR = lamp.colour | (1u << 30);       // light 1
         GFX_DIFFUSE_AMBIENT = RGB15(20, 20, 20) | (RGB15(13, 13, 13) << 16);
-        // (Bit 15: the specular light goes by the shininess table.)
-        GFX_SPECULAR_EMISSION = lamp > 0 ? (RGB15(lamp * 2 / 3, lamp * 2 / 3, lamp * 5 / 9) | 0x8000u) : 0u;
+        GFX_SPECULAR_EMISSION = lamp.emission << 16;
         // A hologram is its own light, whatever is round it (the game draws
         // it added to the picture, unlit): its picture as it is, pale.
         if (glow_)
@@ -1227,31 +1208,62 @@ namespace hlrt
             }
             GFX_LIGHT_VECTOR = (v[0] & 0x3FF) | ((v[1] & 0x3FF) << 10) | ((v[2] & 0x3FF) << 20);
         }
-        // The lamp's: straight along the view, which in view space is
-        // always the same way. (Its colour is each model's own: none, for
-        // one that is not in the beam.)
-        GFX_LIGHT_VECTOR = ((static_cast<std::uint32_t>(-511) & 0x3FF) << 20) | (1u << 30);
-        // How the shine falls off as a face turns from the eye: steeply (a
-        // highlight, not a wash). The table is 128 steps of 0..255.
-        if (game.lamp.on)
-        {
-            for (int w = 0; w < 32; ++w)
-            {
-                std::uint32_t word = 0;
-                for (int b = 0; b < 4; ++b)
-                {
-                    const std::uint32_t x = static_cast<std::uint32_t>(w * 4 + b) * 2; // 0..254
-                    const std::uint32_t x2 = x * x >> 8, x4 = x2 * x2 >> 8;
-                    word |= (x4 * x2 >> 8) << (b * 8);
-                }
-                GFX_SHININESS = word;
-            }
-        }
         // What a hologram's picture has added to it (glassAlpha): a pale grey,
         // the same however it is lit. (Nothing else is drawn highlighted.)
         NEA_ToonHighlightEnable(true);
         NEA_ToonTableFill(RGB15(5, 5, 5));
         NEA_PolyFormat(31, 0, static_cast<NEA_LightEnum>(NEA_LIGHT_0 | NEA_LIGHT_1), kCull, worldDraw.polygonMode());
+    }
+
+    // The lamp on whoever is near where its light is, as the game lights a
+    // model with it (R_EntityDynamicLight): by 80 units less how far its
+    // origin is from the light -- the one the light fell on, whose origin
+    // it is at, the most -- and whatever the light's own strength. Most of
+    // that comes from the light's way (from it to the model; the game's
+    // v_direct, 0.9), the rest is everywhere; on the one the light is on,
+    // there is no way, and it is all everywhere. White, and no shine.
+    // In the hardware's light: kLampModelScale 256ths of the game's units
+    // (its 255 a full light; ModelDraw's own a full light at 31) -- as
+    // much as makes a scientist in it as much brighter as the game does
+    // (tools/ref/measure.py --delta, c1a0b: the game adds 22.8 a patch of
+    // picture, the port 23.4).
+    ModelDraw::LampShade ModelDraw::lampShade(const ActorState &actor) const
+    {
+        LampShade shade;
+        constexpr int kLampModelScale = 26;
+        const fx d[3] = {actor.pos[0] - game.lampAt[0], actor.pos[1] - game.lampAt[1], actor.pos[2] - game.lampAt[2]};
+        // (Whole units first: past 80 there is nothing to work out.)
+        for (const fx c : d)
+        {
+            if (c >= fxFromInt(kLampRadius) || c <= -fxFromInt(kLampRadius))
+                return shade;
+        }
+        const fx length = fxLength(d);
+        const int add = kLampRadius - fxToInt(length);
+        if (add <= 0)
+            return shade;
+        int direct = 0;
+        if (length > kFxOne)
+        {
+            direct = add * 9 / 10;
+            // Its way in view space (as lightOn sets the other's).
+            const int *view = camera.view.m;
+            int v[3];
+            for (int j = 0; j < 3; ++j)
+            {
+                std::int64_t sum = 0;
+                for (int i = 0; i < 3; ++i)
+                    sum += static_cast<std::int64_t>((static_cast<std::int64_t>(d[i]) << 12) / length) * view[i * 3 + j];
+                v[j] = static_cast<int>(sum >> (15 + 3));
+                v[j] = v[j] > 511 ? 511 : (v[j] < -511 ? -511 : v[j]);
+            }
+            shade.vector = (v[0] & 0x3FF) | ((v[1] & 0x3FF) << 10) | ((v[2] & 0x3FF) << 20) | (1u << 30);
+        }
+        const int lit = direct * kLampModelScale / 256, all = (add - direct) * kLampModelScale / 256;
+        const int c = lit > 31 ? 31 : lit, e = all > 31 ? 31 : all;
+        shade.colour = c > 0 ? RGB15(c, c, c) : 0;
+        shade.emission = RGB15(e, e, e);
+        return shade;
     }
 
     void ModelDraw::lightOff()

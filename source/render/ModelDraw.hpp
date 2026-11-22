@@ -105,6 +105,16 @@ namespace hlrt
                                         int id);
         void lightOn();
         void lightOff();
+        /// The lamp's light on an actor, as the hardware's registers have
+        /// it (ModelDraw::lampShade): light 1's colour (0: none) and its
+        /// way, in view space, and the colour added to every vertex.
+        struct LampShade
+        {
+            std::uint32_t colour = 0;
+            std::uint32_t vector = 0;
+            std::uint32_t emission = 0;
+        };
+        LampShade lampShade(const hldata::ActorState &actor) const;
 
         int order_[kMaxDrawn] = {};
         /// The level of detail each of those is drawn at this pass, and the

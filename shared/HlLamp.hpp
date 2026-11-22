@@ -11,8 +11,8 @@
 // The game ADDS it to the wall's own light, so that the wall is seen
 // brighter; here the lit part of the wall is drawn again in its own texture,
 // as bright as the game makes it (HlLampPatch.hpp, WorldDraw::lampPass) --
-// and a light of the hardware's own falls on whoever stands in it
-// (lampOn).
+// and whoever stands near where it falls is lit by it as the game lights
+// them (ModelDraw::lampShade).
 //
 // std-only and inline: the host tests run it.
 
@@ -135,17 +135,4 @@ namespace hldata
         return aim;
     }
 
-    /// How bright the lamp is as a light of the hardware's (0..31) on
-    /// something `along` units down the view and `aside` units off its
-    /// middle, when the light is `distance` units off: in the ball, by how
-    /// near its middle.
-    inline constexpr int lampOn(int along, int aside, int distance = kLampNear)
-    {
-        const int back = along > distance ? along - distance : distance - along;
-        if (along <= 0 || back >= kLampRadius || aside >= kLampRadius)
-            return 0;
-        const int off = back > aside ? back : aside;
-        const int light = lampStrength(distance) * 2 * (kLampRadius - off) / kLampRadius;
-        return light > 31 ? 31 : light;
-    }
 } // namespace hldata

@@ -1152,8 +1152,15 @@ Milestone 11, "levels of detail".
   the "same depth" test where the eye meets its wall at 30 degrees or
   more, and pulled toward the eye below that, as the marks are
   (`tools/hwtest/lamppatch`). Doors and other solid brushes are lit the
-  same way; whoever stands in the light is lit by a hardware light along
-  the view. What it is not: a caster of shadows. Its button is in the
+  same way. The light's line stops on a monster or one of the people as
+  it does in the game (their hit boxes), and the light is then at their
+  feet. A model is lit as the game lights one (R_EntityDynamicLight): by
+  80 units less how far its origin is from the light, nine tenths of it
+  from the light's way and the rest everywhere -- all of it everywhere on
+  the one the light is on -- white, with no shine (a scientist in it is
+  as much brighter as in the game: 23.4 a patch where it adds 22.8;
+  `ModelDraw::lampShade`). The weapon in hand is lit too, when the eye is
+  that near the light. What it is not: a caster of shadows. Its button is in the
   touch screen's column between
   JUMP and DUCK, with what is left in it; Select switches it too; the
   game's lamp icon is at the top right of the top screen whenever the

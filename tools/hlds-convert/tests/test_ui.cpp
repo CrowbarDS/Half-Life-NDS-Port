@@ -795,13 +795,6 @@ namespace
         check(lampStrength(60) == lampStrength(500) && lampStrength(1000) < lampStrength(500) &&
                   lampStrength(1000) * 3 <= lampStrength(500) && lampStrength(1900) >= 1 && lampStrength(kLampReach) == 0,
               "as bright at five hundred units as at sixty, a quarter of that at a thousand, nothing at its reach");
-        check(lampOn(200, 0, 200) > lampOn(200, 40, 200) && lampOn(200, 40, 200) > 0 && lampOn(200, 80, 200) == 0 &&
-                  lampOn(100, 0, 200) == 0 && lampOn(150, 0, 200) > 0,
-              "on whoever stands in it: by how near its middle, and not at all outside it");
-        check(lampOn(100, 0, 100) > lampOn(1200, 0, 1200) && lampOn(100, 0, 100) > lampOn(100, 30, 100) &&
-                  lampOn(100, 200, 100) == 0 && lampOn(-10, 0, 100) == 0 && lampOn(kLampReach + 1, 0, kLampReach + 1) == 0 &&
-                  lampOn(60, 0, 60) <= 31,
-              "what the view meets is lit where it stands: less far off, less away from the light's middle");
     }
 
     /// The player's say about the picture (HlFog.hpp): kept, checked, and
