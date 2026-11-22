@@ -1188,11 +1188,15 @@ namespace hlrt
         NEA_TextureGetStats(&t);
         NEA_PaletteStats p;
         NEA_PaletteGetStats(&p);
-        std::fprintf(log, "  vram: %d free in %d pieces, largest %d (A %d, B1 %d, B2 %d, C %d), slots %d/%d, "
+        std::fprintf(log, "  vram: %d free in %d pieces, largest %d (A %d, B1 %d, B2 %d, C %d, D %d), slots %d/%d, "
                           "materials %d, leaked %d, dangling %d; palettes: %d free in %d, largest %d, slots %d/%d\n",
                      t.free, t.freeChunks, t.largest, t.largestIn[0], t.largestIn[1], t.largestIn[2], t.largestIn[3],
-                     t.slotsUsed, t.slotsMax, t.materials, t.leaked, t.dangling, p.free, p.freeChunks, p.largest,
-                     p.slotsUsed, p.slotsMax);
+                     t.largestInD, t.slotsUsed, t.slotsMax, t.materials, t.leaked, t.dangling, p.free, p.freeChunks,
+                     p.largest, p.slotsUsed, p.slotsMax);
+        // Textures that are not 4x4 (marks, sprites, see-through and light
+        // textures, flats), by bank: in A, B or C they take 4x4 room.
+        std::fprintf(log, "  not 4x4: A %d, B %d, C %d, D %d bytes\n", t.plainIn[0], t.plainIn[1], t.plainIn[2],
+                     t.plainIn[3]);
         // Which of what is in view is flat, and why.
         int listed = 0;
         for (int id = 0; id < planner.count() && listed < 16; ++id)
