@@ -713,10 +713,10 @@ Milestone 11, "levels of detail".
   libnds's ITCM heap (`itcm_malloc`), which nothing uses: all that is in
   ITCM is placed there when the program is linked, where calls are direct
   and the budget is checked by the build. The fast *data* memory (DTCM)
-  keeps 1 KB at its top for its own data and heap (`dtcm_malloc`,
-  `DTCM_DATA_SIZE` in `build.py`) -- libnds's thread scheduler takes almost
-  all of it --; the stack has the 14.4 KB under it and was measured 11 KB
-  deep. The guard's pattern is DTCM's first words, where the stack ends.
+  keeps 4 KB at its top for its own data and heap (`dtcm_malloc`,
+  `DTCM_DATA_SIZE` in `build.py`) -- libnds's thread scheduler and its FIFO
+  and sleep threads' stacks, about 2 KB --; the stack has the 11.4 KB under
+  it. The guard's pattern is DTCM's first words, where the stack ends.
   Nothing takes from DTCM's heap: DTCM is the stack's.
 - traceShot and pointContents are in ITCM (`HL_HOT`), chosen by the
   console's own sampler: from 3.3-4.1% of a DS's time at c1a3a to about 2%.

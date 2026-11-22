@@ -8,7 +8,7 @@
 #            without one (romcheck)
 set -u
 cd "$(dirname "$0")"
-export BLOCKSDS="${HLDS_BLOCKSDS:-/opt/blocksds/hl-known-good}"
+export BLOCKSDS="${HLDS_BLOCKSDS:-/opt/blocksds/core}"
 fail=0
 check() {
     local neg=$1 want=$2 out

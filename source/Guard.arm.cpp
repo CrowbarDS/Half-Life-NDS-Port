@@ -737,10 +737,14 @@ namespace hlrt::guard
     } // namespace
 
     // The program's statics are made without a lock (-fno-threadsafe-statics,
-    // source/StdHalts.cpp): right only while the threads take turns, never
-    // one cut off by another. libnds's switch for cutting them off at an
-    // interrupt (cothread_preemption_enable) is a flag of its own, not in its
-    // header: switched on, the game stops here, at once or within a frame.
+    // source/StdHalts.cpp), and the think worker reads the world the frame
+    // changes: right only while the two take turns. libnds cuts a thread off
+    // at an interrupt (cothread_preemption_enabled, on since its 2026-11-20
+    // threads); until the frame and the worker share the world under a lock,
+    // the worker is not started then (game/Think.cpp), and the game stops
+    // here if it is running all the same. (libnds's own FIFO thread, which
+    // cuts the frame off, does what its interrupt did before: what the
+    // FIFO's handlers touch is what they always did.)
     // (Exported by libnds -- source/common/cothread/threads.c, read by its
     // interrupt dispatcher -- but not in its header: an update of libnds may
     // drop or rename it, and the link then fails here, which is as it should
@@ -748,8 +752,8 @@ namespace hlrt::guard
     extern "C" bool cothread_preemption_enabled;
     static void checkTakingTurns()
     {
-        if (cothread_preemption_enabled)
-            crash("THREADS: preemption is on; the statics have no lock");
+        if (cothread_preemption_enabled && think.running())
+            crash("THREADS: the worker cut off by the frame; the world has no lock");
     }
 
     void install()

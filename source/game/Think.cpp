@@ -121,9 +121,16 @@ namespace hlrt
 #endif
     } // namespace
 
+    // (libnds's, as Guard.arm.cpp reads it.)
+    extern "C" bool cothread_preemption_enabled;
+
     void Think::start()
     {
-        if (started_ || !kUseWorker)
+        // (Not while libnds cuts threads off at an interrupt: the frame would
+        // change the world under a question half answered. Every question
+        // is answered inside the frame then, until the two share it under a
+        // lock. Guard.arm.cpp.)
+        if (started_ || !kUseWorker || cothread_preemption_enabled)
             return;
 #ifndef HLDS_CHILD
 #ifdef HLDS_PROFILE

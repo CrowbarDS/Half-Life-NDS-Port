@@ -85,7 +85,7 @@ arm9 = Arm9Binary(
         ['-Wl,--undefined=__i_vfprintf', '-Wl,--undefined=__i_vfscanf',
          '-Wl,--defsym=vfprintf=__i_vfprintf', '-Wl,--defsym=vfscanf=__i_vfscanf'] +
         # (DTCM's own data and heap: as the parent's, ../build.py.)
-        ['-Wl,--defsym=__dtcm_data_size=1024']),
+        ['-Wl,--defsym=__dtcm_data_size=4096']),
 )
 # airpack_bin[] / airpack_bin_size: empty unless a test asked for a map.
 arm9.add_data([os.path.dirname(TESTPACK)])

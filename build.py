@@ -93,7 +93,10 @@ INTEGER_STDIO = ['-Wl,--undefined=__i_vfprintf', '-Wl,--undefined=__i_vfscanf',
                  '-Wl,--defsym=vfprintf=__i_vfprintf', '-Wl,--defsym=vfscanf=__i_vfscanf']
 # Bytes at the top of DTCM for its own data and for dtcm_malloc; the stack
 # has the rest of DTCM under them. (The child sets the same: child/build.py.)
-DTCM_DATA_SIZE = 1024
+# libnds's own threads' stacks are there -- the FIFO's (1 KB) and its sleep
+# thread's -- each with room for the interrupts that come in on it: its
+# default, 4 KB.
+DTCM_DATA_SIZE = 4096
 
 # The wireless library with its IP stack, for online play (a DSi's only):
 # its Internet half moved to the DSi-only part of the program, which a DS
