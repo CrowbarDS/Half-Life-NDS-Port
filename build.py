@@ -139,16 +139,21 @@ OVERLAYS = {'regions': [
         {'name': 'map', 'id': 'Map', 'mode': 'bss', 'sizer': True},
     ]},
     # Region B: the saves' work (save: the front end's and single play's) and
-    # what only a match between consoles uses -- a match keeps no saves. The
-    # program reaches it only through SaveGame.cpp's gates.
+    # what only a match between consoles uses (match) -- a match keeps no
+    # saves. The program reaches either only through their gates.
     {'name': 'B', 'overlays': [
         # (Its callbacks: the card's own calls, compared with as they are
         # called; and what a save is streamed through, held by the writer
         # only while it is busy -- which the save's leave check keeps it.)
-        {'name': 'save', 'id': 'Save', 'mode': 'code', 'sizer': True,
+        {'name': 'save', 'id': 'Save', 'mode': 'code',
          'files': ['*/source/game/SaveGameBody.cpp.o'],
          'callbacks': ['_ZN6hldata8SaveCard*', '_ZN6hldata10SaveWriter*', '_ZN6hldata6detail*',
                        '_ZZN4hlrt8SaveGame4work*']},
+        # A match's scores, its vote and its end (HL_OVL_CODE(match)), and
+        # the picture the host takes of its map: the larger, through the
+        # gates of BottomScreen.cpp, NetGame.cpp and main.cpp. (The vote
+        # before a first match is the lobby's: the saves' work gives way.)
+        {'name': 'match', 'id': 'Match', 'mode': 'code', 'sizer': True},
     ]},
 ]}
 # (Their sources last on the link line: architectds's link_last.)

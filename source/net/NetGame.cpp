@@ -43,6 +43,19 @@
 #include "net/GuestLoad.hpp"
 #endif
 
+// A match's own work -- its vote, its end, what comes next -- is in the match
+// overlay, with its screens (BottomScreen.cpp): each gate here reads it in.
+#if HL_OVL_COUNT > 0
+#define HL_MATCH_WORK()                                                                                                \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        ::hlrt::ovl::load(::hlrt::ovl::Id::Match);                                                                     \
+        HL_OVL_GATE(Match);                                                                                            \
+    } while (0)
+#else
+#define HL_MATCH_WORK() ((void)0)
+#endif
+
 namespace hlrt
 {
     using namespace hldata;
@@ -1963,10 +1976,17 @@ namespace hlrt
         lobbyAsked_ = true;
     }
 
-    void NetGame::endMatch()
+    HL_OVL_GATED void NetGame::endMatch()
     {
-        if (phase_ == Phase::Playing)
-            netEndMatch(match_);
+        if (phase_ != Phase::Playing)
+            return;
+        HL_MATCH_WORK();
+        endMatchBody();
+    }
+
+    HL_OVL_CODE(match) void NetGame::endMatchBody()
+    {
+        netEndMatch(match_);
     }
 
     void NetGame::toLobbyFromLoad()
@@ -3730,11 +3750,18 @@ namespace hlrt
         votePictures_.touch(place);
     }
 
-    void NetGame::voteFrame(int ms)
+    HL_OVL_GATED void NetGame::voteFrame(int ms)
+    {
+        // (Every frame of the lobby asks: no vote, nothing read in.)
+        if (match_.vote.count <= 1)
+            return;
+        HL_MATCH_WORK();
+        voteFrameBody(ms);
+    }
+
+    HL_OVL_CODE(match) void NetGame::voteFrameBody(int ms)
     {
         NetVote &vote = match_.vote;
-        if (vote.count <= 1)
-            return;
         voteMs_ += ms;
         if (!isHost() && !vote.open)
             voteOpenedAt_ = voteMs_;
@@ -3840,7 +3867,7 @@ namespace hlrt
 #endif
     }
 
-    void NetGame::vote(int slot)
+    HL_OVL_CODE(match) void NetGame::vote(int slot)
     {
         netVotePick(match_, slot);
     }
@@ -3883,7 +3910,7 @@ namespace hlrt
         ++match_.final.stamp;
     }
 
-    void NetGame::decideVote()
+    HL_OVL_CODE(match) void NetGame::decideVote()
     {
         const int slot = match_.vote.winner(match_.endDraw * 2654435761u + Global::vblanks());
         if (slot < 0)
@@ -3894,10 +3921,11 @@ namespace hlrt
         std::snprintf(match_.nextName, sizeof(match_.nextName), "%s", voteMaps_[slot].c_str());
     }
 
-    void NetGame::startFirstVote(int skill)
+    HL_OVL_GATED void NetGame::startFirstVote(int skill)
     {
         if (phase_ != Phase::Hosting || voteOn())
             return;
+        HL_MATCH_WORK();
         pendingSkill_ = skill;
         nextMap_.clear();
         match_.endDraw = static_cast<std::uint16_t>(Global::vblanks());
@@ -3907,7 +3935,7 @@ namespace hlrt
         nextAt_ = Global::vblanks() - kNextWaitVblanks;
     }
 
-    void NetGame::startVote(int chooser)
+    HL_OVL_CODE(match) void NetGame::startVote(int chooser)
     {
         voteLetGo();
         int candidates[64];
@@ -3941,7 +3969,13 @@ namespace hlrt
         ++vote.stamp;
     }
 
-    void NetGame::chooseNext()
+    HL_OVL_GATED void NetGame::chooseNext()
+    {
+        HL_MATCH_WORK();
+        chooseNextBody();
+    }
+
+    HL_OVL_CODE(match) void NetGame::chooseNextBody()
     {
         nextChosen_ = true;
         nextMap_.clear();

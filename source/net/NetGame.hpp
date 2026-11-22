@@ -496,6 +496,10 @@ namespace hlrt
         int voteLastsMs() const;
         void voteKeep(int map, std::uint8_t *data, std::uint32_t bytes);
         void voteFrame(int ms);
+        // The work of voteFrame and endMatch, in the match overlay (build.py's
+        // OVERLAYS): reached only through them.
+        void voteFrameBody(int ms);
+        void endMatchBody();
         unsigned ready_ = 0;
         std::uint32_t rooms_[hldata::kNetPlayers] = {}; ///< (the host's: KB, by client; 0 not said)
         std::uint32_t frees_[hldata::kNetPlayers] = {};
@@ -520,6 +524,7 @@ namespace hlrt
         /// left the map too.
         static constexpr std::uint32_t kNextWaitVblanks = 3 * 60;
         void chooseNext();
+        void chooseNextBody(); ///< (its work, in the match overlay)
         void startVote(int chooser); ///< (-1: everyone votes)
         int turn_ = -1;              ///< whose turn it was to choose
         void decideVote();

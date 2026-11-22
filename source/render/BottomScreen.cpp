@@ -10,10 +10,26 @@
 #include "HlTouchLayout.hpp"
 #include "HlWeaponList.hpp"
 #include "HlUi.hpp"
+#include "Overlay.hpp"
 #include "net/NetGame.hpp"
 #include "ui/TouchCanvas.hpp"
 
 #include <cstring>
+
+// A match's own screens -- its scores, its vote, its end -- are in the
+// match overlay (build.py's OVERLAYS): reached through drawScores' gate, and
+// main.cpp's endScreens. The overlay keeps nothing from one frame to the
+// next: each gate reads it in again if the saves' work took its place.
+#if HL_OVL_COUNT > 0
+#define HL_MATCH_WORK()                                                                                                \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        ::hlrt::ovl::load(::hlrt::ovl::Id::Match);                                                                     \
+        HL_OVL_GATE(Match);                                                                                            \
+    } while (0)
+#else
+#define HL_MATCH_WORK() ((void)0)
+#endif
 
 namespace hlrt
 {
@@ -537,7 +553,13 @@ namespace hlrt
         touchCanvas.pageOn();
     }
 
-    void BottomScreen::drawScores(int top)
+    HL_OVL_GATED void BottomScreen::drawScores(int top)
+    {
+        HL_MATCH_WORK();
+        drawScoresBody(top);
+    }
+
+    HL_OVL_CODE(match) void BottomScreen::drawScoresBody(int top)
     {
         Canvas &canvas = touchCanvas.canvas();
         const NetMatch &match = netGame.match();
@@ -602,7 +624,7 @@ namespace hlrt
         }
     }
 
-    void BottomScreen::drawFinal(int top)
+    HL_OVL_CODE(match) void BottomScreen::drawFinal(int top)
     {
         Canvas &canvas = touchCanvas.canvas();
         const NetMatch &match = netGame.match();
@@ -715,7 +737,7 @@ namespace hlrt
 
     int BottomScreen::voteTop() const { return netVoteFirstShown(voteScroll_); }
 
-    void BottomScreen::voteRowAt(int map, int y)
+    HL_OVL_CODE(match) void BottomScreen::voteRowAt(int map, int y)
     {
         Canvas &canvas = touchCanvas.canvas();
         const NetMatch &match = netGame.match();
@@ -738,7 +760,7 @@ namespace hlrt
         drawText(canvas, small, kVoteX + 72, y + 28, text, inkFor(small, mine ? kUiOrange : kUiGrey));
     }
 
-    void BottomScreen::voteRow(int row)
+    HL_OVL_CODE(match) void BottomScreen::voteRow(int row)
     {
         voteRowAt(voteRowMap(row), voteRowY(row));
     }
@@ -749,7 +771,7 @@ namespace hlrt
         int voteSlotY(int slot) { return slot * kNetVoteRowPixels + 8; }
     }
 
-    void BottomScreen::voteSlots()
+    HL_OVL_CODE(match) void BottomScreen::voteSlots()
     {
         // What is in sight, each in its slot: drawn as it comes in, where it
         // cannot be seen, and nothing else touched.
@@ -773,7 +795,7 @@ namespace hlrt
         }
     }
 
-    void BottomScreen::voteMarker()
+    HL_OVL_CODE(match) void BottomScreen::voteMarker()
     {
         const NetVote &vote = netGame.match().vote;
         Canvas &marker = touchCanvas.marker();
@@ -786,7 +808,7 @@ namespace hlrt
         marker.fill(1, (marker.height - height) * voteScroll_ / last, 3, height, kUiOrange + 2);
     }
 
-    void BottomScreen::voteList()
+    HL_OVL_CODE(match) void BottomScreen::voteList()
     {
         votePage_ = VotePage::List;
         stopShown = false;
@@ -815,7 +837,7 @@ namespace hlrt
         voteMarker();
     }
 
-    void BottomScreen::showVote()
+    HL_OVL_CODE(match) void BottomScreen::showVote()
     {
         voteScroll_ = 0;
         voteSpeed_ = 0;
@@ -824,7 +846,7 @@ namespace hlrt
         netGame.setVoteShown(true);
     }
 
-    void BottomScreen::voteConfirm(int map)
+    HL_OVL_CODE(match) void BottomScreen::voteConfirm(int map)
     {
         votePage_ = VotePage::Confirm;
         voteAsked_ = map;
@@ -843,7 +865,7 @@ namespace hlrt
         netGame.voteRedrawn();
     }
 
-    void BottomScreen::showVoteResult()
+    HL_OVL_CODE(match) void BottomScreen::showVoteResult()
     {
         votePage_ = VotePage::Result;
         touchCanvas.listOff();
@@ -871,7 +893,7 @@ namespace hlrt
         netGame.voteRedrawn();
     }
 
-    void BottomScreen::voteUpdate()
+    HL_OVL_CODE(match) void BottomScreen::voteUpdate()
     {
         if (votePage_ != VotePage::List)
             return;
@@ -882,7 +904,7 @@ namespace hlrt
         }
     }
 
-    void BottomScreen::voteClock(int seconds)
+    HL_OVL_CODE(match) void BottomScreen::voteClock(int seconds)
     {
         if (votePage_ != VotePage::List || seconds == voteClock_)
             return;
@@ -895,7 +917,7 @@ namespace hlrt
         drawTextCentred(canvas, small, 184, 5, text, inkFor(small, kUiGrey));
     }
 
-    void BottomScreen::voteSlideTo(int scroll)
+    HL_OVL_CODE(match) void BottomScreen::voteSlideTo(int scroll)
     {
         const NetVote &vote = netGame.match().vote;
         scroll = netVoteClampScroll(scroll, vote.count);
@@ -907,7 +929,7 @@ namespace hlrt
         voteMarker();
     }
 
-    void BottomScreen::voteTouch(bool down, int x, int y)
+    HL_OVL_CODE(match) void BottomScreen::voteTouch(bool down, int x, int y)
     {
         const NetMatch &match = netGame.match();
         const NetVote &vote = match.vote;
@@ -984,7 +1006,7 @@ namespace hlrt
             voteSlideTo(voteScroll_ + (gap > 0 ? (gap + 3) / 4 : (gap - 3) / 4));
     }
 
-    void BottomScreen::voteCard(int row, const std::uint8_t *file, std::size_t size)
+    HL_OVL_CODE(match) void BottomScreen::voteCard(int row, const std::uint8_t *file, std::size_t size)
     {
         if (row < 0 || row >= kNetVoteRows || previewWidthOf(file, size) != kPreviewSmallWidth)
             return;
@@ -1005,7 +1027,7 @@ namespace hlrt
             touchCanvas.tintWhole(1, y / 8, kPreviewSmallWidth / 8, kPreviewSmallHeight / 8, palette, 12 + row);
     }
 
-    void BottomScreen::showScores()
+    HL_OVL_CODE(match) void BottomScreen::showScores()
     {
         stopShown = false;
         touchCanvas.listOff();

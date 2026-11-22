@@ -270,7 +270,13 @@ namespace
         hlrt::camera.apply();
         hlrt::worldDraw.draw();
     }
-    void takePreview(const std::string &map)
+#ifndef HLDS_CHILD
+    /// takePreview's picture, as read off the screen: in the match overlay
+    /// (build.py's OVERLAYS), the region's for as long as it is taken.
+    alignas(4) std::uint16_t previewPixels[hldata::kPreviewWidth * hldata::kPreviewHeight] HL_OVL_BSS(match);
+#endif
+
+    HL_OVL_GATED void takePreview(const std::string &map)
     {
 #ifndef HLDS_CHILD
         if (!global.hasFat)
@@ -308,7 +314,11 @@ namespace
             hlrt::textureStream.update(isDSiMode() ? 8192 : 4096);
         }
         NEA_Process(drawPreviewScene);
-        static std::uint16_t pixels[hldata::kPreviewWidth * hldata::kPreviewHeight];
+#if HL_OVL_COUNT > 0
+        hlrt::ovl::load(hlrt::ovl::Id::Match);
+#endif
+        HL_OVL_GATE(Match);
+        auto &pixels = previewPixels;
         if (hlrt::frameFreeze.capturePreview(pixels))
         {
             mkdir(global.savesDir().c_str(), 0777);
@@ -607,8 +617,13 @@ namespace
         voteWaitShown = false;
         hlrt::netGame.setVoteShown(false);
     }
-    void endScreens()
+    /// (The gate of the match overlay's screens: BottomScreen.cpp.)
+    HL_OVL_GATED void endScreens()
     {
+#if HL_OVL_COUNT > 0
+        hlrt::ovl::load(hlrt::ovl::Id::Match);
+#endif
+        HL_OVL_GATE(Match);
         const hldata::NetMatch &match = hlrt::netGame.match();
         // The stylus: the host's LOBBY, or what is on the vote's pages.
         const bool touch = (keysHeld() & KEY_TOUCH) != 0;

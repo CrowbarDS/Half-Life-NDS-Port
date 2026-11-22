@@ -135,6 +135,8 @@ namespace hlrt
             Confirm,
             Result,
         };
+        /// drawScores' work, in the match overlay (BottomScreen.cpp).
+        void drawScoresBody(int top);
         void voteList();
         void voteSlots();
         void voteMarker();
