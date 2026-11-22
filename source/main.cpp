@@ -2620,17 +2620,8 @@ int main(int argc, char *argv[])
     {
         // (The wait is when the actors' thinking is done, the world let go
         // to the worker for it: game/Think.cpp.)
-        hlrt::think.waitForScreen([] {
-            // For the next VBlank, as ever. libnds remembers one that came
-            // while no thread waited for it -- the frame was longer than one
-            // -- and does not sleep for it: that one taken first, here, or
-            // the frame would never wait, nor the worker ever have the CPU.
-            static std::uint32_t woke = 0;
-            if (Global::vblanks() != woke)
-                cothread_yield_irq(IRQ_VBLANK);
-            NEA_WaitForVBL(NEA_UPDATE_TASKS);
-            woke = Global::vblanks();
-        });
+        // (For the next VBlank, as ever: Global.cpp's VBlank waiter.)
+        hlrt::think.waitForScreen([] { NEA_WaitForVBL(NEA_UPDATE_TASKS); });
         // What was drawn off the screen last frame, put on it while it is
         // not being shown: the display's numbers, the sliding weapon list.
         hlrt::hudDraw.present();

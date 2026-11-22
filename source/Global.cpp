@@ -69,6 +69,23 @@ std::uint32_t Global::vblanks()
 namespace
 {
     bool vblanksCounted = false;
+
+    // A thread that only waits for VBlank, above all others: every VBlank
+    // has a thread waiting for it, and so libnds never remembers one that
+    // came with none -- after which its next wait for VBlank would not
+    // sleep, whoever asked (a frame longer than a VBlank; dswifi's thread
+    // waits for one too, now and then: so not always). Every wait for
+    // VBlank is again for the next one: the game's, a menu's, Nitro
+    // Engine's, which put the textures into video memory then. (Woken, it
+    // waits again at once; an interrupt that comes in that moment runs on
+    // this stack.)
+    alignas(8) std::uint32_t vblankWaiterStack[1024 / 4];
+    int vblankWaiter(void *)
+    {
+        for (;;)
+            cothread_yield_irq(IRQ_VBLANK);
+        return 0;
+    }
 }
 
 void Global::waitVBlank()
@@ -78,8 +95,9 @@ void Global::waitVBlank()
         swiWaitForVBlank();
         return;
     }
-    // (libnds remembers a VBlank no thread waited for and does not sleep for
-    // it: one that came before this was asked is not the one waited for.)
+    // (Until a VBlank of its own comes: should libnds ever have remembered
+    // one that came before -- the VBlank waiter above sees to it that it
+    // does not -- that one is not the one waited for.)
     const std::uint32_t was = vblankCount;
     do
         cothread_yield_irq(IRQ_VBLANK);
@@ -216,6 +234,10 @@ void Global::Init(const char *launchedFrom)
     // DebugOverlay.)
     irqSet(IRQ_VBLANK, onVblank);
     vblanksCounted = true;
+    const cothread_t waiter =
+        cothread_create_manual(vblankWaiter, nullptr, vblankWaiterStack, sizeof(vblankWaiterStack), 0);
+    if (waiter >= 0)
+        cothread_set_priority(waiter, 127);
 #ifdef HLDS_PROFILE
     irqSet(IRQ_HBLANK, profiledHblank);
 #else

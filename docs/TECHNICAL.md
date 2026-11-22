@@ -1463,9 +1463,9 @@ What it calls may use the divider and the square-root unit only through
 of threads does not save the units (`tools/irq-divider.py` checks it).
 libnds's comutex and cosema are not used with the interrupts held off, nor
 from an interrupt, where only `cothread_send_signal` is. The frame's wait
-is for the next VBlank, as ever: libnds remembers one no thread waited for
-and does not sleep for it, so one that came during a long frame is taken
-first. In a fight its answers are taken up 2 or 3 frames after they are
+is for the next VBlank, as ever: libnds remembers a VBlank no thread waited
+for and would not sleep for it after, so a thread of the program's does
+nothing but wait for VBlank (`Global.cpp`) and there never is one. In a fight its answers are taken up 2 or 3 frames after they are
 asked, on a DS and a DSi (`perf.txt`, HLDS_PROFILE: "answers taken",
 "woken for none"); its stack, 6 KB of its own, is 4.5 KB deep at most.
 
