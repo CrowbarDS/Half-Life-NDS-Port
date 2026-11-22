@@ -100,12 +100,18 @@ DTCM_DATA_SIZE = 4096
 # The stack each CPU's interrupt handlers run on, all of them, whichever
 # thread they cut off (libnds's, since 2026-11-22). The ARM9's is at the top
 # of DTCM, over its own data: what it takes, the program's stack has not;
-# the ARM7's takes from the room its heap and stack share in DS mode. Found
-# 104 bytes deep on the ARM9 at most, 52 on the ARM7 (c1a3a, DS and DSi:
-# perf.txt's "irq stack"): libnds's own size, 512, is plenty.
-# (The child sets the same: child/build.py.)
+# the ARM7's takes from the room its stack has in DS mode (its heap, unused
+# there, would share it). The ARM9's handlers go 104 bytes deep at most
+# (c1a3a, DS and DSi: perf.txt's "irq stack"; as their frames add up):
+# libnds's own size, 512, is plenty. The ARM7's wireless handlers answer
+# what they receive in the interrupt itself -- the DS mode's (Download Play,
+# local play) builds an authentication reply, the DSi's card a WPA key's --
+# about 1,050 bytes deep by their frames: on a 512-byte stack, the first
+# radio frames of a Download Play send ran over the program's stack and the
+# ARM7 stopped. (One test console hears none: melonDS never went there.)
+# (The child sets the ARM9's: child/build.py; the ARM7 program is this one.)
 IRQ_STACK_ARM9 = 512
-IRQ_STACK_ARM7 = 512
+IRQ_STACK_ARM7 = 1536
 
 # The wireless library with its IP stack, for online play (a DSi's only):
 # its Internet half moved to the DSi-only part of the program, which a DS
