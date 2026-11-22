@@ -36,10 +36,14 @@ namespace hlrt::DebugLog::Perf
 
         constexpr const char *kNames[kCount] = {"input", "logic", "move", "walk",
                                                 "emit",  "pose",  "models", "frame", "monsters", "look", "hear", "going",
-                                                "keys", "sound", "stream", "vblank", "hblank", "radio", "card"};
+                                                "keys", "sound", "stream", "vblank", "hblank", "radio", "card", "lamp"};
         // Key reads since the last line: how many, the longest one, and what
         // of the worst frame was reading keys (does a read make that frame?).
         std::uint32_t keyReads = 0, keyLongest = 0, keysInWorstFrame = 0;
+        // The lamp's counts since the last line (noteLamp): summed and most,
+        // and in how many passes; the divides it made.
+        constexpr int kLampCounts = 6;
+        std::uint32_t lampSum[kLampCounts], lampMost[kLampCounts], lampPasses = 0;
         // The sampler: timer 2 (0 and 1 are the clock above; 3 the
         // wireless's), kSampleHz times a second, adds one to the 256-byte
         // piece of code the ARM9 was in -- ITCM first, then the program, then
@@ -333,6 +337,17 @@ namespace hlrt::DebugLog::Perf
                          static_cast<unsigned long>(think.stackPeak()),
                          static_cast<unsigned long>(keyReads), static_cast<unsigned long>(toMicros(keyLongest)),
                          static_cast<unsigned long>(toMicros(keysInWorstFrame)));
+            if (lampPasses != 0)
+            {
+                static const char *const kLampNames[kLampCounts] = {"polygons", "vertices", "surfaces",
+                                                                    "triangles", "pieces", "divides"};
+                std::fprintf(log, "lamp: %lu passes", static_cast<unsigned long>(lampPasses));
+                for (int i = 0; i < kLampCounts; ++i)
+                    std::fprintf(log, ", %s %lu/%lu", kLampNames[i],
+                                 static_cast<unsigned long>(lampSum[i] / lampPasses),
+                                 static_cast<unsigned long>(lampMost[i]));
+                std::fprintf(log, "\n");
+            }
             writePieces(log);
             writeWorst(log);
             writeSites(log, "divsites", divSites, kDivSites);
@@ -360,6 +375,9 @@ namespace hlrt::DebugLog::Perf
         think.idleWakes = 0;
         worstCount = worstMonsters = worstFrameTicks = 0;
         keyReads = keyLongest = keysInWorstFrame = 0;
+        for (int i = 0; i < kLampCounts; ++i)
+            lampSum[i] = lampMost[i] = 0;
+        lampPasses = 0;
         for (int i = 0; i < kCount; ++i)
         {
             summed[i] = 0;
@@ -408,6 +426,25 @@ namespace hlrt::DebugLog::Perf
     std::uint32_t now()
     {
         return cpuGetTiming();
+    }
+
+    void noteLamp(const LampCounts &counts)
+    {
+        const std::uint32_t values[kLampCounts] = {
+            static_cast<std::uint32_t>(counts.polygons), static_cast<std::uint32_t>(counts.vertices),
+            static_cast<std::uint32_t>(counts.surfaces), static_cast<std::uint32_t>(counts.triangles),
+            static_cast<std::uint32_t>(counts.pieces), counts.divides};
+        for (int i = 0; i < kLampCounts; ++i)
+        {
+            lampSum[i] += values[i];
+            lampMost[i] = values[i] > lampMost[i] ? values[i] : lampMost[i];
+        }
+        ++lampPasses;
+    }
+
+    std::uint32_t dividesSoFar()
+    {
+        return hlHwCount[0] + hlHwCount[1];
     }
 
     void add(Section section, std::uint32_t ticks)

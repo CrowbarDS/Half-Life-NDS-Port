@@ -38,6 +38,7 @@ namespace hlrt::DebugLog
         Hblank, ///< the HBlank interrupt, every line (Nitro Engine's)
         Radio,  ///< the wireless's word from the ARM7, in the FIFO interrupt (local play)
         Card,   ///< reads off the card (data/CardRead.hpp), wherever they are made
+        Lamp,   ///< the lamp's light on the walls (WorldDraw::lampPass: inside Emit)
         Count
     };
 
@@ -52,6 +53,22 @@ namespace hlrt::DebugLog
         /// Section::Keys and counted, for the line's reads, its longest
         /// read, and what of the window's worst frame was reading keys.
         void noteKeyRead(std::uint32_t ticks);
+        /// What one pass of the lamp's light drew and read (WorldDraw::
+        /// lampPass), for perf.txt's "lamp" counts: each one's mean over the
+        /// frames it was lit, and its most.
+        struct LampCounts
+        {
+            int polygons = 0;  ///< sent to the hardware
+            int vertices = 0;
+            int surfaces = 0;  ///< lit (the light near enough, facing the eye)
+            int triangles = 0; ///< of theirs read
+            int pieces = 0;    ///< made (a cell, a strip's quad, a piece cut to a triangle)
+            std::uint32_t divides = 0; ///< hardware divides and roots (dividesSoFar's difference)
+        };
+        void noteLamp(const LampCounts &counts);
+        /// The hardware divides and roots so far (source/HwMath.s's count):
+        /// one part's, by the difference.
+        std::uint32_t dividesSoFar();
         /// Microseconds spent in a section during the last reported frame.
         std::uint32_t micros(Section section);
         /// Latch this frame's totals for micros() and clear the accumulators.
@@ -149,6 +166,13 @@ namespace hlrt::DebugLog
         inline void markStack() {}
         inline void noteLibrary(const void *, std::uint32_t) {}
         inline void noteKeyRead(std::uint32_t) {}
+        struct LampCounts
+        {
+            int polygons = 0, vertices = 0, surfaces = 0, triangles = 0, pieces = 0;
+            std::uint32_t divides = 0;
+        };
+        inline void noteLamp(const LampCounts &) {}
+        inline std::uint32_t dividesSoFar() { return 0; }
         inline std::uint32_t micros(Section) { return 0; }
         struct Scope
         {
