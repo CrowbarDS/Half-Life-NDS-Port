@@ -80,12 +80,27 @@ namespace
     // waits again at once; an interrupt that comes in that moment runs on
     // this stack.)
     alignas(8) std::uint32_t vblankWaiterStack[1024 / 4];
+#ifdef HLDS_PROFILE
+    constexpr std::uint32_t kWaiterPaint = 0x7A17E25Bu;
+#endif
     int vblankWaiter(void *)
     {
         for (;;)
             cothread_yield_irq(IRQ_VBLANK);
         return 0;
     }
+}
+
+std::uint32_t Global::vblankWaiterPeak()
+{
+#ifdef HLDS_PROFILE
+    std::size_t untouched = 0;
+    while (untouched < sizeof(vblankWaiterStack) / 4 && vblankWaiterStack[untouched] == kWaiterPaint)
+        ++untouched;
+    return static_cast<std::uint32_t>(sizeof(vblankWaiterStack) - untouched * 4);
+#else
+    return 0;
+#endif
 }
 
 void Global::waitVBlank()
@@ -234,6 +249,10 @@ void Global::Init(const char *launchedFrom)
     // DebugOverlay.)
     irqSet(IRQ_VBLANK, onVblank);
     vblanksCounted = true;
+#ifdef HLDS_PROFILE
+    for (std::uint32_t &w : vblankWaiterStack)
+        w = kWaiterPaint;
+#endif
     const cothread_t waiter =
         cothread_create_manual(vblankWaiter, nullptr, vblankWaiterStack, sizeof(vblankWaiterStack), 0);
     if (waiter >= 0)

@@ -17,10 +17,58 @@
 // dispatcher's: interruptDispatcher.s); not in its headers.
 extern "C" VoidFn irqTable[];
 extern "C" VoidFn irqTableAUX[];
+// The stacks' ends (ds_arm7.ld): the interrupts' from __sp_svc up to
+// __sp_irq_user, the program's from the end of the program's data (__end__),
+// or the heap's above it, up to __sp_usr.
+extern "C" char __sp_svc[], __sp_irq_user[], __sp_usr[], __end__[];
+extern "C" void *sbrk(int);
 
 namespace
 {
     volatile bool exitLoop = false;
+
+    // How deep the stacks go: each painted with a pattern at the start, and
+    // the lowest word written over found now and then (cheap: from the
+    // bottom, it stops at the first). The program's from where the heap ends
+    // then, which only grows -- in DS mode: in DSi mode the heap is in the
+    // DSi's own memory (ds_arm7_crt0.s), far below, and the program's stack
+    // has the room above its data to itself. (Painted from there, it painted
+    // over the ARM7's whole program: a blank screen.)
+    constexpr std::uint32_t kStackPaint = 0x37A1C0DEu;
+
+    const std::uint32_t *stackFloor()
+    {
+        const auto *data = reinterpret_cast<const std::uint32_t *>(__end__);
+        const auto *heap = static_cast<const std::uint32_t *>(sbrk(0));
+        const auto *top = reinterpret_cast<const std::uint32_t *>(__sp_usr);
+        return heap > data && heap < top ? heap : data;
+    }
+
+    void paintStacks()
+    {
+        const int saved = enterCriticalSection();
+        for (auto *w = reinterpret_cast<std::uint32_t *>(__sp_svc); w < reinterpret_cast<std::uint32_t *>(__sp_irq_user);
+             ++w)
+            *w = kStackPaint;
+        volatile std::uint32_t here = 0;
+        for (auto *w = const_cast<std::uint32_t *>(stackFloor()); w < const_cast<std::uint32_t *>(&here) - 64; ++w)
+            *w = kStackPaint;
+        leaveCriticalSection(saved);
+    }
+
+    std::uint32_t depth(const std::uint32_t *low, const std::uint32_t *top)
+    {
+        while (low < top && *low == kStackPaint)
+            ++low;
+        return static_cast<std::uint32_t>((top - low) * 4);
+    }
+
+    void measureStacks()
+    {
+        hlaudio::stacks(depth(stackFloor(), reinterpret_cast<const std::uint32_t *>(__sp_usr)),
+                        depth(reinterpret_cast<const std::uint32_t *>(__sp_svc),
+                              reinterpret_cast<const std::uint32_t *>(__sp_irq_user)));
+    }
 
     // (Diagnostic) what the ARM7 is in, for the ARM9 to say if it stops
     // (HlAudioLink.hpp's where): each interrupt marked as it runs, and what
@@ -114,6 +162,7 @@ int main()
         REG_SOUNDBIAS = bias + 1;
         swiDelay(0x200);
     }
+    paintStacks();
     readUserSettings();
     ledBlink(LED_ALWAYS_ON);
     touchInit();
@@ -171,6 +220,8 @@ int main()
             if ((~REG_KEYINPUT & mask) == mask)
                 exitLoop = true;
         }
+        if (blocks % 256 == 0)
+            measureStacks();
     }
     return 0;
 }

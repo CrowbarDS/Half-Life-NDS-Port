@@ -2,6 +2,8 @@
 
 // The game's sound on the ARM7 (Audio.cpp).
 
+#include <cstdint>
+
 namespace hlaudio
 {
     /// The block timer and the handler that is told where the shared block
@@ -14,4 +16,6 @@ namespace hlaudio
     /// never comes back (HlAudioLink.hpp, where).
     void mark(unsigned what);
     unsigned marked();
+    /// (Diagnostic) the stacks' depths, for the ARM9 to log.
+    void stacks(std::uint32_t used, std::uint32_t irqUsed);
 } // namespace hlaudio

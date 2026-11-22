@@ -349,10 +349,12 @@ namespace
         // what it last said it was doing, and its blocks late.
         if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
         {
-            std::fprintf(log, "arm7: sound blocks %lu, where %lu, late %lu\n",
+            std::fprintf(log, "arm7: sound blocks %lu, where %lu, late %lu, stack %lu, irq stack %lu\n",
                          static_cast<unsigned long>(hlrt::arm7Audio.blocksDone()),
                          static_cast<unsigned long>(hlrt::arm7Audio.where()),
-                         static_cast<unsigned long>(hlrt::arm7Audio.late()));
+                         static_cast<unsigned long>(hlrt::arm7Audio.late()),
+                         static_cast<unsigned long>(hlrt::arm7Audio.stackUsed()),
+                         static_cast<unsigned long>(hlrt::arm7Audio.irqStackUsed()));
             std::fclose(log);
         }
 #endif

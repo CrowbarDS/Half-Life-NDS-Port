@@ -91,6 +91,9 @@ public:
     /// frame's, never ran, and a host waited for it for ever. (Before the
     /// VBlank's handler counts, as swiWaitForVBlank.)
     static void waitVBlank();
+    /// (Profile builds) how deep the thread that takes the VBlanks has been
+    /// into its stack, in bytes; 0 otherwise.
+    static std::uint32_t vblankWaiterPeak();
 
     /// Bytes the heap can still grow by. Not the same as "free memory" -- blocks
     /// already released back to the allocator are not counted -- but it is the

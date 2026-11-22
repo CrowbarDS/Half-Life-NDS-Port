@@ -14,6 +14,8 @@
 // (The linker's: where the stack starts, under DTCM's own data, which sits
 // at the top of DTCM. It grows down to the bottom of DTCM.)
 extern "C" char __sp_usr[];
+// The interrupts' stack (ds_arm9.ld): from __dtcm_data_top up to __sp_irq_user.
+extern "C" char __dtcm_data_top[], __sp_irq_user[];
 // (HwMath.s: the divides and the roots the hardware has been asked for.)
 extern "C" std::uint32_t hlHwCount[2];
 // (The linker's: the program's code, and the top of the interrupt stack,
@@ -284,6 +286,12 @@ namespace hlrt::DebugLog::Perf
         std::uint32_t *to = const_cast<std::uint32_t *>(&here) - 64;
         for (; from < to; ++from)
             *from = kStackPaint;
+        // And the interrupts' (none is in it: the interrupts held off).
+        const int saved = enterCriticalSection();
+        for (auto *w = reinterpret_cast<std::uint32_t *>(__dtcm_data_top);
+             w < reinterpret_cast<std::uint32_t *>(__sp_irq_user); ++w)
+            *w = kStackPaint;
+        leaveCriticalSection(saved);
     }
 
     void logEvery(const char *map, int frames)
@@ -295,10 +303,16 @@ namespace hlrt::DebugLog::Perf
         const std::uint32_t *top = reinterpret_cast<const std::uint32_t *>(__sp_usr);
         while (low < top && *low == kStackPaint)
             ++low;
+        const std::uint32_t *irqLow = reinterpret_cast<const std::uint32_t *>(__dtcm_data_top);
+        const std::uint32_t *irqTop = reinterpret_cast<const std::uint32_t *>(__sp_irq_user);
+        while (irqLow < irqTop && *irqLow == kStackPaint)
+            ++irqLow;
         if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
         {
-            std::fprintf(log, "time: %s %s %d frames, stack %d, divides %lu, roots %lu", map,
-                         global.isDSi ? "DSi" : "DS", framesIn, static_cast<int>((top - low) * 4),
+            std::fprintf(log, "time: %s %s %d frames, stack %d, irq stack %d, waiter stack %lu, divides %lu, roots %lu",
+                         map, global.isDSi ? "DSi" : "DS", framesIn, static_cast<int>((top - low) * 4),
+                         static_cast<int>((irqTop - irqLow) * 4),
+                         static_cast<unsigned long>(Global::vblankWaiterPeak()),
                          static_cast<unsigned long>(hlHwCount[0] / static_cast<unsigned>(framesIn)),
                          static_cast<unsigned long>(hlHwCount[1] / static_cast<unsigned>(framesIn)));
             for (int i = 0; i < kCount; ++i)

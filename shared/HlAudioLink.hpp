@@ -163,6 +163,10 @@ namespace hldata
         /// buttons and touch, 3 the sound's block, 4 the DSi wireless card's
         /// interrupt, 5 the FIFO's, 0 waiting.
         volatile std::uint32_t where;
+        /// (Diagnostic) the deepest the ARM7's stacks have been, in bytes:
+        /// its program's, and the one its interrupts run on.
+        volatile std::uint32_t stackUsed;
+        volatile std::uint32_t irqStackUsed;
         // ARM7 writes, channels 1 and 3 read:
         alignas(32) std::int16_t outLeft[kOutRing];
         alignas(32) std::int16_t outRight[kOutRing];

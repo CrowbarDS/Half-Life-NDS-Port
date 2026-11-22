@@ -497,6 +497,15 @@ namespace hlaudio
             l->where = what;
     }
 
+    void stacks(std::uint32_t used, std::uint32_t irqUsed)
+    {
+        if (AudioLink *l = link)
+        {
+            l->stackUsed = used;
+            l->irqStackUsed = irqUsed;
+        }
+    }
+
     unsigned marked()
     {
         AudioLink *l = link;
