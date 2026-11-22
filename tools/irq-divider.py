@@ -39,8 +39,10 @@ HANDLERS = [
     "IPCSync",
     "systemValueHandler",
     "systemMsgHandler",
-    "wifiValue32Handler",  # (without lwIP, Wifi_Update runs in the interrupt)
-    "hlrt::netlink::(anonymous namespace)::radioWord(unsigned long, void*)",  # ... and with it, ours does
+    "wifiValue32Handler",  # (the ARM7's word: it wakes the library's thread)
+    # The library's thread (priority 32, above the frame's: it cuts the frame
+    # off as an interrupt does), which runs Wifi_Update and, online, lwIP's.
+    "Wifi_Update_Thread",
     "Wifi_DlPlayFromClientHandler",
     "my_sys_counter",  # lwIP's clock (online play, a DSi's): a count, on timer 3
     "hlrt::DebugLog::Perf::(anonymous namespace)::sample()",  # HLDS_PROFILE's sampler, on timer 2
@@ -58,8 +60,7 @@ INSTALLERS = {
     "irqSet": {"Global::Init(char const*)", "fifoInit", "ne_gxfifo_wait_room", "timerStart"},
     "irqSetAUX": set(),
     "timerStart": {"sys_init", "hlrt::DebugLog::Perf::begin()"},
-    "fifoSetValue32Handler": {"Wifi_Deinit", "Wifi_InitDefault", "initSystem",
-                              "hlrt::netlink::(anonymous namespace)::start()"},
+    "fifoSetValue32Handler": {"Wifi_Deinit", "Wifi_InitDefault", "Wifi_InitIPC", "initSystem"},
     "fifoSetDatamsgHandler": {"initSystem"},
     "fifoSetAddressHandler": set(),
     "Wifi_RawSetPacketHandler": set(),
@@ -74,12 +75,7 @@ INSTALLERS = {
 }
 # Calls a handler can make only past a test the walk cannot read, with why.
 # Not followed.
-GUARDED = {
-    # Wifi_Update gives a frame to the IP stack only while it is on
-    # (wifi_lwip_enabled), and our radioWord, the one handler that runs
-    # Wifi_Update in the interrupt, does nothing then (source/net/NetLink.cpp).
-    "Wifi_SendPacketToLwip",
-}
+GUARDED = set()
 UNITS = ("__wrap___aeabi_ldivmod", "__wrap___aeabi_uldivmod", "hlHwSqrt64")
 # Threads the frame's thread cuts off at an interrupt (libnds's preemption),
 # and which a switch of threads does not save the units for: they may use

@@ -116,29 +116,6 @@ namespace hlrt::netlink
             keep(0, base, len);
         }
 
-        /// The ARM7's word that the radio has something: dealt with at once,
-        /// in the interrupt -- what the library built without the IP stack
-        /// does itself. The one built with it (the ROM's, for online play)
-        /// leaves it to its IP stack's thread, which local play never starts:
-        /// without this, nothing came or went (a guest of Download Play was
-        /// only "A console", and was sent nothing).
-        /// (Never with the IP stack on, whose thread does it then: so the IP
-        /// stack's part of Wifi_Update, which reaches the divider through
-        /// lwIP's printf, is never run in the interrupt. tools/irq-divider.py
-        /// counts on this.)
-        void radioWord(u32 value, void *)
-        {
-#ifndef HLDS_CHILD
-            if (wifi_lwip_enabled)
-                return;
-#endif
-            if (value == 0)
-            {
-                const hlrt::DebugLog::Perf::Timed timed(hlrt::DebugLog::Section::Radio);
-                Wifi_Update();
-            }
-        }
-
         void waitForMode()
         {
             for (int i = 0; i < kModeWaitFrames && !Wifi_LibraryModeReady(); ++i)
@@ -156,9 +133,10 @@ namespace hlrt::netlink
 #endif
             if (pool == nullptr)
                 pool = static_cast<std::uint8_t *>(std::malloc(kPoolBytes));
+            // (The library's own thread brings what the radio has, local play
+            // or online: its Wifi_Update, woken by the ARM7's word.)
             if (pool == nullptr || !Wifi_InitDefault(INIT_ONLY | WIFI_LOCAL_ONLY))
                 return false;
-            fifoSetValue32Handler(FIFO_DSWIFI, radioWord, nullptr);
             started = true;
             return true;
         }
