@@ -4,6 +4,9 @@
 // canvas's rectangles. With HLDS_VALVE_DIR set, the game's own fonts and
 // pictures.
 
+#include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -12,6 +15,7 @@
 
 #include "HlFont.hpp"
 #include "HlLamp.hpp"
+#include "HlLampPatch.hpp"
 #include "HlTopLayout.hpp"
 #include "HlKeyWords.hpp"
 #include "HlSettings.hpp"
@@ -612,6 +616,95 @@ namespace
     }
 
     /// The lamp's rules: the game's.
+    // The lamp's light added to a wall (HlLampPatch.hpp): a patch of the
+    // wall's own texture, its corners as bright as the game makes them.
+    void testLampPatch()
+    {
+        // The curve, the converter's: a colour put back through it untouched.
+        bool same = true;
+        for (int c = 0; c < 32; ++c)
+            same = same && lampLift(c * 256, 0) == c;
+        check(same, "a colour with no light added is the colour it was");
+        bool rising = true;
+        for (int c = 0; c < 31; ++c)
+            rising = rising && lampLift(c * 256, 16) >= c && lampLift(c * 256, 800) >= lampLift(c * 256, 16);
+        check(rising, "... and more light makes it no darker");
+        // (The tables are the converter's curve: 255 * 338/256 * v^0.8,
+        // shifted to five bits.)
+        bool table = true;
+        for (int i = 0; i < kLampColours; ++i)
+        {
+            const long v = i == 0 ? 0 : std::lround(255.0 * 338.0 / 256.0 * std::pow(i / 255.0, 0.8));
+            table = table && kLampColourOf[i] == (std::min(255L, v) >> 3);
+        }
+        for (int c = 0; c < 32; ++c)
+        {
+            const double lm = 255.0 * std::pow((c * 8 + 3.5) / 255.0 / (338.0 / 256.0), 1.0 / 0.8);
+            table = table && std::abs(kLampLightOf[c] - lm * 16) <= 1;
+        }
+        check(table, "the lamp's tables are the converter's light curve");
+
+        // A floor 512 square at z 0, in two triangles, colour 10 all over,
+        // its texture 16 sixteenths a unit along x and y; the light 10 above
+        // it at the middle.
+        auto corner = [](int x, int y) {
+            LampCorner c{};
+            c.pos[0] = fxFromInt(x);
+            c.pos[1] = fxFromInt(y);
+            c.colour = static_cast<std::uint16_t>(10 | 10 << 5 | 10 << 10);
+            c.texCoord = (static_cast<std::uint32_t>(x * 16) & 0xFFFF) | (static_cast<std::uint32_t>(y * 16) << 16);
+            return c;
+        };
+        const LampCorner first[3] = {corner(-256, -256), corner(256, -256), corner(256, 256)};
+        const LampCorner second[3] = {corner(-256, -256), corner(256, 256), corner(-256, 256)};
+        const fx up[3] = {0, 0, kFxOne};
+        LampLight light{{0, 0, fxFromInt(10)}, 256};
+        double area = 0;
+        int centreColour = -1, edgeColour = -1, texOff = 0, polygons = 0;
+        std::vector<std::array<long, 2>> seam[2];
+        int side = 0;
+        auto take = [&](const LampCorner *c, int n) {
+            ++polygons;
+            for (int i = 0; i < n; ++i)
+            {
+                const double x = c[i].pos[0] / 4096.0, y = c[i].pos[1] / 4096.0;
+                const double x1 = c[(i + 1) % n].pos[0] / 4096.0, y1 = c[(i + 1) % n].pos[1] / 4096.0;
+                area += (x * y1 - x1 * y) / 2;
+                if (std::fabs(x) < 0.01 && std::fabs(y) < 0.01)
+                    centreColour = c[i].colour & 31;
+                if (std::fabs(std::max(std::fabs(x), std::fabs(y)) + std::min(std::fabs(x), std::fabs(y)) / 2 - 70) < 0.05)
+                    edgeColour = c[i].colour & 31;
+                const int s = static_cast<std::int16_t>(c[i].texCoord & 0xFFFF), t = static_cast<std::int16_t>(c[i].texCoord >> 16);
+                texOff = std::max(texOff, std::max(std::abs(s - static_cast<int>(std::lround(x * 16))),
+                                                   std::abs(t - static_cast<int>(std::lround(y * 16)))));
+                if (std::fabs(x - y) < 0.0001)
+                    seam[side].push_back({c[i].pos[0], c[i].pos[1]});
+            }
+        };
+        const int made = lampPatchTriangle(first, up, light, take);
+        side = 1;
+        const int made2 = lampPatchTriangle(second, up, light, take);
+        // rad = 80 - 10 = 70: the octagon's area is 8/3 of 70 squared.
+        check(made > 0 && made2 > 0 && std::fabs(std::fabs(area) - 8.0 * 70 * 70 / 3) < 20,
+              "the patch covers the game's octagon of light, 80 less how far the light is off the floor");
+        check(texOff <= 1, "... in the floor's own texture, where it was");
+        const double lm = kLampLightOf[10] / 16.0 + 70.0 * 255.0 / 264.0;
+        const int want = static_cast<int>(std::min(255L, std::lround(255.0 * 338.0 / 256.0 * std::pow(lm / 255.0, 0.8))) >> 3);
+        check(centreColour == want, "at its middle, the floor's light and the game's 70 added, through the curve");
+        check(edgeColour == 10, "at its edge, the floor as it was: no seam");
+        std::sort(seam[0].begin(), seam[0].end());
+        std::sort(seam[1].begin(), seam[1].end());
+        check(!seam[0].empty() && seam[0] == seam[1], "where the two triangles meet, both cut the light at the same points");
+        int none = 0;
+        light.at[2] = fxFromInt(81);
+        none += lampPatchTriangle(first, up, light, take);
+        light.at[2] = fxFromInt(10);
+        light.at[0] = fxFromInt(600);
+        none += lampPatchTriangle(first, up, light, take);
+        check(none == 0, "no patch for a light 80 off the floor, or beside it");
+        check(polygons > 8 && made + made2 < 80, "a patch is a few dozen triangles");
+    }
+
     void testLamp()
     {
         LampState lamp;
@@ -1345,6 +1438,7 @@ int main()
     testGraphics();
     testLayout();
     testLamp();
+    testLampPatch();
     testLogos();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir != nullptr && dir[0] != '\0')
