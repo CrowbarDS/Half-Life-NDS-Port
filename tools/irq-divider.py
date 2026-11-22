@@ -81,6 +81,13 @@ GUARDED = {
     "Wifi_SendPacketToLwip",
 }
 UNITS = ("__wrap___aeabi_ldivmod", "__wrap___aeabi_uldivmod", "hlHwSqrt64")
+# Threads the frame's thread cuts off at an interrupt (libnds's preemption),
+# and which a switch of threads does not save the units for: they may use
+# them only through UNITS -- source/HwMath.s, which holds the interrupts off
+# while it does -- never directly. (The think worker: its loop, and the
+# game's thinkRunOne, which it reaches through the game's table.)
+THREADS = ["hlrt::(anonymous namespace)::work(void*)"]
+THREAD_PATTERN = re.compile(r"^hldata::thinkRunOne\(")
 CRASH = "__assert_func"
 REGISTERS = range(0x04000280, 0x040002C0)
 BRANCH = re.compile(r"^(bl|blx|b)(eq|ne|cs|cc|mi|pl|vs|vc|hi|ls|ge|lt|gt|le)?(\.n|\.w)?$")
@@ -206,6 +213,19 @@ def check(elf):
         came_from[name] = parent
         stack += [(callee, name) for callee in calls.get(name, ())]
 
+    # The threads: the same walk; what they reach may use the units only
+    # through UNITS.
+    thread_roots = [name for name in THREADS if name in names]
+    thread_roots += [name for name in names if THREAD_PATTERN.search(name)]
+    thread_from = {}
+    stack = [(root, None) for root in thread_roots]
+    while stack:
+        name, parent = stack.pop()
+        if name in thread_from or name == CRASH or name in UNITS:
+            continue
+        thread_from[name] = parent
+        stack += [(callee, name) for callee in calls.get(name, ())]
+
     if "--uses" in FLAGS:
         for name in sorted(uses):
             print("  uses: %08x %s%s" % (evidence[name], name, "  (reached by a handler)" if name in came_from else ""))
@@ -254,8 +274,16 @@ def check(elf):
             path.append(came_from[path[-1]])
         print("%s: %s" % (elf, " <- ".join(path)))
         bad += 1
-    print("%s: %d handlers, %d functions they reach, %d problems%s" % (
-        elf, len(roots), len(came_from), bad,
+    for name in sorted(thread_from):
+        if name not in uses:
+            continue
+        path = [name]
+        while thread_from[path[-1]] is not None:
+            path.append(thread_from[path[-1]])
+        print("%s: a thread, not through HwMath.s: %s" % (elf, " <- ".join(path)))
+        bad += 1
+    print("%s: %d handlers, %d functions they reach; %d thread roots, %d functions; %d problems%s" % (
+        elf, len(roots), len(came_from), len(thread_roots), len(thread_from), bad,
         "; not in this program: " + ", ".join(missing) if missing else ""))
     return bad == 0
 
