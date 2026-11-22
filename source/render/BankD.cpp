@@ -25,6 +25,8 @@ namespace hlrt
         lent_ = true;
         vramSetBankD(VRAM_D_LCD);
     }
+    BankD::Elsewhere::Elsewhere() {}
+    BankD::Elsewhere::~Elsewhere() {}
     void BankD::giveBack()
     {
         lent_ = false;
@@ -96,6 +98,19 @@ namespace hlrt
         }
         vramSetBankD(VRAM_D_TEXTURE_SLOT3);
         restore();
+    }
+
+    BankD::Elsewhere::Elsewhere()
+        : banks_(NEA_TextureGetPlainBanks()), deferred_(bankD.lent() && bankD.playing())
+    {
+        NEA_TextureSetPlainBanks(kBanksAtoC);
+        NEA_TextureSetPlainDeferred(false);
+    }
+
+    BankD::Elsewhere::~Elsewhere()
+    {
+        NEA_TextureSetPlainBanks(banks_);
+        NEA_TextureSetPlainDeferred(deferred_);
     }
 
     BankD::Entry *BankD::place(NEA_Material *material, std::uint32_t bytes)

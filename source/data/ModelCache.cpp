@@ -19,6 +19,7 @@
 #include "game/Player.hpp"
 #include "net/GuestLoad.hpp"
 #include "net/NetGame.hpp"
+#include "render/BankD.hpp"
 #include "HlNetGame.hpp"
 #include "HlRemap.hpp"
 
@@ -196,10 +197,21 @@ namespace hlrt
                 views_[at] = hldata::ModelView();
                 continue;
             }
-            if (!TextureCache::loadFile(global.commonPath("chr/" + name + kind + ".htx").c_str(), false,
-                                        views_[at].header->atlasWidth, views_[at].header->atlasHeight, 0, materials_[at],
-                                        palettes_[at]) ||
-                !TextureCache::takeRemapBase(characterBases_ + slot * 256))
+            const std::string skin = global.commonPath("chr/" + name + kind + ".htx");
+            const auto loadSkin = [&]()
+            {
+                return TextureCache::loadFile(skin.c_str(), false, views_[at].header->atlasWidth,
+                                              views_[at].header->atlasHeight, 0, materials_[at], palettes_[at]);
+            };
+            // (In Bank D if there is room; else where the textures that
+            // stream kept room for it: BankD.)
+            bool loaded = loadSkin();
+            if (!loaded && bankD.playing())
+            {
+                const BankD::Elsewhere elsewhere;
+                loaded = loadSkin();
+            }
+            if (!loaded || !TextureCache::takeRemapBase(characterBases_ + slot * 256))
             {
                 // (No room for its skin: the suit, for those who chose it.)
                 if (materials_[at] != nullptr)

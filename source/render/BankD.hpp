@@ -56,6 +56,23 @@ namespace hlrt
         bool lent() const { return lent_; }
         bool playing() const { return playing_; }
 
+        /// While one is alive, textures that are not 4x4 go to banks A to C
+        /// (and are written at once: those banks are never lent): for what
+        /// may take their room there when Bank D is full -- the players'
+        /// skins, which the textures that stream keep room for.
+        class Elsewhere
+        {
+        public:
+            Elsewhere();
+            ~Elsewhere();
+            Elsewhere(const Elsewhere &) = delete;
+            Elsewhere &operator=(const Elsewhere &) = delete;
+
+        private:
+            std::uint32_t banks_ = 0;
+            bool deferred_ = false;
+        };
+
 #ifndef HLDS_CHILD
         /// A texture just loaded from `member`, its texels `bytes` long from
         /// `offset` in it: if it is in Bank D, where to read them again.
