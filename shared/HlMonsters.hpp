@@ -31,6 +31,7 @@
 #include "HlLogic.hpp"
 #include "HlMaterial.hpp"
 #include "HlAi.hpp"
+#include "HlLamp.hpp"
 #include "HlSharedRandom.hpp"
 
 namespace hldata
@@ -586,6 +587,8 @@ namespace hldata
     inline void effectsTick(LogicWorld &w, PlayerState &player, int ms);
     inline bool gibBurst(LogicWorld &w, int index);
     inline bool lineEntersBox(const fx *from, const fx *to, const fx *mins, const fx *maxs, std::int64_t &enter);
+    inline bool lineHitsHitbox(const ActorWorld &a, const ActorState &actor, const fx *from, const fx *to,
+                               std::int64_t &enter, int &group);
     inline void shakeStart(LogicWorld &w, fx amplitude, int ms);
     inline void explodeAt(LogicWorld &w, PlayerState &player, const fx *at, int size, bool fireball, bool sound,
                           bool hurts, int smoke, bool showers, const fx *pushFrom, const fx *scorch);
@@ -3395,6 +3398,58 @@ namespace hldata
         // map makes of a monster_generic dies of a few.)
         return fights(kind) || isPerson(kind) || kind == static_cast<std::uint8_t>(ActorKind::Player) ||
                kind == static_cast<std::uint8_t>(ActorKind::Gman) || kind == static_cast<std::uint8_t>(ActorKind::Generic);
+    }
+
+    /// The lamp's line (CL_UpdateFlashlight's) is stopped by the monsters
+    /// and the people, alive or dead, as a bullet is -- the game traces it
+    /// through their hit boxes (PM_STUDIO_BOX): the first it strikes before
+    /// `reach` (a fraction of the way from `eye` to `end`, Q30; made where
+    /// it goes in), or -1. The game's light is then at its origin.
+    inline int lampMeets(const ActorWorld &a, const fx *eye, const fx *end, std::int64_t &reach)
+    {
+        int met = -1;
+        for (int i = 0; i < a.count; ++i)
+        {
+            const ActorState &actor = a.states[i];
+            if (!actor.active || !canBeHurt(actor.kind))
+                continue;
+            // (Its box first, which is cheap: only one the line goes into
+            // is posed and its hit boxes tried.)
+            fx mins[3], maxs[3];
+            targetBox(actor, mins, maxs);
+            std::int64_t enter;
+            int group;
+            if (lineEntersBox(eye, end, mins, maxs, enter) && enter < reach &&
+                lineHitsHitbox(a, actor, eye, end, enter, group) && enter < reach)
+            {
+                reach = enter;
+                met = i;
+            }
+        }
+        return met;
+    }
+
+    /// Where the lamp shines (lampAim), the monsters and the people in the
+    /// way too: on one, its light is at its origin (CL_UpdateFlashlight),
+    /// as strong as the line's length there says.
+    inline LampAim lampAimAll(const MoveWorld &world, const ActorWorld &a, const fx *eye, const fx *forward)
+    {
+        LampAim aim = lampAim(world, eye, forward);
+        fx end[3];
+        for (int k = 0; k < 3; ++k)
+            end[k] = eye[k] + forward[k] * kLampReach;
+        std::int64_t reach = aim.hit ? (static_cast<std::int64_t>(aim.distance) << kFractionShift) / kLampReach : kFractionOne;
+        const int met = lampMeets(a, eye, end, reach);
+        if (met >= 0)
+        {
+            aim.hit = true;
+            aim.actor = met;
+            for (int k = 0; k < 3; ++k)
+                aim.at[k] = a.states[met].pos[k];
+            const int distance = static_cast<int>((reach * kLampReach) >> kFractionShift);
+            aim.distance = distance < 8 ? 8 : distance;
+        }
+        return aim;
     }
 
     inline void bleed(LogicWorld &w, int index, const fx *at, const fx *dir, bool heavy)

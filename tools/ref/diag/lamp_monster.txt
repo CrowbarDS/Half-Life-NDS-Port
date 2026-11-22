@@ -1,0 +1,14 @@
+# The flashlight on a scientist: c1a0b's two by the start, the nearer about
+# 140 units off. The beam is swept down across him and off to each side;
+# where it stops on him the game puts its light at his origin.
+# map c1a0b
+# start 132 240 -52 75
+# keep func_.*|monster_scientist|info_node.*
+cmd impulse 100
+30 0 0 75 0
+30 0 0 75 10
+30 0 0 75 20
+30 0 0 75 30
+30 0 0 75 40
+30 0 0 60 25
+30 0 0 90 25

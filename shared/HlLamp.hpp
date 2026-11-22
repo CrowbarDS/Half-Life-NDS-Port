@@ -116,6 +116,7 @@ namespace hldata
         bool hit = false;
         fx at[3] = {0, 0, 0};
         int distance = 0;
+        int actor = -1; ///< a monster or one of the people it stopped on (lampAimAll), or -1
     };
     inline LampAim lampAim(const MoveWorld &world, const fx *eye, const fx *forward)
     {

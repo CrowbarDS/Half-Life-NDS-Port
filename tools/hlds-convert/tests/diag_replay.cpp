@@ -1018,13 +1018,20 @@ int main(int argc, char **argv)
         if (lamp.on)
         {
             const fx eyeLamp[3] = {p.origin[0], p.origin[1], p.origin[2] + p.viewHeight};
-            const LampAim aim = lampAim(g.move, eyeLamp, forward);
+            const LampAim aim = lampAimAll(g.move, g.actors, eyeLamp, forward);
             const double reach = aim.hit ? aim.distance : kLampReach;
-            double end[3];
+            // (Where the line stopped; and the light, there -- or, on a
+            // monster, at its origin.)
+            double end[3], light[3];
             for (int a = 0; a < 3; ++a)
-                end[a] = aim.hit ? units(aim.at[a]) : units(eyeLamp[a] + forward[a] * kLampReach);
+            {
+                end[a] = units(eyeLamp[a]) + units(forward[a]) * reach;
+                light[a] = aim.hit ? units(aim.at[a]) : end[a];
+            }
+            const std::string hit = aim.actor >= 0 ? std::string("models/") + className(g.actorStates[aim.actor].kind) + ".mdl"
+                                                   : aim.hit ? "world" : "-";
             std::fprintf(out, "lamp,%d,%d,%.4f,%.3f,%.3f,%.3f,%.3f,%s,%.3f,%.3f,%.3f\n", f, f, t, end[0], end[1], end[2],
-                         reach, aim.hit ? "world" : "-", end[0], end[1], end[2]);
+                         reach, hit.c_str(), light[0], light[1], light[2]);
         }
         if (frameLadder.on)
         {

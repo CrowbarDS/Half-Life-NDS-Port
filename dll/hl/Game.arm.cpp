@@ -1061,7 +1061,7 @@ namespace hlrt
                 // and with nothing within its reach, on nothing.
                 const fx eye[3] = {player.state.origin[0], player.state.origin[1],
                                    player.state.origin[2] + player.state.viewHeight};
-                const LampAim aim = lampAim(world, eye, camera.forward);
+                const LampAim aim = lampAimAll(world, actors, eye, camera.forward);
                 if (aim.hit)
                 {
                     for (int a = 0; a < 3; ++a)
