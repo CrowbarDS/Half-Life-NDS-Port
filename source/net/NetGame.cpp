@@ -1860,7 +1860,7 @@ namespace hlrt
             for (int n = 0; n < 8; ++n)
             {
                 send(true);
-                swiWaitForVBlank();
+                Global::waitVBlank();
             }
         }
         netlink::powerDown();
@@ -1985,7 +1985,7 @@ namespace hlrt
         for (int n = 0; n < 30; ++n)
         {
             send();
-            swiWaitForVBlank();
+            Global::waitVBlank();
         }
     }
 
@@ -2051,7 +2051,7 @@ namespace hlrt
         for (int n = 0; n < 6; ++n)
         {
             frame();
-            swiWaitForVBlank();
+            Global::waitVBlank();
         }
         // (A console still being sent the game itself: that first. A map's
         // picture is given up.)

@@ -68,6 +68,26 @@ std::uint32_t Global::vblanks()
 
 namespace
 {
+    bool vblanksCounted = false;
+}
+
+void Global::waitVBlank()
+{
+    if (!vblanksCounted)
+    {
+        swiWaitForVBlank();
+        return;
+    }
+    // (libnds remembers a VBlank no thread waited for and does not sleep for
+    // it: one that came before this was asked is not the one waited for.)
+    const std::uint32_t was = vblankCount;
+    do
+        cothread_yield_irq(IRQ_VBLANK);
+    while (vblankCount == was);
+}
+
+namespace
+{
     std::uint32_t drawClockAt = 0;
 }
 
@@ -195,6 +215,7 @@ void Global::Init(const char *launchedFrom)
     // The readout, which shows the meter, turns it on while it is shown:
     // DebugOverlay.)
     irqSet(IRQ_VBLANK, onVblank);
+    vblanksCounted = true;
 #ifdef HLDS_PROFILE
     irqSet(IRQ_HBLANK, profiledHblank);
 #else
@@ -338,8 +359,8 @@ void Global::InitVideo()
     // modes where the old ones are busy with the screen. (The world's own
     // list is sent the same way: WorldDraw::emitList.)
     NEA_DisplayListEnableNDMA(isDSiMode());
-    swiWaitForVBlank();
-    swiWaitForVBlank();
+    Global::waitVBlank();
+    Global::waitVBlank();
 
     // Room for a map's worth of textures: NEA's defaults (128 materials, 64
     // palettes) are below what one retail map uses, and every 4x4 compressed

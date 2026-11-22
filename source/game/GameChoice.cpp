@@ -70,7 +70,7 @@ namespace hlrt::choice
         menu.openGames(settings.lastGame);
         while (true)
         {
-            swiWaitForVBlank();
+            Global::waitVBlank();
             input.poll(false);
             sound.frame();
             if (menu.frame() == Menu::Action::ChooseGame)

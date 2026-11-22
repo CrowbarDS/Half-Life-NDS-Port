@@ -148,7 +148,7 @@ namespace hlrt
         // Between two pictures, not part of the way down one: the top of
         // the old picture over black is a tear, if only for a frame.
         if (!curtain_)
-            swiWaitForVBlank();
+            Global::waitVBlank();
         curtain_ = true;
         wait_ = 0;
         fade_ = 0;
@@ -161,7 +161,7 @@ namespace hlrt
         if (frames <= 0)
         {
             if (curtain_)
-                swiWaitForVBlank(); // (as it came down: between two pictures)
+                Global::waitVBlank(); // (as it came down: between two pictures)
             curtain_ = false;
             apply(false);
         }

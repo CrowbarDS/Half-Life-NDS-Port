@@ -658,8 +658,8 @@ namespace hlrt
         holdMusic();
         // (Two blanks, so that the ARM7 has let go of everything before it
         // is freed.)
-        swiWaitForVBlank();
-        swiWaitForVBlank();
+        Global::waitVBlank();
+        Global::waitVBlank();
         for (int i = 0; i < count_; ++i)
         {
             if (!clips_[i].shared)
@@ -1569,7 +1569,7 @@ namespace hlrt
             start(SoundLayer::Ui, round % 2 == 0 ? inVram : plain, 127, 64, false);
             for (int blank = 0; blank < 60; ++blank)
             {
-                swiWaitForVBlank();
+                Global::waitVBlank();
                 frame();
             }
         }

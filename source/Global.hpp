@@ -85,6 +85,12 @@ public:
 
     /// Vertical blanks since boot: the game's clock. Sixty to the second.
     static std::uint32_t vblanks();
+    /// For the next VBlank, the program's other threads given the CPU
+    /// meanwhile -- the wireless library's, the think worker -- where
+    /// swiWaitForVBlank halts it in place: dswifi's thread, above the
+    /// frame's, never ran, and a host waited for it for ever. (Before the
+    /// VBlank's handler counts, as swiWaitForVBlank.)
+    static void waitVBlank();
 
     /// Bytes the heap can still grow by. Not the same as "free memory" -- blocks
     /// already released back to the allocator are not counted -- but it is the

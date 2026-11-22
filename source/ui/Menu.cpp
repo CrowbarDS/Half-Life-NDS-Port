@@ -5002,7 +5002,7 @@ namespace hlrt
 
         while (true)
         {
-            swiWaitForVBlank();
+            Global::waitVBlank();
             sound.frame();
             scanKeys();
             switch (keyboard.poll())
@@ -5052,7 +5052,7 @@ namespace hlrt
         keyboard.draw();
         while (true)
         {
-            swiWaitForVBlank();
+            Global::waitVBlank();
             sound.frame();
             scanKeys();
             switch (keyboard.poll())

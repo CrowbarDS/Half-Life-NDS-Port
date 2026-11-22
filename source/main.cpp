@@ -97,7 +97,7 @@ namespace
         // (The touch screen may not have been set up yet: this does it.)
         hlrt::bottomScreen.showFatal(l1, l2, l3);
         while (true)
-            swiWaitForVBlank();
+            Global::waitVBlank();
     }
 
     std::string currentMap;
@@ -160,7 +160,7 @@ namespace
     {
         for (int n = 0; n < frames; ++n)
         {
-            swiWaitForVBlank();
+            Global::waitVBlank();
             hlrt::netGame.frame();
             if (hlrt::netGame.phase() == hlrt::NetGame::Phase::Lobby)
                 return true;
@@ -196,7 +196,7 @@ namespace
             else if (hlrt::netGame.scan())
             {
                 for (int n = 0; n < 120; ++n)
-                    swiWaitForVBlank();
+                    Global::waitVBlank();
                 hlrt::NetGame::Found rooms[8];
                 const int count = hlrt::netGame.found(rooms, 8);
                 int best = -1;
@@ -218,7 +218,7 @@ namespace
                 {
                     guestSay(hldata::netDemoRefusal(false), "The game near is a demo.");
                     for (int n = 0; n < 180; ++n)
-                        swiWaitForVBlank();
+                        Global::waitVBlank();
                 }
                 in = best >= 0 && hlrt::netGame.join(rooms[best].index) && guestJoined(600);
             }
@@ -241,7 +241,7 @@ namespace
             const char *why = hlrt::netGame.ended();
             guestSay(in ? "The host has gone quiet." : "No host found.", why[0] != 0 ? why : "Trying again...");
             for (int n = 0; n < 120; ++n)
-                swiWaitForVBlank();
+                Global::waitVBlank();
         }
     }
 #endif
@@ -1151,7 +1151,7 @@ namespace
                 std::memcpy(shownNote, note, sizeof(shownNote));
                 hlrt::bottomScreen.showProgress(kTitle, step, note, percent, 100, false, true);
             }
-            swiWaitForVBlank();
+            Global::waitVBlank();
             hlrt::sound.frame();
             hlrt::netGame.frame();
         } while (hlrt::netGame.mapReceiving(percent, step, note));
@@ -1238,7 +1238,7 @@ namespace
             hlrt::netGame.loadedMap();
         for (int n = 0; n < 3 * 60 * 60; ++n)
         {
-            swiWaitForVBlank();
+            Global::waitVBlank();
             hlrt::sound.frame();
             hlrt::netGame.frame();
             if (!hlrt::netGame.on() || hlrt::netGame.cancelled())
@@ -1304,7 +1304,7 @@ namespace
         int heard = 0;
         for (int n = 0; n < 15 * 60 && hlrt::netGame.on() && !whole; ++n)
         {
-            swiWaitForVBlank();
+            Global::waitVBlank();
             hlrt::sound.frame();
             hlrt::netGame.frame();
             hlrt::textureStream.fetchTick();
@@ -1352,7 +1352,7 @@ namespace
                 const bool card = error.find("could not be read from the card") != std::string::npos;
                 hlrt::bottomScreen.showProgress("MAP PICTURES", todo[n].c_str(), error.c_str(), n + 1, total);
                 for (int wait = 0; wait < (card ? 5 * 60 : 60) && !hlrt::BottomScreen::stopTouched(); ++wait)
-                    swiWaitForVBlank();
+                    Global::waitVBlank();
                 if (card)
                 {
                     if (hlrt::level.loaded())
@@ -2172,7 +2172,7 @@ int main(int argc, char *argv[])
             }
             else
             {
-                swiWaitForVBlank();
+                Global::waitVBlank();
             }
             hlrt::input.poll(false);
             hlrt::sound.frame();
@@ -2284,7 +2284,7 @@ int main(int argc, char *argv[])
                     }
                     hlrt::bottomScreen.showMessage("CANNOT LOAD", error.c_str());
                     for (int n = 0; n < 180; ++n)
-                        swiWaitForVBlank();
+                        Global::waitVBlank();
                     if (hlrt::level.loaded())
                     {
                         dropMap();
@@ -2312,7 +2312,7 @@ int main(int argc, char *argv[])
                         hlrt::guest::airStatus(why, sizeof(why));
                         hlrt::bottomScreen.showMessage("NOT RECEIVED", why);
                         for (int n = 0; n < 180; ++n)
-                            swiWaitForVBlank();
+                            Global::waitVBlank();
                     }
                 }
                 else if (air.stream == hldata::AirStream::Map || air.stream == hldata::AirStream::MapFull)
@@ -2338,7 +2338,7 @@ int main(int argc, char *argv[])
                         // (Said, for a while: then the lobby, for the next.)
                         hlrt::bottomScreen.showMessage("CANNOT LOAD", error.c_str());
                         for (int n = 0; n < 180; ++n)
-                            swiWaitForVBlank();
+                            Global::waitVBlank();
                     }
                     // (Not loaded, or the host gone meanwhile.)
                     if (hlrt::level.loaded())
@@ -2563,7 +2563,7 @@ int main(int argc, char *argv[])
         hlrt::netGame.demoHello(true);
         for (int n = 0; n < 300; ++n)
         {
-            swiWaitForVBlank();
+            Global::waitVBlank();
             hlrt::netGame.frame();
         }
 #endif
@@ -2669,7 +2669,7 @@ int main(int argc, char *argv[])
                 {
                     hlrt::bottomScreen.showMessage("OUT OF THE GAME", hlrt::netGame.ended());
                     for (int n = 0; n < 150; ++n)
-                        swiWaitForVBlank();
+                        Global::waitVBlank();
                     backToTitle();
                     return;
                 }

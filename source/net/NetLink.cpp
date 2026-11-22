@@ -10,6 +10,7 @@
 #include <dswifi_dlplay.h>
 
 #include "DebugLog.hpp"
+#include "Global.hpp"
 #include "HlNet.hpp"
 #include "net/NetRelay.hpp"
 
@@ -119,7 +120,7 @@ namespace hlrt::netlink
         void waitForMode()
         {
             for (int i = 0; i < kModeWaitFrames && !Wifi_LibraryModeReady(); ++i)
-                swiWaitForVBlank();
+                Global::waitVBlank();
         }
         bool start()
         {
@@ -222,7 +223,7 @@ namespace hlrt::netlink
         {
             if (Wifi_Deinit())
                 break;
-            swiWaitForVBlank();
+            Global::waitVBlank();
         }
         started = false;
         // (Nothing comes in now: the handlers are gone with the library.)

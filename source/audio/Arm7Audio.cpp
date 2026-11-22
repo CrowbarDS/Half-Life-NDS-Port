@@ -40,7 +40,7 @@ namespace hlrt
                 link_ = link;
                 return true;
             }
-            swiWaitForVBlank();
+            Global::waitVBlank();
         }
         return false;
     }
@@ -253,7 +253,7 @@ namespace hlrt
         push(c);
         // (Taken within 2 ms; a few frames at the most.)
         for (int frame = 0; frame < 10 && link_->commandRead != link_->commandWrite; ++frame)
-            swiWaitForVBlank();
+            Global::waitVBlank();
     }
 
     void Arm7Audio::stopAll()
@@ -317,7 +317,7 @@ namespace hlrt
     void Arm7Audio::sync()
     {
         for (int frame = 0; link_ != nullptr && frame < 10 && link_->commandRead != link_->commandWrite; ++frame)
-            swiWaitForVBlank();
+            Global::waitVBlank();
     }
 
     void Arm7Audio::musicOpen(const void *ring, std::uint32_t blocks, std::uint32_t rate, std::uint32_t pairs,

@@ -18,11 +18,11 @@ namespace hlrt
     // solid, since a bitmap layer leaves out those that are not.
     static void capture()
     {
-        swiWaitForVBlank();
+        Global::waitVBlank();
         REG_DISPCAPCNT = DCAP_BANK(DCAP_BANK_VRAM_D) | DCAP_SIZE(DCAP_SIZE_256x192) | DCAP_MODE(DCAP_MODE_A) |
                          DCAP_SRC_A(DCAP_SRC_A_COMPOSITED) | DCAP_ENABLE;
         for (int n = 0; n < 4 && (n < 2 || (REG_DISPCAPCNT & DCAP_ENABLE)); ++n)
-            swiWaitForVBlank();
+            Global::waitVBlank();
         std::uint16_t *pixels = VRAM_D;
         for (int i = 0; i < 256 * 192; ++i)
             pixels[i] |= 0x8000;
@@ -74,11 +74,11 @@ namespace hlrt
             return false;
         screenFade.layerLost();
         vramSetBankD(VRAM_D_LCD);
-        swiWaitForVBlank();
+        Global::waitVBlank();
         REG_DISPCAPCNT = DCAP_BANK(DCAP_BANK_VRAM_D) | DCAP_SIZE(DCAP_SIZE_256x192) | DCAP_MODE(DCAP_MODE_A) |
                          DCAP_SRC_A(DCAP_SRC_A_3DONLY) | DCAP_ENABLE;
         for (int n = 0; n < 4 && (n < 2 || (REG_DISPCAPCNT & DCAP_ENABLE)); ++n)
-            swiWaitForVBlank();
+            Global::waitVBlank();
         if (REG_DISPCAPCNT & DCAP_ENABLE)
             return false;
         hldata::previewShrink(VRAM_D, out);

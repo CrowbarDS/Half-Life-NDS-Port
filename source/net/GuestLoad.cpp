@@ -195,7 +195,7 @@ namespace hlrt::guest
             for (int n = 0; n < kAirLingerVblanks; ++n)
             {
                 pump();
-                swiWaitForVBlank();
+                Global::waitVBlank();
             }
         }
 
@@ -235,7 +235,7 @@ namespace hlrt::guest
                         return true;
                     if (receiver.done() || !pump())
                         return false;
-                    swiWaitForVBlank();
+                    Global::waitVBlank();
                 }
             }
         };
@@ -409,7 +409,7 @@ namespace hlrt::guest
                     }
                     if (Global::vblanks() - since > kDemoGiveUpVblanks)
                         return false;
-                    swiWaitForVBlank();
+                    Global::waitVBlank();
                 }
             }
         };
@@ -565,7 +565,7 @@ namespace hlrt::guest
                     else if (Global::vblanks() - lastAt > (base == 0 ? kDemoTrackGiveUpVblanks : kDemoGiveUpVblanks))
                         return;
                     netGame.frame();
-                    swiWaitForVBlank();
+                    Global::waitVBlank();
                 }
                 if (result == 0) // (refused: no room there)
                 {
@@ -655,7 +655,7 @@ namespace hlrt::guest
                     else if (Global::vblanks() - lastAt > kDemoGiveUpVblanks)
                         break;
                     netGame.frame();
-                    swiWaitForVBlank();
+                    Global::waitVBlank();
                 }
                 if (result > 0)
                     had = true;
@@ -731,7 +731,7 @@ namespace hlrt::guest
                 else if (Global::vblanks() - lastAt > kDemoGiveUpVblanks)
                     return false;
                 netGame.frame();
-                swiWaitForVBlank();
+                Global::waitVBlank();
             }
             if (mapProgress != nullptr)
                 mapProgress(100);
@@ -1266,7 +1266,7 @@ namespace hlrt::guest
             if (Global::vblanks() - since > 30 * 60 || !netGame.on())
                 return nullptr;
             netGame.frame();
-            swiWaitForVBlank();
+            Global::waitVBlank();
         }
         if (demoOutCount == 0)
             demoOutEnd = 0;
@@ -1310,7 +1310,7 @@ namespace hlrt::guest
         while (demoOutCount > 0 && netGame.on() && Global::vblanks() - since < 10 * 60)
         {
             netGame.frame();
-            swiWaitForVBlank();
+            Global::waitVBlank();
         }
     }
 
@@ -1332,7 +1332,7 @@ namespace hlrt::guest
             if (waited())
                 return false;
             netGame.frame();
-            swiWaitForVBlank();
+            Global::waitVBlank();
         }
         demoCameDone = false;
         netGame.demoFile(what);
@@ -1341,7 +1341,7 @@ namespace hlrt::guest
             if (waited())
                 return false;
             netGame.frame();
-            swiWaitForVBlank();
+            Global::waitVBlank();
         }
         data = demoCame;
         size = demoCameSize;
