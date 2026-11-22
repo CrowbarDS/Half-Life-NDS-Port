@@ -1052,7 +1052,7 @@ namespace hlrt
                 // flat on a console.)
                 textureStream.report(lamp.on ? "lamp on" : "lamp off");
             }
-            if (lampTick(lamp, ms))
+            if (lampTick(lamp, ms, &lampRest))
                 sound.ui(kUiSoundLamp, 127);
             lampLit = false;
             if (lamp.on && !player.noclip)

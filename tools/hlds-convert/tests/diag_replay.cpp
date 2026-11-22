@@ -500,6 +500,7 @@ int main(int argc, char **argv)
     g.logic.noAutoaim.value = true;
     int picked = 0; // (a weapon_<name> asked for, for the next weapons tick)
     LampState lamp;  // (the suit's lamp: "impulse 100" switches it)
+    int lampRest = 0;
     // DIAG_DEFERRED: the monsters' long thinking (cover, a way to see the
     // enemy, their walks' plans) asked of a worker and answered between
     // frames, as the console's is -- every question waiting answered after
@@ -989,7 +990,7 @@ int main(int argc, char **argv)
         }
         g.drain();
 
-        lampTick(lamp, ms);
+        lampTick(lamp, ms, &lampRest);
         if (f < 1)
             continue;
         for (std::size_t n = 0; n < boxes.size(); ++n)

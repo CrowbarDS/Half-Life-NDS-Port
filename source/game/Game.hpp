@@ -96,6 +96,7 @@ namespace hlrt
             return kind == hldata::kPieceShell ? shell_[0] : (kind == hldata::kPieceShotShell ? shell_[1] : -1);
         }
         bool lampLit = false;
+        int lampRest = 0; ///< the battery's drain left over (lampTick)
         int lampDistance = 0; ///< how far off the lamp's light is, in units
         /// The switches that outlive a map. Not reset by create() or
         /// destroy(): only a new game clears them.

@@ -63,12 +63,18 @@ namespace hldata
     }
 
     /// `ms` more milliseconds. True if it went out by itself.
-    inline bool lampTick(LampState &lamp, int ms)
+    /// `rest` (if given, kept by the caller from one tick to the next):
+    /// what is left over of the drain, in sixths -- without it a frame of
+    /// 16 ms drains 13 for 13.3, and the battery lasts 2% too long.
+    inline bool lampTick(LampState &lamp, int ms, int *rest = nullptr)
     {
         if (lamp.on)
         {
             // (All of it in a hundred and twenty seconds.)
-            lamp.charge -= ms * 5 / 6;
+            const int sixths = ms * 5 + (rest != nullptr ? *rest : 0);
+            lamp.charge -= sixths / 6;
+            if (rest != nullptr)
+                *rest = sixths % 6;
             if (lamp.charge <= 0)
             {
                 lamp.charge = 0;
