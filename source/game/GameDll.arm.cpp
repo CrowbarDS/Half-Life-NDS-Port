@@ -16,6 +16,7 @@
 #include "data/TextureStream.hpp"
 #include "game/Input.hpp"
 #include "game/Player.hpp"
+#include "game/SaveGame.hpp"
 #include "game/Think.hpp"
 #include "net/NetGame.hpp"
 #include "render/BottomScreen.hpp"
@@ -134,6 +135,8 @@ namespace hlrt
             return true;
         });
         ovl::setLeaveCheck(ovl::Id::Map, []() { return !NEA_NpacIsMounted("map"); });
+        // (A save written a step at a time is the saves' work's to finish.)
+        ovl::setLeaveCheck(ovl::Id::Save, []() { return !SaveGame::busy(); });
 #endif
 #endif
         if (!GetGameAPI(kGameApiVersion, gameLayout(), &hlEngine, &gameApi))

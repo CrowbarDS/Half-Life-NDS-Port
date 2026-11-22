@@ -138,9 +138,21 @@ OVERLAYS = {'regions': [
          'files': ['*/source/render/ProfileViewBody.cpp.o', '*/source/net/DlSendBody.cpp.o']},
         {'name': 'map', 'id': 'Map', 'mode': 'bss', 'sizer': True},
     ]},
+    # Region B: the saves' work (save: the front end's and single play's) and
+    # what only a match between consoles uses -- a match keeps no saves. The
+    # program reaches it only through SaveGame.cpp's gates.
+    {'name': 'B', 'overlays': [
+        # (Its callbacks: the card's own calls, compared with as they are
+        # called; and what a save is streamed through, held by the writer
+        # only while it is busy -- which the save's leave check keeps it.)
+        {'name': 'save', 'id': 'Save', 'mode': 'code', 'sizer': True,
+         'files': ['*/source/game/SaveGameBody.cpp.o'],
+         'callbacks': ['_ZN6hldata8SaveCard*', '_ZN6hldata10SaveWriter*', '_ZN6hldata6detail*',
+                       '_ZZN4hlrt8SaveGame4work*']},
+    ]},
 ]}
 # (Their sources last on the link line: architectds's link_last.)
-OVL_SOURCES = ['source/render/ProfileViewBody.cpp', 'source/net/DlSendBody.cpp']
+OVL_SOURCES = ['source/render/ProfileViewBody.cpp', 'source/net/DlSendBody.cpp', 'source/game/SaveGameBody.cpp']
 OVL_DIR = os.path.join('build', 'ld')
 OVL_PACK = os.path.join(OVL_DIR, 'arm9.ovl')
 OVL_MANIFEST = os.path.join(OVL_DIR, 'overlays.json')
