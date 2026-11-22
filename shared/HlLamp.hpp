@@ -30,8 +30,6 @@ namespace hldata
     /// that is (so smaller on the screen, as a real one is not, and as the
     /// game's is).
     inline constexpr int kLampRadius = 80;
-    inline constexpr int kLampNear = 500;  ///< as bright as it gets out to here; fainter beyond
-    inline constexpr int kLampFullStrength = 22; ///< of 31, at its middle: what the game's adds, measured beside it (tools/ref)
 
     struct LampState
     {
@@ -88,23 +86,6 @@ namespace hldata
         if (lamp.charge > kLampFull)
             lamp.charge = kLampFull;
         return false;
-    }
-
-    /// How wide the light is where it lands (the same at any distance), and
-    /// how strong: full out to kLampNear, then as the square of how much
-    /// farther, to nothing at the lamp's reach.
-    inline constexpr int lampRadius(int)
-    {
-        return kLampRadius;
-    }
-    inline constexpr int lampStrength(int distance)
-    {
-        if (distance >= kLampReach)
-            return 0;
-        if (distance <= kLampNear)
-            return kLampFullStrength;
-        const int fade = (kLampFullStrength * kLampNear / distance) * kLampNear / distance;
-        return fade < 1 ? 1 : fade;
     }
 
     /// Where the lamp shines from an eye at `eye` looking along `forward`

@@ -43,9 +43,7 @@ namespace hlrt
         std::free(flatPalettes_);
         std::free(streamed_);
         std::free(binds_);
-        std::free(tints_);
         binds_ = nullptr;
-        tints_ = nullptr;
         materials_ = nullptr;
         palettes_ = nullptr;
         flatPalettes_ = nullptr;
@@ -63,12 +61,9 @@ namespace hlrt
         materials_ = static_cast<NEA_Material **>(std::calloc(count + 1, sizeof(NEA_Material *)));
         palettes_ = static_cast<NEA_Palette **>(std::calloc(count + 1, sizeof(NEA_Palette *)));
         binds_ = static_cast<std::uint32_t *>(std::calloc(count + 1, 2 * sizeof(std::uint32_t)));
-        tints_ = static_cast<std::uint16_t *>(std::malloc((count + 1) * sizeof(std::uint16_t)));
         flatPalettes_ = static_cast<NEA_Palette **>(std::calloc(count + 1, sizeof(NEA_Palette *)));
         streamed_ = static_cast<std::uint8_t *>(std::calloc(count + 1, 1));
-        for (int i = 0; tints_ != nullptr && i <= count; ++i)
-            tints_[i] = 0x7FFF;
-        if (materials_ == nullptr || palettes_ == nullptr || binds_ == nullptr || tints_ == nullptr ||
+        if (materials_ == nullptr || palettes_ == nullptr || binds_ == nullptr ||
             flatPalettes_ == nullptr || streamed_ == nullptr)
         {
             destroy();
@@ -105,7 +100,6 @@ namespace hlrt
 #endif
                 streamed_[i] = 1;
                 ++streamedCount_;
-                tints_[i] = ref.average;
                 continue;
             }
             if (!loadOne(static_cast<unsigned>(i)))
@@ -221,7 +215,7 @@ namespace hlrt
         // (A liquid's coordinates go through the texture matrix, and a
         // conveyor belt's.)
         return loadFile(path.c_str(), (ref.flags & (hldata::kTextureLiquid | hldata::kTextureScroll)) != 0, ref.width,
-                        ref.height, a3i5 ? 1 : 0, materials_[index], palettes_[index], &tints_[index]);
+                        ref.height, a3i5 ? 1 : 0, materials_[index], palettes_[index], nullptr);
     }
 
     namespace

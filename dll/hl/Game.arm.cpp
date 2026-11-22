@@ -1067,7 +1067,7 @@ namespace hlrt
                     for (int a = 0; a < 3; ++a)
                         lampAt[a] = aim.at[a];
                     lampDistance = aim.distance;
-                    lampLit = lampStrength(aim.distance) > 0;
+                    lampLit = aim.distance < kLampReach;
                 }
             }
             bottomScreen.setLamp(suit, lamp.on, lampPercent(lamp));

@@ -790,10 +790,9 @@ namespace
         // The light where it lands: the game's -- the same size however far
         // off, as bright as it gets out to five hundred units, fainter
         // beyond, nothing past its reach.
-        check(lampRadius(60) == kLampRadius && lampRadius(1500) == kLampRadius && kLampRadius == 80,
-              "the lamp's light is eighty units across its half at any distance");
-        check(lampStrength(60) == lampStrength(500) && lampStrength(1000) < lampStrength(500) &&
-                  lampStrength(1000) * 3 <= lampStrength(500) && lampStrength(1900) >= 1 && lampStrength(kLampReach) == 0,
+        check(kLampRadius == 80 && kLampPatchRadius == kLampRadius, "the lamp's light is eighty units across its half");
+        check(lampFalloff(60) == 256 && lampFalloff(500) == 256 && lampFalloff(1000) == 64 && lampFalloff(1900) > 0 &&
+                  lampFalloff(kLampReach) == 0,
               "as bright at five hundred units as at sixty, a quarter of that at a thousand, nothing at its reach");
     }
 
