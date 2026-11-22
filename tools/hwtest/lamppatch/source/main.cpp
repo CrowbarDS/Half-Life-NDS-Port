@@ -1,0 +1,404 @@
+// The lamp-patch probe: the lamp's light drawn the way the game adds it, as a
+// solid patch of the wall's own texture laid over the wall
+// (shared/HlLampPatch.hpp, the game's own code), against the wall it lies on.
+//
+// The wall is two triangles, 240 x 240, its corners four colours apart (as
+// the level's are); the light 8 units off its middle (the game's octagon of
+// 72 units). The patch is the wall's two triangles each cut to the octagon's
+// pieces, drawn by the "same depth" test solid (eq) or all but solid, alpha
+// 30 (eq30: see-through polygons are drawn after all the solid ones, so its
+// wall is always there first -- the solid ones are drawn in the hardware's
+// own order, by where they are on the screen), or solid and pulled toward
+// the eye by as much as the depth changes across two pixels there and 1/128
+// more (2px: EffectDraw's marks). Each scene is drawn the game's way (its
+// projection, view scale of 8, quarter-unit vertices, W-buffering) and
+// captured into VRAM D.
+//
+//   P1 coverage: of the pixels the patch covers drawn alone, how many show
+//      it over the wall (100: whole; the rest are holes, the wall through).
+//   P2 unseen: the patch with no light added -- every corner the wall's own
+//      colour there: of the patch's pixels, how many differ from the wall
+//      alone, and by most how much (a patch that shows where it adds
+//      nothing would show its edge as a seam).
+//   P3 by eye: a textured wall with the lamp on it, at four angles, by both
+//      tests (A: next).
+//
+// Results are shown page by page (A: next) and added to lamppatch.txt at the
+// root of the card.
+
+#include <cstdarg>
+#include <cstdint>
+#include <cstdio>
+#include <string>
+
+#include <fat.h>
+#include <nds.h>
+
+#include "HlLampPatch.hpp"
+
+namespace
+{
+    using hldata::fx;
+    using hldata::LampCorner;
+    using hldata::LampLight;
+    using i32 = std::int32_t;
+    using i64 = std::int64_t;
+
+    constexpr i32 kUnit = 4096;
+    constexpr int kWidth = 256, kHeight = 192;
+    constexpr i32 kGameNear = 128; ///< Camera::kNearClip: 4 units
+
+    std::FILE *out = nullptr;
+    std::string outPath;
+    void say(const char *format, ...)
+    {
+        va_list args;
+        va_start(args, format);
+        std::vprintf(format, args);
+        va_end(args);
+        if (out != nullptr)
+        {
+            va_start(args, format);
+            std::vfprintf(out, format, args);
+            va_end(args);
+        }
+    }
+
+    void waitForA()
+    {
+        if (out != nullptr)
+        {
+            std::fclose(out);
+            out = std::fopen(outPath.c_str(), "a");
+        }
+        std::printf("A: next\n");
+        for (;;)
+        {
+            swiWaitForVBlank();
+            scanKeys();
+            if (keysDown() & KEY_A)
+                break;
+        }
+        consoleClear();
+    }
+
+    /// The eye: `grazing` degrees to the wall (z = 0, facing +z), 256 units
+    /// from its middle, level with it.
+    i32 eye[3];
+    void setEye(int grazing)
+    {
+        const int yaw = degreesToAngle(90 - grazing);
+        eye[0] = static_cast<i32>((static_cast<i64>(sinLerp(yaw)) * 256 * kUnit) >> 12);
+        eye[1] = 0;
+        eye[2] = static_cast<i32>((static_cast<i64>(cosLerp(yaw)) * 256 * kUnit) >> 12);
+        glMatrixMode(GL_PROJECTION);
+        glLoadIdentity();
+        gluPerspectivef32(degreesToAngle(74), inttof32(256) / 192, kGameNear, 128 << 12);
+        glMatrixMode(GL_MODELVIEW);
+        const i32 c = cosLerp(yaw), s = sinLerp(yaw);
+        const i32 turn[3][3] = {{c, 0, -s}, {0, kUnit, 0}, {s, 0, c}};
+        m4x3 m;
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                m.m[i * 3 + j] = turn[j][i] * 8;
+        for (int j = 0; j < 3; ++j)
+        {
+            i64 sum = 0;
+            for (int i = 0; i < 3; ++i)
+                sum += static_cast<i64>(turn[j][i]) * eye[i];
+            m.m[9 + j] = static_cast<i32>(-((sum + (1 << 18)) >> 19));
+        }
+        glLoadMatrix4x3(&m);
+    }
+
+    /// A vertex (Q12 units), pulled `pull` 4096ths of the way to the eye.
+    void vertex(const fx *p, i32 pull)
+    {
+        i32 q[3];
+        for (int k = 0; k < 3; ++k)
+            q[k] = pull == 0 ? p[k] : eye[k] + static_cast<i32>((static_cast<i64>(p[k] - eye[k]) * (kUnit - pull)) >> 12);
+        glVertex3v16(static_cast<v16>(q[0] >> 10), static_cast<v16>(q[1] >> 10), static_cast<v16>(q[2] >> 10));
+    }
+
+    /// The wall's two triangles: corners four colours apart, the texture
+    /// one texel a unit.
+    LampCorner corner(int x, int y, int level)
+    {
+        LampCorner c{};
+        c.pos[0] = x * kUnit;
+        c.pos[1] = y * kUnit;
+        c.pos[2] = 0;
+        c.colour = static_cast<std::uint16_t>(level | level << 5 | level << 10);
+        c.texCoord = (static_cast<std::uint32_t>(x * 16) & 0xFFFF) | (static_cast<std::uint32_t>(y * 16) << 16);
+        return c;
+    }
+    // (240 square: the largest face the map compiler leaves, as the game's
+    // lightmaps want them no larger.)
+    const LampCorner kWallA[3] = {corner(-120, -120, 8), corner(120, -120, 14), corner(120, 120, 26)};
+    const LampCorner kWallB[3] = {corner(-120, -120, 8), corner(120, 120, 26), corner(-120, 120, 20)};
+    const fx kNormal[3] = {0, 0, kUnit};
+
+    enum class Paint
+    {
+        Own,   ///< the corners' own colours
+        Red,   ///< solid red
+        Green, ///< solid green
+        Blue,  ///< solid blue
+    };
+    std::uint16_t paintOf(Paint paint, std::uint16_t own)
+    {
+        switch (paint)
+        {
+        case Paint::Red: return RGB15(31, 0, 0);
+        case Paint::Green: return RGB15(0, 31, 0);
+        case Paint::Blue: return RGB15(0, 0, 31);
+        default: return own;
+        }
+    }
+
+    void triangle(const LampCorner *c, Paint paint, i32 pull)
+    {
+        for (int k = 0; k < 3; ++k)
+        {
+            GFX_COLOR = paintOf(paint, c[k].colour);
+            GFX_TEX_COORD = c[k].texCoord;
+            vertex(c[k].pos, pull);
+        }
+    }
+
+    void drawWall(Paint paint)
+    {
+        glPolyFmt(POLY_ALPHA(31) | POLY_ID(0) | POLY_CULL_NONE | POLY_RENDER_FAR_POLYS);
+        glBegin(GL_TRIANGLES);
+        triangle(kWallA, paint, 0);
+        triangle(kWallB, paint, 0);
+        glEnd();
+    }
+
+    /// The pull for the patch, as the marks have it: the depth across two
+    /// pixels where it is, and 1/128 more. (Floats: this is a probe.)
+    i32 twoPixels()
+    {
+        const float dx = eye[0] / 4096.0f, dz = eye[2] / 4096.0f;
+        const float cosine = dz / __builtin_sqrtf(dx * dx + dz * dz);
+        const float tangent = __builtin_sqrtf(1.0f - cosine * cosine) / (cosine > 0.02f ? cosine : 0.02f);
+        i32 f = static_cast<i32>((2.0f * tangent / 128.0f + 1.0f / 128.0f) * 4096.0f);
+        return f < 16 ? 16 : (f > 2048 ? 2048 : f);
+    }
+
+    enum Way
+    {
+        kEqual,   ///< solid, "same depth"
+        kEqual30, ///< alpha 30, "same depth"
+        kPull,    ///< solid, pulled two pixels' depth
+        kWays,
+    };
+    const char *const kWayNames[kWays] = {"eq", "eq30", "2px"};
+
+    int patchTriangles = 0;
+    /// The patch, by the game's code: `strength` of 256 (0: none added).
+    void drawPatch(Paint paint, int strength, int way, bool alone)
+    {
+        const LampLight light{{0, 0, 8 * kUnit}, strength > 0 ? strength : 1};
+        const i32 pull = way != kPull || alone ? 0 : twoPixels();
+        glPolyFmt(POLY_ALPHA(way == kEqual30 && !alone ? 30 : 31) | POLY_ID(alone ? 0 : 62) | POLY_CULL_NONE |
+                  POLY_RENDER_FAR_POLYS | (way != kPull && !alone ? POLY_DEPTH_TEST_EQUAL : 0));
+        glBegin(GL_TRIANGLES);
+        patchTriangles = 0;
+        for (const LampCorner *tri : {kWallA, kWallB})
+        {
+            patchTriangles += hldata::lampPatchTriangle(tri, kNormal, light, [&](const LampCorner *c, int n) {
+                for (int i = 1; i + 1 < n; ++i)
+                {
+                    const LampCorner fan[3] = {c[0], c[i], c[i + 1]};
+                    LampCorner made[3] = {fan[0], fan[1], fan[2]};
+                    // (Strength 0: each corner exactly as the wall is there.)
+                    triangle(made, paint, pull);
+                }
+            });
+        }
+        glEnd();
+    }
+
+    const u16 *grab()
+    {
+        glFlush(GL_TRANS_MANUALSORT | GL_WBUFFERING);
+        swiWaitForVBlank();
+        REG_DISPCAPCNT = DCAP_ENABLE | DCAP_MODE(DCAP_MODE_A) | DCAP_SRC_A(DCAP_SRC_A_3DONLY) |
+                         DCAP_SIZE(DCAP_SIZE_256x192) | DCAP_BANK(DCAP_BANK_VRAM_D);
+        while (REG_DISPCAPCNT & DCAP_ENABLE)
+        {
+        }
+        return VRAM_D;
+    }
+
+    std::uint8_t mask[kWidth * kHeight];
+    u16 wallAlone[kWidth * kHeight];
+
+    void testCoverage()
+    {
+        say("P1 coverage: %% of the patch\nshown over its wall\n g     eq  eq30   2px  tris\n");
+        for (const int grazing : {90, 60, 45, 30, 20, 10, 5})
+        {
+            setEye(grazing);
+            glDisable(GL_TEXTURE_2D);
+            drawPatch(Paint::Red, 256, kEqual, true);
+            const u16 *pic = grab();
+            int ref = 0;
+            for (int i = 0; i < kWidth * kHeight; ++i)
+            {
+                mask[i] = (pic[i] & 31) >= 24 ? 1 : 0;
+                ref += mask[i];
+            }
+            say("%2d  ", grazing);
+            for (int way = 0; way < kWays; ++way)
+            {
+                setEye(grazing);
+                drawWall(Paint::Blue);
+                drawPatch(Paint::Green, 256, way, false);
+                pic = grab();
+                int shown = 0;
+                for (int i = 0; i < kWidth * kHeight; ++i)
+                    shown += mask[i] && ((pic[i] >> 5) & 31) >= 24 ? 1 : 0;
+                if (ref < 12)
+                    say("     .");
+                else
+                    say("  %4d", shown * 100 / ref);
+            }
+            say("  %4d\n", patchTriangles);
+        }
+        say("(eq: \"same depth\", solid; eq30:\nthe same at alpha 30; 2px:\nsolid, pulled as the marks are)\n");
+        waitForA();
+    }
+
+    void testUnseen()
+    {
+        say("P2 unseen: a patch adding no\nlight over its wall: pixels of\nit that differ, and by most\n g    eq30       2px\n");
+        for (const int grazing : {90, 45, 20, 10})
+        {
+            setEye(grazing);
+            glDisable(GL_TEXTURE_2D);
+            drawPatch(Paint::Red, 256, kEqual, true);
+            const u16 *pic = grab();
+            for (int i = 0; i < kWidth * kHeight; ++i)
+                mask[i] = (pic[i] & 31) >= 24 ? 1 : 0;
+            setEye(grazing);
+            drawWall(Paint::Own);
+            pic = grab();
+            for (int i = 0; i < kWidth * kHeight; ++i)
+                wallAlone[i] = pic[i];
+            say("%2d  ", grazing);
+            for (const int way : {static_cast<int>(kEqual30), static_cast<int>(kPull)})
+            {
+                setEye(grazing);
+                drawWall(Paint::Own);
+                drawPatch(Paint::Own, 0, way, false);
+                pic = grab();
+                int in = 0, differ = 0, most = 0;
+                for (int i = 0; i < kWidth * kHeight; ++i)
+                {
+                    if (!mask[i])
+                        continue;
+                    ++in;
+                    const int d = (pic[i] & 31) - (wallAlone[i] & 31);
+                    const int a = d < 0 ? -d : d;
+                    differ += a != 0;
+                    most = a > most ? a : most;
+                }
+                say("  %3d%% by %2d", in > 0 ? differ * 100 / in : 0, most);
+            }
+            say("\n");
+        }
+        say("(0%%: the patch's edge cannot\nbe seen; by 1: a level's step)\n");
+        waitForA();
+    }
+
+    void testByEye()
+    {
+        // A texture of bricks, two greys, 32 x 32.
+        static u16 texels[32 * 32];
+        for (int y = 0; y < 32; ++y)
+            for (int x = 0; x < 32; ++x)
+            {
+                const bool mortar = y % 8 == 0 || (x + (y / 8 % 2) * 8) % 16 == 0;
+                texels[y * 32 + x] = static_cast<u16>((mortar ? RGB15(12, 12, 11) : RGB15(24, 20, 16)) | 0x8000);
+            }
+        int texture = 0;
+        glGenTextures(1, &texture);
+        glBindTexture(0, texture);
+        glTexImage2D(0, 0, GL_RGBA, 32, 32, 0, TEXGEN_TEXCOORD | GL_TEXTURE_WRAP_S | GL_TEXTURE_WRAP_T, texels);
+        for (const int grazing : {90, 45, 20, 10})
+            for (int way = -1; way < kWays; ++way)
+            {
+                if (way == kEqual)
+                    continue; // (it draws nothing)
+                consoleClear();
+                std::printf("P3 by eye: %d deg, %s\n", grazing, way < 0 ? "the wall alone" : kWayNames[way]);
+                for (int frame = 0; frame < 2; ++frame)
+                {
+                    setEye(grazing);
+                    glEnable(GL_TEXTURE_2D);
+                    glBindTexture(0, texture);
+                    drawWall(Paint::Own);
+                    if (way >= 0)
+                        drawPatch(Paint::Own, 256, way, false);
+                    glFlush(GL_TRANS_MANUALSORT | GL_WBUFFERING);
+                    swiWaitForVBlank();
+                }
+                std::printf("A: next\n");
+                for (;;)
+                {
+                    setEye(grazing);
+                    glEnable(GL_TEXTURE_2D);
+                    glBindTexture(0, texture);
+                    drawWall(Paint::Own);
+                    if (way >= 0)
+                        drawPatch(Paint::Own, 256, way, false);
+                    glFlush(GL_TRANS_MANUALSORT | GL_WBUFFERING);
+                    swiWaitForVBlank();
+                    scanKeys();
+                    if (keysDown() & KEY_A)
+                        break;
+                }
+            }
+        glDisable(GL_TEXTURE_2D);
+        consoleClear();
+    }
+} // namespace
+
+int main()
+{
+    consoleDemoInit();
+    if (isDSiMode())
+        setCpuClock(true); // as the game runs
+
+    videoSetMode(MODE_0_3D);
+    vramSetBankA(VRAM_A_TEXTURE);
+    vramSetBankD(VRAM_D_LCD);
+    glInit();
+    glEnable(GL_BLEND);
+    glDisable(GL_ANTIALIAS | GL_FOG | GL_OUTLINE | GL_ALPHA_TEST | GL_TEXTURE_2D);
+    glClearColor(0, 0, 0, 31);
+    glClearPolyID(63);
+    glClearDepth(GL_MAX_DEPTH);
+    glViewport(0, 0, 255, 191);
+
+    std::printf("HL lamp patch probe\n\n");
+    if (fatInitDefault())
+    {
+        outPath = std::string(fatGetDefaultDrive()) + "lamppatch.txt";
+        out = std::fopen(outPath.c_str(), "a");
+    }
+    say("== %s, results %s\n", isDSiMode() ? "DSi mode" : "DS mode",
+        out != nullptr ? "also in lamppatch.txt" : "on screen only");
+    waitForA();
+
+    for (;;)
+    {
+        testCoverage();
+        testUnseen();
+        testByEye();
+        say("== end\n");
+        waitForA();
+    }
+}

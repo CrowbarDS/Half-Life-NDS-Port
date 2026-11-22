@@ -440,3 +440,45 @@ flashcart was at hand: the DS's card read is checked in melonDS only.
 
 On the console the loads read at 2.3 MB/s (928 ms for 1000 loads of 2.1 KB):
 a 32 KB overlay is about 14 ms, a phase change's work, not a frame's. The 3DS in TWL mode: not yet run.
+
+## lamppatch/ — the lamp's light as a patch of the wall's own texture
+
+The game ADDS its flashlight's light to a wall's light (R_AddDynamicLights);
+the DS cannot add one picture to another. The plan: draw the lit part of the
+wall again in its own texture, its corners as bright as the game makes them
+(shared/HlLampPatch.hpp, the game's own code, which this probe runs). The
+wall is two triangles, 240 square (the largest face the map compiler leaves),
+its corners four colours apart; the light 8 units off its middle. The patch
+is drawn three ways: solid by the "same depth" test (eq), the same at alpha
+30 (eq30), and solid, pulled two pixels' depth toward the eye (2px, as the
+marks are).
+
+- P1 coverage: how much of the patch shows over its wall.
+- P2 unseen: a patch that adds no light: how many of its pixels differ from
+  the wall alone, and by most how much (its edge would show as a seam).
+- P3 by eye: a brick wall with the lamp on it at 90, 45, 20 and 10 degrees.
+
+On the owner's console (2026-11-22; melonDS gives the same coverage):
+
+| g | eq | eq30 | 2px |
+|---|---|---|---|
+| 90 | 0 | 100 | 100 |
+| 60 | 0 | 100 | 99 |
+| 45 | 0 | 100 | 100 |
+| 30 | 0 | 99 | 99 |
+| 20 | 0 | 96 | 99 |
+| 10 | 0 | 69 | 99 |
+| 5 | 0 | 62 | 100 |
+
+Unseen, on the console: eq30 7, 8, 3 and 4% of the patch's pixels one level
+off the wall at 90, 45, 20 and 10 degrees; 2px 16, 18, 33 and 32%; none by
+more than one. (melonDS: 6..31% for both.) By eye: the bricks stay as they
+are, brighter in the pool, by both ways.
+
+A solid patch by the same-depth test draws nothing: the hardware draws solid
+polygons in its own order, by where they are on the screen, so the patch can
+come before its wall. At alpha 30 it is see-through, drawn after every solid
+polygon, and the test holds as the marks' does: whole down to 20 degrees.
+So the game draws a patch at alpha 30 by the same-depth test where the wall
+is met at 30 degrees or more, and solid and pulled below that.
+Results go to lamppatch.txt at the root of the card.
