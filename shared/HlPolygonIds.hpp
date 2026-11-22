@@ -5,7 +5,9 @@
 // same ID: two things drawn one over the other must have different ones, and
 // one thing's own faces the same one -- a glass box's back does not darken
 // its front. The world, the effects and the models all take theirs from here
-// (the head-up display is sprites: it has none). 63 is free.
+// (the head-up display is sprites: it has none). 63 is the screen's fade, the
+// last polygon drawn (and the clear plane's, which is solid: a see-through
+// polygon is held back only over a see-through pixel of its own ID).
 
 namespace hldata
 {
@@ -26,10 +28,11 @@ namespace hldata
     inline constexpr int kIdMarksFirst = 57;
     inline constexpr int kIdMarksCount = 5; ///< 57..61
     inline constexpr int kIdLamp = 62;     ///< the lamp's light on the world
+    inline constexpr int kIdScreenFade = 63; ///< a fade's colour over the picture (ScreenFade)
 
     static_assert(kIdSeeThroughFirst + kIdSeeThroughCount <= kIdFadeFirst);
     static_assert(kIdFadeFirst + kIdFadeCount <= kIdMarks);
     static_assert(kIdMarks < kIdGlassFirst && kIdGlassFirst + kIdGlassCount <= kIdLamp);
     static_assert(kIdGlassFirst + kIdGlassCount <= kIdMarksFirst && kIdMarksFirst + kIdMarksCount <= kIdLamp);
-    static_assert(kIdLamp <= 63);
+    static_assert(kIdLamp < kIdScreenFade && kIdScreenFade <= 63);
 } // namespace hldata

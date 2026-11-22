@@ -689,6 +689,8 @@ namespace
             hlrt::game.held.active = false;
         hlrt::worldDraw.draw();
         hlrt::game.held.active = held;
+        // A fade's colour, over all of it.
+        hlrt::screenFade.drawQuad();
         // (Nor the display: the map, and the scores below it.)
         if (hlrt::netGame.playing() && hlrt::netGame.match().over)
             hlrt::hudDraw.clear();
@@ -3028,6 +3030,7 @@ int main(int argc, char *argv[])
             step();
             holdIntermissionView();
             NEA_Process(drawScene);
+            hlrt::screenFade.frameDrawn();
             {
                 const hlrt::DebugLog::Perf::Timed timed(hlrt::DebugLog::Section::Sound);
                 hlrt::sound.frame();

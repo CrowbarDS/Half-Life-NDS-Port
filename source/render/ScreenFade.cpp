@@ -4,7 +4,10 @@
 
 #include "Global.hpp"
 
+#include "HlPolygonIds.hpp"
+#include "render/Camera.hpp"
 #include "render/FrameFreeze.hpp"
+#include "render/TopText.hpp"
 
 namespace hlrt
 {
@@ -13,50 +16,54 @@ namespace hlrt
     namespace
     {
         constexpr std::uint16_t kBlack = 0, kWhite = 0x7FFF;
-        // The colour's layer, in the first 16 KB of Bank D: tile 0 all of
-        // colour 1, and a map of tile 0 at 4 KB.
-        constexpr int kLayerMapBase = 2;
         // What the HUD and the top screen's writing set: nothing blended but
         // their own sprites, added to what is behind them.
         constexpr std::uint16_t kPlainBlend = 0x3F00, kPlainAlpha = 16 | (16 << 8);
+
+        // The colour's quad: a flat picture (as HudDraw's), through a
+        // projection whose near plane is an eighth as far as the world's --
+        // the weapon in hand has its own at a quarter (ModelDraw::drawHeld),
+        // and the quad is in front of that too: at 0.54 units, its near
+        // plane at 0.5. (The pixels it covers are the flat pictures', so
+        // the screen's, and a margin.)
+        constexpr int kQuadShrink = 3;
+        constexpr int kQuadScale = 23;   ///< of 4096: 3058 of the camera's hudPixel depth -> 17 (0.54 units)
+        constexpr int kQuadDepth = 3058; ///< HudDraw's kDepth
+        constexpr int kQuadMargin = 32;  ///< pixels past each edge
+
+        void corner(int sx, int sy)
+        {
+            GFX_VERTEX16 = (static_cast<std::uint32_t>((96 - sy) * camera.hudPixel) << 16) |
+                           (static_cast<std::uint32_t>((sx - 128) * camera.hudPixelX) & 0xFFFF);
+            GFX_VERTEX16 = static_cast<std::uint32_t>(-kQuadDepth) & 0xFFFF;
+        }
     } // namespace
 
     bool ScreenFade::layerUsable() const
     {
-#ifdef HLDS_CHILD
-        // (Sent the game, on a DS, there is no layer: a coloured fade is not
-        // shown, a black one is the brightness. In DSi mode, as on a card.)
-        if (!global.twlChild)
-            return false;
-#endif
-        // (Bank D is the frozen picture's while there is one.)
+        // (While the picture is frozen there is no 3D picture to put it
+        // over: FrameFreeze.)
         return !frameFreeze.frozen();
     }
 
-    void ScreenFade::showLayer(int eva)
+    void ScreenFade::showLayer(int step)
     {
         if (!layer_)
         {
-            vramSetBankD(VRAM_D_MAIN_BG_0x06000000);
-            auto *tile = reinterpret_cast<volatile std::uint32_t *>(0x06000000);
-            for (int i = 0; i < 8; ++i)
-                tile[i] = 0x11111111u;
-            auto *map = reinterpret_cast<volatile std::uint32_t *>(0x06000000 + kLayerMapBase * 0x800);
-            for (int i = 0; i < 32 * 32 / 2; ++i)
-                map[i] = 0;
-            REG_BG1CNT = BG_32x32 | BG_COLOR_16 | BG_TILE_BASE(0) | BG_MAP_BASE(kLayerMapBase) | BG_PRIORITY(0);
-            REG_BG1HOFS = 0;
-            REG_BG1VOFS = 0;
-            REG_DISPCNT |= DISPLAY_BG1_ACTIVE;
             layer_ = true;
-            blend_ = -1;
+            // (The top screen's writing in front of it, read on the colour as
+            // the game shows it: not added to what is behind, while it is up.)
+            topText.blendChanged();
         }
-        BG_PALETTE[1] = colour_;
-        // (Every time, not only when it changes: the HUD and the writing set
-        // their own when they are set up.)
-        REG_BLDCNT = BLEND_ALPHA | BLEND_SRC_BG1 | BLEND_DST_BG0 | BLEND_DST_SPRITE | BLEND_DST_BACKDROP;
-        REG_BLDALPHA = static_cast<std::uint16_t>(eva | ((16 - eva) << 8));
-        blend_ = eva;
+        // The quad's alpha of 31, and how much of the sprites (HUD and
+        // glows, added to the picture) is left: they are under the fade.
+        // Both shown with the picture they go with (onVblank).
+        const int alpha = (step * 31 + 8) >> 4;
+        const int state = enterCriticalSection();
+        quadAlpha_ = alpha;
+        quadColour_ = colour_;
+        eva_ = 16 - step;
+        leaveCriticalSection(state);
     }
 
     void ScreenFade::hideLayer()
@@ -64,23 +71,78 @@ namespace hlrt
         if (!layer_)
             return;
         layer_ = false;
-        blend_ = -1;
-        REG_DISPCNT &= ~DISPLAY_BG1_ACTIVE;
-        REG_BLDCNT = kPlainBlend;
-        REG_BLDALPHA = kPlainAlpha;
-        if (!frameFreeze.frozen())
-            vramSetBankD(VRAM_D_LCD);
+        const int state = enterCriticalSection();
+        quadAlpha_ = 0;
+        eva_ = -1;
+        leaveCriticalSection(state);
+        topText.blendChanged();
     }
 
     void ScreenFade::layerLost()
     {
-        if (!layer_)
+        hideLayer();
+    }
+
+    void ScreenFade::drawQuad()
+    {
+        // (A quad's alpha of 0 is drawn as its outline: not drawn at all.)
+        if (quadAlpha_ <= 0)
             return;
-        layer_ = false;
-        blend_ = -1;
-        REG_DISPCNT &= ~DISPLAY_BG1_ACTIVE;
+        drawnAlpha_ = quadAlpha_;
+        drawnEva_ = eva_;
+
+        int projection[16];
+        glGetFixed(GL_GET_MATRIX_PROJECTION, projection);
+        m4x4 nearer;
+        for (int k = 0; k < 16; ++k)
+            nearer.m[k] = projection[k];
+        nearer.m[14] = projection[14] >> kQuadShrink;
+        glMatrixMode(GL_PROJECTION);
+        glPushMatrix();
+        glLoadMatrix4x4(&nearer);
+
+        MATRIX_CONTROL = GL_MODELVIEW;
+        MATRIX_IDENTITY = 0;
+        MATRIX_SCALE = kQuadScale;
+        MATRIX_SCALE = kQuadScale;
+        MATRIX_SCALE = kQuadScale;
+        GFX_POLY_FORMAT = POLY_ALPHA(static_cast<unsigned>(quadAlpha_)) | POLY_ID(hldata::kIdScreenFade) |
+                          POLY_CULL_NONE;
+        GFX_TEX_FORMAT = 0;
+        GFX_COLOR = quadColour_;
+        GFX_BEGIN = GL_QUADS;
+        corner(-kQuadMargin, -kQuadMargin);
+        corner(-kQuadMargin, 192 + kQuadMargin);
+        corner(256 + kQuadMargin, 192 + kQuadMargin);
+        corner(256 + kQuadMargin, -kQuadMargin);
+
+        glMatrixMode(GL_PROJECTION);
+        glPopMatrix(1);
+        glMatrixMode(GL_MODELVIEW);
+    }
+
+    void ScreenFade::frameDrawn()
+    {
+        // The picture just handed over shows from the next blank: the
+        // sprites' share goes with it. (Nothing drawn: the sprites as they
+        // are with no fade.)
+        const int state = enterCriticalSection();
+        pendingEva_ = drawnAlpha_ > 0 ? drawnEva_ : -1;
+        drawnAlpha_ = 0;
+        pending_ = true;
+        leaveCriticalSection(state);
+    }
+
+    void ScreenFade::onVblank()
+    {
+        if (!pending_)
+            return;
+        pending_ = false;
+        if (pendingEva_ == shownEva_)
+            return;
+        shownEva_ = pendingEva_;
         REG_BLDCNT = kPlainBlend;
-        REG_BLDALPHA = kPlainAlpha;
+        REG_BLDALPHA = static_cast<std::uint16_t>(shownEva_ < 0 ? kPlainAlpha : (shownEva_ | (16 << 8)));
     }
 
     void ScreenFade::apply(bool advance)
@@ -106,9 +168,9 @@ namespace hlrt
             carried_ = 0;
 
         const int dim = dim_ ? 7 : 0;
-        // Into any colour but white, the layer -- black too, so that the
-        // writing over it is still read (TopText: above it); without the
-        // layer, black is the brightness, and the writing goes with it.
+        // Into any colour but white, the quad -- black too, so that the
+        // writing over it is still read (TopText: in front of it); without
+        // the quad, black is the brightness, and the writing goes with it.
         const bool layer = !curtain_ && colour_ != kWhite && fade_ > 0 && layerUsable();
         int level; // the hardware's brightness: -16 black .. 16 white
         if (curtain_)
@@ -120,7 +182,7 @@ namespace hlrt
         else
             level = -dim;
 
-        if (layer)
+        if (layer && step > 0)
             showLayer(step);
         else
             hideLayer();

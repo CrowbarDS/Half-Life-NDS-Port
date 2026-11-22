@@ -28,6 +28,7 @@ extern "C" {
 #include "render/Camera.hpp"
 #include "game/Think.hpp"
 #include "render/GpuStats.hpp"
+#include "render/ScreenFade.hpp"
 
 Global global;
 
@@ -46,6 +47,8 @@ namespace
         // The display's sprites, as the frame before made them.
         hlrt::hudDraw.onVblank();
         hlrt::glowLayer.onVblank();
+        // ... and what of them a fade's quad lets through: with its picture.
+        hlrt::screenFade.onVblank();
         hlrt::waterWobble.onVblank();
         // (A touch of STOP while a long job holds the console: kept for it.)
         hlrt::BottomScreen::onVblank();

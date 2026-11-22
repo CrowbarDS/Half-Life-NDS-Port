@@ -31,7 +31,7 @@ namespace hlrt
     namespace
     {
         /// The sprites on, in the tiles' 2D layout, added to the picture (but
-        /// while a fade's layer is up the blend is its own: ScreenFade).
+        /// while a fade's quad is up the blend is its own: ScreenFade).
         [[gnu::noinline]] void spritesOn()
         {
             REG_DISPCNT = (REG_DISPCNT & ~(DISPLAY_SPR_1D | DISPLAY_SPR_1D_BMP)) | DISPLAY_SPR_ACTIVE;
@@ -656,7 +656,8 @@ namespace hlrt
             sheetMade = false;
         }
         spritesOn();
-        spritesLive_ = !screenFade.layered();
+        // (Under a fade's quad too: the blend cuts what they add -- ScreenFade.)
+        spritesLive_ = true;
         if (!sheetMade)
         {
             sheet.tiles = sheetRam;
@@ -852,7 +853,8 @@ namespace hlrt
             sheetMade = false;
         }
         spritesOn();
-        spritesLive_ = !screenFade.layered();
+        // (Under a fade's quad too: the blend cuts what they add -- ScreenFade.)
+        spritesLive_ = true;
         if (!sheetMade)
         {
             sheet.tiles = sheetRam;

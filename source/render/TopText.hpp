@@ -50,6 +50,9 @@ namespace hlrt
         void tick(int ms);
         /// Nothing written: the map is going.
         void clear();
+        /// A fade's quad has come or gone (ScreenFade::layered): the
+        /// writing is put again, added to the picture or not.
+        void blendChanged();
 
         /// The game's title (ui/title.hic), read now rather than when first
         /// shown (a console sent the game has it only while it starts up).

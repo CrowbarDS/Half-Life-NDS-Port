@@ -70,8 +70,8 @@ namespace hlrt
         std::uint16_t *sprite = oam();
         for (int n = 0; n < 128; ++n)
             sprite[n * 4] = 0x0200;
-        // Added to what is behind them, whatever that is. (A fade's layer
-        // up: its blend, set again by ScreenFade.)
+        // Added to what is behind them, whatever that is. (A fade's quad
+        // up: its blend, set by ScreenFade.)
         if (!screenFade.layered())
         {
             REG_BLDCNT = 0x3F00;
@@ -92,6 +92,15 @@ namespace hlrt
         }
     }
 
+    void TopText::blendChanged()
+    {
+        for (int s = 0; s < kSlots; ++s)
+        {
+            if (slots_[s].busy)
+                place(slots_[s], s);
+        }
+    }
+
     void TopText::place(const Slot &slot, int index)
     {
         std::uint16_t *sprite = oam();
@@ -108,10 +117,12 @@ namespace hlrt
                     entry[0] = 0x0200;
                     continue;
                 }
-                // (Wide, 64 by 32; drawn added to what is behind. In front
-                // of a fade's layer -- read on the black, as the game shows
-                // its writing over a fade: ScreenFade.)
-                entry[0] = static_cast<std::uint16_t>(((slot.top + b * kBandHeight) & 0xFF) | 0x0400 | 0x4000);
+                // (Wide, 64 by 32; drawn added to what is behind -- but not
+                // over a fade's quad, which it is in front of: read on the
+                // colour, as the game shows its writing over a fade.
+                // ScreenFade.)
+                const std::uint16_t added = screenFade.layered() ? 0 : 0x0400;
+                entry[0] = static_cast<std::uint16_t>(((slot.top + b * kBandHeight) & 0xFF) | added | 0x4000);
                 entry[1] = static_cast<std::uint16_t>((k * 64) | 0xC000);
                 entry[2] = static_cast<std::uint16_t>((band * 128 + k * 8) | ATTR2_PRIORITY(0));
             }
