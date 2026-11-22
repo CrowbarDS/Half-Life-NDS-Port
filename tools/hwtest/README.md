@@ -482,3 +482,30 @@ polygon, and the test holds as the marks' does: whole down to 20 degrees.
 So the game draws a patch at alpha 30 by the same-depth test where the wall
 is met at 30 degrees or more, and solid and pulled below that.
 Results go to lamppatch.txt at the root of the card.
+
+## slot3/ — a texture in Bank D while Bank D is lent out
+
+The plan is to keep every texture that is not 4x4 compressed in Bank D
+(texture slot 3) during play. A map change captures the last picture into
+Bank D, and display capture can write nowhere but Banks A to D. So the frame
+being captured is drawn while D is the capture's and not a texture slot.
+What do its polygons textured from D show then?
+
+Four quads: A3I5 (colour 2, red, alpha 7), PAL4 (colour 1, green), PAL256
+(colour 5, yellow), all 8x8 in Bank D, and an untextured white one. Colour 0
+of the palette is blue; the clear colour magenta. Each case is drawn 30
+frames running and each quad's inner 2880 pixels counted: its own colour,
+clear, colour 0, other, and in how many frames the count changed.
+
+1. D slot 3: what is right.
+2. D in LCD mode while the frame is drawn, captured into Bank B.
+3. D in LCD mode, captured into D itself: the game's freeze.
+4. D mapped as a main-screen background.
+5. D switched off.
+
+In melonDS (DS mode), case 1 is right. In cases 2 to 5 every texel reads as
+0: the A3I5 quad is not drawn (alpha 0), the PAL4 and PAL256 quads are
+palette colour 0, and nothing changes from frame to frame. On the owner's
+console (2026-11-22): the same. So the frame a freeze captures needs nothing
+done to it: what is textured from D is simply missing from it (or drawn in
+its palette's colour 0). Results go to slot3.txt at the root of the card.
