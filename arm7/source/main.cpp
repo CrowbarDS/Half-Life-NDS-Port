@@ -71,11 +71,31 @@ namespace
         exitLoop = true;
     }
 
+    // The buttons and the touch screen, and the wireless's update: due at
+    // each VBlank, done by the loop below -- not in the interrupt. libnds's
+    // FIFO messages are answered in a thread of their own, with interrupts
+    // on: the codec, the power chip and the firmware written or read there,
+    // over the SPI bus the touch screen is read on, and the thread's stack
+    // (1 KB) is where an interrupt that cuts it off runs.
+    volatile bool vblankDue = false;
+
     void vblankHandler()
     {
+        vblankDue = true;
+    }
+
+    void vblankWork()
+    {
+        if (!vblankDue)
+            return;
+        vblankDue = false;
         const unsigned was = hlaudio::marked();
         hlaudio::mark(2);
+        // (Interrupts held off: nothing breaks in -- the FIFO's thread, which
+        // could, only runs when an interrupt hands it the processor.)
+        const int ime = enterCriticalSection();
         inputGetAndSend();
+        leaveCriticalSection(ime);
         hlaudio::mark(1);
         Wifi_Update();
         hlaudio::mark(was);
@@ -100,10 +120,12 @@ int main()
     irqInit();
     fifoInit();
 
-    // The DSi's wireless (online play) from this loop, not from interrupts:
-    // from a timer every millisecond, its card's interrupt and the FIFO's, a
-    // game sending many packets kept one of them always due again, and the
-    // sound, the buttons and the touch screen stopped for good.
+    // The wireless from this loop, not from interrupts nor libnds's FIFO
+    // thread: on a DSi (online play) from a timer every millisecond, its
+    // card's interrupt and the FIFO's, a game sending many packets kept one
+    // of them always due again, and the sound, the buttons and the touch
+    // screen stopped for good; in both modes, the FIFO's handlers run on a
+    // stack too small for the library's work (dswifi's Wifi_LoopUpdate).
     Wifi_SetUpdateFromLoop(true);
     installWifiFIFO();
     // (libnds's own sound messages stay: the DSi's output rate and mix
@@ -132,10 +154,12 @@ int main()
     while (!exitLoop)
     {
         hlaudio::waitAndRun();
+        vblankWork();
         if (isDSiMode())
-        {
             markHandlers();
-            // (A few packets each way, every block: interrupts are taken meanwhile.)
+        {
+            // (What the ARM9 asked of the wireless; on a DSi, a few packets
+            // each way, every block: interrupts are taken meanwhile.)
             const unsigned was = hlaudio::marked();
             hlaudio::mark(1);
             Wifi_LoopUpdate();
