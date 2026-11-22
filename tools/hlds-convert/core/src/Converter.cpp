@@ -807,7 +807,24 @@ namespace hlds
                 modelTexels = residentTexels();
             }
         };
-        fitSkins(kMapSkinTexels);
+        // A map a console may be sent (a game between consoles, the Hazard
+        // Course, Uplink: packAirGroups): there every texture is in video
+        // memory at once, none streamed -- beside its models, the sky, and
+        // the two slots of the weapon in hand (held at kLazySkinTexels
+        // there, the lighter cook) set by first. What does not fit is made
+        // smaller for it (guestTexturePlan; the guest's level, Pack).
+        // (Only Half-Life's: an expansion is not sent, DSi only as it is.)
+        // Such a map keeps the budgets all maps had before bank D was the
+        // textures' that are not 4x4: a guest has no bank D.
+        const bool sendable = hldata::gameInfo(options_.game).multiplayer;
+        bool airMap = sendable && (result.name.rfind("t0a0", 0) == 0 || result.name.rfind("hldemo", 0) == 0);
+        for (const Entity &entity : entities)
+            airMap = airMap || (sendable && entity.className() == "info_player_deathmatch");
+        const int mapSkinTexels = airMap ? kSentMapSkinTexels : kMapSkinTexels;
+        const int alphaBudget = airMap ? kSentAlphaTexelBudget : kAlphaTexelBudget;
+        const int spriteBudget = airMap ? kSentSpriteTexelBudget : kSpriteTexelBudget;
+        const int passBudget = airMap ? kGuestTexelBudget : kSinglePassTexelBudget;
+        fitSkins(mapSkinTexels);
         for (const ModelOut &out : models)
         {
             result.modelKb += static_cast<int>(out.bytes.size() / 1024);
@@ -841,15 +858,15 @@ namespace hlds
         {
             StreamOptions options = streamOptions;
             return planTextures(bsp, textureWants, worldBudget - skyOnlyTexels - modelTexels, colourBudget,
-                                kAlphaTexelBudget - kSpriteTexelBudget, options);
+                                alphaBudget - spriteBudget, options);
         };
-        TexturePlan plan = planFor(streamOptions.enabled ? kSinglePassTexelBudget : kWorldTexelBudget);
+        TexturePlan plan = planFor(streamOptions.enabled ? passBudget : kWorldTexelBudget);
         // Out of palette room even at the smallest sizes: the skins give up
         // colours, half at a time, until the textures fit.
         for (int colours = kModelSkinColours / 2; !plan.fits && colours >= kModelSkinColours / 4; colours /= 2)
         {
             setSkinColours(colours);
-            const TexturePlan fewer = planFor(streamOptions.enabled ? kSinglePassTexelBudget : kWorldTexelBudget);
+            const TexturePlan fewer = planFor(streamOptions.enabled ? passBudget : kWorldTexelBudget);
             if (fewer.fits)
             {
                 plan = fewer;
@@ -868,28 +885,17 @@ namespace hlds
             int extra = spare < kMaxExtraSkinTexels ? spare : kMaxExtraSkinTexels;
             for (int attempt = 0; attempt < 3 && extra >= kMinExtraSkinTexels; ++attempt, extra /= 2)
             {
-                fitSkins(kMapSkinTexels + extra);
-                const TexturePlan larger = planFor(kSinglePassTexelBudget);
+                fitSkins(mapSkinTexels + extra);
+                const TexturePlan larger = planFor(passBudget);
                 if (larger.fits && larger.worstViewTexels >= plan.worstViewTexels && larger.shrunk <= plan.shrunk)
                 {
                     plan = larger;
                     break;
                 }
-                fitSkins(kMapSkinTexels);
+                fitSkins(mapSkinTexels);
             }
         }
         result.modelTexelKb = modelTexels / 1024;
-        // A map a console may be sent (a game between consoles, the Hazard
-        // Course, Uplink: packAirGroups): there every texture is in video
-        // memory at once, none streamed -- beside its models, the sky, and
-        // the two slots of the weapon in hand (held at kLazySkinTexels
-        // there, the lighter cook) set by first. What does not fit is made
-        // smaller for it (guestTexturePlan; the guest's level, Pack).
-        // (Only Half-Life's: an expansion is not sent, DSi only as it is.)
-        const bool sendable = hldata::gameInfo(options_.game).multiplayer;
-        bool airMap = sendable && (result.name.rfind("t0a0", 0) == 0 || result.name.rfind("hldemo", 0) == 0);
-        for (const Entity &entity : entities)
-            airMap = airMap || (sendable && entity.className() == "info_player_deathmatch");
         TexturePlan guestPlan;
         if (airMap)
         {
@@ -899,7 +905,7 @@ namespace hlds
             const int guestModels = modelTexels - heldTexels + 2 * hldata::kLazySkinTexels +
                                     (hldata::kLazyResident - 1) * hldata::kLazyPieceSkinTexels;
             guestPlan = guestTexturePlan(bsp, plan,
-                                         kSinglePassTexelBudget - kGuestVramMargin - skyOnlyTexels - guestModels);
+                                         kGuestTexelBudget - kGuestVramMargin - skyOnlyTexels - guestModels);
             result.guestTexelKb = guestPlan.texels / 1024;
             result.guestShrunk = guestPlan.shrunk;
             if (!guestPlan.fits)
@@ -1648,7 +1654,7 @@ namespace hlds
                 texels += one.cooked.atlas.width * one.cooked.atlas.height;
                 sprites.push_back(std::move(one));
             }
-            while (texels > kSpriteTexelBudget)
+            while (texels > spriteBudget)
             {
                 SpriteOut *largest = nullptr;
                 for (SpriteOut &one : sprites)
@@ -1674,7 +1680,7 @@ namespace hlds
                            largest->cooked, why);
                 texels += largest->cooked.atlas.width * largest->cooked.atlas.height;
             }
-            if (texels > kSpriteTexelBudget)
+            if (texels > spriteBudget)
                 result.warnings.push_back("its sprites are " + std::to_string(texels / 1024) +
                                           "K texels, over what is kept for them");
             for (const SpriteOut &one : sprites)

@@ -115,8 +115,12 @@ namespace hlds
     /// What a map's models may take of the video memory between them: the
     /// largest skins are made smaller until they do (Converter).
     /// The weapons' (v_*) are kept in main memory until one is taken up,
-    /// so only the largest of those counts.
-    inline constexpr int kMapSkinTexels = 208 * 1024;
+    /// so only the largest of those counts. (Raised by what bank D gave
+    /// banks A to C: kSinglePassTexelBudget.)
+    inline constexpr int kMapSkinTexels = 320 * 1024;
+    /// ... on a map a console may be sent, as before: its guest's plan
+    /// counts the skins against what it has (guestTexturePlan).
+    inline constexpr int kSentMapSkinTexels = 208 * 1024;
 
     /// How closely a model is cooked: as the console's own (the defaults), or
     /// lighter, for a console sent it with no card (a guest: its weapons,

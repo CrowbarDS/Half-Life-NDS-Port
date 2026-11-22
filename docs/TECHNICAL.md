@@ -2250,6 +2250,14 @@ together fits `kMapSkinTexels`. When streaming, that limit then grows
 by what the worst view leaves of the room for the streamed textures.
 Across the campaign and test maps this took the models from about a third of
 their source texels (58% of the width and height) to about 72% (85%).
+Since banks A to C hold 4x4 textures alone (see "Bank D"), the 4x4 budget
+(`kSinglePassTexelBudget`) and `kMapSkinTexels` are both 112K texels
+(28 KB) larger than they were: on c2a5e the skins went from 205K texels to
+309K, on c3a1 from 261K to 373K; a map whose skins were not made smaller
+(c1a0) leaves it to the streamed textures. Bank D's spare room went to the
+sprites (24K texels to 48K) and the '{' textures (24K to 40K). A map a
+console may be sent (`kSent...`) keeps every budget it had: its guest has
+no Bank D, and plans with 720K texels (`kGuestTexelBudget`).
 
 `TextureStream::begin` leaves room for the largest weapon skin
 (`ModelCache::reservedBytes`) before it shares out the rest. The converter counts

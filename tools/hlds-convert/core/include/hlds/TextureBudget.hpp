@@ -21,9 +21,12 @@
 // back for the whole map if the total would not fit.
 //
 // A3I5 textures (the '{' textures of brushes drawn with holes) have a budget
-// of their own, 8 bits a texel: the upper half of bank B.
-// That half is the only texture memory 4x4 data cannot use, so it costs the
-// opaque textures nothing; go past it and every byte comes out of theirs.
+// of their own, 8 bits a texel, with the sprites'. On the console they are in
+// bank D (render/BankD.hpp), as everything else that is not 4x4 is -- the
+// marks' sheet, the flat stand-ins, players' skins -- so they cost the 4x4
+// textures nothing: what bank D holds besides decides their budget. A map a
+// console may be sent keeps the smaller budgets it had before: a guest has
+// no bank D, and these are in its banks A to C.
 
 #include <string>
 #include <vector>
@@ -36,21 +39,31 @@
 namespace hlds
 {
     inline constexpr int kWorldTexelBudget = 480 * 1024;
-    inline constexpr int kSinglePassTexelBudget = 720 * 1024;
+    /// What a map's 4x4 textures may take between them (the sky, the models'
+    /// skins, and those that stream), the bank pairs A+B and C+B: those
+    /// banks hold nothing else in play since bank D took what is not 4x4
+    /// (+28 KB measured free on every map: c1a0, c2a5e, c3a1).
+    inline constexpr int kSinglePassTexelBudget = 832 * 1024;
+    /// ... for a console sent the map, which keeps bank D out of its texture
+    /// memory: what all of them had before (guestTexturePlan).
+    inline constexpr int kGuestTexelBudget = 720 * 1024;
     inline constexpr int kPaletteColourBudget = 30000;
-    /// Of kSinglePassTexelBudget, what a console sent the map keeps free
+    /// Of kGuestTexelBudget, what a console sent the map keeps free
     /// besides (guestTexturePlan): what is in video memory from one map
     /// to the next -- the marks, the lamp, the sprays -- and NEA's own.
     inline constexpr int kGuestVramMargin = 16 * 1024;
-    /// (Of the 64 KB that half holds, twelve are there in every map: eight
-    /// the head-up display's, four the marks shots and blood leave --
-    /// HlUi.hpp.)
-    inline constexpr int kUiTexelBudget = 12 * 1024;
-    inline constexpr int kAlphaTexelBudget = 48 * 1024;
+    /// The '{' and light textures' and the sprites' budget together, of
+    /// bank D's 128 KB: the marks' sheet takes 16, the rest of what is there
+    /// at most 20 (the flat stand-ins, sprays), and players' skins what is
+    /// left before they take room in banks A to C.
+    inline constexpr int kAlphaTexelBudget = 88 * 1024;
     /// Of that, what a map's sprites may have between them (they are A3I5
     /// too: HlSprite.hpp), and the colours kept for their palettes.
-    inline constexpr int kSpriteTexelBudget = 24 * 1024;
+    inline constexpr int kSpriteTexelBudget = 48 * 1024;
     inline constexpr int kSpriteColourBudget = 32 * 32;
+    /// The same two for a map a console may be sent (a guest has no bank D).
+    inline constexpr int kSentAlphaTexelBudget = 48 * 1024;
+    inline constexpr int kSentSpriteTexelBudget = 24 * 1024;
 
     /// Which form each texture is wanted in, by texture lump index. Both can be
     /// set: a '{' texture on a plain wall here and on a grate there.
