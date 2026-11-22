@@ -1598,16 +1598,30 @@ begins. BlocksDS has no overlays; these are the port's own
 - **Leave checks.** Before an overlay gives its region up, what it holds is
   let go of (or the load refused, or halted on).
 
-| Region | Overlay | What | Size (2026-11-19) |
+| Region | Overlay | What | Size (2026-11-22) |
 |---|---|---|---|
-| A | `front` | PROFILE's picture (`ProfileViewBody.cpp`) | 12,192 B |
+| A | `front` | the front end's own: PROFILE's picture (`ProfileViewBody.cpp`), SEND THE GAME (`DlSendBody.cpp`), HOST's and the lobby's work and text, the demo server's (`HL_OVL_CODE(front)`) | 32,128 B |
 | A | `map` (sizer) | the map's archive index (`Global.cpp`'s `mapIndex`) | 32,768 B |
+| B | `save` | the saves' work (`SaveGameBody.cpp`, with the shared save files' code it brings) | 31,168 B |
+| B | `match` (sizer) | a match's scores, vote and end screens (`BottomScreen.cpp`), its vote and next map (`NetGame.cpp`), the host's map picture (`main.cpp`'s `previewPixels`, zeroed) | 46,528 B |
 
-`map` is loaded as a map's archive is mounted; `front`, as PROFILE's picture
-is opened, if no map is mounted (none is drawn beside one). Leaving `front`
-closes the picture; `map` may not leave while its archive is mounted, and
-the title lets that go once no level is loaded. The front end may grow to
-`map`'s size at no cost to a map. The Download Play child has none: its
+`map` is loaded as a map's archive is mounted; `front`, by its gates, if no
+map is mounted (none of it is shown beside one). Leaving `front` closes the
+picture and ends a sending; `map` may not leave while its archive is
+mounted, and the title lets that go once no level is loaded. The front end
+may grow to `map`'s size at no cost to a map, and is that size now.
+
+Region B is the saves' or a match's: a match between consoles keeps no
+saves. `save` is read in by the title's list, a new game, a load and single
+play; what is asked every frame or at every map's load (`busy`, `finish`
+with nothing being written) is answered from the program, so a match never
+reads it. It may not leave while a save is written a step at a time. `match`
+is read in by `main.cpp`'s `endScreens` (a match over, or the vote before a
+first one, in the lobby), the scores on a match's pause page, each frame of a
+vote, END MATCH and the host's map picture; it keeps nothing from one frame
+to the next, so it has no leave check, and gives way to `save` whenever that
+is wanted. Together they save `save`'s size: the DS map heap's margin went
+from 25 KB to 55 KB (2026-11-22). The Download Play child has none: its
 macros are plain, its gates always open.
 
 ### Guards, and the crash screen
