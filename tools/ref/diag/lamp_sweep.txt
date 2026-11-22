@@ -1,0 +1,19 @@
+# The flashlight in c1a2's corridor: switched on, swept across the walls,
+# down at the floor, round behind; then held on for half a minute (its
+# battery runs down) and switched off for ten seconds (it charges again).
+# map c1a2
+# start 200 -801 -539 180
+cmd impulse 100
+60 0 0 180 0      # the far wall
+30 0 0 160 0
+30 0 0 140 0
+30 0 0 120 0
+30 0 0 100 0      # the side wall, near
+30 0 0 90 30      # its foot and the floor
+30 0 0 180 30     # the floor ahead
+30 0 0 180 60     # the floor at the feet
+30 0 0 270 0      # the other side wall
+30 0 0 0 0        # behind
+1500 0 0 180 0    # held on: the battery runs down
+cmd impulse 100
+600 0 0 180 0     # off: it charges again

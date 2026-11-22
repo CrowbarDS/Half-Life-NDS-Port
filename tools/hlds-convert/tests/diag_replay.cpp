@@ -51,6 +51,7 @@
 #include "HlCommands.hpp"
 #include "HlThink.hpp"
 #include "HlFrameClock.hpp"
+#include "HlLamp.hpp"
 #include "HlView.hpp"
 #include "TestGame.hpp"
 #include "hlds/AtomicWrite.hpp"
@@ -498,6 +499,7 @@ int main(int argc, char **argv)
     g.player.inv.current = kWeaponCrowbar;
     g.logic.noAutoaim.value = true;
     int picked = 0; // (a weapon_<name> asked for, for the next weapons tick)
+    LampState lamp;  // (the suit's lamp: "impulse 100" switches it)
     // DIAG_DEFERRED: the monsters' long thinking (cover, a way to see the
     // enemy, their walks' plans) asked of a worker and answered between
     // frames, as the console's is -- every question waiting answered after
@@ -525,6 +527,8 @@ int main(int argc, char **argv)
             cheats.god = !cheats.god;
         else if (verb == "give" && give(g.player, arg))
             ;
+        else if (verb == "impulse" && arg == "100")
+            lampToggle(lamp, true);
         else if (verb == "impulse" && arg == "101")
         {
             for (const char *thing : kImpulse101)
@@ -560,7 +564,8 @@ int main(int argc, char **argv)
     }
     std::fprintf(out, "#diag port 1\n");
     std::fprintf(out, "#cols cmd frame seq t sframe msec fwd side up pitch yaw buttons impulse seed\n");
-    std::fprintf(out, "#cols pl frame seq t ox oy oz vx vy vz pitch yaw punchp punchy og duck ground water mt lad\n");
+    std::fprintf(out, "#cols pl frame seq t ox oy oz vx vy vz pitch yaw punchp punchy og duck ground water mt lad lamp bat\n");
+    std::fprintf(out, "#cols lamp frame seq t ex ey ez dist hit lx ly lz\n");
     std::fprintf(out, "#cols phys frame seq t sframe ft\n");
     std::fprintf(out, "#cols box frame seq t id cx cy cz vx vy vz og ground water\n");
     std::fprintf(out, "#cols touch frame seq t id who push result tvx tvy bvx0 bvy0 bvx bvy\n");
@@ -984,6 +989,7 @@ int main(int argc, char **argv)
         }
         g.drain();
 
+        lampTick(lamp, ms);
         if (f < 1)
             continue;
         for (std::size_t n = 0; n < boxes.size(); ++n)
@@ -1000,11 +1006,25 @@ int main(int argc, char **argv)
         }
         const PlayerState &p = g.player;
         const std::string ladder = frameLadder.on ? ladderName(g, frameLadder.seen.index) : "-";
+        // The lamp: where it shines (Game::frame's). (Its battery is
+        // ticked from the first frame settled, as the game's charges then.)
         // (mt: the game's movetype, 5 on a ladder, 3 walking.)
-        std::fprintf(out, "pl,%d,%d,%.4f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.4f,%.4f,0,0,%d,%d,%s,%d,%d,%s\n", f, f, t,
+        std::fprintf(out, "pl,%d,%d,%.4f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.4f,%.4f,0,0,%d,%d,%s,%d,%d,%s,%d,%d\n", f, f, t,
                      units(p.origin[0]), units(p.origin[1]), units(p.origin[2]), units(p.velocity[0]),
                      units(p.velocity[1]), units(p.velocity[2]), span.pitch, span.yaw, p.onGround ? 1 : 0,
-                     p.ducked ? 1 : 0, groundName(p).c_str(), p.waterLevel, p.onLadder ? 5 : 3, ladder.c_str());
+                     p.ducked ? 1 : 0, groundName(p).c_str(), p.waterLevel, p.onLadder ? 5 : 3, ladder.c_str(),
+                     lamp.on ? 1 : 0, lampPercent(lamp));
+        if (lamp.on)
+        {
+            const fx eyeLamp[3] = {p.origin[0], p.origin[1], p.origin[2] + p.viewHeight};
+            const LampAim aim = lampAim(g.move, eyeLamp, forward);
+            const double reach = aim.hit ? aim.distance : kLampReach;
+            double end[3];
+            for (int a = 0; a < 3; ++a)
+                end[a] = aim.hit ? units(aim.at[a]) : units(eyeLamp[a] + forward[a] * kLampReach);
+            std::fprintf(out, "lamp,%d,%d,%.4f,%.3f,%.3f,%.3f,%.3f,%s,%.3f,%.3f,%.3f\n", f, f, t, end[0], end[1], end[2],
+                         reach, aim.hit ? "world" : "-", end[0], end[1], end[2]);
+        }
         if (frameLadder.on)
         {
             // (No fraction: the port finds the face without the game's trace.)

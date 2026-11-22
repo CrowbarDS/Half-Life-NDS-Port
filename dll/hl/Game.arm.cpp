@@ -1061,16 +1061,10 @@ namespace hlrt
                 // and with nothing within its reach, on nothing.
                 const fx eye[3] = {player.state.origin[0], player.state.origin[1],
                                    player.state.origin[2] + player.state.viewHeight};
-                fx end[3], at[3], normal[3];
-                for (int a = 0; a < 3; ++a)
-                    end[a] = eye[a] + camera.forward[a] * kLampReach;
-                if (traceShotWall(world, eye, end, at, normal))
+                const LampAim aim = lampAim(world, eye, camera.forward);
+                if (aim.hit)
                 {
-                    std::int64_t along = 0;
-                    for (int a = 0; a < 3; ++a)
-                        along += static_cast<std::int64_t>(at[a] - eye[a]) * camera.forward[a];
-                    int distance = static_cast<int>(along >> 24);
-                    distance = distance < 8 ? 8 : distance;
+                    const int distance = aim.distance;
                     LampBeam &beam = lampBeam;
                     for (int a = 0; a < 3; ++a)
                     {

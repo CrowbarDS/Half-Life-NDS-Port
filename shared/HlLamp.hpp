@@ -19,6 +19,7 @@
 #include <cstdint>
 
 #include "HlFixed.hpp"
+#include "HlMovers.hpp"
 
 namespace hldata
 {
@@ -123,6 +124,33 @@ namespace hldata
             return kLampFullStrength;
         const int fade = (kLampFullStrength * kLampNear / distance) * kLampNear / distance;
         return fade < 1 ? 1 : fade;
+    }
+
+    /// Where the lamp shines from an eye at `eye` looking along `forward`
+    /// (Q12, unit): on what the line of its reach meets first
+    /// (CL_UpdateFlashlight's), `distance` units down the view (at least 8).
+    /// Nothing within its reach: not `hit`, and nothing is lit.
+    struct LampAim
+    {
+        bool hit = false;
+        fx at[3] = {0, 0, 0};
+        int distance = 0;
+    };
+    inline LampAim lampAim(const MoveWorld &world, const fx *eye, const fx *forward)
+    {
+        LampAim aim;
+        fx end[3], normal[3];
+        for (int a = 0; a < 3; ++a)
+            end[a] = eye[a] + forward[a] * kLampReach;
+        if (!traceShotWall(world, eye, end, aim.at, normal))
+            return aim;
+        std::int64_t along = 0;
+        for (int a = 0; a < 3; ++a)
+            along += static_cast<std::int64_t>(aim.at[a] - eye[a]) * forward[a];
+        const int distance = static_cast<int>(along >> 24);
+        aim.distance = distance < 8 ? 8 : distance;
+        aim.hit = true;
+        return aim;
     }
 
     /// Whether a ball (`centre` in whole units, `radius`) is in the light at

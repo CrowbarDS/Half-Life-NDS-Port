@@ -405,6 +405,42 @@ def marks(pc, ds):
             print(f'  {"":<14}port only: frame {d["frame"]} at {d["x"]} {d["y"]} {d["z"]} on {d["on"]}')
 
 
+def lamps(pc, ds, pl_pc, pl_ds, frames):
+    """The flashlight: on or off, its battery (the pl rows), and while it is
+    on where its light sits (the lamp rows): how far apart, and whether the
+    line stopped on the same kind of thing (the world or a brush, or a
+    monster)."""
+    if not any('lamp' in pl_pc[fr] and pl_pc[fr]['lamp'] == '1' for fr in frames) and not pc.get('lamp'):
+        return
+    on = [fr for fr in frames if pl_pc[fr].get('lamp') != pl_ds[fr].get('lamp')]
+    bat = [fr for fr in frames if pl_pc[fr].get('bat') != pl_ds[fr].get('bat')]
+    print(' lamp (real game / port):')
+    print(f'  {"on":<14}' + (f'differs on {len(on)} frames, first {on[0]}' if on else 'same'))
+    if bat:
+        worst = max(bat, key=lambda fr: abs(int(pl_pc[fr]['bat']) - int(pl_ds[fr]['bat'])))
+        print(f'  {"battery":<14}differs on {len(bat)} frames, first {bat[0]} '
+              f'({pl_pc[bat[0]]["bat"]} / {pl_ds[bat[0]]["bat"]}), worst at {worst} '
+              f'({pl_pc[worst]["bat"]} / {pl_ds[worst]["bat"]})')
+    else:
+        print(f'  {"battery":<14}same')
+    l_pc, l_ds = last_per_frame(pc.get('lamp', [])), last_per_frame(ds.get('lamp', []))
+    both = sorted(set(l_pc) & set(l_ds))
+    if not both:
+        print(f'  {"light":<14}no frame lit on both sides ({len(l_pc)} / {len(l_ds)})')
+        return
+    gaps = [(math.dist(vec(l_pc[fr], ('lx', 'ly', 'lz')), vec(l_ds[fr], ('lx', 'ly', 'lz'))), fr) for fr in both]
+    worst = max(gaps)
+    near = sum(1 for g, _ in gaps if g <= 8)
+    def kind(r):
+        return '-' if r['hit'] == '-' else ('model' if r['hit'].startswith('models/') else 'world')
+    kinds = [fr for fr in both if kind(l_pc[fr]) != kind(l_ds[fr])]
+    print(f'  {"light":<14}{len(both)} frames lit on both: {near} within 8 u; worst {worst[0]:.1f} u at {worst[1]} '
+          f'({l_pc[worst[1]]["hit"]} / {l_ds[worst[1]]["hit"]})')
+    if kinds:
+        print(f'  {"stopped on":<14}differs on {len(kinds)} frames, first {kinds[0]} '
+              f'({l_pc[kinds[0]]["hit"]} / {l_ds[kinds[0]]["hit"]})')
+
+
 def monsters(pc, ds, pos):
     """The monsters, each paired with the port's of its class that started
     nearest (mstart rows): their AI's events as two sequences, aligned in
@@ -542,6 +578,7 @@ def main():
     projectiles(pc, ds, a.pos, a.vel, table)
     hurts(pc, ds)
     marks(pc, ds)
+    lamps(pc, ds, pl_pc, pl_ds, frames)
     turning(pc, ds)
     monsters(pc, ds, a.pos)
 
