@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 80;
+    inline constexpr std::uint16_t kLevelVersion = 81;
     /// The oldest level format this build reads. (49: a map's textures are
     /// stored in its archive as they are, never compressed, so that one that
     /// streams is read straight in during play. 50: each texture's record
@@ -136,8 +136,10 @@ namespace hldata
     /// the smoke among the common sprites, before the map's own, which a
     /// build before takes for the map's first: commonSpritesOf. 80: a path
     /// link's length in sixteenths of a unit, which a build before takes
-    /// for whole units -- its monsters' ways all sixteen times too long.)
-    inline constexpr std::uint16_t kLevelMinReader = 80;
+    /// for whole units -- its monsters' ways all sixteen times too long.
+    /// 81: a breakable's material shares extra[1] with the model of its
+    /// pieces (breakGibRef), which a build before takes for its material.)
+    inline constexpr std::uint16_t kLevelMinReader = 81;
     /// The oldest level format whose saves are still read.
     /// 26 -> 27 added multiplayer fields, 27 -> 28 added texture table fields,
     /// 28 -> 29 a func_train's global name (extra[3], 0 before: read as
@@ -521,6 +523,7 @@ namespace hldata
         /// on, if kLogicPressure; when hit, unless kLogicTriggerOnly. Its
         /// `damage`: the explosion it goes off with (its "explodemagnitude":
         /// 0, none).
+        /// (extra[1]'s high half: the model its pieces are, breakGibRef.)
         Breakable,
         WallToggle,     ///< used: appears / disappears
         TriggerOnce,    ///< a volume: fires when the player enters, once
@@ -1005,6 +1008,23 @@ namespace hldata
         std::uint32_t extra[4];   ///< what its kind says (LogicKind)
     };
     inline constexpr std::uint16_t kNoBrush = 0xFFFF;
+
+    /// A Breakable's or a Pushable's extra[1]: what it is made of (its low
+    /// half: the game's materials, 0 to 9) ...
+    constexpr std::uint32_t breakMaterial(const LogicRecord &record) { return record.extra[1] & 0xFFFFu; }
+    /// ... and the model its pieces are, into ModelRefs (the high half, one
+    /// more; -1: none -- a map cooked before, or none to be had: they are
+    /// patches of its texture).
+    constexpr int breakGibRef(const LogicRecord &record) { return static_cast<int>(record.extra[1] >> 16) - 1; }
+    /// The model the game's pieces of what is made of `material` are
+    /// (models/<it>.mdl, CBreakable::Precache); null for the glass that
+    /// never breaks and for none.
+    constexpr const char *breakGibName(std::uint32_t material)
+    {
+        constexpr const char *kNames[10] = {"glassgibs",   "woodgibs",     "metalplategibs", "fleshgibs", "cindergibs",
+                                            "ceilinggibs", "computergibs", nullptr,          "rockgibs",  nullptr};
+        return material < 10 ? kNames[material] : nullptr;
+    }
 
     /// How loud a mover's own sounds are, of 127: what its map said (the
     /// game's "volume" keys), full for anything else.

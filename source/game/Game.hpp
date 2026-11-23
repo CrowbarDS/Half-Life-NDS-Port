@@ -219,6 +219,7 @@ namespace hlrt
         bool radio_ = false; ///< ... and it is the satchels' radio
         std::int16_t thrown_[6] = {-1, -1, -1, -1, -1, -1}; ///< thrownModel
         std::int16_t shell_[2] = {-1, -1};                    ///< shellModel
+        hldata::BreakGibs breakGibs_;                          ///< ActorWorld::breakGibs
         std::int16_t grenade_[2] = {-1, -1};                  ///< thrownModel: w_grenade, grenade
         /// Whether any satchel charge is out (and so the radio in hand).
         bool satchelsOut() const

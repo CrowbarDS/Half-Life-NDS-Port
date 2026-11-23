@@ -998,6 +998,20 @@ namespace hlrt
         // work out worth doing ahead.)
     }
 
+    namespace
+    {
+        /// How solid a piece is drawn (of 31): fading its last two seconds
+        /// (SUB_StartFadeOut), and a breakable's glass see-through, as its
+        /// shards are. (Out of the fast memory: once a piece.)
+        [[gnu::noinline]] int gibAlpha(const ActorWorld &actors, const Gib &gib)
+        {
+            const int material = breakGibMaterial(actors, gib.model);
+            const int solid = material >= 0 ? breakStyle(material).alpha : 31;
+            const int fade = gib.leftMs < 2000 ? 1 + (gib.leftMs * 30) / 2000 : 31;
+            return fade < solid ? fade : solid;
+        }
+    } // namespace
+
     HL_ITCM void ModelDraw::draw(int &drawn, int &cut)
     {
         const ActorWorld &actors = game.actors;
@@ -1051,13 +1065,12 @@ namespace hlrt
             fxSinCos(gib.yaw, sy, cy);
             fxSinCos(gib.pitch, sp, cp);
             const fx turn[9] = {fxMulShort(cy, cp), -sy, fxMulShort(cy, sp), fxMulShort(sy, cp), cy, fxMulShort(sy, sp), -sp, 0, cp};
-            // (Its last two seconds it fades: SUB_StartFadeOut.)
-            const bool fading = gib.leftMs < 2000;
-            if (fading)
-                modelAlpha(1 + (gib.leftMs * 30) / 2000);
+            const int alpha = gibAlpha(actors, gib);
+            if (alpha < 31)
+                modelAlpha(alpha);
             drawActor(piece, actors.models[gib.model], gib.model, turn, -3 - static_cast<int>(gib.model),
                       actors.models[gib.model].levelCount() - 1);
-            if (fading)
+            if (alpha < 31)
                 modelAlpha(31);
         }
         // The casings: each the game's model of it, turned about as it

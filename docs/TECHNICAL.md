@@ -1087,10 +1087,18 @@ Milestone 11, "levels of detail".
     over 3.6 seconds once it has fallen; then its place is free. A fading
     model is drawn see-through under a polygon ID of its own, its back
     faces left out.
-  - **Breaking** -- what breaks throws pieces *of itself*: small tumbling
-    patches of the broken brush's own texture (glass see-through), as
-    many and as heavy as its material says, which fall, lie and go. No
-    shard models, no extra video memory. Each piece and speck is
+  - **Breaking** -- on a DSi (and a DS with an Expansion Pak that has the
+    room), what breaks throws the game's own models of pieces: its
+    material's (woodgibs, glassgibs ...), or the one its "gibmodel" names,
+    a random piece of it each, tumbling, glass see-through, heard landing
+    as the game's are. The converter adds the models a map's breakables
+    need, and marks them a DSi's only. Elsewhere it throws pieces *of
+    itself*: small tumbling patches of the broken brush's own texture
+    (glass see-through), as many and as heavy as its material says, which
+    fall, lie and go. A sixth of the room for small things is kept for
+    casings, so a big crate never hides the next shots'. Neither draws on
+    the monsters' chances: a fight goes the same on a DS and a DSi.
+    Each piece and speck is
     one triangle; the solid ones are sent in runs that share everything
     (the plain ones in one, each texture's together) and only broken
     glass takes a turn among what is see-through. They are gone in a
@@ -1907,8 +1915,8 @@ models the game does not ship, are left out by the converter:
 A walker looks ahead for a wall once a route; one it meets after that it goes
 round at its nose. On a console sent the game, walkers only go round a
 wall at their nose. A roach maker keeps at most three of its swarm alive
-at once. What breaks comes apart into patches of its own texture,
-not the game's shard models. A script whose actor this port does not have
+at once. On a plain DS what breaks comes apart into patches of its own
+texture, not the game's models of pieces. A script whose actor this port does not have
 is taken as played after a few tries, so that what waits on it still
 happens. The converter counts what it does not handle rather than refusing
 a map.

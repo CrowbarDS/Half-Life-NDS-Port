@@ -1182,8 +1182,162 @@ void testCasingRoom()
           "a big crate broken on a DS throws 20 pieces, and four casings after it are all seen");
 }
 
+/// What a breakable comes apart into, cooked: its material's model of
+/// pieces (the game's), or its own ("gibmodel"); none for the glass that
+/// never breaks, for no material, or for a box that only moves.
+void testBreakGibNeeds()
+{
+    auto needed = [](const char *text)
+    {
+        std::vector<Entity> entities;
+        std::string error;
+        std::vector<std::string> names;
+        if (!parseEntities(text, entities, error))
+            return names;
+        for (const ModelNeed &need : collectModelNeeds(entities))
+        {
+            if (need.name != "hgibs")
+                names.push_back(need.name);
+        }
+        return names;
+    };
+    auto only = [](const std::vector<std::string> &names, const char *name)
+    { return names.size() == 1 && names[0] == name; };
+    check(only(needed("{\n\"classname\" \"func_breakable\"\n\"material\" \"1\"\n}\n"), "woodgibs"),
+          "a wooden crate needs the game's pieces of wood");
+    check(only(needed("{\n\"classname\" \"func_breakable\"\n\"material\" \"0\"\n}\n"), "glassgibs") &&
+              only(needed("{\n\"classname\" \"func_breakable\"\n\"material\" \"8\"\n}\n"), "rockgibs"),
+          "... a pane, of glass; rock, of rock");
+    check(only(needed("{\n\"classname\" \"func_breakable\"\n\"material\" \"1\"\n"
+                      "\"gibmodel\" \"Models\\MyCrate.mdl\"\n}\n"),
+               "mycrate"),
+          "... and one that names its own pieces, those");
+    check(needed("{\n\"classname\" \"func_breakable\"\n\"material\" \"7\"\n}\n").empty() &&
+              needed("{\n\"classname\" \"func_breakable\"\n\"material\" \"9\"\n}\n").empty(),
+          "the glass that never breaks needs none, nor what is made of nothing");
+    check(needed("{\n\"classname\" \"func_pushable\"\n\"material\" \"1\"\n}\n").empty() &&
+              only(needed("{\n\"classname\" \"func_pushable\"\n\"material\" \"2\"\n\"spawnflags\" \"128\"\n}\n"),
+                   "metalplategibs"),
+          "a box that only moves needs none; one that breaks, its material's");
+    LogicRecord record{};
+    record.extra[1] = 2u | 5u << 16;
+    check(breakMaterial(record) == 2 && breakGibRef(record) == 4, "its material and its pieces' model share extra[1]");
+    record.extra[1] = 6;
+    check(breakMaterial(record) == 6 && breakGibRef(record) == -1, "... none in a map cooked before");
+}
+
+/// With the game's models: a room of a wooden crate and a pane, cooked; each
+/// knows its model of pieces, which only a DSi loads; broken, they throw
+/// those pieces, see-through glass, heard landing as their shards are.
+void testBreakGibs(const char *dir)
+{
+    const MaterialBook book = parseMaterials("W CRATEWOOD\n");
+    BoxRoom room;
+    auto box = [&](float x0, float y0, float x1, float y1, float z1, const char *keys)
+    {
+        BrushBox b;
+        b.mins[0] = x0;
+        b.mins[1] = y0;
+        b.maxs[0] = x1;
+        b.maxs[1] = y1;
+        b.maxs[2] = z1;
+        b.className = "func_breakable";
+        b.keys = keys;
+        b.textureName = "cratewood";
+        room.brushes.push_back(b);
+    };
+    box(40, -16, 72, 16, 32, "\"material\" \"1\"\n\"health\" \"10\"\n");
+    box(-72, -48, -68, 48, 64, "\"material\" \"0\"\n\"health\" \"1\"\n");
+    auto game = std::make_unique<Game>();
+    game->materials = &book;
+    std::string error;
+    check(game->bsp.parse(buildBoxRoom(room), error), "a room of a crate and a pane builds");
+    finish(*game, nullptr, dir);
+    if (!game->ok || game->view.brushCount != 2)
+    {
+        check(false, "... and cooks, with both");
+        return;
+    }
+    Game &g = *game;
+    int crate = -1, pane = -1;
+    for (std::uint32_t i = 0; i < g.view.logicCount; ++i)
+    {
+        if (g.view.logic[i].brush == 0)
+            crate = breakGibRef(g.view.logic[i]);
+        if (g.view.logic[i].brush == 1)
+            pane = breakGibRef(g.view.logic[i]);
+    }
+    const auto name = [&](int m) { return m >= 0 && m < static_cast<int>(g.view.modelRefCount) ? g.view.modelRefs[m].name : ""; };
+    check(std::string(name(crate)) == "woodgibs" && std::string(name(pane)) == "glassgibs",
+          "the crate's pieces are the game's wood, the pane's its glass");
+    check(modelRefDsiOnly(g.view.modelRefs[crate]) && modelRefDsiOnly(g.view.modelRefs[pane]) &&
+              g.actors.humanGibs >= 0 && !modelRefDsiOnly(g.view.modelRefs[g.actors.humanGibs]),
+          "... which a DS does not load (a person's pieces it does)");
+    check(g.breakGibs.count == 2 && breakGibMaterial(g.actors, crate) == 1 && breakGibMaterial(g.actors, pane) == 0 &&
+              breakGibMaterial(g.actors, g.actors.humanGibs) == -1,
+          "the map knows what each model of pieces is of");
+    check(breakStyle(breakGibMaterial(g.actors, pane)).alpha < 31, "... glass's drawn see-through, as its shards");
+    ActorWorld &a = g.actors;
+    consoleLimits(a, g.logic, true);
+    const int pieces = gibPieces(a, crate);
+    const std::uint32_t seed = a.seed;
+    const fx mins[3] = {fxFromInt(40), fxFromInt(-16), 0}, maxs[3] = {fxFromInt(72), fxFromInt(16), fxFromInt(32)};
+    const int thrown = breakGibsBurst(a, mins, maxs, 1, crate);
+    int flying = 0;
+    bool bodies = true, lasting = true;
+    for (const Gib &gib : a.gibs)
+    {
+        if (!gib.active)
+            continue;
+        ++flying;
+        bodies = bodies && gib.model == crate && gib.body < pieces && gibBodyDrawn(a.models[crate], gib.body);
+        lasting = lasting && gib.leftMs >= 2500 * 150 / 100 && gib.leftMs <= 3500 * 150 / 100;
+    }
+    check(pieces > 0 && thrown == (32 * 32 + 32 * 32 + 32 * 32) / 432 && flying == thrown && bodies,
+          "the crate broken throws as many of the game's pieces of wood as of its texture, each one of them");
+    check(lasting && a.seed == seed, "... for as long, and of chances of their own");
+    a.gibLimit = 4;
+    check(breakGibsBurst(a, mins, maxs, 1, crate) == 4, "... no more than there is room for");
+    a.gibLimit = kMaxGibs;
+    // (The pane's: the cooked glassgibs has a piece with nothing in it,
+    // which is never thrown.)
+    {
+        const fx thin[3] = {fxFromInt(-68), fxFromInt(48), fxFromInt(64)}, at[3] = {fxFromInt(-72), fxFromInt(-48), 0};
+        for (Gib &gib : a.gibs)
+            gib = Gib();
+        breakGibsBurst(a, at, thin, 0, pane);
+        bool seen = true;
+        for (const Gib &gib : a.gibs)
+            seen = seen && (!gib.active || gibBodyDrawn(a.models[pane], gib.body));
+        check(seen, "a pane's pieces are each one with something to see");
+    }
+    // Heard landing: some, of wood.
+    g.drain();
+    std::fill(g.timesHeard.begin(), g.timesHeard.end(), 0);
+    for (int round = 0; round < 6; ++round)
+    {
+        for (Gib &gib : a.gibs)
+            gib = Gib();
+        const fx high[3] = {mins[0], mins[1], mins[2] + fxFromInt(60)};
+        const fx top[3] = {maxs[0], maxs[1], maxs[2] + fxFromInt(60)};
+        breakGibsBurst(a, high, top, 1, crate);
+        for (int n = 0; n < 60; ++n)
+            g.frame();
+    }
+    const int wood = g.times(CommonSound::WoodHit1) + g.times(CommonSound::WoodHit2) + g.times(CommonSound::WoodHit3);
+    std::printf("test_view: the game's pieces of wood: %d heard landing\n", wood);
+    check(wood > 0, "... and heard landing, of wood");
+    // Where its model is not loaded (a DS's), there are none to throw.
+    const ModelView kept = a.models[crate];
+    g.modelViews[static_cast<std::size_t>(crate)].header = nullptr;
+    check(breakGibsBurst(a, mins, maxs, 1, crate) == 0 && gibPieces(a, crate) == 0,
+          "a DS without the model throws none of it: its texture's patches, as before");
+    g.modelViews[static_cast<std::size_t>(crate)] = kept;
+}
+
 int main()
 {
+    testBreakGibNeeds();
     testCasingRoom();
     testDebrisLeavesMonstersAlone();
     testMarkChoice();
@@ -1204,6 +1358,7 @@ int main()
         testMarks(dir);
         testMarksOnMovers(dir);
         testImpactsOnMap(dir);
+        testBreakGibs(dir);
     }
     else
         std::printf("test_view: HLDS_VALVE_DIR not set, no real fall\n");

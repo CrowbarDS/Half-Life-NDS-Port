@@ -76,6 +76,7 @@ namespace hldstest
         /// before finish(): the ways between them are then taken from it.
         hlds::NodGraph nodGraph;
         ActorWorld actors;
+        BreakGibs breakGibs; ///< ActorWorld::breakGibs
         LogicWorld logic;
         PlayerState player;
         bool ok = false;
@@ -349,6 +350,8 @@ namespace hldstest
         g.actors.models = g.modelViews.data();
         g.actors.modelCount = static_cast<int>(g.modelViews.size());
         gibModelsFind(g.actors, v.modelRefs, static_cast<int>(v.modelRefCount));
+        breakGibsFind(g.breakGibs, v.logic, static_cast<int>(v.logicCount), static_cast<int>(v.modelRefCount));
+        g.actors.breakGibs = &g.breakGibs;
         g.actors.boxes = g.actorBoxes.data();
         g.move.boxes = g.actorBoxes.data();
         g.move.boxCount = static_cast<int>(g.actorBoxes.size());

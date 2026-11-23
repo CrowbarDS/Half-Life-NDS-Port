@@ -252,6 +252,8 @@ namespace hlrt
         actors.models = modelCache.views();
         actors.modelCount = modelCache.count();
         gibModelsFind(actors, view.modelRefs, static_cast<int>(view.modelRefCount));
+        breakGibsFind(breakGibs_, view.logic, static_cast<int>(view.logicCount), static_cast<int>(view.modelRefCount));
+        actors.breakGibs = &breakGibs_;
         {
             // (In the order of the kinds: the bolt, the satchel, the player's
             // tripmine -- the held model's mine -- the snark, the rocket and
@@ -1164,8 +1166,16 @@ namespace hlrt
                         textures[textureCount++] = texture;
                 }
                 const fx along[3] = {logic.struckFrom[0] * 200, logic.struckFrom[1] * 200, logic.struckFrom[2] * 200};
-                piecesBurst(actors, mins, maxs, static_cast<int>(record.extra[1]), textures, textureCount,
-                            (record.flags & kLogicDirected) ? along : nullptr);
+                const int material = static_cast<int>(breakMaterial(record));
+                const fx *way = (record.flags & kLogicDirected) ? along : nullptr;
+                // (The game's model of its pieces, where it is loaded -- a
+                // DSi's, and a DS's with the room: else patches of its own
+                // texture.)
+                const int gibs = breakGibRef(record);
+                if (gibs < 0 || gibPieces(actors, gibs) == 0)
+                    piecesBurst(actors, mins, maxs, material, textures, textureCount, way);
+                else
+                    breakGibsBurst(actors, mins, maxs, material, gibs, way);
                 // (The marks that were on it go with it.)
                 for (Decal &decal : actors.decals)
                 {

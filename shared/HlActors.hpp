@@ -587,6 +587,39 @@ namespace hldata
     }
 
     struct AiWorld; // (HlAi.hpp)
+
+    /// The models this map's breakables come apart into (breakGibRef), and
+    /// what each is of (a breakable's material): how its pieces sound as
+    /// they land, and whether they are see-through (glass). Found as the map
+    /// is made (breakGibsFind); not saved.
+    inline constexpr int kMaxBreakGibs = 12;
+    struct BreakGibs
+    {
+        int count = 0;
+        std::uint16_t model[kMaxBreakGibs] = {};
+        std::uint8_t material[kMaxBreakGibs] = {};
+    };
+    inline void breakGibsFind(BreakGibs &out, const LogicRecord *records, int recordCount, int modelCount)
+    {
+        out.count = 0;
+        for (int i = 0; i < recordCount; ++i)
+        {
+            const LogicRecord &record = records[i];
+            if (record.kind != static_cast<std::uint8_t>(LogicKind::Breakable) &&
+                record.kind != static_cast<std::uint8_t>(LogicKind::Pushable))
+                continue;
+            const int m = breakGibRef(record);
+            if (m < 0 || m >= modelCount)
+                continue;
+            bool known = false;
+            for (int k = 0; k < out.count && !known; ++k)
+                known = out.model[k] == m;
+            if (known || out.count == kMaxBreakGibs)
+                continue;
+            out.model[out.count] = static_cast<std::uint16_t>(m);
+            out.material[out.count++] = static_cast<std::uint8_t>(breakMaterial(record));
+        }
+    }
     inline void aiShotBorn(AiWorld &ai, int slot); // (HlAi.hpp)
 
     /// The actors of the loaded map and the models they are made of.
@@ -663,6 +696,8 @@ namespace hldata
         /// The models a person and an alien come apart into (into `models`),
         /// or -1 where the map has not got them: then they do not come apart.
         std::int16_t humanGibs = -1, alienGibs = -1;
+        /// ... and those of what breaks (not saved: a pointer). Null: none.
+        const BreakGibs *breakGibs = nullptr;
     };
 
     /// Whether this map's monsters take a worker's answer up the moment it
@@ -1727,6 +1762,19 @@ namespace hldata
         return *slot;
     }
 
+    /// What the model `model` is the pieces of (a breakable's material), or
+    /// -1: not a breakable's.
+    inline int breakGibMaterial(const ActorWorld &a, int model)
+    {
+        const BreakGibs *gibs = a.breakGibs;
+        for (int k = 0; gibs != nullptr && k < gibs->count; ++k)
+        {
+            if (gibs->model[k] == model)
+                return gibs->material[k];
+        }
+        return -1;
+    }
+
     /// Find, among the map's models, the two that things come apart into
     /// (by their names: the game's hgibs and agibs).
     inline void gibModelsFind(ActorWorld &a, const ModelRef *refs, int count)
@@ -1749,5 +1797,64 @@ namespace hldata
             a.models[model].header->bodyPartCount == 0)
             return 0;
         return a.models[model].bodyParts[0].count;
+    }
+
+    /// Whether piece `body` of the gib model `model` has anything to draw.
+    inline bool gibBodyDrawn(const ModelView &model, int body)
+    {
+        for (int b = 0; b < model.header->batchCount; ++b)
+        {
+            if (model.batches[b].polygons != 0 && model.batchInBody(model.batches[b], body))
+                return true;
+        }
+        return false;
+    }
+
+    /// Something made of `material` and as big as the box `mins`..`maxs`
+    /// has broken into pieces of the model `model` (its breakGibRef): as
+    /// many as piecesBurst throws of its texture and from where, as fast,
+    /// for as long -- each one of the model's pieces, tumbling -- and no
+    /// more than there is room for. None (0) if the model is not loaded:
+    /// then it is patches of its texture after all.
+    inline int breakGibsBurst(ActorWorld &a, const fx *mins, const fx *maxs, int material, int model,
+                              const fx *along = nullptr)
+    {
+        const int pieces = gibPieces(a, model);
+        if (pieces == 0)
+            return 0;
+        const int size[3] = {fxToInt(maxs[0] - mins[0]), fxToInt(maxs[1] - mins[1]), fxToInt(maxs[2] - mins[2])};
+        int count = (size[0] * size[1] + size[1] * size[2] + size[2] * size[0]) / 432;
+        const int room = a.gibLimit < 1 ? 1 : (a.gibLimit > kMaxGibs ? kMaxGibs : a.gibLimit);
+        count = count > 100 ? 100 : count;
+        count = count > room ? room : count;
+        // (Chances of their own, as piecesBurst's: lookRoll.)
+        std::uint32_t roll = lookRoll(a, maxs, lookRoll(a, mins, static_cast<std::uint32_t>(material) + 0x6B00u));
+        auto chance = [&roll]() -> std::uint32_t
+        {
+            roll = roll * 1664525u + 1013904223u;
+            return roll >> 8;
+        };
+        auto within = [&chance](int n) { return static_cast<int>(((chance() & 0xFFFFu) * static_cast<std::uint32_t>(n)) >> 16); };
+        for (int n = 0; n < count; ++n)
+        {
+            fx at[3], velocity[3];
+            for (int k = 0; k < 3; ++k)
+            {
+                const fx span = maxs[k] - mins[k];
+                at[k] = mins[k] + static_cast<fx>((static_cast<std::int64_t>(span) * (chance() & 255)) >> 8);
+                velocity[k] = (along != nullptr ? along[k] : 0) + fxFromInt(k == 2 ? within(101) : within(201) - 100);
+            }
+            const int ms = (2500 + within(1001)) * a.lifePercent / 100;
+            // (A piece the cook has left nothing of -- glassgibs' first --
+            // is passed over for the next.)
+            int body = within(pieces);
+            for (int tries = 1; tries < pieces && !gibBodyDrawn(a.models[model], body); ++tries)
+                body = body + 1 == pieces ? 0 : body + 1;
+            Gib &gib = gibAdd(a, model, body, at, velocity, ms);
+            gib.yaw = static_cast<std::uint16_t>(chance());
+            gib.pitch = static_cast<std::uint16_t>(chance());
+            gib.spin = static_cast<std::int16_t>(30 + within(60));
+        }
+        return count;
     }
 } // namespace hldata

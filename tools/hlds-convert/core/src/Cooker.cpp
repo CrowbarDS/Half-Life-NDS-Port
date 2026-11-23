@@ -1385,6 +1385,30 @@ namespace hlds
                 if (worn && dsiOnly)
                     ref.name[sizeof(ref.name) - 1] = kModelRefDsiOnly;
             }
+            // ... and the pieces of what breaks (breakGibRef): a DS throws
+            // patches of its texture instead -- unless something else has
+            // that model too (an actor wears it, a shooter throws it, or a
+            // person or an alien comes apart into it).
+            for (const LogicRecord &record : level.logic)
+            {
+                const bool breaks = record.kind == static_cast<std::uint8_t>(LogicKind::Breakable) ||
+                                    record.kind == static_cast<std::uint8_t>(LogicKind::Pushable);
+                const int m = breaks ? breakGibRef(record) : -1;
+                if (m < 0 || static_cast<std::size_t>(m) >= level.modelRefs.size())
+                    continue;
+                ModelRef &ref = level.modelRefs[static_cast<std::size_t>(m)];
+                if (modelRefLazy(ref) || modelRefDsiOnly(ref) || std::strcmp(ref.name, "hgibs") == 0 ||
+                    std::strcmp(ref.name, "agibs") == 0 || level.viewModel == m + 1)
+                    continue;
+                bool other = false;
+                for (const ActorRecord &actor : level.actors)
+                    other = other || actor.model == m;
+                for (const LogicRecord &shooter : level.logic)
+                    other = other || (shooter.kind == static_cast<std::uint8_t>(LogicKind::Shooter) &&
+                                      shooter.damage == m + 1);
+                if (!other)
+                    ref.name[sizeof(ref.name) - 1] = kModelRefDsiOnly;
+            }
             if (level.actors.size() > static_cast<std::size_t>(kMaxMapActors))
             {
                 error = "the map has " + std::to_string(level.actors.size()) + " actors, more than the " +
@@ -1409,15 +1433,15 @@ namespace hlds
                     const bool breaks = record.kind == static_cast<std::uint8_t>(LogicKind::Breakable) ||
                                         (record.kind == static_cast<std::uint8_t>(LogicKind::Pushable) &&
                                          (record.flags & kLogicBreaks));
-                    if (!breaks || record.extra[1] == 7)
+                    if (!breaks || breakMaterial(record) == 7)
                         continue;
                     // (Struck, and its pieces landing.)
-                    const BreakSounds sounds = breakSounds(record.extra[1]);
+                    const BreakSounds sounds = breakSounds(breakMaterial(record));
                     for (int k = 0; k < sounds.struckCount && !(record.flags & kLogicTriggerOnly); ++k)
                         broken[static_cast<std::size_t>(sounds.struck) + k] = true;
                     CommonSound landing = CommonSound::Count;
                     int landings = 0;
-                    shardSounds(record.extra[1], landing, landings);
+                    shardSounds(breakMaterial(record), landing, landings);
                     for (int k = 0; k < landings; ++k)
                         broken[static_cast<std::size_t>(landing) + k] = true;
                 }

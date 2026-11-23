@@ -735,6 +735,33 @@ namespace hlds
                 file.erase(0, 1);
             return file;
         }
+
+        /// The models a breakable's pieces may be, as the game finds them:
+        /// its own ("gibmodel", tidied as an env_shooter's is), then its
+        /// material's (breakGibName). None for what never breaks -- the
+        /// glass that never does, a box that only moves.
+        std::vector<std::string> breakGibFiles(const Entity &entity)
+        {
+            const std::string cls = lowered(entity.className());
+            const long spawnflags = std::lround(numberKey(entity, "spawnflags"));
+            if (cls != "func_breakable" && !(cls == "func_pushable" && (spawnflags & 128)))
+                return {};
+            const auto material =
+                static_cast<std::uint32_t>(std::clamp(std::lround(numberKey(entity, "material")), 0L, 9L));
+            if (material == 7)
+                return {};
+            std::vector<std::string> files;
+            std::string own = lowered(entity.value("gibmodel"));
+            for (char &c : own)
+                c = c == '\\' ? '/' : c;
+            while (!own.empty() && own[0] == '/')
+                own.erase(0, 1);
+            if (own.size() > 4 && own.substr(own.size() - 4) == ".mdl")
+                files.push_back(own);
+            if (const char *name = breakGibName(material))
+                files.push_back(std::string("models/") + name + ".mdl");
+            return files;
+        }
     } // namespace
 
     void modelClips(const MdlFile &mdl, const ModelNeed &need, std::vector<std::string> &ds,
@@ -1110,6 +1137,14 @@ namespace hlds
         {
             if (const ItemClass *item = spawnObjectOf(entity))
                 add(needOf(item->file), item->kind == ItemKind::Tripmine ? "ground" : "idle");
+        }
+        // ... and the pieces of what breaks: its own model of them, or its
+        // material's.
+        for (const Entity &entity : entities)
+        {
+            const std::vector<std::string> files = breakGibFiles(entity);
+            if (!files.empty())
+                needOf(files[0]).firstSequence = true;
         }
         if (aliens)
             needOf("models/agibs.mdl").firstSequence = true;
@@ -2386,6 +2421,16 @@ namespace hlds
                 // below, with the actors).
                 if (const ItemClass *item = spawnObjectOf(entity))
                     record.pad = static_cast<std::uint16_t>(item->kind);
+                // What its pieces are: the first of its models the map has
+                // had cooked (breakGibRef).
+                for (const std::string &file : breakGibFiles(entity))
+                {
+                    const auto found = std::find(models.begin(), models.end(), modelNameOf(file));
+                    if (found == models.end())
+                        continue;
+                    record.extra[1] |= static_cast<std::uint32_t>(found - models.begin() + 1) << 16;
+                    break;
+                }
             }
             else if ((cls == "trigger_hurt" || cls == "trigger_push" || cls == "trigger_teleport" ||
                       cls == "trigger_gravity") &&
@@ -4285,9 +4330,9 @@ namespace hlds
             const bool breaks = record.kind == static_cast<std::uint8_t>(LogicKind::Breakable) ||
                                 (record.kind == static_cast<std::uint8_t>(LogicKind::Pushable) &&
                                  (record.flags & kLogicBreaks));
-            if (breaks && record.extra[1] != 7)
+            if (breaks && breakMaterial(record) != 7)
             {
-                const BreakSounds sounds = breakSounds(record.extra[1]);
+                const BreakSounds sounds = breakSounds(breakMaterial(record));
                 auto useSome = [&](CommonSound first, int count)
                 {
                     if (count > 0)
@@ -4302,7 +4347,7 @@ namespace hlds
                 useSome(sounds.bust, sounds.bustCount);
                 CommonSound landing = CommonSound::Count;
                 int landings = 0;
-                shardSounds(record.extra[1], landing, landings);
+                shardSounds(breakMaterial(record), landing, landings);
                 useSome(landing, landings);
             }
         }

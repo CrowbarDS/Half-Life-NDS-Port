@@ -1856,7 +1856,7 @@ namespace hldata
         /// to 1, at its own pitch two times in three and else at 95 to 129.
         inline void breakableStruck(LogicWorld &w, int index)
         {
-            const BreakSounds sounds = breakSounds(w.records[index].extra[1]);
+            const BreakSounds sounds = breakSounds(breakMaterial(w.records[index]));
             if (sounds.struckCount == 0 || w.heard == nullptr)
                 return;
             const std::uint32_t r = logicChance(w), p = logicChance(w);
@@ -1891,7 +1891,7 @@ namespace hldata
                 return true;
             if (static_cast<std::uint16_t>(CommonSound::BustCeiling) >= w.heard->commons)
                 return false;
-            const BreakSounds sounds = breakSounds(w.records[index].extra[1]);
+            const BreakSounds sounds = breakSounds(breakMaterial(w.records[index]));
             if (sounds.bustCount == 0)
                 return true; // (one of no material breaks without a sound)
             const std::uint32_t r = logicChance(w);
@@ -2201,7 +2201,7 @@ namespace hldata
             return;
         }
         if (state.dead || !detail::isBreakable(record) || (record.flags & kLogicTriggerOnly) ||
-            record.extra[1] == 7)
+            breakMaterial(record) == 7)
             return;
         // CBreakable::TakeDamage: the crowbar's blow does twice (breakables
         // take double from it), a poisoned dart a tenth; and one marked to
@@ -4949,7 +4949,7 @@ namespace hldata
         case LogicKind::Breakable:
             // By name it breaks at once, whatever it can take -- except the
             // glass that never does.
-            if (record.extra[1] != 7)
+            if (breakMaterial(record) != 7)
                 detail::breakIt(w, player, index, depth);
             break;
 
@@ -6274,7 +6274,7 @@ namespace hldata
             // by hand, and the boxes to pull.
             const bool usable =
                 toStrike ? (detail::isBreakable(record) && !(record.flags & kLogicTriggerOnly) &&
-                            record.extra[1] != 7)
+                            breakMaterial(record) != 7)
                          : ((kind == LogicKind::Button && !(record.flags & kLogicTouch)) ||
                             (kind == LogicKind::MomentaryButton && !(record.flags & kLogicTriggerOnly)) ||
                             kind == LogicKind::HealthCharger || kind == LogicKind::SuitCharger ||

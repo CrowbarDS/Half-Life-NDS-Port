@@ -455,7 +455,7 @@ namespace hldata
             const Material made = surfaceMaterial(w, at, normal, mover);
             const int taker = mover >= 0 ? blowTaker(w, mover) : -1;
             const bool breaks = taker >= 0 && isBreakable(w.records[taker]);
-            const bool computer = made == Material::Computer || (breaks && w.records[taker].extra[1] == 6); // (matComputer)
+            const bool computer = made == Material::Computer || (breaks && breakMaterial(w.records[taker]) == 6); // (matComputer)
             const fx off[3] = {at[0] + normal[0], at[1] + normal[1], at[2] + normal[2]};
             // (One the map was cooked without -- an older map, or one with
             // no room for it -- is not there to be heard: `instead` is.)
@@ -1819,6 +1819,26 @@ namespace hldata
                 shot.leftMs = 0; // (off where it is)
         }
 
+        /// A piece of something broken, made of `material`, heard landing
+        /// at `at` (its client's, one landing in six): of what it was, at
+        /// 0.8 -- less as it comes down slower than 450 -- and now and then
+        /// at 95 to 105. Its chances from how it was turned (`spin`).
+        [[gnu::noinline]] inline void shardHeard(LogicWorld &w, int material, const fx *at, fx speed, std::uint32_t spin)
+        {
+            if (w.heard == nullptr || w.actors == nullptr || material < 0)
+                return;
+            CommonSound first = CommonSound::Count;
+            int count = 0;
+            shardSounds(static_cast<std::uint32_t>(material), first, count);
+            const std::uint32_t roll = spin * 0x9E3779B1u ^ w.actors->seed;
+            const CommonSound sound =
+                static_cast<CommonSound>(static_cast<int>(first) + static_cast<int>((((roll >> 8) & 0xFFu) * count) >> 8));
+            const int fast = fxToInt(speed);
+            if (count > 0 && commonThere(w, sound))
+                w.heard->add(static_cast<std::uint16_t>(sound), at, fast >= 450 ? 102 : 102 * fast / 450, kRadiusLarge, 0,
+                             ((roll >> 16) & 3) == 0 ? 95 + static_cast<int>((((roll >> 18) & 0xFFu) * 11) >> 8) : 100);
+        }
+
         inline void projectilesTick(LogicWorld &w, PlayerState &player, int ms)
         {
             ActorWorld &a = *w.actors;
@@ -1832,7 +1852,11 @@ namespace hldata
             }
             // The pieces of what has come apart: they fall, bounce (losing
             // nearly half their speed each time), turn while they fly, lie
-            // where they stop, and are gone when their time is up.
+            // where they stop, and are gone when their time is up. (A
+            // breakable's are heard as its shards are: one landing in six,
+            // one a tick.)
+            const Gib *landed = nullptr;
+            fx landedSpeed = 0;
             for (Gib &gib : a.gibs)
             {
                 if (!gib.active)
@@ -1863,6 +1887,12 @@ namespace hldata
                 }
                 if (t.fraction < kFractionOne)
                 {
+                    if (landed == nullptr && a.breakGibs != nullptr && gib.velocity[2] < -fxFromInt(60) &&
+                        ((gib.yaw >> 8) * 6 >> 8) == 0 && breakGibMaterial(a, gib.model) >= 0)
+                    {
+                        landed = &gib;
+                        landedSpeed = gib.velocity[2] < 0 ? -gib.velocity[2] : gib.velocity[2];
+                    }
                     const int met = tossBounce(gib.velocity, t, kTossGib, ms, gravityOf(player));
                     tossOn(*w.world, t, gib.velocity, ms, to);
                     gib.spin = static_cast<std::int16_t>(gib.spin / 2);
@@ -1885,6 +1915,8 @@ namespace hldata
                 for (int i = 0; i < 3; ++i)
                     gib.pos[i] = to[i];
             }
+            if (landed != nullptr)
+                shardHeard(w, breakGibMaterial(a, landed->model), landed->pos, landedSpeed, landed->yaw);
             for (Projectile &shot : a.shots)
             {
                 if (!shot.active)
@@ -4110,23 +4142,9 @@ namespace hldata
             w.heard->add(CommonSound::Shell, nullptr, 70, kRadiusSmall);
         if ((rang & 2) && w.heard != nullptr)
             w.heard->add(CommonSound::ShotShell, nullptr, 70, kRadiusSmall);
-        // ... and a shard of something broken, one landing in six (its
-        // client's): of what it was, at 0.8 -- less as it comes down slower
-        // than 450 -- and now and then at 95 to 105.
-        if (shard >= 0 && w.heard != nullptr)
-        {
-            const Piece &piece = a.pieces[shard];
-            CommonSound first = CommonSound::Count;
-            int count = 0;
-            shardSounds(static_cast<std::uint32_t>(pieceMaterial(piece)), first, count);
-            const std::uint32_t roll = static_cast<std::uint32_t>(piece.spin) * 0x9E3779B1u ^ a.seed;
-            const CommonSound sound =
-                static_cast<CommonSound>(static_cast<int>(first) + static_cast<int>((((roll >> 8) & 0xFFu) * count) >> 8));
-            const int speed = fxToInt(shardSpeed);
-            if (count > 0 && detail::commonThere(w, sound))
-                w.heard->add(static_cast<std::uint16_t>(sound), piece.pos, speed >= 450 ? 102 : 102 * speed / 450,
-                             kRadiusLarge, 0, ((roll >> 16) & 3) == 0 ? 95 + static_cast<int>((((roll >> 18) & 0xFFu) * 11) >> 8) : 100);
-        }
+        // ... and a shard of something broken, one landing in six.
+        if (shard >= 0)
+            detail::shardHeard(w, pieceMaterial(a.pieces[shard]), a.pieces[shard].pos, shardSpeed, a.pieces[shard].spin);
         decalsTick(a, ms);
         for (int i = 0; i < w.recordCount; ++i)
         {
@@ -4696,7 +4714,7 @@ namespace hldata
             // by the next hit. Glass that never breaks is not: a
             // shot leaves its small mark on it, a blow nothing but
             // dust.
-            const std::uint32_t made = w.records[taker].extra[1];
+            const std::uint32_t made = breakMaterial(w.records[taker]);
             fx at[3], normal[3];
             int on = -1;
             const bool found = w.actors != nullptr && traceShotWall(*w.world, eye, end, at, normal, &on);
