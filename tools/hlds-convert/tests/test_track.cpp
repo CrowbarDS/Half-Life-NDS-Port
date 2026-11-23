@@ -1197,6 +1197,49 @@ namespace
         }
     }
 
+    /// Blue Shift's ba_tram3: the tram rolls to the end of the line at the
+    /// checkpoint (hiho30), whose dead end sets off a multi_manager, which
+    /// sets off another, which uses the track change down to the
+    /// security level. In the game a multi_manager passes on who set it
+    /// going, so the track change is used by its train, and goes: the tram
+    /// is carried down and rides on.
+    void testBlueShiftTramDown(const char *bshift)
+    {
+        const GameId was = activeGame;
+        activeGame = kGameBlueShift;
+        auto game = std::make_unique<Game>();
+        std::string error;
+        if (!game->bsp.load(std::string(bshift) + "/maps/ba_tram3.bsp", error))
+        {
+            check(false, "ba_tram3.bsp loads");
+            activeGame = was;
+            return;
+        }
+        finish(*game, nullptr);
+        Game &g = *game;
+        const int tram = g.ok ? recordNamed(g, "barney_tram", LogicKind::TrackTrain) : -1;
+        const int lift = g.ok ? recordNamed(g, "goingdown", LogicKind::TrackChange) : -1;
+        check(tram >= 0 && lift >= 0, "ba_tram3's tram and its track change down");
+        if (tram >= 0 && lift >= 0)
+        {
+            const BrushState &brush = g.brushStates[g.view.logic[tram].brush];
+            const fx top = brush.pos[2];
+            // (Its button: the ride in from ba_tram2 had it going.)
+            logicFire(g.logic, g.player, g.view.logic[tram].name, -1, kUseToggle, 0);
+            double lowest = 0;
+            int seconds = 0;
+            for (; seconds < 120 && lowest > -1800; ++seconds)
+            {
+                for (int i = 0; i < 30; ++i)
+                    g.frame();
+                lowest = std::min(lowest, toUnits(brush.pos[2] - top));
+            }
+            std::printf("test_track: ba_tram3's tram went down %.0f units in %d seconds\n", -lowest, seconds);
+            check(lowest < -1800, "ba_tram3: the tram is taken down to the security level, after the checkpoint");
+        }
+        activeGame = was;
+    }
+
     /// c1a1c's lift down the shaft (func_train "pl", diagonally down a rail).
     /// Under its way lies a func_friction of modifier 0: a slab along the
     /// slope, whose bounds fill the whole shaft. The game touches a brush
@@ -1296,6 +1339,14 @@ namespace
         testTheGuard(dir);
         testOnARail(dir);
         testTrackChanges(dir);
+        {
+            // (Blue Shift, where it is installed beside Half-Life.)
+            const std::filesystem::path bshift = std::filesystem::path(dir).parent_path() / "bshift";
+            if (std::filesystem::exists(bshift / "maps" / "ba_tram3.bsp"))
+                testBlueShiftTramDown(bshift.string().c_str());
+            else
+                std::printf("test_track: no Blue Shift beside Half-Life, its tram down was not tried\n");
+        }
         testTheShaftLift(dir);
         for (const Lift &lift : kLifts)
         {

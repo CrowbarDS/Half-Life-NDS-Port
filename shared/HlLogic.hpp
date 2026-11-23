@@ -85,7 +85,9 @@ namespace hldata
         /// is not slowed (pushableTick), after which the engine makes it 1.
         std::int32_t phase = 0;
         /// A multisource's inputs that are on. For a train: the path corner it
-        /// last arrived at. For a rotating door: the angle it rests at.
+        /// last arrived at. For a rotating door: the angle it rests at. For a
+        /// multi_manager: one more than who set it going (its activator, a
+        /// record index: detail::activatorOf), 0 none known.
         std::uint32_t bits = 0;
         fx speed = 0;            ///< a train's current speed: corners change it
         std::int16_t master = -1; ///< its multisource, as a record index; -1 = none
@@ -961,6 +963,20 @@ namespace hldata
             }
         }
     }
+
+    namespace detail
+    {
+        /// Who is behind a use by `caller` (a record index, or -1): the
+        /// game's activator. A multi_manager passes on the one that set it
+        /// going; anything else is its own.
+        inline int activatorOf(const LogicWorld &w, int caller)
+        {
+            if (caller < 0 || caller >= w.recordCount ||
+                w.records[caller].kind != static_cast<std::uint8_t>(LogicKind::MultiManager))
+                return caller;
+            return static_cast<int>(w.states[caller].bits) - 1;
+        }
+    } // namespace detail
 
     inline void logicEnqueue(LogicWorld &w, std::uint16_t target, std::uint16_t killTarget,
                              int useType, int caller, std::int32_t ms)
@@ -4995,6 +5011,11 @@ namespace hldata
             if (state.running && !(record.flags & kLogicThread))
                 break; // still working through the last use
             state.running = true;
+            // Who set it going is who its targets are used by, as the game's
+            // m_hActivator: a train's track change goes only for its train,
+            // and a train passing a corner can set it off through a chain of
+            // these (ba_tram3's change_mm2 -> change_mm3 -> goingdown).
+            state.bits = static_cast<std::uint32_t>(detail::activatorOf(w, caller) + 1);
             {
                 std::int32_t longest = 0;
                 for (int a = 0; a < record.auxCount; ++a)
@@ -5119,7 +5140,7 @@ namespace hldata
                 break;
             const bool autoChange = (record.flags & kLogicSelfDriven) != 0;
             const int train = static_cast<int>(state.bits);
-            if (autoChange && (!top || caller != train))
+            if (autoChange && (!top || detail::activatorOf(w, caller) != train))
                 break;
             const auto node = static_cast<std::uint16_t>(top ? record.extra[1] : record.extra[2]);
             const detail::LiftTrain code = detail::trackChangeEvaluate(w, index, node);
