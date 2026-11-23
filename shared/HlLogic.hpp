@@ -1666,7 +1666,11 @@ namespace hldata
 
             fx target[3];
             trainPosAt(w, index, here.next, target);
-            if (here.flags & kCornerTeleport)
+            // A corner it is put on, not taken to (the game's
+            // SF_CORNER_TELEPORT, which is the flag of the corner it goes TO:
+            // CFuncTrain::Next) -- ba_elevator's lift into its shaft from
+            // where it waits across the map, a loop's way back to its start.
+            if (w.corners[here.next].flags & kCornerTeleport)
             {
                 moveBrush(w, player, record.brush, target);
                 trainArrived(w, player, index, here.next);

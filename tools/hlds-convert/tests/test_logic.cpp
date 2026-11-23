@@ -1155,9 +1155,9 @@ namespace
             "\"wait\" \"0.5\"\n\"message\" \"arrived\"\n}\n"
             "{\n\"classname\" \"path_corner\"\n\"targetname\" \"c3\"\n\"target\" \"c1\"\n\"origin\" \"60 90 40\"\n"
             "\"speed\" \"50\"\n\"spawnflags\" \"1\"\n}\n"
-            "{\n\"classname\" \"path_corner\"\n\"targetname\" \"d1\"\n\"target\" \"d2\"\n\"origin\" \"100 -110 4\"\n"
-            "\"spawnflags\" \"2\"\n}\n"
-            "{\n\"classname\" \"path_corner\"\n\"targetname\" \"d2\"\n\"origin\" \"100 0 4\"\n}\n";
+            "{\n\"classname\" \"path_corner\"\n\"targetname\" \"d1\"\n\"target\" \"d2\"\n\"origin\" \"100 -110 4\"\n}\n"
+            "{\n\"classname\" \"path_corner\"\n\"targetname\" \"d2\"\n\"origin\" \"100 0 4\"\n"
+            "\"spawnflags\" \"2\"\n}\n";
         Game g;
         build(g, room);
         check(g.ok, "train room");
@@ -1259,7 +1259,8 @@ namespace
         check(g.states[named].move == MoveState::AtBottom && !g.states[named].running &&
                   second.pos[1] == 0,
               "a train with a name waits to be told");
-        // Its first corner teleports: told to go, it is simply at the second.
+        // Its second corner is one it is put on (the game's teleport flag is
+        // the corner gone TO): told to go, it is simply there.
         logicFire(g.logic, g.player, v.logic[named].name, -1, kUseToggle, 0);
         check(second.pos[1] == fxFromInt(110), "a teleport corner moves the train at once");
         g.frame(idle, 10);
