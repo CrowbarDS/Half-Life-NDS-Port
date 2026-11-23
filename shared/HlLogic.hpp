@@ -5519,8 +5519,11 @@ namespace hldata
             break;
 
         case LogicKind::ButtonTarget:
-            // Only if it may be used (otherwise only a shot turns it).
-            if (record.flags & kLogicUseOnly)
+            // Used by whatever names it, it turns -- unless told ON and on
+            // already, or OFF and off (the game's ShouldToggle). Its flag
+            // (kLogicUseOnly) is only whether the player may press it too:
+            // ba_security2's lift is called through one, by relays.
+            if (!((useType == kUseOn && (state.bits & 1u)) || (useType == kUseOff && !(state.bits & 1u))))
                 detail::buttonTargetToggle(w, player, index, depth);
             break;
 
@@ -6331,7 +6334,8 @@ namespace hldata
                             (kind == LogicKind::MomentaryButton && !(record.flags & kLogicTriggerOnly)) ||
                             kind == LogicKind::HealthCharger || kind == LogicKind::SuitCharger ||
                             kind == LogicKind::Pushable ||
-                            ((kind == LogicKind::Door || kind == LogicKind::DoorRotating) &&
+                            ((kind == LogicKind::Door || kind == LogicKind::DoorRotating ||
+                              kind == LogicKind::ButtonTarget) &&
                              (record.flags & kLogicUseOnly)));
             if (!usable || w.states[i].dead || record.brush == kNoBrush ||
                 !w.brushStates[record.brush].active)

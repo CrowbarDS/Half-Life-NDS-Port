@@ -1140,6 +1140,71 @@ namespace
         }
         activeGame = was;
     }
+
+    /// Blue Shift's ba_security2 lift by the monitor room: its button
+    /// (master mst_elev_buttons) fires the relay elevator_up, ON, into the
+    /// button_target elevator_relay, which fires mgr_elevator_up: doors shut,
+    /// the lift (a func_train between two corners) goes up 304 units. As the
+    /// game's log of it (tools/ref/diag/bs_sec2_elevator.txt) has it.
+    void testBlueShiftLift(const std::string &bshift)
+    {
+        const GameId was = activeGame;
+        activeGame = kGameBlueShift;
+        if (const std::unique_ptr<Game> game = load(bshift.c_str(), "ba_security2"))
+        {
+            Game &g = *game;
+            auto recordNamed = [&](const char *name)
+            {
+                const int id = nameOf(g, name);
+                for (std::uint32_t i = 0; i < g.view.logicCount; ++i)
+                    if (g.view.logic[i].name == id)
+                        return static_cast<int>(i);
+                return -1;
+            };
+            for (int n = 0; n < 60; ++n)
+                g.frame();
+            const int lift = recordNamed("elevator"), relay = recordNamed("elevator_relay"),
+                      manager = recordNamed("mgr_elevator_up"), master = recordNamed("mst_elev_buttons");
+            check(lift >= 0 && relay >= 0 && manager >= 0 && master >= 0, "ba_security2's lift and its relays");
+            if (lift >= 0 && relay >= 0 && manager >= 0 && master >= 0)
+            {
+                const BrushState &car = g.brushStates[g.view.logic[lift].brush];
+                const fx bottom = car.pos[2];
+                // What the player's USE finds, standing in it facing its button
+                // (the game's log: the button, at once).
+                g.player.origin[0] = fxFromInt(-448), g.player.origin[1] = fxFromInt(630),
+                g.player.origin[2] = fxFromInt(228);
+                const fx eye[3] = {g.player.origin[0], g.player.origin[1], g.player.origin[2] + g.player.viewHeight};
+                fx sp, cp;
+                fxSinCos(static_cast<std::uint16_t>(65536 * 20 / 360), sp, cp);
+                const fx forward[3] = {0, -cp, -sp};
+                const int found = logicFindUsable(g.logic, eye, forward);
+                for (std::uint32_t i = 0; i < g.view.logicCount; ++i)
+                {
+                    const LogicRecord &r = g.view.logic[i];
+                    if (r.kind != static_cast<std::uint8_t>(LogicKind::Button) || r.brush == kNoBrush)
+                        continue;
+                    const MoverHull &m = g.movers[r.brush];
+                    if (std::abs(fxToInt(m.mins[0]) + 455) > 2 || fxToInt(m.mins[2]) > 300)
+                        continue;
+                    check(found == static_cast<int>(i) && logicMasterAllows(g.logic, found),
+                          "ba_security2: USE in the lift finds its button, and it may be pressed");
+                }
+                logicFire(g.logic, g.player, static_cast<std::uint16_t>(nameOf(g, "elevator_up")), -1, kUseToggle, 0);
+                check(g.logic.states[manager].running,
+                      "... and its relay, through the button_target, sets the lift's multi_manager going");
+                double highest = 0;
+                for (int n = 0; n < 30 * 15; ++n)
+                {
+                    g.frame();
+                    highest = std::max(highest, (car.pos[2] - bottom) / 4096.0);
+                }
+                std::printf("test_incident: ba_security2's lift went up %.1f units (the game 304)\n", highest);
+                check(std::fabs(highest - 304) < 1, "ba_security2: called, the lift goes up as the game's");
+            }
+        }
+        activeGame = was;
+    }
 } // namespace
 
 int main()
@@ -1170,6 +1235,7 @@ int main()
             testBlueShiftStart(bshift.string());
             testBlueShiftUniform(bshift.string());
             testBlueShiftRender(bshift.string());
+            testBlueShiftLift(bshift.string());
         }
         else
             std::printf("test_incident: no Blue Shift beside Half-Life, its start was not tried\n");

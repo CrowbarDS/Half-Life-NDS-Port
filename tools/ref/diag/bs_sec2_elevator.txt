@@ -1,0 +1,11 @@
+# Blue Shift's ba_security2: the elevator by the monitor room. The player
+# starts inside it at the bottom, facing its button (*94, "up": through the
+# relays and the button_target to mgr_elevator_up), presses USE, and rides.
+# game bshift
+# map ba_security2
+# start -448 630 260 270
+# keep .*
+# unarmed
+60 0 0 270 20
+10 0 0 270 20 u
+1200 0 0 270 20
