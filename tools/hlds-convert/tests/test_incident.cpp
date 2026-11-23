@@ -1205,6 +1205,49 @@ namespace
         }
         activeGame = was;
     }
+
+    /// Blue Shift's ba_security2 firing range: the guard who gives Barney his
+    /// pistol (the "wrangler", a monster_generic put at 648 1684 484). The
+    /// game drops him to the floor, at 448.03, and he plays his give_gun and
+    /// speak where he stands, never moving (tools/ref/diag/bs_sec2_range.txt).
+    void testBlueShiftRangeGuard(const std::string &bshift)
+    {
+        const GameId was = activeGame;
+        activeGame = kGameBlueShift;
+        if (const std::unique_ptr<Game> game = load(bshift.c_str(), "ba_security2"))
+        {
+            Game &g = *game;
+            g.player.origin[0] = fxFromInt(540), g.player.origin[1] = fxFromInt(1684),
+            g.player.origin[2] = fxFromInt(484);
+            const int name = nameOf(g, "wrangler");
+            int guard = -1;
+            for (int i = 0; i < g.actors.count && guard < 0; ++i)
+                guard = g.actors.states[i].name == name ? i : -1;
+            check(guard >= 0, "ba_security2's range guard");
+            if (guard >= 0)
+            {
+                for (int n = 0; n < 30; ++n)
+                    g.frame();
+                const ActorState &a = g.actors.states[guard];
+                const double start[3] = {a.pos[0] / 4096.0, a.pos[1] / 4096.0, a.pos[2] / 4096.0};
+                logicFire(g.logic, g.player, static_cast<std::uint16_t>(nameOf(g, "mgr_give_gun")), -1, kUseToggle, 0);
+                double worst = 0;
+                for (int n = 0; n < 30 * 15; ++n)
+                {
+                    g.frame();
+                    const double d[3] = {a.pos[0] / 4096.0 - 648, a.pos[1] / 4096.0 - 1684, a.pos[2] / 4096.0 - 448.03};
+                    worst = std::max(worst, std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]));
+                }
+                std::printf("test_incident: ba_security2's range guard starts at %.2f %.2f %.2f (the game 648 1684 "
+                            "448.03), yaw %d; through his scenes at most %.1f units off it\n",
+                            start[0], start[1], start[2], a.yaw * 360 / 65536, worst);
+                check(std::fabs(start[0] - 648) < 1 && std::fabs(start[1] - 1684) < 1 && std::fabs(start[2] - 448.03) < 1,
+                      "ba_security2: the range guard stands on the floor where the game has him");
+                check(worst < 1, "... and gives the pistol from there");
+            }
+        }
+        activeGame = was;
+    }
 } // namespace
 
 int main()
@@ -1236,6 +1279,7 @@ int main()
             testBlueShiftUniform(bshift.string());
             testBlueShiftRender(bshift.string());
             testBlueShiftLift(bshift.string());
+            testBlueShiftRangeGuard(bshift.string());
         }
         else
             std::printf("test_incident: no Blue Shift beside Half-Life, its start was not tried\n");

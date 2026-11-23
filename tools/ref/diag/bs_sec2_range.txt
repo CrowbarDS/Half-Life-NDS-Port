@@ -1,0 +1,12 @@
+# Blue Shift's ba_security2: the firing range's guard (the "wrangler", a
+# monster_generic at 648 1684 484) gives Barney his pistol: mgr_give_gun
+# plays his give_gun, then speak, from where he stands (scripts of move 0,
+# no script movement). Where does he stand, and where is he as he plays them?
+# game bshift
+# map ba_security2
+# start 540 1684 484 0
+# keep .*
+# unarmed
+60 0 0 0 0
+cmd diag_fire mgr_give_gun
+900 0 0 0 0

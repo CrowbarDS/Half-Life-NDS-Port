@@ -4088,10 +4088,20 @@ namespace hlds
                     actor.flags |= kActorLeader;
                 if (spawnflags & 128)
                     actor.flags |= kActorWaitScript;
-                // (A monster_generic: Blue Shift's that turns its head.)
+                // (A monster_generic: Blue Shift's that turns its head. Its
+                // bit 8 is kActorCentred -- the player's and the hologram's
+                // models, whose origin is their middle -- not "waits for a
+                // script", which one that never walks has no use for: with
+                // it, ba_security2's range guard stood a half-height up, on
+                // his counter.)
                 if (info.kind == ActorKind::Generic)
-                    actor.flags = static_cast<std::uint8_t>((actor.flags & ~kActorLeader) |
-                                                            ((spawnflags & 8) ? kActorHeadTurns : 0));
+                {
+                    const std::string file = lowered(entity.value("model"));
+                    const bool centred = file == "models/holo.mdl" || file == "models/player.mdl";
+                    actor.flags = static_cast<std::uint8_t>((actor.flags & ~(kActorLeader | kActorCentred)) |
+                                                            ((spawnflags & 8) ? kActorHeadTurns : 0) |
+                                                            (centred ? kActorCentred : 0));
+                }
                 if (info.kind == ActorKind::Slave && (spawnflags & 64))
                     actor.flags |= kActorCeiling; // (HlAiMonsters.hpp: slave::kActorWaitProvoked)
                 // One of the people before the disaster: will not follow.
