@@ -19,7 +19,7 @@ Screenshots are real captures of the port, showing art from the owner's copy of 
 - Autosave, quick save and save slots
 - Achievements
 - Music and sound, with DSi-only extras where the extra memory allows
-- Multiplayer over local wireless, on the game's own maps
+- Multiplayer over local wireless, on the game's own maps, and online through a relay server
 - Download Play: consoles with no card can join a game hosted by one that has it
 - Touch screen controls, for either hand, with two button layouts
 
@@ -105,6 +105,14 @@ On the title screen, choose MULTIPLAYER, then HOST GAME on one console and JOIN 
 Each console needs the ROM and a card with the game converted, or it can get the game from the host by Download Play.
 
 Multiplayer has been tested on Nintendo DSi and Nintendo 3DS, and also through Download Play in both DS mode and DSi mode.
+
+### Online
+
+MULTIPLAYER, ONLINE, then HOST ONLINE or JOIN ONLINE plays through the relay server named in `server.ini` on the card. The console joins one of the Wi-Fi connections saved in ONLINE SETTINGS, tried in order, and otherwise one of the console's own saved connections.
+
+ONLINE SETTINGS holds three connections: choose a network from those in range (or type its name), then its key and, if needed, a fixed address. COPY FROM CONSOLE takes one of the console's own saved connections. They are kept in `_nds/hl_nds/data/wifi.ini` on the card. **The keys are stored there in plain text**, as typed: anyone with the card can read them.
+
+A DS or DS Lite (and a DSi or 3DS in DS mode) can only join open or WEP networks; WPA and WPA2 need a DSi or 3DS in DSi mode. After going online on a DS, restart the game before playing the campaign: the online code keeps the memory a campaign map needs. Online play has been tested on a DSi; on a DS it has only been run in an emulator so far.
 
 ## Building from source
 

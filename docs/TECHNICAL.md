@@ -1310,8 +1310,8 @@ Milestone 11, "levels of detail".
     Download Play): one console the host, up to three its clients. Every
     frame the host sends one frame all clients hear, and each client answers
     with one the host hears. Nothing else is used during a match.
-  - **Online** (a DSi's: MULTIPLAYER, ONLINE), **the relay** stands in for
-    the radio (`tools/relay`, `shared/HlRelay.hpp`, `source/net/NetRelay.cpp`).
+  - **Online** (MULTIPLAYER, ONLINE), **the relay** stands in for the radio
+    (`tools/relay`, `shared/HlRelay.hpp`, `dll/online/NetRelay.arm.cpp`).
     A host opens a room on it, a console looking is given the list of rooms
     in place of the beacons it would hear, and asks to join one: the host
     is asked, by name, whether to let it in (the lobby's LET ... IN? YES
@@ -1319,29 +1319,54 @@ Milestone 11, "levels of detail".
     passes the host's frames to each client of the room and a client's to
     the host, saying whose, as the radio does. It never reads them: the
     lobby and the match are the same, and `NetLink` hands its calls to
-    `NetRelay` while online, so nothing above it knows which it is. UDP,
-    over one of the console's saved Wi-Fi connections (DSi mode, so WPA
-    too: the radio's local play and Download Play are not there then, and
-    the Wi-Fi is restarted between the two). The relay's address is the
-    card's `server.ini`. The IP stack (lwIP, in the wireless library) is
-    about 90 KB: `tools/wifi_twl.py` moves it, and `NetRelay`'s own code and
-    buffers, into the DSi-only part of the program, which a DS never loads.
-    The library's flag for "the IP stack is on", which its code every
-    console runs reads, is the program's own (`NetLink.cpp`), in memory a DS
-    has. What is left costs a DS about 3.4 KB. The stack is a cooperative
-    thread of the library's, run only when the program yields:
-    `swiWaitForVBlank` halts, so `NetRelay` yields each frame. On the ARM7
-    the DSi's wireless is driven from the program's own loop, a few packets
-    each way after each sound block (`Wifi_SetUpdateFromLoop`, in the
-    `dswifi_dl` fork), not from its 1 ms timer, card interrupt and FIFO
-    messages: with a game sending many packets one of them was always due
-    again, and the ARM7's sound, buttons and touch stopped for good. (Its
-    start-up still runs with interrupts off: it shares the I2C and clock
-    buses with the ARM7's interrupts.) The sound's own clock is timer 1
-    alone; timer 2 is the wireless's. Going
-    online is a step a frame (CONNECTING), never a frozen menu. An online
-    lobby offers nothing by Download Play: no guests, no SEND GAME. Not yet:
-    nothing checks who a console is.
+    `NetRelay` while online, so nothing above it knows which it is. UDP;
+    the relay's address is the card's `server.ini`.
+    - **A library of its own** (`dsl/online.dsl`, since 2026-11-23): the
+      relay's client and the IP stack it talks through, dswifi's lwIP built
+      apart (`libdswifi_dl9_lwip.a` in the `dswifi_dl` fork: UDP over IPv4
+      with DHCP and DNS, no TCP or IPv6, Thumb, its pools in its own memory).
+      It is loaded the first time a console goes online
+      (`source/net/OnlineDll.cpp`), with the title's moving picture put away
+      first so that it lies low on the heap, and kept until the console is
+      turned off: lwIP cannot be stopped once begun. About 100 KB of heap.
+      The program links the fork's core without lwIP (`libdswifi_dl9_hook.a`),
+      which reaches the stack through a table the library hands it
+      (`dswifi_lwip.h`), and keeps `NetRelay.hpp`'s functions
+      (`source/net/NetRelay.cpp`), which hand each call to the library
+      through `source/net/OnlineApi.hpp`'s table. It is linked against the
+      program's ELF and checked as the families are (`tools/dsl_family.py
+      --api GetOnlineAPI`); errno, which is each thread's own and which a
+      library cannot reach, is set through the core (`dswifi_set_errno`).
+      `tools/dsl_family.py` refuses a library with thread-local storage.
+    - **On a DS** too. A DS reaches open and WEP networks only; a DSi in its
+      own mode WPA and WPA2 as well. Once the library is loaded on a DS it
+      and the IP stack hold more of the heap than the heaviest campaign map
+      can spare: NEW GAME, CONTINUE and LOAD GAME say to restart the game
+      first, and HOST ONLINE offers only the maps whose room the manifest
+      says is twice the library's (format 8's `dsSpareKb`: boot_camp is
+      left out). The local wireless needs the game restarted after going
+      online, on either console.
+    - **The connection.** ONLINE SETTINGS keeps three of the game's own
+      Wi-Fi connections (`shared/HlWifiSlots.hpp`, the card's `wifi.ini`, in
+      plain text): a network chosen from those heard (the radio in local
+      play's mode, let go after) or typed, its key, and an address given by
+      the network or typed; or one copied from the console's own saved
+      connections, read from its firmware (`Wifi_ReadWfcSlots`). Going
+      online, the library scans for two seconds and joins the first of them
+      in range; with none, the console's own (`Wifi_AutoConnect`). Going
+      online is a step a frame (CONNECTING), never a frozen menu.
+    - **The threads.** The stack is a thread of the library's, run only when
+      the program yields: `swiWaitForVBlank` halts, so `NetRelay` yields
+      each frame. On the ARM7 the wireless runs in the library's own thread
+      (upstream's since BlocksDS v1.25.0-58), given a stack of the
+      program's and priority 10, above the sound's loop, which halts between
+      blocks and wakes it after each (`Wifi_SetThreadConfig`, `Wifi_Poll`,
+      in the fork). In DSi mode the thread polls the card a few packets each
+      way, never from its 1 ms timer or its interrupt: with a game sending
+      many packets one of them was always due again, and the ARM7's sound,
+      buttons and touch stopped for good. Timer 2 is free.
+    - An online lobby offers nothing by Download Play: no guests, no SEND
+      GAME. Not yet: nothing checks who a console is.
   - **The host's map, sent** (`source/net/MapShare.cpp`), on the radio and
     online alike, to a client with a card that has not got it, or has
     another version of it. Maps go by their name's hash, so the host says
@@ -1608,10 +1633,10 @@ begins. BlocksDS has no overlays; these are the port's own
 - **Leave checks.** Before an overlay gives its region up, what it holds is
   let go of (or the load refused, or halted on).
 
-| Region | Overlay | What | Size (2026-11-22) |
+| Region | Overlay | What | Size (2026-11-23) |
 |---|---|---|---|
-| A | `front` | the front end's own: PROFILE's picture (`ProfileViewBody.cpp`), SEND THE GAME (`DlSendBody.cpp`), HOST's and the lobby's work and text, the demo server's (`HL_OVL_CODE(front)`) | 32,128 B |
-| A | `map` (sizer) | the map's archive index (`Global.cpp`'s `mapIndex`) | 32,768 B |
+| A | `front` | the front end's own: PROFILE's picture (`ProfileViewBody.cpp`), SEND THE GAME (`DlSendBody.cpp`), HOST's and the lobby's work and text, the demo server's, ONLINE SETTINGS' pages and `wifi.ini`'s reading and writing (`HL_OVL_CODE(front)`) | 51,872 B |
+| A | `map` (sizer) | the map's archive index (`Global.cpp`'s `mapIndex`) and the display's pictures (`HudDraw.arm.cpp`) | 57,344 B |
 | B | `save` | the saves' work (`SaveGameBody.cpp`, with the shared save files' code it brings) | 31,168 B |
 | B | `match` (sizer) | a match's scores, vote and end screens (`BottomScreen.cpp`), its vote and next map (`NetGame.cpp`), the host's map picture (`main.cpp`'s `previewPixels`, zeroed) | 46,528 B |
 
@@ -1619,7 +1644,10 @@ begins. BlocksDS has no overlays; these are the port's own
 map is mounted (none of it is shown beside one). Leaving `front` closes the
 picture and ends a sending; `map` may not leave while its archive is
 mounted, and the title lets that go once no level is loaded. The front end
-may grow to `map`'s size at no cost to a map, and is that size now.
+may grow to `map`'s size at no cost to a map. A switch in a function of an
+overlay is built without a table of where its cases are
+(`optimize("no-jump-tables")`): that table would be in the program's data,
+pointing into the overlay.
 
 Region B is the saves' or a match's: a match between consoles keeps no
 saves. `save` is read in by the title's list, a new game, a load and single
