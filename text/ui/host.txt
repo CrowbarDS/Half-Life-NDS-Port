@@ -87,6 +87,7 @@ DemoDsiOnly = They must be a DSi or 3DS, in DSi mode.
 ServeWaiting = Waiting for consoles. Stay near them.
 # Why a row can do nothing, or why it did not.
 LocalBlocked = Restart the game for the local wireless
+CampaignBlocked = Restart the game to play the campaign
 NoGameToSend = This program has no game to send
 DemoHasGame = A demo is for a console without the game
 NoWirelessAgain = The wireless would not start again.

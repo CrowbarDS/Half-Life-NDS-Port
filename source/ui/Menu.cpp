@@ -26,6 +26,7 @@
 #include "net/DlSend.hpp"
 #include "net/NetGame.hpp"
 #include "net/NetRelay.hpp"
+#include "net/OnlineDll.hpp"
 #include "render/BottomScreen.hpp"
 #include "render/Camera.hpp"
 #include "render/HudDraw.hpp"
@@ -2990,7 +2991,7 @@ namespace hlrt
 
 #ifndef HLDS_CHILD
     // (Online is a DSi's alone: in its memory.)
-    TWL_CODE void Menu::admitFrame()
+    void Menu::admitFrame()
     {
         char name[kNetTextBytes];
         if (!netGame.knock(admitTicket_, name))
@@ -3519,7 +3520,7 @@ namespace hlrt
 
 #endif
 
-    TWL_CODE void Menu::openConnecting(int then)
+    void Menu::openConnecting(int then)
     {
         connectThen_ = then;
         netGame.connectBegin();
@@ -3528,7 +3529,7 @@ namespace hlrt
         draw();
     }
 
-    TWL_CODE bool Menu::connectFrame()
+    bool Menu::connectFrame()
     {
         const char *step = nullptr;
         const int state = netGame.connectStep(step);
@@ -4152,6 +4153,13 @@ namespace hlrt
         // until it is started again -- NetRelay.hpp, holdsWifi.)
         constexpr TextRef kLocalBlocked = host::LocalBlocked;
 #endif
+#ifndef HLDS_CHILD
+        // (A DS that has gone online: the online library and its IP stack
+        // hold the heap a campaign map needs, until the game is started
+        // again -- OnlineDll.hpp, campaignBlocked.)
+        if ((id == kNewGame || id == kContinue || id == kLoadGame) && online::campaignBlocked())
+            return uiText(host::CampaignBlocked);
+#endif
         switch (id)
         {
         case kContinue:
@@ -4545,8 +4553,9 @@ namespace hlrt
         }
         if (page_ == Page::NetChat)
             return chatFrame();
-        // (Diagnostic) online: the ARM7 watched.
-        if (netGame.online())
+        // (Diagnostic) online: the ARM7 watched. (A DSi's: its code is in the
+        // DSi's memory.)
+        if (netGame.online() && isDSiMode())
             arm7Watch();
         // The room's microphones opened or closed (the host's choice): the
         // lobby's bar has MIC, or has it no longer.

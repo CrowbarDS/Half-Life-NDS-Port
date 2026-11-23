@@ -284,8 +284,7 @@ namespace hlrt
         netrelay::connectBegin();
     }
 
-    // (A DSi's alone, in its memory: NetRelay.hpp.)
-    TWL_CODE int NetGame::connectStep(const char *&step)
+    int NetGame::connectStep(const char *&step)
     {
         using netrelay::Connect;
         const Connect phase = netrelay::connectStep();
@@ -303,12 +302,12 @@ namespace hlrt
         return netrelay::ready();
     }
 
-    TWL_CODE bool NetGame::knock(int &ticket, char *name)
+    bool NetGame::knock(int &ticket, char *name)
     {
         return online() && netrelay::knock(ticket, name);
     }
 
-    TWL_CODE void NetGame::answerKnock(int ticket, bool yes)
+    void NetGame::answerKnock(int ticket, bool yes)
     {
         netrelay::answer(ticket, yes);
     }
