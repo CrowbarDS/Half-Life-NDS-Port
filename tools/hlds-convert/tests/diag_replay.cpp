@@ -515,6 +515,7 @@ int main(int argc, char **argv)
         g.player.inv.current = kWeaponCrowbar;
     }
     g.logic.noAutoaim.value = true;
+    bool useWas = false; // (USE held the frame before: a press is its first frame)
     int picked = 0; // (a weapon_<name> asked for, for the next weapons tick)
     LampState lamp;  // (the suit's lamp: "impulse 100" switches it)
     int lampRest = 0;
@@ -600,6 +601,7 @@ int main(int argc, char **argv)
     std::fprintf(out, "#cols mon frame seq t id ox oy oz yaw state ideal sched ti tid cond enemy act seq hp next\n");
     std::fprintf(out, "#cols aiev frame seq t id what name a b\n");
     std::fprintf(out, "#cols rnd frame seq t id kind lo hi value\n");
+    std::fprintf(out, "#cols cam frame seq t name ox oy oz ax ay az wx wy\n");
     // The monsters: each matched to the game's of its class that started
     // nearest (ids in the port's rows are its own actors').
     for (int i = 0; i < g.actors.count; ++i)
@@ -931,7 +933,12 @@ int main(int argc, char **argv)
             const int target = logicFindUsable(g.logic, eye, forward);
             if (target >= 0 && g.logic.records[target].kind == static_cast<std::uint8_t>(LogicKind::Pushable))
                 pulled = target;
+            // The press itself (Game::frame's usePressed): a button, a door,
+            // a lift's call -- what is not pulled is used, once.
+            else if (target >= 0 && !useWas)
+                logicUse(g.logic, g.player, target, -1, kUseSet);
         }
+        useWas = useHeld;
         MoveCommand cmd;
         cmd.forward = span.forward > 0 ? 1 : span.forward < 0 ? -1 : 0;
         cmd.side = span.side > 0 ? 1 : span.side < 0 ? -1 : 0;
@@ -1085,6 +1092,17 @@ int main(int argc, char **argv)
             w[axis] = g.states[r].speed * 360.0 / 65536.0;
             std::fprintf(out, "rot,%d,%d,%.4f,%s,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", f, f, t, names[record.brush].c_str(),
                          a[0], a[1], a[2], w[0], w[1], w[2]);
+        }
+        // The camera looked through (as the game logs a trigger_camera that
+        // is thinking): where, and which way -- its pitch down positive, as
+        // the game's angles have it; its yaw 0..360. No name: "-".
+        if (g.logic.camera >= 0)
+        {
+            const LogicState &cam = g.states[g.logic.camera];
+            const double yaw = (static_cast<std::uint32_t>(cam.travel[0]) >> 16) * 360.0 / 65536.0;
+            const double pitch = -(cam.travel[1] / 65536.0) * 360.0 / 65536.0;
+            std::fprintf(out, "cam,%d,%d,%.4f,-,%.3f,%.3f,%.3f,%.3f,%.3f,0.000,0.000,0.000\n", f, f, t, units(cam.base[0]),
+                         units(cam.base[1]), units(cam.base[2]), pitch, yaw);
         }
         // The weapon in hand (no clip: -1, as the game's).
         if (p.inv.current != kWeaponNone)
