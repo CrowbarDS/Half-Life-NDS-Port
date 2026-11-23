@@ -1518,7 +1518,16 @@ namespace
         g.drain();
         std::fill(g.timesHeard.begin(), g.timesHeard.end(), 0);
         // (Kept where they stand: the zombie's blows push them, as the
-        // game's do, out of the crowbar's reach.)
+        // game's do, out of the crowbar's reach. And within it, at 56: where
+        // the zombie's walk up stopped -- 59 or 66 -- is the chance of its
+        // walk, and from 66 the first blows fall short.)
+        {
+            const fx d[3] = {g.player.origin[0] - actor.pos[0], g.player.origin[1] - actor.pos[1], 0};
+            const fx length = fxLength(d);
+            for (int k = 0; k < 2 && length > 0; ++k)
+                g.player.origin[k] =
+                    actor.pos[k] + static_cast<fx>(static_cast<std::int64_t>(d[k]) * fxFromInt(56) / length);
+        }
         const fx stand[3] = {g.player.origin[0], g.player.origin[1], g.player.origin[2]};
         for (int n = 0; n < 900 && actor.ai < kAiDying; ++n)
         {

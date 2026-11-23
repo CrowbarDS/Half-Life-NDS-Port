@@ -5364,7 +5364,8 @@ namespace hldata
                 if (w.actors != nullptr)
                 {
                     const fx out[3] = {0, 0, -fxFromInt(40)};
-                    Piece &can = pieceAdd(*w.actors, kPieceCan, record.move, out, 1500);
+                    Piece &can = pieceAdd(*w.actors, kPieceCan, record.move, out, 1500,
+                                          lookRoll(*w.actors, record.move, static_cast<std::uint32_t>(state.bits)));
                     can.half = 2;
                     can.colour = static_cast<std::uint16_t>(26 | 6 << 5 | 5 << 10);
                 }

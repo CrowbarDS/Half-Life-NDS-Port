@@ -1411,6 +1411,18 @@ namespace hldata
         return effect;
     }
 
+    /// The chances of something that is only seen (a piece, a speck, a mark's
+    /// turn): from where it is, mixed with the actors' stream as it is now --
+    /// read, never drawn from. How much of that there is differs between a
+    /// DS and a DSi (their room for it); what the monsters draw must not.
+    inline std::uint32_t lookRoll(const ActorWorld &a, const fx *at, std::uint32_t salt = 0)
+    {
+        std::uint32_t roll = a.seed ^ salt;
+        for (int k = 0; k < 3; ++k)
+            roll = (roll ^ static_cast<std::uint32_t>(at[k])) * 0x9E3779B1u;
+        return roll ^ (roll >> 15);
+    }
+
     inline constexpr std::uint8_t kLinkOpen = 0;   ///< nothing in the way
     inline constexpr std::uint8_t kLinkDoor = 1;   ///< a door that is shut, and opens for whoever can open doors
     inline constexpr std::uint8_t kLinkNoWay = 2;  ///< locked, or not broken yet
@@ -1517,8 +1529,7 @@ namespace hldata
         decal.leftMs = life;
         decal.picture = picture;
         decal.half = static_cast<std::uint8_t>(half);
-        a.seed = a.seed * 1664525u + 1013904223u;
-        decal.turn = static_cast<std::uint8_t>(((a.seed >> 12) & 3) | (exact ? kDecalTheMaps : 0));
+        decal.turn = static_cast<std::uint8_t>(((lookRoll(a, at, picture) >> 12) & 3) | (exact ? kDecalTheMaps : 0));
         decal.brush = static_cast<std::int16_t>(brush);
         decal.colour = colour;
         for (int i = 0; i < 3; ++i)
@@ -1531,8 +1542,10 @@ namespace hldata
         return decal;
     }
 
-    /// Throw a small thing. The one with least time left gives way.
-    inline Piece &pieceAdd(ActorWorld &a, std::uint8_t kind, const fx *pos, const fx *velocity, int ms)
+    /// Throw a small thing, turned and turning by `roll` (the thrower's
+    /// chances: lookRoll). The one with least time left gives way.
+    inline Piece &pieceAdd(ActorWorld &a, std::uint8_t kind, const fx *pos, const fx *velocity, int ms,
+                           std::uint32_t roll)
     {
         const int limit = a.pieceLimit < 1 ? 1 : (a.pieceLimit > kMaxPieces ? kMaxPieces : a.pieceLimit);
         Piece *slot = &a.pieces[0];
@@ -1548,9 +1561,9 @@ namespace hldata
         }
         *slot = Piece();
         slot->kind = kind;
-        a.seed = a.seed * 1664525u + 1013904223u;
-        slot->spin = static_cast<std::uint16_t>(a.seed >> 8);
-        slot->spinRate = static_cast<std::int16_t>(static_cast<int>((a.seed >> 12) % 161) - 80);
+        roll = roll * 1664525u + 1013904223u;
+        slot->spin = static_cast<std::uint16_t>(roll >> 8);
+        slot->spinRate = static_cast<std::int16_t>(static_cast<int>((roll >> 12) % 161) - 80);
         for (int i = 0; i < 3; ++i)
         {
             slot->pos[i] = pos[i];
@@ -1566,7 +1579,7 @@ namespace hldata
     /// small triangle in its colour where not.
     inline Piece &shellEject(ActorWorld &a, std::uint8_t kind, const fx *from, const fx *velocity)
     {
-        Piece &shell = pieceAdd(a, kind, from, velocity, 1200);
+        Piece &shell = pieceAdd(a, kind, from, velocity, 1200, lookRoll(a, velocity, lookRoll(a, from, kind)));
         shell.half = 1;
         shell.colour = static_cast<std::uint16_t>(kind == kPieceShotShell ? (24 | 5 << 5 | 4 << 10) : (27 | 21 << 5 | 6 << 10));
         return shell;
@@ -1609,10 +1622,13 @@ namespace hldata
         const int room = a.pieceLimit < 1 ? 1 : (a.pieceLimit > kMaxPieces ? kMaxPieces : a.pieceLimit);
         count = count > 100 ? 100 : count;
         count = count > room ? room : count;
-        auto chance = [&a]() -> std::uint32_t
+        // (Its chances its own: how many pieces there are room for differs
+        // between a DS and a DSi.)
+        std::uint32_t roll = lookRoll(a, maxs, lookRoll(a, mins, static_cast<std::uint32_t>(material)));
+        auto chance = [&roll]() -> std::uint32_t
         {
-            a.seed = a.seed * 1664525u + 1013904223u;
-            return a.seed >> 8;
+            roll = roll * 1664525u + 1013904223u;
+            return roll >> 8;
         };
         // (-100..100: 201 by a multiply.)
         auto either = [&chance]() { return static_cast<int>(((chance() & 0xFFFFu) * 201) >> 16) - 100; };
@@ -1626,7 +1642,8 @@ namespace hldata
                 velocity[k] = (along != nullptr ? along[k] : 0) +
                               fxFromInt(k == 2 ? static_cast<int>(((chance() & 0xFFFFu) * 101) >> 16) : either());
             }
-            Piece &piece = pieceAdd(a, kPieceShard, at, velocity, 2500 + static_cast<int>(((chance() & 0xFFFFu) * 1001) >> 16));
+            Piece &piece = pieceAdd(a, kPieceShard, at, velocity, 2500 + static_cast<int>(((chance() & 0xFFFFu) * 1001) >> 16),
+                                    chance());
             piece.half = static_cast<std::uint8_t>(style.half + chance() % 3);
             piece.alpha = style.alpha;
             piece.weight = style.weight;

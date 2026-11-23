@@ -38,11 +38,12 @@ namespace hldata
 
     /// Specks off the wall at `at`, which faces `normal`: `count` of them,
     /// thrown off it and falling, in `colour`. Their chances from `seed`
-    /// if given, else the actors' own.
+    /// if given, else from where (lookRoll: never the monsters' own).
     inline void specksAdd(ActorWorld &a, const fx *at, const fx *normal, int count, std::uint16_t colour, int speed = 90,
                           std::uint32_t *seed = nullptr)
     {
-        std::uint32_t &roll = seed != nullptr ? *seed : a.seed;
+        std::uint32_t own = lookRoll(a, at, colour);
+        std::uint32_t &roll = seed != nullptr ? *seed : own;
         for (int n = 0; n < count; ++n)
         {
             fx from[3], velocity[3];
@@ -54,7 +55,7 @@ namespace hldata
                 velocity[k] = normal[k] * (speed / 2) + fxFromInt(stray);
             }
             velocity[2] += fxFromInt(speed / 3);
-            Piece &speck = pieceAdd(a, kPieceSpeck, from, velocity, 180 + static_cast<int>((roll >> 9) % 120));
+            Piece &speck = pieceAdd(a, kPieceSpeck, from, velocity, 180 + static_cast<int>((roll >> 9) % 120), roll);
             speck.half = 1;
             speck.colour = colour;
         }

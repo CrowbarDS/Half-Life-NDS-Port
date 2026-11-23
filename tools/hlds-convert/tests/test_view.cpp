@@ -406,9 +406,9 @@ namespace
         // (Kept half as long again, where there is the room for it.)
         {
             const fx still[3] = {0, 0, 0};
-            const int plain = pieceAdd(a, kPieceShell, eye, still, 1200).leftMs;
+            const int plain = pieceAdd(a, kPieceShell, eye, still, 1200, 0).leftMs;
             a.lifePercent = 150;
-            const int longer = pieceAdd(a, kPieceShell, eye, still, 1200).leftMs;
+            const int longer = pieceAdd(a, kPieceShell, eye, still, 1200, 0).leftMs;
             a.lifePercent = 100;
             check(plain == 1200 && longer == 1800, "small things last half as long again where they are kept longer");
         }
@@ -1077,8 +1077,92 @@ void testMarkChoice()
           "a mark is drawn as it is until its last three seconds");
 }
 
+/// What is only seen -- pieces, specks, casings, marks -- has room for more
+/// on a DSi than on a DS: it must take nothing from the monsters' chances,
+/// or the same fight would go another way on the other console.
+void testDebrisLeavesMonstersAlone()
+{
+    const MaterialBook book = parseMaterials("W CRATEWOOD\n");
+    auto make = [&](bool dsi)
+    {
+        BoxRoom room;
+        BrushBox crate;
+        crate.mins[0] = 40;
+        crate.mins[1] = -16;
+        crate.maxs[0] = 72;
+        crate.maxs[1] = 16;
+        crate.maxs[2] = 32;
+        crate.className = "func_breakable";
+        crate.keys = "\"material\" \"1\"\n\"health\" \"10\"\n";
+        crate.textureName = "cratewood";
+        room.brushes.push_back(crate);
+        auto game = std::make_unique<Game>();
+        game->materials = &book;
+        std::string error;
+        if (game->bsp.parse(buildBoxRoom(room), error))
+            finish(*game, nullptr);
+        if (game->ok)
+        {
+            consoleLimits(game->actors, game->logic, dsi);
+            game->actors.seed = 12345;
+        }
+        return game;
+    };
+    auto ds = make(false), dsi = make(true);
+    check(ds->ok && dsi->ok && ds->actors.pieceLimit < dsi->actors.pieceLimit, "a room cooks, for a DS and a DSi");
+    if (!ds->ok || !dsi->ok)
+        return;
+    // A big crate's worth of pieces (more than either has room for), twenty
+    // rounds into one spot and blows beside it (one mark on a DSi, which
+    // keeps them; on a DS some of them new), casings, a can's worth.
+    auto fight = [](Game &g)
+    {
+        ActorWorld &a = g.actors;
+        const fx mins[3] = {fxFromInt(-100), fxFromInt(-100), fxFromInt(0)};
+        const fx maxs[3] = {fxFromInt(100), fxFromInt(100), fxFromInt(100)};
+        const std::uint16_t textures[1] = {0};
+        piecesBurst(a, mins, maxs, 1, textures, 1);
+        const fx eye[3] = {0, 0, fxFromInt(48)};
+        const fx east[3] = {kFxOne, 0, 0};
+        for (int n = 0; n < 20; ++n)
+        {
+            const fx to[3] = {fxFromInt(-400), fxFromInt(n * 3), fxFromInt(48)};
+            fx at[3], normal[3];
+            if (markShot(a, g.move, eye, to, n & 1, at, normal))
+                hldata::detail::bulletImpact(g.logic, at, east, -1, false);
+            const fx toss[3] = {fxFromInt(40), 0, fxFromInt(60)};
+            shellEject(a, n & 1 ? kPieceShell : kPieceShotShell, eye, toss);
+            g.frame();
+        }
+        int draws = 0;
+        for (int n = 0; n < 50; ++n)
+            draws = draws * 31 + aiRandomLong(a, 0, 1000);
+        return draws;
+    };
+    const std::uint32_t before = ds->actors.seed;
+    {
+        ActorWorld &a = ds->actors;
+        const fx at[3] = {0, 0, fxFromInt(8)}, up[3] = {0, 0, kFxOne}, still[3] = {0, 0, 0};
+        const fx mins[3] = {0, 0, 0}, maxs[3] = {fxFromInt(64), fxFromInt(64), fxFromInt(64)};
+        piecesBurst(a, mins, maxs, 0, nullptr, 0);
+        specksAdd(a, at, up, 5, 0x7FFF);
+        pieceAdd(a, kPieceShell, at, still, 1200, 0);
+        shellEject(a, kPieceShell, at, still);
+        decalAdd(a, kDecalShot, at, up, 8, kMarkShot);
+        check(a.seed == before, "pieces, specks, casings and marks draw nothing from the monsters' chances");
+        for (Piece &piece : a.pieces)
+            piece = Piece();
+        for (Decal &decal : a.decals)
+            decal = Decal();
+    }
+    const int onDs = fight(*ds), onDsi = fight(*dsi);
+    check(ds->actors.seed == dsi->actors.seed && onDs == onDsi,
+          "... so a fight goes the same on a DS as on a DSi, which has room for more of them");
+}
+
 int main()
 {
+    testDebrisLeavesMonstersAlone();
     testMarkChoice();
     testSharedSpread();
     testBloodAndSteps();

@@ -445,10 +445,7 @@ namespace hldata
             ActorWorld &a = *w.actors;
             // (Where, mixed with the actors' stream as it is now: read, not
             // drawn from.)
-            std::uint32_t roll = a.seed;
-            for (int k = 0; k < 3; ++k)
-                roll = (roll ^ static_cast<std::uint32_t>(at[k])) * 0x9E3779B1u;
-            roll ^= roll >> 15;
+            std::uint32_t roll = lookRoll(a, at);
             auto next = [&roll]()
             {
                 roll = roll * 1664525u + 1013904223u;
