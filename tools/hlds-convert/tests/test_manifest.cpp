@@ -42,6 +42,7 @@ int main()
     b.levelBytes = 1;
     b.dsFits = false;
     manifest.maps = {a, b};
+    manifest.dsSpareKb = {224, 0};
 
     const std::vector<std::uint8_t> bytes = writeManifest(manifest);
     Manifest back;
@@ -52,6 +53,7 @@ int main()
               back.maps[0].worstVertices == 7846 && back.maps[0].textureCount == 64,
           "map fields");
     check(back.maps[0].dsFits && !back.maps[1].dsFits, "whether a DS has the room for each");
+    check(back.maps[0].dsSpareKb == 224 && back.maps[1].dsSpareKb == 0, "and how much it leaves over (format 8)");
     check(back.find("c1a0") == &back.maps[1] && back.find("nope") == nullptr, "find");
 
     check(back.game == kGameHalfLife && back.title.empty(), "a manifest that names no game is Half-Life's");
@@ -75,6 +77,14 @@ int main()
                   oldBack.format == kManifestVersion,
               "a format 6 manifest still reads, as Half-Life's");
         check(manifestRefusal(oldBytes.data(), oldBytes.size()).empty(), "... and is not refused");
+        Manifest seven = shift;
+        seven.format = 7;
+        const auto sevenBytes = writeManifest(seven);
+        Manifest sevenBack;
+        check(readManifest(sevenBytes.data(), sevenBytes.size(), sevenBack) == ManifestError::Ok &&
+                  sevenBack.title == "Blue Shift" && sevenBack.maps.size() == 2 &&
+                  sevenBack.maps[0].dsSpareKb == 0xFFFF && sevenBack.maps[1].dsSpareKb == 0xFFFF,
+              "a format 7 manifest still reads, its maps' room not known");
         Manifest unknown = manifest;
         unknown.game = kGameCount;
         const auto unknownBytes = writeManifest(unknown);
@@ -167,6 +177,8 @@ int main()
               readManifest(onCard.data(), onCard.size(), back) == ManifestError::Ok,
           "and so is a manifest the DS reader accepts");
     check(back.maps.size() == 1 && back.maps[0].dsFits, "a small map: a DS has the room for it");
+    check(back.dsSpareKb.size() == 1 && back.maps[0].dsSpareKb != 0xFFFF && back.maps[0].dsSpareKb > 0,
+          "... and the manifest says how much it leaves over");
     check(back.maps.size() == 1 && back.maps[0].name == "boxroom" &&
               back.maps[0].worstPolygons == 6 &&
               back.maps[0].archiveBytes == fs::file_size(data / "maps" / "boxroom.npac"),

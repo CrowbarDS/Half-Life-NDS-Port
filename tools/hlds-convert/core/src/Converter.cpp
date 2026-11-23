@@ -2644,6 +2644,13 @@ namespace hlds
                 if (readFile(stageDir() / "maps" / (map.name + ".dsneed"), word, none) && word.size() == 4)
                     std::memcpy(&need, word.data(), 4);
                 map.dsFits = need <= hldata::kDsMapHeap;
+                // (And how much it leaves over, for a DS going online:
+                // HlManifest.hpp's dsSpareKb.)
+                if (need != 0)
+                {
+                    const long spare = (static_cast<long>(hldata::kDsMapHeap) - static_cast<long>(need)) / 1024;
+                    map.dsSpareKb = static_cast<std::uint16_t>(spare < 0 ? 0 : (spare > 0xFFFE ? 0xFFFE : spare));
+                }
             }
             // (What it is sent as to a console with no card, if anything.)
             const fs::path air = dir / "air" / (map.name + ".hgs");
@@ -2667,6 +2674,8 @@ namespace hlds
         std::sort(manifest.maps.begin(), manifest.maps.end(),
                   [](const hldata::ManifestMap &a, const hldata::ManifestMap &b)
                   { return a.name < b.name; });
+        for (const hldata::ManifestMap &map : manifest.maps)
+            manifest.dsSpareKb.push_back(map.dsSpareKb);
         manifest.airBaseBytes.assign(static_cast<std::size_t>(hldata::AirGroup::Count), 0);
         for (int g = 1; g < static_cast<int>(hldata::AirGroup::Count); ++g)
         {

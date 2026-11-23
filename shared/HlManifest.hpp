@@ -31,7 +31,7 @@
 namespace hldata
 {
     inline constexpr char kManifestMagic[4] = {'H', 'L', 'M', 'F'};
-    inline constexpr std::uint16_t kManifestVersion = 7;
+    inline constexpr std::uint16_t kManifestVersion = 8;
     /// The oldest still read: 6, before the game was named (Half-Life's).
     inline constexpr std::uint16_t kManifestMinVersion = 6;
     inline constexpr bool manifestVersionOk(std::uint16_t version)
@@ -91,6 +91,11 @@ namespace hldata
         /// up (HlDsRoom.hpp): a DS offers no game between consoles on a map
         /// it would then not load.
         bool dsFits = true;
+        /// What a DS's heap has left over for it, in KB, before its sounds
+        /// (HlDsRoom.hpp: kDsMapHeap less what the cook reckoned it needs);
+        /// kDsSpareUnknown if not known. Written in the manifest's own list
+        /// (Manifest::dsSpareKb), not here.
+        std::uint16_t dsSpareKb = 0xFFFF;
 
         template <class Ar>
         void serialize(Ar &ar)
@@ -114,20 +119,32 @@ namespace hldata
         /// The format it was written in: read before the payload, which it
         /// decides (version 6 ends before `game`). Not itself written.
         std::uint16_t format = kManifestVersion;
+        /// Each map's ManifestMap::dsSpareKb, in the maps' order (format 8 on;
+        /// empty before): what a DS going online needs to know of a map's
+        /// room (source/net/NetGame.cpp).
+        std::vector<std::uint16_t> dsSpareKb;
 
         template <class Ar>
         void serialize(Ar &ar)
         {
             ar &converterVersion &startMap &maps &airBaseBytes;
             if (format >= 7)
-            {
                 ar &game;
+            if (format >= 8)
+                ar &dsSpareKb;
 #ifndef __NDS__
-                // (The game's name, for the converter and its window: the
-                // console has no use for it, and reads no further.)
+            // (The game's name, for the converter and its window: the console
+            // has no use for it, and reads no further.)
+            if (format >= 7)
                 ar &title;
 #endif
-            }
+        }
+
+        /// dsSpareKb into each map's own (as read).
+        void spreadDsSpare()
+        {
+            for (std::size_t i = 0; i < maps.size(); ++i)
+                maps[i].dsSpareKb = i < dsSpareKb.size() ? dsSpareKb[i] : 0xFFFF;
         }
 
         const ManifestMap *find(const std::string &name) const
@@ -214,6 +231,7 @@ namespace hldata
         ia &out;
         if (out.game >= kGameCount)
             return ManifestError::OtherVersion;
+        out.spreadDsSpare();
         out.format = kManifestVersion; // as it would be written again
         return ManifestError::Ok;
     }

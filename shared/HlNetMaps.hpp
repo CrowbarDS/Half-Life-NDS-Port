@@ -30,6 +30,9 @@ namespace hldata
         /// base, and room to play (HlGuest.hpp's guestPeak, and play; 0: it is
         /// not sent).
         std::uint32_t guestNeed = 0;
+        /// What a DS's heap has left over for it, in KB (HlManifest.hpp's
+        /// ManifestMap::dsSpareKb; 0xFFFF: not known).
+        std::uint16_t dsSpareKb = 0xFFFF;
     };
 
     /// Whether `map` fits a console without the game whose heap reaches

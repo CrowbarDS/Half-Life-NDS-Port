@@ -24,6 +24,7 @@
 #include "render/Camera.hpp"
 #include "net/NetLink.hpp"
 #include "net/NetRelay.hpp"
+#include "net/OnlineDll.hpp"
 #include "HlManifest.hpp"
 #include "HlUi.hpp"
 #include "audio/Sound.hpp"
@@ -282,6 +283,23 @@ namespace hlrt
     void NetGame::connectBegin()
     {
         netrelay::connectBegin();
+        // A DS with the online library loaded (it stays until the game is
+        // turned off): no map it then has not the heap for -- the library
+        // and its IP stack's own, about as much again (OnlineDll.cpp) --
+        // is offered or chosen from here on. (Maps whose room the card does
+        // not say are kept.)
+        const std::size_t online = online::heapBytes();
+        if (online != 0 && !isDSiMode())
+        {
+            std::vector<hldata::NetMapInfo> kept;
+            for (const hldata::NetMapInfo &map : mapInfo_)
+            {
+                if (map.dsSpareKb == 0xFFFF || static_cast<std::size_t>(map.dsSpareKb) * 1024 >= 2 * online)
+                    kept.push_back(map);
+            }
+            if (kept.size() != mapInfo_.size() && !kept.empty())
+                setMaps(std::move(kept));
+        }
     }
 
     int NetGame::connectStep(const char *&step)
