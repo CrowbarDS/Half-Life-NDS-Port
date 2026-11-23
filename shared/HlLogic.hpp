@@ -4185,7 +4185,12 @@ namespace hldata
             const fx middle[3] = {at[0], at[1], at[2] + fxFromInt(36)};
             const std::int64_t ahead = static_cast<std::int64_t>(middle[0] - eye[0]) * player.facingXY[0] +
                                        static_cast<std::int64_t>(middle[1] - eye[1]) * player.facingXY[1];
-            return ahead > 0 && lineClear(*w.world, eye, middle);
+            if (ahead > 0 && lineClear(*w.world, eye, middle))
+                return true;
+            // ... or through a camera being looked through (Blue Shift's
+            // monitors: the walkers seen on them are seen, and are not put
+            // on their marks under the player's eyes).
+            return w.camera >= 0 && w.camera < w.recordCount && lineClear(*w.world, w.states[w.camera].base, middle);
         }
 
         inline void scriptTick(LogicWorld &w, PlayerState &player, int index, int ms)
