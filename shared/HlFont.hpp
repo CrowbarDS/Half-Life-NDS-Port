@@ -99,7 +99,7 @@ namespace hldata
                 return 0;
             return static_cast<int>((tiles[((y >> 3) * (width >> 3) + (x >> 3)) * 8 + (y & 7)] >> ((x & 7) * 4)) & 15);
         }
-        void fill(int x, int y, int w, int h, int colour)
+        [[gnu::noinline]] void fill(int x, int y, int w, int h, int colour)
         {
             int x1 = x + w, y1 = y + h;
             x = x < 0 ? 0 : x;
@@ -200,7 +200,7 @@ namespace hldata
 
     /// How wide `text` is in `font` (its first `count` characters; all of it
     /// if negative).
-    inline int textWidth(const FontView &font, const char *text, int count = -1)
+    [[gnu::noinline]] inline int textWidth(const FontView &font, const char *text, int count = -1)
     {
         int width = 0;
         for (int i = 0; text[i] != '\0' && (count < 0 || i < count); ++i)
@@ -258,7 +258,8 @@ namespace hldata
     }
 
     /// ... with its middle at `cx`.
-    inline void drawTextCentred(Canvas &canvas, const FontView &font, int cx, int y, const char *text, const Ink &ink)
+    [[gnu::noinline]] inline void drawTextCentred(Canvas &canvas, const FontView &font, int cx, int y, const char *text,
+                                                  const Ink &ink)
     {
         drawText(canvas, font, cx - textWidth(font, text) / 2, y, text, ink);
     }
