@@ -108,7 +108,7 @@ Multiplayer has been tested on Nintendo DSi and Nintendo 3DS, and also through D
 
 ### Online
 
-MULTIPLAYER, ONLINE, then HOST ONLINE or JOIN ONLINE plays through the relay server named in `server.ini` on the card. The console joins one of the Wi-Fi connections saved in ONLINE SETTINGS, tried in order, and otherwise one of the console's own saved connections.
+MULTIPLAYER, ONLINE, then HOST ONLINE or JOIN ONLINE plays through the relay server named in `server.ini` on the card. SERVER SETTINGS changes its host and port. The console joins one of the Wi-Fi connections saved in ONLINE SETTINGS, tried in order, and otherwise one of the console's own saved connections.
 
 ONLINE SETTINGS holds three connections: choose a network from those in range (or type its name), then its key and, if needed, a fixed address. COPY FROM CONSOLE takes one of the console's own saved connections. They are kept in `_nds/hl_nds/data/wifi.ini` on the card. **The keys are stored there in plain text**, as typed: anyone with the card can read them.
 

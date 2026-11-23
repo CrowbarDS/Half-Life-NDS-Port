@@ -162,6 +162,7 @@ namespace hlrt
             NetWifiSlot = 29, ///< ... one of them
             NetWifiScan = 30, ///< ... the networks in range, to choose from
             NetWifiConsole = 31, ///< ... the console's own saved ones, to copy
+            NetServer = 32,   ///< SERVER SETTINGS: where the relay is (server.ini)
         };
 
         // A sheet: a page of its own, drawn and touched apart from the rows
@@ -259,9 +260,11 @@ namespace hlrt
         bool wifiPage() const
         {
             return page_ == Page::NetWifi || page_ == Page::NetWifiSlot || page_ == Page::NetWifiScan ||
-                   page_ == Page::NetWifiConsole;
+                   page_ == Page::NetWifiConsole || page_ == Page::NetServer;
         }
         void wifiOpenBody();
+        void serverOpen(); ///< (SERVER SETTINGS, in the overlay: from wifiFireBody)
+        void serverSave();
         Action wifiFire(int id, int row);
         Action wifiFireBody(int id, int row);
         void wifiBack();

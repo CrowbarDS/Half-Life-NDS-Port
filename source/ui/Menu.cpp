@@ -14,11 +14,14 @@
 #include "Global.hpp"
 #include "Guard.hpp"
 #include "Overlay.hpp"
-// (ONLINE SETTINGS' alone: in the front end's overlay, as its pages are.)
+// (ONLINE SETTINGS' and SERVER SETTINGS' alone: in the front end's overlay,
+// as their pages are.)
 #ifndef HLDS_CHILD
 #define HL_WIFI_SLOTS_CODE HL_OVL_CODE(front)
+#define HL_INI_CODE HL_OVL_CODE(front)
 #endif
 #include "HlWifiSlots.hpp"
+#include "HlRelay.hpp"
 #include "Settings.hpp"
 #include "platform/Slot2.hpp"
 #include "audio/Arm7Audio.hpp"
@@ -206,6 +209,9 @@ namespace hlrt
             kNetJoinOnline, ///< ... or look for one
             kNetCancelConnect, ///< CONNECTING's: give up going online
             kNetWifi,          ///< ONLINE's: ONLINE SETTINGS
+            kNetServer,        ///< ... SERVER SETTINGS
+            kServerHost,       ///< SERVER SETTINGS': the relay's name or address
+            kServerPort,
             kWifiSlotRow,      ///< ONLINE SETTINGS': a connection (which, by its row)
             kWifiNetwork,      ///< a connection's: its network
             kWifiKind,         ///< ... what it is protected by (open, WEP, WPA)
@@ -269,6 +275,7 @@ namespace hlrt
         const Row kOnlineRows[] = {{Kind::Button, kNetHostOnline, ui::txt::front::HostOnline},
                                    {Kind::Button, kNetJoinOnline, ui::txt::front::JoinOnline},
                                    {Kind::Button, kNetWifi, ui::txt::wifi::RowSettings},
+                                   {Kind::Button, kNetServer, ui::txt::wifi::RowServer},
                                    {Kind::Button, kBack, ui::txt::front::Back}};
         const Row kConnectingRows[] = {{Kind::Button, kNetCancelConnect, ui::txt::front::Cancel}};
 
@@ -291,6 +298,10 @@ namespace hlrt
             int rowCount = 0;
             char labels[16][48];
             char title[32];
+            // SERVER SETTINGS' (server.ini's host and port)
+            char host[64] = {};
+            int port = 0;
+            bool serverChanged = false;
         };
         WifiPages *wifiState = nullptr;
 #endif
@@ -483,12 +494,13 @@ namespace hlrt
             case 20: count = 2; return kHandRows;
             case 21: count = 3; return kDemoRows;
 #ifndef HLDS_CHILD
-            case 24: count = 4; return kOnlineRows;
+            case 24: count = 5; return kOnlineRows;
             case 25: count = 1; return kConnectingRows;
             case 28:
             case 29:
             case 30:
             case 31:
+            case 32:
                 count = wifiState != nullptr ? wifiState->rowCount : 0;
                 return wifiState != nullptr ? wifiState->rows : kMain;
 #endif
@@ -651,7 +663,8 @@ namespace hlrt
         return page_ == Page::Main || page_ == Page::Title || page_ == Page::Confirm || page_ == Page::Multiplayer ||
                page_ == Page::NetPause || page_ == Page::NewGame || page_ == Page::Hand ||
                page_ == Page::NetDemo || page_ == Page::NetServe || page_ == Page::DemoChoice || page_ == Page::NetOnline ||
-               page_ == Page::NetConnecting || page_ == Page::Game || page_ == Page::NetWifi;
+               page_ == Page::NetConnecting || page_ == Page::Game || page_ == Page::NetWifi ||
+               page_ == Page::NetServer;
     }
 
     /// What of the lobby is on the screen: who is there, what they are
@@ -4562,6 +4575,9 @@ namespace hlrt
             draw();
             break;
         case kNetWifi:
+        case kNetServer:
+        case kServerHost:
+        case kServerPort:
         case kWifiSlotRow:
         case kWifiNetwork:
         case kWifiKind:
@@ -5213,6 +5229,66 @@ namespace hlrt
         return wifiTitleBody();
     }
 
+    // SERVER SETTINGS: the card's server.ini, its host and port, as the
+    // online library reads them (dll/online/: each time it goes online);
+    // written as the page is left, its other lines as they were.
+    HL_OVL_CODE(front) HL_WIFI_NO_TABLES void Menu::serverOpen()
+    {
+        if (wifiState == nullptr)
+        {
+            wifiState = new (std::nothrow) WifiPages();
+            if (wifiState == nullptr)
+                return;
+        }
+        WifiPages &w = *wifiState;
+        w.host[0] = 0;
+        w.port = hldata::kRelayPort;
+        if (std::FILE *file = std::fopen(global.dataPath("server.ini").c_str(), "rb"))
+        {
+            char text[512];
+            const std::size_t size = std::fread(text, 1, sizeof(text), file);
+            std::fclose(file);
+            iniValue(text, size, "host", w.host, sizeof(w.host));
+            w.port = iniNumber(text, size, "port", hldata::kRelayPort, 1, 65535);
+        }
+        w.serverChanged = false;
+        page_ = Page::NetServer;
+        wifiRows();
+        draw();
+    }
+
+    HL_OVL_CODE(front) void Menu::serverSave()
+    {
+        WifiPages &w = *wifiState;
+        const std::string path = global.dataPath("server.ini");
+        char *text = static_cast<char *>(std::malloc(2048));
+        char *out = static_cast<char *>(std::malloc(2048));
+        if (text != nullptr && out != nullptr)
+        {
+            std::size_t size = 0;
+            if (std::FILE *file = std::fopen(path.c_str(), "rb"))
+            {
+                size = std::fread(text, 1, 1024, file);
+                std::fclose(file);
+            }
+            char port[8];
+            std::snprintf(port, sizeof(port), "%d", w.port);
+            int length = iniSet(text, size, "host", w.host, out, 2048);
+            if (length >= 0)
+                length = iniSet(out, static_cast<std::size_t>(length), "port", port, text, 2048);
+            if (length >= 0)
+            {
+                if (std::FILE *file = std::fopen(path.c_str(), "wb"))
+                {
+                    std::fwrite(text, 1, static_cast<std::size_t>(length), file);
+                    std::fclose(file);
+                }
+            }
+        }
+        std::free(text);
+        std::free(out);
+    }
+
     HL_OVL_CODE(front) void Menu::wifiOpenBody()
     {
         if (wifiState == nullptr)
@@ -5245,6 +5321,7 @@ namespace hlrt
         }
         return uiText(page_ == Page::NetWifiScan      ? wtx::TitleScan
                       : page_ == Page::NetWifiConsole ? wtx::TitleConsole
+                      : page_ == Page::NetServer      ? wtx::TitleServer
                                                       : wtx::TitleSettings);
     }
 
@@ -5338,6 +5415,12 @@ namespace hlrt
                 add(security == WifiSecurity::Wpa && !isDSiMode() ? kWifiApDsi : kWifiAp, line);
             }
             add(kWifiTypeName, uiText(wtx::RowTypeName));
+            break;
+        case Page::NetServer:
+            std::snprintf(line, sizeof(line), "%s: %s", uiText(wtx::RowHost), w.host[0] != 0 ? w.host : uiText(wtx::ValueNone));
+            add(kServerHost, line);
+            std::snprintf(line, sizeof(line), "%s: %d", uiText(wtx::RowPort), w.port);
+            add(kServerPort, line);
             break;
         case Page::NetWifiConsole:
             for (int i = 0; i < w.consoleCount; ++i)
@@ -5438,6 +5521,11 @@ namespace hlrt
             wifiOpenBody();
             return Action::None;
         }
+        if (id == kNetServer)
+        {
+            serverOpen();
+            return Action::None;
+        }
         if (wifiState == nullptr)
             return Action::None;
         WifiPages &w = *wifiState;
@@ -5476,6 +5564,44 @@ namespace hlrt
         case kWifiDns1:
             wifiEdit(id);
             return Action::None;
+        case kServerHost:
+        case kServerPort:
+        {
+            std::string text;
+            if (id == kServerHost)
+                text = w.host;
+            else
+            {
+                char number[8];
+                std::snprintf(number, sizeof(number), "%d", w.port);
+                text = number;
+            }
+            if (typeLine(text, id == kServerHost ? sizeof(w.host) - 1 : 5,
+                         uiText(id == kServerHost ? wtx::AskHost : wtx::AskPort)))
+            {
+                if (id == kServerHost)
+                {
+                    std::snprintf(w.host, sizeof(w.host), "%s", text.c_str());
+                    w.serverChanged = true;
+                }
+                else
+                {
+                    long port = text.empty() ? 0 : std::strtol(text.c_str(), nullptr, 10);
+                    for (char c : text)
+                        port = c >= '0' && c <= '9' ? port : 0;
+                    if (port < 1 || port > 65535)
+                    {
+                        wifiRows();
+                        draw();
+                        showReason(uiText(wtx::NotAPort));
+                        return Action::None;
+                    }
+                    w.port = static_cast<int>(port);
+                    w.serverChanged = true;
+                }
+            }
+            break;
+        }
         case kWifiCopy:
             w.consoleCount = Wifi_ReadWfcSlots(w.console, kWifiConsoleSlots);
             if (w.consoleCount == 0)
@@ -5557,6 +5683,15 @@ namespace hlrt
         }
         switch (page_)
         {
+        case Page::NetServer:
+            // SERVER SETTINGS left: what was changed written to server.ini.
+            if (wifiState->serverChanged)
+                serverSave();
+            delete wifiState;
+            wifiState = nullptr;
+            page_ = Page::NetOnline;
+            draw();
+            return;
         case Page::NetWifiScan:
             netlink::powerDown();
             page_ = Page::NetWifiSlot;
@@ -5640,6 +5775,12 @@ namespace hlrt
             const int top = kMainLayout.top + rowCount() * kMainLayout.pitch + 8;
             drawTextCentred(canvas, small, 128, top, uiText(wtx::SettingsTried), inkFor(small, kUiGrey));
             drawTextCentred(canvas, small, 128, top + 12, uiText(wtx::SettingsPlain), inkFor(small, kUiGrey));
+        }
+        else if (page_ == Page::NetServer)
+        {
+            const int top = kMainLayout.top + rowCount() * kMainLayout.pitch + 8;
+            drawTextCentred(canvas, small, 128, top, uiText(wtx::ServerWhere), inkFor(small, kUiGrey));
+            drawTextCentred(canvas, small, 128, top + 12, uiText(wtx::ServerNext), inkFor(small, kUiGrey));
         }
         else if (page_ == Page::NetWifiScan && wifiState != nullptr && wifiState->apCount == 0)
         {

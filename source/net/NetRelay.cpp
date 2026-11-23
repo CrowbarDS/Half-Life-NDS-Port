@@ -40,7 +40,9 @@ namespace hlrt::netrelay
 
     const char *unavailable()
     {
-        if (const OnlineFuncs *f = api())
+        // (Online already: the library's own answer. Else the card's file
+        // as it is now -- SERVER SETTINGS may have just written it.)
+        if (const OnlineFuncs *f = api(); f != nullptr && f->ready())
             return f->unavailable();
         // (The library's own question, asked without it: whether the card
         // says where the relay is.)

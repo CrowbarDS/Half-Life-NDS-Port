@@ -3,8 +3,9 @@
 # (source/ui/Menu.cpp). Before play only.
 @home front
 
-# ONLINE's row.
+# ONLINE's rows.
 RowSettings = ONLINE SETTINGS
+RowServer = SERVER SETTINGS
 # Titles.
 TitleSettings = ONLINE SETTINGS
 TitleSlot = CONNECTION %d
@@ -48,3 +49,12 @@ NotAnAddress = That is not an address (four numbers, dots between)
 NoConsoleSlots = The console has no saved connection
 ScanOnline = Online already: restart the game to scan
 NoScan = The wireless would not start
+# SERVER SETTINGS: where the relay is (the card's server.ini).
+TitleServer = SERVER SETTINGS
+RowHost = Host
+RowPort = Port
+ServerWhere = The relay for online play (server.ini).
+ServerNext = A change counts from the next connection.
+AskHost = SERVER HOST
+AskPort = SERVER PORT
+NotAPort = That is not a port (1 to 65535)

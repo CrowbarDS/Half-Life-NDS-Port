@@ -1354,7 +1354,11 @@ Milestone 11, "levels of detail".
       connections, read from its firmware (`Wifi_ReadWfcSlots`). Going
       online, the library scans for two seconds and joins the first of them
       in range; with none, the console's own (`Wifi_AutoConnect`). Going
-      online is a step a frame (CONNECTING), never a frozen menu.
+      online is a step a frame (CONNECTING), never a frozen menu. SERVER
+      SETTINGS changes `server.ini`'s host and port (`HlIni.hpp`'s `iniSet`:
+      its other lines as they were); the library reads it again each time it
+      goes online. The touch keyboard's #+= key gives every other printable
+      character (`HlLineEdit.hpp`'s `kSymbolTable`), for a key or a name.
     - **The threads.** The stack is a thread of the library's, run only when
       the program yields: `swiWaitForVBlank` halts, so `NetRelay` yields
       each frame. On the ARM7 the wireless runs in the library's own thread

@@ -81,6 +81,25 @@ int main()
               std::strcmp(back[0].key, "pass word 1") == 0 && !back[0].manualIp,
           "keys in any case, WPA2 as WPA, a bad address taken as none");
 
+    // server.ini's lines set (HlIni.hpp's iniSet: SERVER SETTINGS).
+    {
+        const char *ini = "# Where the relay is\nhost = relay.example.org\n[x]\nPort=27500\nother = 1";
+        char out[256];
+        const int length = iniSet(ini, std::strlen(ini), "host", "10.0.0.5", out, sizeof(out));
+        check(length > 0 && std::strcmp(out, "# Where the relay is\nhost = 10.0.0.5\n[x]\nPort=27500\nother = 1") == 0,
+              "a key's line set, every other line as it was");
+        char again[256];
+        iniSet(out, std::strlen(out), "port", "27600", again, sizeof(again));
+        check(std::strstr(again, "port = 27600\n") != nullptr && std::strstr(again, "Port=27500") == nullptr &&
+                  iniNumber(again, std::strlen(again), "port", 0, 1, 65535) == 27600,
+              "... in any case, read back");
+        iniSet("# empty\n", 8, "host", "a.b", out, sizeof(out));
+        check(std::strcmp(out, "# empty\nhost = a.b\n") == 0, "a key no line has: added at the end");
+        iniSet("", 0, "port", "1", out, sizeof(out));
+        check(std::strcmp(out, "port = 1\n") == 0, "... to nothing");
+        check(iniSet(ini, std::strlen(ini), "host", "x", out, 8) == -1, "too little room says so");
+    }
+
     if (g_failures == 0)
         std::printf("test_wifislots: ok\n");
     return g_failures == 0 ? 0 : 1;

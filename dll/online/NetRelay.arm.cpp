@@ -24,6 +24,8 @@
 #include <unistd.h>
 
 #include "Global.hpp"
+// (Its own copies of these: the program's are in its front end's overlay.)
+#define HL_INI_LINKAGE static inline
 #include "HlIni.hpp"
 #include "HlNet.hpp"
 #include "HlRelay.hpp"
@@ -1001,6 +1003,9 @@ namespace hlrt::relay
             phase = Connect::Ready;
             return;
         }
+        // (server.ini read again at each going online: SERVER SETTINGS may
+        // have changed it since.)
+        iniRead = false;
         if (const char *no = unavailable())
         {
             fail(1, no);
