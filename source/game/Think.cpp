@@ -154,14 +154,14 @@ namespace hlrt
         // source/StdHalts.cpp -- and are first made by whichever holds it.)
         comutex_acquire(&thinking);
         frameHolds_ = true;
-        const cothread_t thread = cothread_create_manual(work, nullptr, stack, kStackBytes, 0);
+        const cothread_t thread =
+            cothread_create_priority_manual(work, nullptr, stack, kStackBytes, kWorkerPriority, 0);
         if (thread < 0)
         {
             comutex_release(&thinking);
             frameHolds_ = false;
             return;
         }
-        cothread_set_priority(thread, kWorkerPriority);
         started_ = true;
 #endif
     }

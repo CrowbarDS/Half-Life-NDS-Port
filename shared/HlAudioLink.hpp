@@ -159,14 +159,16 @@ namespace hldata
         volatile std::uint32_t musicDry;  ///< samples the music ran out (the ARM9 behind)
         volatile std::uint32_t musicOver; ///< 1 once the track has all been played
         volatile std::uint32_t sendWrite; ///< samples put into `send`, all told
-        /// (Diagnostic) what the ARM7 is doing: 1 the wireless's update, 2 the
-        /// buttons and touch, 3 the sound's block, 4 the DSi wireless card's
-        /// interrupt, 5 the FIFO's, 0 waiting.
+        /// (Diagnostic) what the ARM7 is doing: 2 the buttons and touch, 3 the
+        /// sound's block, 5 the FIFO's interrupt, 0 waiting or in another
+        /// thread (the wireless's).
         volatile std::uint32_t where;
         /// (Diagnostic) the deepest the ARM7's stacks have been, in bytes:
-        /// its program's, and the one its interrupts run on.
+        /// its program's, the one its interrupts run on, and the wireless
+        /// thread's (DS mode only: a DSi's is on its heap, unpainted).
         volatile std::uint32_t stackUsed;
         volatile std::uint32_t irqStackUsed;
+        volatile std::uint32_t wifiStackUsed;
         // ARM7 writes, channels 1 and 3 read:
         alignas(32) std::int16_t outLeft[kOutRing];
         alignas(32) std::int16_t outRight[kOutRing];

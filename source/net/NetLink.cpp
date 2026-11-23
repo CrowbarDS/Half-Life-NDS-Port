@@ -25,10 +25,6 @@
 //     set again at every join.
 //   - Asking how the association stands is what keeps one going.
 
-// The library's own: what has come from the ARM7 dealt with (frames in and
-// out, the association). Not in its header.
-extern "C" void Wifi_Update(void);
-
 #ifndef HLDS_CHILD
 // The wireless library's own "its IP stack is on", which all of it tests:
 // here, where every console has it, and not in the library's glue to the IP

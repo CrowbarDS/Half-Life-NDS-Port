@@ -260,10 +260,10 @@ void Global::Init(const char *launchedFrom)
     for (std::uint32_t &w : vblankWaiterStack)
         w = kWaiterPaint;
 #endif
-    const cothread_t waiter =
-        cothread_create_manual(vblankWaiter, nullptr, vblankWaiterStack, sizeof(vblankWaiterStack), 0);
-    if (waiter >= 0)
-        cothread_set_priority(waiter, 127);
+    // (Made at its priority: one set afterwards takes effect only once the
+    // thread has run.)
+    cothread_create_priority_manual(vblankWaiter, nullptr, vblankWaiterStack, sizeof(vblankWaiterStack), 127,
+                                    0);
 #ifdef HLDS_PROFILE
     irqSet(IRQ_HBLANK, profiledHblank);
 #else

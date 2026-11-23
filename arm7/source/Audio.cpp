@@ -497,12 +497,13 @@ namespace hlaudio
             l->where = what;
     }
 
-    void stacks(std::uint32_t used, std::uint32_t irqUsed)
+    void stacks(std::uint32_t used, std::uint32_t irqUsed, std::uint32_t wifiUsed)
     {
         if (AudioLink *l = link)
         {
             l->stackUsed = used;
             l->irqStackUsed = irqUsed;
+            l->wifiStackUsed = wifiUsed;
         }
     }
 
@@ -514,6 +515,9 @@ namespace hlaudio
 
     void waitAndRun()
     {
+        // (Halted in the BIOS: the threads above this one, the FIFO's and the
+        // wireless's, cut in at each interrupt, and nothing below needs the
+        // time between blocks.)
         while (pending == 0)
             swiIntrWait(1, IRQ_TIMER0);
         const int ime = enterCriticalSection();

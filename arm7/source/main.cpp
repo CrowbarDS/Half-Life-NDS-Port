@@ -5,6 +5,7 @@
 // one block of shared memory (shared/HlAudioLink.hpp); and, on a 3DS, the
 // shape of its top screen (Rtcom.cpp).
 
+#include <cstddef>
 #include <cstdint>
 
 #include <dswifi7.h>
@@ -16,7 +17,6 @@
 // libnds's tables of what each interrupt calls, by its bit (the
 // dispatcher's: interruptDispatcher.s); not in its headers.
 extern "C" VoidFn irqTable[];
-extern "C" VoidFn irqTableAUX[];
 // The stacks' ends (ds_arm7.ld): the interrupts' from __sp_svc up to
 // __sp_irq_user, the program's from the end of the program's data (__end__),
 // or the heap's above it, up to __sp_usr.
@@ -63,29 +63,34 @@ namespace
         return static_cast<std::uint32_t>((top - low) * 4);
     }
 
+    // The wireless library's thread (dswifi's Wifi_SetThreadConfig): above
+    // this program's loop, which never yields to it (hlaudio::waitAndRun),
+    // and below libnds's FIFO thread (64). Each of its updates is short (a
+    // few packets each way), the work this loop did itself before. Its
+    // stack, in DS mode, among this
+    // program's data: the static frames of its deepest path sum to ~920
+    // bytes (a shared-key authentication's reply). In DSi mode it is on the
+    // heap, which is in the DSi's own memory there, with room for the WPA
+    // handshake's (~1,040 bytes, and the key's derivation besides).
+    constexpr int kWifiPriority = 10;
+    constexpr std::size_t kWifiStackDs = 1536;
+    constexpr std::size_t kWifiStackDsi = 3072;
+    alignas(8) std::uint32_t wifiStack[kWifiStackDs / 4];
+
     void measureStacks()
     {
         hlaudio::stacks(depth(stackFloor(), reinterpret_cast<const std::uint32_t *>(__sp_usr)),
                         depth(reinterpret_cast<const std::uint32_t *>(__sp_svc),
-                              reinterpret_cast<const std::uint32_t *>(__sp_irq_user)));
+                              reinterpret_cast<const std::uint32_t *>(__sp_irq_user)),
+                        isDSiMode() ? 0 : depth(wifiStack, wifiStack + kWifiStackDs / 4));
     }
 
     // (Diagnostic) what the ARM7 is in, for the ARM9 to say if it stops
     // (HlAudioLink.hpp's where): each interrupt marked as it runs, and what
-    // it broke into marked again as it ends. The DSi's wireless card's
-    // interrupt, and the FIFO's, are the libraries': called through ours.
-    constexpr int kAuxWifiCard = 11; ///< (dswifi's card.twl.c: IRQ_WIFI_SDIO_CARDIRQ)
+    // it broke into marked again as it ends. The FIFO's is libnds's: called
+    // through ours.
     constexpr int kFifoNotEmpty = 18;
-    volatile VoidFn wifiCardIrq = nullptr, fifoIrq = nullptr;
-
-    void wifiCardMarked()
-    {
-        const unsigned was = hlaudio::marked();
-        hlaudio::mark(4);
-        if (VoidFn call = wifiCardIrq)
-            call();
-        hlaudio::mark(was);
-    }
+    volatile VoidFn fifoIrq = nullptr;
 
     void fifoMarked()
     {
@@ -96,16 +101,10 @@ namespace
         hlaudio::mark(was);
     }
 
-    /// Whatever the libraries have put in those places since, called
-    /// through the marking ones.
+    /// Whatever libnds has put in that place since, called through the
+    /// marking one.
     void markHandlers()
     {
-        const VoidFn card = irqTableAUX[kAuxWifiCard];
-        if (card != nullptr && card != wifiCardMarked)
-        {
-            wifiCardIrq = card;
-            irqTableAUX[kAuxWifiCard] = wifiCardMarked;
-        }
         const VoidFn fifo = irqTable[kFifoNotEmpty];
         if (fifo != nullptr && fifo != fifoMarked)
         {
@@ -119,8 +118,8 @@ namespace
         exitLoop = true;
     }
 
-    // The buttons and the touch screen, and the wireless's update: due at
-    // each VBlank, done by the loop below -- not in the interrupt. libnds's
+    // The buttons and the touch screen: due at each VBlank, done by the loop
+    // below -- not in the interrupt. libnds's
     // FIFO messages are answered in a thread of their own, with interrupts
     // on: the codec, the power chip and the firmware written or read there,
     // over the SPI bus the touch screen is read on, and the thread's stack
@@ -144,8 +143,6 @@ namespace
         const int ime = enterCriticalSection();
         inputGetAndSend();
         leaveCriticalSection(ime);
-        hlaudio::mark(1);
-        Wifi_Update();
         hlaudio::mark(was);
     }
 } // namespace
@@ -169,13 +166,20 @@ int main()
     irqInit();
     fifoInit();
 
-    // The wireless from this loop, not from interrupts nor libnds's FIFO
-    // thread: on a DSi (online play) from a timer every millisecond, its
-    // card's interrupt and the FIFO's, a game sending many packets kept one
+    // The wireless in a thread of its own, never from an interrupt: on a
+    // DSi (online play) from a timer every millisecond, its card's
+    // interrupt and the FIFO's, a game sending many packets kept one
     // of them always due again, and the sound, the buttons and the touch
-    // screen stopped for good; in both modes, the FIFO's handlers run on a
-    // stack too small for the library's work (dswifi's Wifi_LoopUpdate).
-    Wifi_SetUpdateFromLoop(true);
+    // screen stopped for good. Its thread polls the card instead, woken
+    // after each sound block (Wifi_Poll, below).
+    if (isDSiMode())
+        Wifi_SetThreadConfig(kWifiPriority, nullptr, kWifiStackDsi);
+    else
+    {
+        for (std::uint32_t &w : wifiStack)
+            w = kStackPaint;
+        Wifi_SetThreadConfig(kWifiPriority, wifiStack, sizeof(wifiStack));
+    }
     installWifiFIFO();
     // (libnds's own sound messages stay: the DSi's output rate and mix
     // ratio, and the sound capture the DSi's DSP takes its echo from, are
@@ -192,7 +196,7 @@ int main()
 
     setPowerButtonCB(powerButton);
     // (Timer 3: the clock. The sound keeps time by timers 0 and 1; timer 2
-    // is the DSi wireless's, its update every millisecond.)
+    // is free -- the DSi wireless's timer is no more.)
     initClockIRQTimer(3);
     irqSet(IRQ_VBLANK, vblankHandler);
     irqEnable(IRQ_VBLANK);
@@ -206,14 +210,9 @@ int main()
         vblankWork();
         if (isDSiMode())
             markHandlers();
-        {
-            // (What the ARM9 asked of the wireless; on a DSi, a few packets
-            // each way, every block: interrupts are taken meanwhile.)
-            const unsigned was = hlaudio::marked();
-            hlaudio::mark(1);
-            Wifi_LoopUpdate();
-            hlaudio::mark(was);
-        }
+        // (On a DSi, a few packets each way, every block: the wireless's
+        // thread, woken, cuts in for them.)
+        Wifi_Poll();
         if (++blocks % 8 == 0)
         {
             const std::uint16_t mask = KEY_SELECT | KEY_START | KEY_L | KEY_R;

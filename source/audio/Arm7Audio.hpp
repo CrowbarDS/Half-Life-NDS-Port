@@ -106,6 +106,7 @@ namespace hlrt
         std::uint32_t where() const { return link_ != nullptr ? link_->where : 0; }
         std::uint32_t stackUsed() const { return link_ != nullptr ? link_->stackUsed : 0; }
         std::uint32_t irqStackUsed() const { return link_ != nullptr ? link_->irqStackUsed : 0; }
+        std::uint32_t wifiStackUsed() const { return link_ != nullptr ? link_->wifiStackUsed : 0; }
 
         /// A DSi's speakers (DSi games only, run as one): whether there are
         /// any; their rate in kHz (32 or 47, changed only while nothing is
