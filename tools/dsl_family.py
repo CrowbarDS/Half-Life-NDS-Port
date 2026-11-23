@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A family of the game (source/game/FamilyApi.hpp) made ready to load.
 
-  dsl_family.py PROGRAM.elf FULL.dsl OUT.dsl
+  dsl_family.py [--api NAME] PROGRAM.elf FULL.dsl OUT.dsl
   dsl_family.py --self-test
 
 A family is linked with the program's ELF taken first (build.py:
@@ -37,6 +37,8 @@ import program_id  # noqa: E402
 from dsl_strip import Dsl, MAIN_BINARY, MOVED, PUBLIC, PROGBITS  # noqa: E402
 
 EXPORTS = ('GetFamilyAPI', 'hlFamilyProgramId')
+# R_ARM_TLS_GD32, _LDM32, _LDO32, _IE32, _LE32.
+TLS_RELOCS = (104, 105, 106, 107, 108)
 ID_SYMBOL = 'hlFamilyProgramId'
 # A program's addresses: ITCM, main RAM, DTCM (and their mirrors).
 PROGRAM_LOW, PROGRAM_HIGH = 0x01000000, 0x03000000
@@ -82,6 +84,12 @@ def fix(full, regions=()):
     for offset, info in full.relocs:
         kind, sym = info & 0xFF, info >> 8
         name, value, _ = full.symbols[sym]
+        if kind in TLS_RELOCS:
+            # (The link writes an offset from the library's own thread data,
+            # which it has none of: errno, say, would land anywhere.)
+            problems.append('%s is thread-local storage (relocation %d): a library loaded at run time '
+                            'cannot reach a thread\'s own' % (name, kind))
+            continue
         if programs(value):
             if not PROGRAM_LOW <= value < PROGRAM_HIGH:
                 problems.append('%s (%#x): neither the library\'s nor the program\'s' % (name, value))
@@ -230,6 +238,12 @@ def main(argv):
             print('dsl_family: ' + f)
         print('dsl_family: self-test %s' % ('FAILED' if failed else 'passed'))
         return 1 if failed else 0
+    global EXPORTS
+    if len(argv) >= 3 and argv[1] == '--api':
+        # (A library of the program's that is not a family -- online play's,
+        # source/net/OnlineApi.hpp -- by its own entry.)
+        EXPORTS = (argv[2], ID_SYMBOL)
+        argv = argv[:1] + argv[3:]
     if len(argv) != 4:
         print(__doc__)
         return 2

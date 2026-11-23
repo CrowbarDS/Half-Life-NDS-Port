@@ -143,6 +143,8 @@ namespace hlrt
         /// The animated title drawn with the picture, or not (a lobby's
         /// top screen has other things to say).
         void setMenuLogo(bool on) { menuLogoOn_ = on; }
+        /// Whether the title screen's top is up (showMenu, not yet hideMenu).
+        bool menuShowing() const { return menuMaterial_ != nullptr; }
 
     private:
         bool atlas_ = false; ///< the display's pictures are read (HudDraw.arm.cpp)

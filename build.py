@@ -113,13 +113,6 @@ DTCM_DATA_SIZE = 4096
 IRQ_STACK_ARM9 = 512
 IRQ_STACK_ARM7 = 1536
 
-# The wireless library with its IP stack, for online play (a DSi's only):
-# its Internet half moved to the DSi-only part of the program, which a DS
-# never loads (tools/wifi_twl.py). Made here, before the build is written.
-import wifi_twl
-WIFI_TWL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build', 'wifi_twl')
-wifi_twl.make(os.path.join(os.path.expandvars('${BLOCKSDSEXT}'), 'dswifi_dl'), WIFI_TWL_DIR)
-
 # OVERLAYS (tools/ovl.py, source/Overlay.hpp): code and data that share a
 # region of main memory, a phase at a time, read from the ROM when the phase
 # begins. Each region is as large as its largest overlay, so the program
@@ -197,13 +190,13 @@ arm9 = Arm9Binary(
     # stock one). Its headers have the stock names (dswifi9.h), so
     # ${BLOCKSDS}/libs/dswifi must NOT be among the libdirs as well: which
     # set of headers came first would decide the build. It is the build
-    # with the IP stack (online play), as wifi_twl made it.
-    libs=['NEA', 'nds9', 'dswifi_dl9_twl'],
+    # without the IP stack in it (dswifi_lwip.h): the online library (below)
+    # brings the stack, and hands it over as it is loaded.
+    libs=['NEA', 'nds9', 'dswifi_dl9_hook'],
     libdirs=[
         '${BLOCKSDS}/libs/libnds',
         '${BLOCKSDSEXT}/dswifi_dl',
         '${BLOCKSDSEXT}/nitro-engine-advanced',
-        WIFI_TWL_DIR,
     ],
     # -D_LITTLE_ENDIAN + force-including yas's endian config first locks yas to
     # little-endian in every TU *before* any <nds.h> can define _BIG_ENDIAN
@@ -229,6 +222,10 @@ arm9 = Arm9Binary(
         # (A heap trace's: operator new says whose its block is.)
         (['-Wl,--wrap=_Znwj', '-Wl,--wrap=_Znaj'] if trace else []) +
         ['-Wl,--undefined=calloc'] +
+        # What the online library (below) calls of the program that nothing
+        # of the program's own calls: kept, or it would not load.
+        ['-Wl,--undefined=' + f for f in ('Wifi_SetLwipOps', 'dswifi_set_errno', 'Wifi_Random', 'atoi', 'socket_fn_fcntl',
+                                          'socket_fn_ioctl', 'timerStart', 'timerStop')] +
         # (A release's mark, for tools/arm9-report.sh: source/Guard.arm.cpp.)
         ['-Wl,--undefined=hlReleaseBuild'] +
         # printf and scanf without floats or 64-bit numbers (picolibc's
@@ -301,6 +298,37 @@ for family in ('boss', 'military', 'net', 'shift'):
     lib.generate_dsl()
     families.append(lib)
 
+# ONLINE PLAY, a library of its own too (source/net/OnlineApi.hpp): the
+# relay's client (dll/online/) and the IP stack it talks through -- dswifi's,
+# built apart (libdswifi_dl9_lwip.a: UDP over IPv4, Thumb, every call out by
+# its address) -- loaded the first time the console goes online
+# (source/net/OnlineDll.cpp), on a DS as on a DSi. Linked against the
+# program's ELF as a family is, and made ready to load the same way
+# (tools/dsl_family.py), its entry GetOnlineAPI.
+online = Arm9DynamicLibrary(
+    name='online',
+    main_binary=arm9,
+    sourcedirs=['dll/online'],
+    includedirs=['source', 'shared', 'thirdparty', OVL_DIR],
+    defines=['__NDS__', '__BLOCKSDS__', 'ARM9', 'HL_HW_MATH', 'HL_STATIC_GAME', 'HL_FAMILIES_APART',
+             'HL_NET_APART'] + profile + guard,
+    libs=['dswifi_dl9_lwip'],
+    libdirs=[
+        '${BLOCKSDS}/libs/libnds',
+        '${BLOCKSDSEXT}/dswifi_dl',
+        '${BLOCKSDSEXT}/nitro-engine-advanced',
+    ],
+    cxxflags='-Wall -Werror=stack-usage=4096 -O2 -std=gnu++26 -fno-threadsafe-statics -mlong-calls -D_LITTLE_ENDIAN '
+             '-include yas/detail/config/endian.hpp',
+    ldflags_first='-Wl,--just-symbols=' + arm9.elf_path,
+    link_deps=[arm9.elf_path],
+    ldflags=' '.join(['-Wl,--wrap=' + f for f in FAMILY_WRAPS] +
+                     ['-Wl,--gc-sections', '-Wl,-u,GetOnlineAPI', '-Wl,-u,hlFamilyProgramId']),
+    post_tool=('python3 tools/dsl_family.py --api GetOnlineAPI ' + arm9.elf_path,
+               ['tools/dsl_family.py', 'tools/dsl_strip.py', 'tools/program_id.py', arm9.elf_path]),
+)
+online.generate_dsl()
+
 # The other processor's program: the game's own (arm7/source) -- what
 # BlocksDS's default does, with the game's own sound core. It links
 # the wireless library of the same build as the ARM9's: the two share the
@@ -323,7 +351,7 @@ arm7.generate_elf()
 
 
 nitrofs = NitroFS()
-for lib in families:
+for lib in families + [online]:
     nitrofs.add_arm9_dsl(lib)
 # The program's overlays (above), read from here as each phase begins
 # (source/Overlay.arm.cpp) -- unless they are in the ROM's own table.
@@ -347,7 +375,7 @@ if os.path.isfile(CHILD_ROM):
 nitrofs.generate_image()
 
 nds = NdsRom(
-    binaries=[arm9, arm7] + families + [nitrofs],
+    binaries=[arm9, arm7] + families + [online, nitrofs],
     nds_path='half-life-nds-port.nds',
     game_icon="Logo.bmp",
     game_title='HALF-LIFE DS',

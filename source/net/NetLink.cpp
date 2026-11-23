@@ -25,16 +25,6 @@
 //     set again at every join.
 //   - Asking how the association stands is what keeps one going.
 
-#ifndef HLDS_CHILD
-// The wireless library's own "its IP stack is on", which all of it tests:
-// here, where every console has it, and not in the library's glue to the IP
-// stack, which is the DSi's alone (tools/wifi_twl.py makes the library's
-// weak). A DS never turns it on.
-extern "C" {
-bool wifi_lwip_enabled = false;
-}
-#endif
-
 namespace hlrt::netlink
 {
     namespace
