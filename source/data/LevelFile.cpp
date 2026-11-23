@@ -97,7 +97,7 @@ namespace hlrt
 #endif
 
 #ifndef HLDS_CHILD
-    std::size_t Level::keepInPak()
+    std::size_t Level::keepInPak(std::uint16_t cutFlags)
     {
         using hldata::Section;
         if (slot2::pakBytes() == 0 || block_ == nullptr)
@@ -117,6 +117,8 @@ namespace hlrt
             const hldata::SectionDir &d = dir[static_cast<int>(s)];
             if (d.size < 256)
                 continue; // (not worth it)
+            if (s == Section::LightPatch && (cutFlags & hldata::kDsCutGx) != 0)
+                continue; // (let go by the cut)
             std::uint8_t *at = slot2::take(d.size);
             if (at == nullptr)
                 break;
@@ -167,24 +169,31 @@ namespace hlrt
     /// back to null.)
     static const std::uint8_t kOnCard[4] = {};
 
+    bool Level::dsCutHeader(NEA_NpacMember &member, hldata::DsCutHeader &cut) const
+    {
+        return !global.isDSi && block_ != nullptr && view.header != nullptr &&
+               NEA_NpacMemberFind(global.mapPath(hldata::kDsCutMember).c_str(), &member) == 0 &&
+               member.method == NEA_NPAC_STORED && member.size >= sizeof(cut) &&
+               member.size <= sizeof(cut) + (hldata::kDsGxMostPages + 1) * 4u &&
+               cardReadMember(member, 0, &cut, sizeof(cut)) && member.size == hldata::dsCutBytes(cut) &&
+               cut.levelCrc == view.header->crc32;
+    }
+
     bool Level::applyDsCut()
     {
-        // A DS, with no Pak to keep what is read least: a map the converter
-        // found too big for its heap says what it may leave out (HlDsCut.hpp).
-        if (global.isDSi || slot2::pakBytes() != 0 || block_ == nullptr)
-            return false;
+        // A DS: a map the converter found too big for its heap says what it
+        // may leave out (HlDsCut.hpp). With a Pak as well: the converter
+        // reckoned without one, and what the Pak takes besides is room over.
         NEA_NpacMember member;
         alignas(4) hldata::DsCutHeader cut;
-        if (NEA_NpacMemberFind(global.mapPath(hldata::kDsCutMember).c_str(), &member) != 0 ||
-            member.method != NEA_NPAC_STORED || member.size < sizeof(cut) ||
-            member.size > sizeof(cut) + (hldata::kDsGxMostPages + 1) * 4u ||
-            !cardReadMember(member, 0, &cut, sizeof(cut)) || member.size != hldata::dsCutBytes(cut) ||
-            cut.levelCrc != view.header->crc32)
+        if (!dsCutHeader(member, cut))
             return false;
         auto *dir = reinterpret_cast<hldata::SectionDir *>(block_ + sizeof(hldata::LevelHeader));
         const hldata::SectionDir &vis = dir[static_cast<int>(hldata::Section::Vis)];
         const hldata::SectionDir &gx = dir[static_cast<int>(hldata::Section::GxStream)];
+        // (The visibility the Pak has: read from there, not the card.)
         const bool wantVis = (cut.flags & hldata::kDsCutVis) != 0 && vis.size == cut.visBytes &&
+                             inPak_[static_cast<int>(hldata::Section::Vis)] == nullptr &&
                              NEA_NpacMemberFind(global.mapPath(hldata::kDsVisMember).c_str(), &visMember_) == 0 &&
                              visMember_.method == NEA_NPAC_STORED && visMember_.size == vis.size;
         const bool wantGx = (cut.flags & hldata::kDsCutGx) != 0 && gx.count == cut.gxWords &&
@@ -213,10 +222,13 @@ namespace hlrt
             inPak_[static_cast<int>(hldata::Section::Vis)] = kOnCard;
         if (gxOut)
             inPak_[static_cast<int>(hldata::Section::GxStream)] = kOnCard;
-        if ((cut.flags & hldata::kDsCutLightPatch) != 0 || gxOut)
+        // (Those the Pak has are kept, unless the geometry is paged.)
+        const int patchesAt = static_cast<int>(hldata::Section::LightPatch);
+        if (((cut.flags & hldata::kDsCutLightPatch) != 0 && inPak_[patchesAt] == nullptr) || gxOut)
         {
-            hldata::SectionDir &patches = dir[static_cast<int>(hldata::Section::LightPatch)];
+            hldata::SectionDir &patches = dir[patchesAt];
             patches.count = patches.size = 0;
+            inPak_[patchesAt] = nullptr;
             cutFlags_ |= hldata::kDsCutLightPatch;
         }
         if (!wantVis && !gxOut && cutFlags_ == 0)
@@ -492,17 +504,21 @@ namespace hlrt
         // An Expansion Pak: what is read least, there, and the room it took
         // here given back. (Looked at again where it now is: the checksum
         // was of the file as read.)
-        if ((pakBytes_ = keepInPak()) != 0 &&
+        NEA_NpacMember cutMember;
+        alignas(4) hldata::DsCutHeader cut{};
+        const std::uint16_t cutFlags =
+            slot2::pakBytes() != 0 && dsCutHeader(cutMember, cut) ? cut.flags : std::uint16_t(0);
+        if ((pakBytes_ = keepInPak(cutFlags)) != 0 &&
             view.open(block_, size, false, inPak_) != hldata::LevelError::Ok)
         {
             unload();
             error = "Map file is damaged. Convert again.";
             return false;
         }
-        // A DS short of room: what it reads from the card instead, or goes
-        // without, out of the block. (The size the header says is the file's:
-        // the view is told it, not the block's.)
-        if (pakBytes_ == 0 && applyDsCut())
+        // A DS short of room, Pak or not: what it reads from the card
+        // instead, or goes without, out of the block. (The size the header
+        // says is the file's: the view is told it, not the block's.)
+        if (applyDsCut())
         {
             if (!dsCutReady())
             {

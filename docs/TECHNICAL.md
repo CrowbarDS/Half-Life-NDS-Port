@@ -1269,7 +1269,10 @@ Milestone 11, "levels of detail".
   The sounds get what is left, and the console loads them until that runs
   out. Steps 3, 4, 6 and 7 are said in `ds.cut` beside the level. A DSi
   loads the level whole and never reads them, and reads its own whole models
-  (`.dsi.hmd`); a DS with an Expansion Pak loads the level whole. A console
+  (`.dsi.hmd`). A DS with an Expansion Pak puts the level's sections read
+  least in the Pak (the visibility among them, read from there rather than
+  the card; the light patches too, unless the geometry is paged) and takes
+  the rest of the cut as a DS without one: it never has less room. A console
   sent the map by Download Play gets whole models. The room line in
   perf.txt gives the heap after each part of the load, the models refused
   (MISSING) and what the key cache holds; the play line the clips read: to

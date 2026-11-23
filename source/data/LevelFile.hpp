@@ -14,6 +14,7 @@
 
 #include <string>
 
+#include "HlDsCut.hpp"
 #include "HlLevelReader.hpp"
 
 #ifndef HLDS_CHILD
@@ -56,17 +57,23 @@ namespace hlrt
 #ifndef HLDS_CHILD
         /// With an Expansion Pak: the sections read least -- a few times a
         /// second at most -- copied into it and the rest of the block packed
-        /// together and shrunk, its tail given back to the heap. How many
-        /// bytes went (0 with no Pak).
-        std::size_t keepInPak();
+        /// together and shrunk, its tail given back to the heap; not the
+        /// light patches when the cut (`cutFlags`: dsCutHeader's) pages the
+        /// geometry, which lets them go. How many bytes went (0 with no Pak).
+        std::size_t keepInPak(std::uint16_t cutFlags);
         /// Where each section went in the Pak, or null.
         const std::uint8_t *inPak_[hldata::kSectionCount] = {};
         /// The sections marked away in inPak_ gone, the rest packed together
         /// and the block shrunk.
         void packTogether();
-        /// A DS without a Pak, on a map too big for its heap (HlDsCut.hpp):
-        /// what the converter said it may leave out, out. False if nothing
-        /// is (a DSi, a Pak, a map that fits, or a cut not of this level).
+        /// A DS's cut of this level (ds.cut): its header and member, false
+        /// if there is none (a map that fits) or it is not of this level.
+        bool dsCutHeader(NEA_NpacMember &member, hldata::DsCutHeader &cut) const;
+        /// A DS, on a map too big for its heap (HlDsCut.hpp): what the
+        /// converter said it may leave out, out -- with a Pak too, which
+        /// keeps instead what it took (the visibility, the light patches
+        /// while the geometry stays whole). False if nothing is (a DSi, a
+        /// map that fits, or a cut not of this level).
         bool applyDsCut();
         /// Whether what applyDsCut set out to read from the card has its room.
         bool dsCutReady() const;
