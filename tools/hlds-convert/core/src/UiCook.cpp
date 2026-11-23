@@ -506,8 +506,15 @@ namespace hlds
 
     std::vector<std::uint8_t> titlePicture(const SprFile &hud)
     {
-        // (Where the two halves are, the game's sprites/hud.txt says.)
+        // (Where the two halves are, the game's sprites/hud.txt says:
+        // "HALF-" is 128 wide at (0, 48), "LIFE" 116 at (128, 48).)
         const RgbaImage sheet = hud.frames.empty() ? RgbaImage() : spriteFrameImage(hud, 0, false);
+        return titlePicture({TitlePiece{&sheet, 0, 48, 128, 16}, TitlePiece{&sheet, 128, 48, 116, 16}}, 1);
+    }
+
+    std::vector<std::uint8_t> titlePicture(const std::vector<TitlePiece> &pieces, int shrink)
+    {
+        shrink = shrink < 1 ? 1 : shrink;
         const int width = hldata::kTitleWidth, height = hldata::kTitleHeight;
         const int words = hldata::iconRowWords(width);
         std::vector<std::uint8_t> out(sizeof(hldata::IconsHeader) + static_cast<std::size_t>(height) * words * 4, 0);
@@ -518,13 +525,39 @@ namespace hlds
         header.width = static_cast<std::uint8_t>(width);
         header.height = static_cast<std::uint8_t>(height);
         std::memcpy(out.data(), &header, sizeof(header));
+        // How solid each pixel is: the pieces' alpha, side by side from the
+        // left, `shrink` by `shrink` of theirs to one.
+        const auto alphaAt = [&](int x, int y) -> int
+        {
+            int left = 0;
+            for (const TitlePiece &piece : pieces)
+            {
+                const int w = piece.w / shrink;
+                if (x >= left + w)
+                {
+                    left += w;
+                    continue;
+                }
+                if (piece.sheet == nullptr || y >= piece.h / shrink)
+                    return 0;
+                int sum = 0;
+                for (int dy = 0; dy < shrink; ++dy)
+                {
+                    for (int dx = 0; dx < shrink; ++dx)
+                    {
+                        const int px = piece.x + (x - left) * shrink + dx, py = piece.y + y * shrink + dy;
+                        sum += px < piece.sheet->width && py < piece.sheet->height ? piece.sheet->at(px, py)[3] : 0;
+                    }
+                }
+                return sum / (shrink * shrink);
+            }
+            return 0;
+        };
         for (int y = 0; y < height; ++y)
         {
             for (int x = 0; x < width; ++x)
             {
-                // "HALF-" is 128 wide at (0, 48), "LIFE" 116 at (128, 48).
-                const int px = x, py = 48 + y;
-                const int value = px < sheet.width && py < sheet.height ? sheet.at(px, py)[3] : 0;
+                const int value = alphaAt(x, y);
                 const std::uint32_t level = value < 40 ? 0u : (value < 100 ? 1u : (value < 170 ? 2u : 3u));
                 const std::size_t at = sizeof(header) + (static_cast<std::size_t>(y) * words + (x >> 4)) * 4;
                 std::uint32_t word;

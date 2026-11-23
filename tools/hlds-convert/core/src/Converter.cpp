@@ -16,6 +16,7 @@
 #include <cstring>
 #include <algorithm>
 #include <map>
+#include <sstream>
 #include <mutex>
 #include <thread>
 #include <cctype>
@@ -349,6 +350,82 @@ namespace hlds
                     return found;
             }
             return findNoCase(options.gameDir, relative);
+        }
+        /// The game's title (Converter::convertUi says which pieces), into
+        /// `out`.
+        bool titleFromHud(const ConvertOptions &options, std::vector<std::uint8_t> &out, std::string &why)
+        {
+            struct Row
+            {
+                std::string sprite;
+                int x = 0, y = 0, w = 0, h = 0;
+            };
+            // name -> resolution -> its row, from the game's hud.txt (an
+            // expansion's own, else Half-Life's).
+            std::map<std::string, std::map<int, Row>> rows;
+            {
+                std::vector<std::uint8_t> text;
+                std::string ignored;
+                const fs::path file = findGameFile(options, "sprites/hud.txt");
+                if (!file.empty() && readFile(file, text, ignored))
+                {
+                    std::istringstream in(std::string(text.begin(), text.end()));
+                    std::string line;
+                    while (std::getline(in, line))
+                    {
+                        std::istringstream words(line);
+                        std::string name;
+                        int resolution = 0;
+                        Row row;
+                        if (words >> name >> resolution >> row.sprite >> row.x >> row.y >> row.w >> row.h)
+                            rows[name][resolution] = row;
+                    }
+                }
+            }
+            const bool opposing = rows.count("title_opposing") != 0 && rows.count("title_force") != 0;
+            const char *first = opposing ? "title_opposing" : "title_half";
+            const char *second = opposing ? "title_force" : "title_life";
+            // (Without a hud.txt that says: Half-Life's, where it always is.)
+            Row a{"320hud3", 0, 48, 128, 16}, b{"320hud3", 128, 48, 116, 16};
+            int shrink = 1;
+            const auto has = [&](const char *name, int resolution)
+            { return rows.count(name) != 0 && rows[name].count(resolution) != 0; };
+            if (has(first, 320) && has(second, 320))
+            {
+                a = rows[first][320];
+                b = rows[second][320];
+            }
+            // Blue Shift's case: its 320 sheet is a copy of Half-Life's, its
+            // logo only in the 640 one.
+            const auto sameAsBase = [&](const std::string &sprite)
+            {
+                const fs::path base = options.baseDir.empty() ? baseFolder(options.gameDir) : options.baseDir;
+                const fs::path own = findOwnFile(options, "sprites/" + sprite + ".spr");
+                if (base.empty() || own.empty())
+                    return own.empty(); // (none of its own: Half-Life's)
+                const fs::path theirs = findNoCase(base, "sprites/" + sprite + ".spr");
+                std::vector<std::uint8_t> x, y;
+                std::string ignored;
+                return !theirs.empty() && readFile(own, x, ignored) && readFile(theirs, y, ignored) && x == y;
+            };
+            if (has(first, 640) && has(second, 640) && sameAsBase(a.sprite) && sameAsBase(b.sprite) &&
+                !sameAsBase(rows[first][640].sprite))
+            {
+                a = rows[first][640];
+                b = rows[second][640];
+                shrink = 2;
+            }
+            SprFile sheetA, sheetB;
+            const fs::path fileA = findGameFile(options, "sprites/" + a.sprite + ".spr");
+            const fs::path fileB = findGameFile(options, "sprites/" + b.sprite + ".spr");
+            if (fileA.empty() || fileB.empty() || !sheetA.load(fileA, why) || !sheetB.load(fileB, why) ||
+                sheetA.frames.empty() || sheetB.frames.empty())
+                return false;
+            const RgbaImage imageA = spriteFrameImage(sheetA, 0, false);
+            const RgbaImage imageB = spriteFrameImage(sheetB, 0, false);
+            out = titlePicture({TitlePiece{&imageA, a.x, a.y, a.w, a.h}, TitlePiece{&imageB, b.x, b.y, b.w, b.h}},
+                               shrink);
+            return true;
         }
         /// The first of the game's folders with all six sides of sky `name`;
         /// empty if none has.
@@ -2145,10 +2222,14 @@ namespace hlds
                                           (why.empty() ? std::string() : ": " + why));
         }
         {
-            // The game's title, for the first map.
-            SprFile sheet;
-            const fs::path file = findGameFile(options_, "sprites/320hud3.spr");
-            if (!file.empty() && sheet.load(file, why) && put(ui / hldata::kTitleFile, titlePicture(sheet)))
+            // The game's title, for the first map: the pieces its
+            // sprites/hud.txt names (an expansion's own first: Opposing
+            // Force's title_opposing and title_force; else title_half and
+            // title_life), in the 320 set -- or, where the game's 320 sheet is
+            // Half-Life's own and its 640 sheet is not (Blue Shift's: its
+            // logo is only in its 640 set), the 640 pieces at half their size.
+            std::vector<std::uint8_t> picture;
+            if (titleFromHud(options_, picture, why) && put(ui / hldata::kTitleFile, picture))
                 result.title = true;
             else
                 result.warnings.push_back("the game's title was not made" + (why.empty() ? std::string() : ": " + why));

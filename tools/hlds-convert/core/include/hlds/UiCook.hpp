@@ -87,6 +87,16 @@ namespace hlds
     /// halves of it in the 320-wide set (sprites/320hud3.spr), side by
     /// side, as one picture of the icons' form.
     std::vector<std::uint8_t> titlePicture(const SprFile &hud);
+    /// A piece of the title: where it is in its sheet (sprites/hud.txt's
+    /// rect).
+    struct TitlePiece
+    {
+        const RgbaImage *sheet = nullptr;
+        int x = 0, y = 0, w = 0, h = 0;
+    };
+    /// ... the same of `pieces`, side by side from the left, each made
+    /// `shrink` times smaller (a 640 set's, 2: each pixel the mean of four).
+    std::vector<std::uint8_t> titlePicture(const std::vector<TitlePiece> &pieces, int shrink);
 
     /// The marks' texture (HlUi.hpp: kDecalAtlasFile), from the game's
     /// decals.wad: each picture made the size of its cell, how dark the
