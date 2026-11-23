@@ -13,6 +13,7 @@
 #include <cstring>
 
 #include "Global.hpp"
+#include "Guard.hpp"
 #include "HlAnim.hpp"
 #include "HlModel.hpp"
 #include "HlRemap.hpp"
@@ -83,7 +84,12 @@ namespace hlrt
         const long length = std::ftell(file);
         std::fseek(file, 0, SEEK_SET);
         std::uint8_t *block = nullptr;
-        if (length > 0 && length <= kMostBytes && global.heapHeadroom() >= static_cast<std::size_t>(length) + kSpare)
+        // (All the heap's room: its holes too. After a map the title's
+        // picture, a megabyte in one piece, may have taken its top, with
+        // room enough below it -- the top alone then said there was none.)
+        const guard::HeapRoom room = guard::heapRoom();
+        if (length > 0 && length <= kMostBytes &&
+            static_cast<std::size_t>(room.top) + room.inHoles >= static_cast<std::size_t>(length) + kSpare)
             block = static_cast<std::uint8_t *>(std::malloc(static_cast<std::size_t>(length)));
         const bool got =
             block != nullptr && cardRead(block, static_cast<std::size_t>(length), file) == static_cast<std::size_t>(length);
