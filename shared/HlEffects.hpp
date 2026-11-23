@@ -178,6 +178,46 @@ namespace hldata
         return false;
     }
 
+    inline void cameraTurn(LogicWorld &w, const PlayerState &player, int ms)
+    {
+        const int index = w.camera;
+        if (index < 0 || index >= w.recordCount)
+            return;
+        const LogicRecord &record = w.records[index];
+        LogicState &state = w.states[index];
+        // (A map cooked before: Game::cameraView looks straight at it.)
+        if (!(record.extra[2] & 1))
+            return;
+        fx at[3];
+        if (record.extra[0] & 2)
+        {
+            for (int a = 0; a < 3; ++a)
+                at[a] = player.origin[a];
+            at[2] += player.viewHeight;
+        }
+        else if (record.extra[2] & 2)
+        {
+            // (A place the converter found it: an info_target.)
+            for (int a = 0; a < 3; ++a)
+                at[a] = fxFromInt(record.mins[a]);
+        }
+        else if (!placeOfName(w, record.target, at))
+            return;
+        // The game's CTriggerCamera::FollowTarget: each way turned at 0.4
+        // of what is left of it a second, so it closes on what it looks at
+        // and never quite gets there. (Turns << 16: a 32-bit circle.)
+        const fx d[3] = {at[0] - state.base[0], at[1] - state.base[1], 0};
+        const std::uint32_t goalYaw = static_cast<std::uint32_t>(fxAtan2Turns(d[1], d[0])) << 16;
+        const std::int32_t goalPitch =
+            static_cast<std::int32_t>(static_cast<std::int16_t>(fxAtan2Turns(at[2] - state.base[2], fxLength(d)))) * 65536;
+        const auto yawLeft = static_cast<std::int32_t>(goalYaw - static_cast<std::uint32_t>(state.travel[0]));
+        const auto pitchLeft = static_cast<std::int32_t>(static_cast<std::uint32_t>(goalPitch) -
+                                                         static_cast<std::uint32_t>(state.travel[1]));
+        state.travel[0] = static_cast<fx>(static_cast<std::uint32_t>(state.travel[0]) +
+                                          static_cast<std::uint32_t>(static_cast<std::int64_t>(yawLeft) * 4 * ms / 10000));
+        state.travel[1] = static_cast<fx>(state.travel[1] + static_cast<std::int64_t>(pitchLeft) * 4 * ms / 10000);
+    }
+
     namespace detail
     {
         inline std::uint32_t effectChance(LogicWorld &w)

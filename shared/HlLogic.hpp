@@ -862,6 +862,9 @@ namespace hldata
     /// Use every live entity called `name`.
     /// (HlEffects.hpp: the env_ entities that are only seen and felt.)
     inline void effectUse(LogicWorld &w, PlayerState &player, int index, int useType);
+    /// The camera looked through (LogicWorld::camera) turned on towards what
+    /// it looks at, over `ms` (HlEffects.hpp).
+    inline void cameraTurn(LogicWorld &w, const PlayerState &player, int ms);
 
     inline void logicFire(LogicWorld &w, PlayerState &player, std::uint16_t name, int caller,
                           int useType, int depth)
@@ -2090,6 +2093,15 @@ namespace hldata
                 state.base[a] = (record.extra[0] & 1) ? player.origin[a] : record.move[a];
             if (record.extra[0] & 1)
                 state.base[2] += player.viewHeight;
+            // Which way it looks (cameraTurn): as the map turned it, the
+            // first time; after, where it was left -- the game's keeps its
+            // angles. (travel[0], [1]: yaw and pitch, turns << 16; hurt: set.)
+            if (state.hurt == 0)
+            {
+                state.travel[0] = static_cast<fx>((record.extra[1] & 0xFFFFu) << 16);
+                state.travel[1] = static_cast<fx>(static_cast<std::int16_t>(record.extra[1] >> 16)) * 65536;
+                state.hurt = 1;
+            }
             w.camera = static_cast<std::int16_t>(index);
             w.cameraLeftMs = record.waitMs > 0 ? record.waitMs : 0;
         }
@@ -5917,6 +5929,8 @@ namespace hldata
         }
         // A view from elsewhere, for as long as it lasts; and the count down
         // to loading the last save (the caller's at 0).
+        if (w.camera >= 0)
+            cameraTurn(w, player, ms);
         if (w.camera >= 0 && (w.cameraLeftMs -= ms) <= 0)
             detail::cameraEnd(w, player);
         if (w.reloadMs > 0)

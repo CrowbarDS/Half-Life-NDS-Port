@@ -862,7 +862,13 @@ namespace hlrt
         {
             aimed = placeOfName(logic, record.target, at);
         }
-        if (aimed)
+        if (record.extra[2] & 1)
+        {
+            // (Turned as the game's turns, by the logic: cameraTurn.)
+            camera.yaw = static_cast<std::uint16_t>(static_cast<std::uint32_t>(state.travel[0]) >> 16);
+            camera.pitch = static_cast<std::int16_t>(state.travel[1] >> 16);
+        }
+        else if (aimed)
         {
             const fx d[3] = {at[0] - camera.pos[0], at[1] - camera.pos[1], 0};
             camera.yaw = fxAtan2Turns(d[1], d[0]);

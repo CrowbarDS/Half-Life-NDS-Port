@@ -1,0 +1,14 @@
+# Blue Shift's ba_security2: the monitors' cameras (trigger_camera, flag 4:
+# the player held). Each starts turned as the map has it and turns towards
+# what it looks at (an info_target), for its ten seconds. Camera 3 first,
+# then camera 1.
+# game bshift
+# map ba_security2
+# start -56 380 620 90
+# keep .*
+# unarmed
+30 0 0 90 0
+cmd diag_fire go_camera3
+720 0 0 90 0
+cmd diag_fire go_camera1
+720 0 0 90 0

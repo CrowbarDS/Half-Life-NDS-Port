@@ -2870,7 +2870,33 @@ namespace hlds
                 record.extra[0] = static_cast<std::uint32_t>(spawnflags & 7);
                 double angles[3];
                 entityAngles(entity, angles);
-                record.extra[1] = static_cast<std::uint32_t>(turnsFromDegrees(angles[1]));
+                // Its yaw, and (format 82) its pitch above -- up positive, the
+                // map's is down -- that it starts from and turns from towards
+                // what it looks at (extra[2] bit 0: it turns, as the game's).
+                record.extra[1] = static_cast<std::uint32_t>(turnsFromDegrees(angles[1])) |
+                                  static_cast<std::uint32_t>(turnsFromDegrees(-angles[0])) << 16;
+                record.extra[2] = 1;
+                // What it looks at, if that is a place and nothing more (an
+                // info_target: Blue Shift's monitors): where it is, in
+                // `mins`, with extra[2] bit 1. (Anything that moves is
+                // looked for by name as it goes: placeOfName.)
+                const std::string_view looks = entity.value("target");
+                for (const Entity &other : entities)
+                {
+                    if (looks.empty() || other.value("targetname") != looks)
+                        continue;
+                    const std::string kind = lowered(other.className());
+                    double point[3];
+                    if ((kind == "info_target" || kind == "info_null" || kind == "info_landmark" ||
+                         kind == "path_corner" || kind == "path_track") &&
+                        other.vec3("origin", point))
+                    {
+                        for (int a = 0; a < 3; ++a)
+                            record.mins[a] = static_cast<std::int16_t>(std::lround(point[a]));
+                        record.extra[2] |= 2;
+                    }
+                    break;
+                }
                 record.waitMs = std::max(0, millis(numberKey(entity, "wait")));
             }
             else if (cls == "speaker")
