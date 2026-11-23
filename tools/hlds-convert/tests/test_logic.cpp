@@ -2118,6 +2118,52 @@ namespace
         check(toUnits(g.player.origin[0]) > 70, "forward swims the way the view points");
     }
 
+    // A brush entity standing in water is as solid to a swimmer as to a
+    // walker. (A swim step is taken where it lands, pressed down from a
+    // step's height above: a landing inside a brush the press-down also
+    // starts in must not be taken -- the game's trace says that start is in
+    // solid, and the move is clipped from where the player is instead.)
+    void testSwimIntoBrush()
+    {
+        BoxRoom room;
+        room.mins[0] = -256, room.maxs[0] = 256;
+        room.maxs[2] = 200;
+        BrushBox pool;
+        pool.className = "func_water";
+        pool.mins[0] = -256, pool.mins[1] = -128, pool.mins[2] = 0;
+        pool.maxs[0] = 256, pool.maxs[1] = 128, pool.maxs[2] = 160;
+        pool.keys = "\"skin\" \"-3\"\n\"targetname\" \"pool\"\n\"wait\" \"-1\"\n";
+        room.brushes.push_back(pool);
+        // A wall across the pool, floor to ceiling, from x = 40 to 56.
+        room.brushes.push_back(brush("func_wall", "", 40, -128, 0, 56, 128, 200));
+        for (int vblanks : {1, 3})
+        {
+            Game g;
+            build(g, room);
+            check(g.ok, "pool with a wall in it");
+            if (!g.ok)
+                return;
+            g.move.nodes = g.view.nodes;
+            g.move.leaves = g.view.leaves;
+            g.move.headNode = g.view.models[0].headNode;
+            g.player.origin[0] = fxFromInt(-60), g.player.origin[1] = 0, g.player.origin[2] = fxFromInt(80);
+            MoveCommand east;
+            east.forward = 1;
+            double furthest = -1000;
+            for (int i = 0; i < 120; ++i)
+            {
+                logicTick(g.logic, g.player, 33 * vblanks);
+                playerMove(g.player, east, g.move, kPlayerTick * vblanks);
+                furthest = std::max(furthest, toUnits(g.player.origin[0]));
+            }
+            check(g.player.waterLevel >= 2, "swimming");
+            // The player's box is 16 either side of its origin.
+            check(furthest <= 40 - 16 + 0.01,
+                  vblanks == 1 ? "swimming into a brush wall stops against it"
+                               : "... at three vblanks a frame too");
+        }
+    }
+
     // Crouched, the player climbs and swims a third as fast, as they walk
     // (the game cuts the keys before the ladder or the water is looked at).
     void testCrouchedClimbAndSwim()
@@ -2993,6 +3039,7 @@ int main()
     testBreakingAndPushing();
     testFrameClock();
     testWater();
+    testSwimIntoBrush();
     testWaterStill();
     testCrouchedClimbAndSwim();
     testDrowning();

@@ -1,0 +1,15 @@
+# Swimming into a brush entity under water: c1a4f's *25, a func_wall bent
+# like a pipe, standing in the pool: a column from x 326 to 410 (its west
+# face at x 326, y -232..-184, z -1408..-1052) under a beam. The player
+# starts under water 46 units west of the column, swims east into it, level,
+# then a little down, then up along it into the beam above. The game's
+# player stops at the faces; the port's must too (a swim step's landing spot
+# inside a brush is not taken). Full key speeds only: the port's keys are on
+# or off.
+# map c1a4f
+# start 280 -208 -1300 0
+40 0 0 0 0
+90 400 0 0 0
+60 400 0 0 30
+90 400 0 0 -60
+40 400 400 0 0

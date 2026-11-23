@@ -912,12 +912,16 @@ namespace hldata
                 // down onto from a step's height and a unit above it, so a
                 // step or a slope under the water is gone up as it is swum
                 // into. Only if that is in something solid, the move as any.
+                // (In solid as the game's trace says, brushes included: a
+                // trace ignores a brush it starts in, so a landing inside a
+                // wall the press-down also starts in would be taken, and the
+                // swimmer would go on through.)
                 fx dest[3], start[3];
                 for (int i = 0; i < 3; ++i)
                     start[i] = dest[i] = s.origin[i] + scaleTime(s.velocity[i], dt);
                 start[2] += kStepSize + fxFromInt(1);
                 const Trace tr = trace(start, dest);
-                if (!tr.startSolid && !tr.allSolid)
+                if (!tr.startSolid && !tr.allSolid && positionFree(world, s.ducked, start))
                 {
                     for (int i = 0; i < 3; ++i)
                         s.origin[i] = tr.endPos[i];
