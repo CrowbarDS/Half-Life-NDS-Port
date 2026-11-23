@@ -1542,12 +1542,20 @@ namespace hldata
         return decal;
     }
 
+    /// How many of the `limit` places for small things only casings and
+    /// cans take: a crate's pieces and a wall's dust, which there are many
+    /// of at once, never fill them all, and the next shots' casings are seen.
+    constexpr int pieceReserve(int limit) { return limit / 6; }
+
     /// Throw a small thing, turned and turning by `roll` (the thrower's
-    /// chances: lookRoll). The one with least time left gives way.
+    /// chances: lookRoll). The one with least time left gives way (a shard
+    /// or a speck, only in the places that are not kept: pieceReserve).
     inline Piece &pieceAdd(ActorWorld &a, std::uint8_t kind, const fx *pos, const fx *velocity, int ms,
                            std::uint32_t roll)
     {
-        const int limit = a.pieceLimit < 1 ? 1 : (a.pieceLimit > kMaxPieces ? kMaxPieces : a.pieceLimit);
+        int limit = a.pieceLimit < 1 ? 1 : (a.pieceLimit > kMaxPieces ? kMaxPieces : a.pieceLimit);
+        if (kind == kPieceShard || kind == kPieceSpeck)
+            limit -= pieceReserve(limit);
         Piece *slot = &a.pieces[0];
         for (int i = 0; i < limit; ++i)
         {
@@ -1607,7 +1615,8 @@ namespace hldata
     /// has broken: its pieces, each a patch of one of `textures` (the
     /// thing's own; none: plain). As the game's (TE_BREAKMODEL, its client's
     /// R_BreakModel): one for each 12 by 12 units of its three sides
-    /// together, a hundred at most (and no more than there is room for);
+    /// together, a hundred at most (and no more than there is room for, less the
+    /// places kept for casings);
     /// each from anywhere in it, at `along` (the blow's way, for one that
     /// flies that way; null, none) give or take 100 units a second across
     /// and up to 100 up; and gone after two and a half seconds and up to one
@@ -1619,7 +1628,8 @@ namespace hldata
         const int size[3] = {fxToInt(maxs[0] - mins[0]), fxToInt(maxs[1] - mins[1]), fxToInt(maxs[2] - mins[2])};
         // (Its sides' areas by 432: a multiply, not a divide, for a constant.)
         int count = (size[0] * size[1] + size[1] * size[2] + size[2] * size[0]) / 432;
-        const int room = a.pieceLimit < 1 ? 1 : (a.pieceLimit > kMaxPieces ? kMaxPieces : a.pieceLimit);
+        const int limit = a.pieceLimit < 1 ? 1 : (a.pieceLimit > kMaxPieces ? kMaxPieces : a.pieceLimit);
+        const int room = limit - pieceReserve(limit);
         count = count > 100 ? 100 : count;
         count = count > room ? room : count;
         // (Its chances its own: how many pieces there are room for differs

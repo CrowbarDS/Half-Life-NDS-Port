@@ -1160,8 +1160,31 @@ void testDebrisLeavesMonstersAlone()
           "... so a fight goes the same on a DS as on a DSi, which has room for more of them");
 }
 
+/// A crate broken on a DS, with its room for 24 small things: its pieces
+/// leave the next shots' casings room to be seen.
+void testCasingRoom()
+{
+    auto world = std::make_unique<ActorWorld>();
+    ActorWorld &a = *world;
+    a.pieceLimit = 24;
+    const fx mins[3] = {0, 0, 0}, maxs[3] = {fxFromInt(200), fxFromInt(200), fxFromInt(200)};
+    const int thrown = piecesBurst(a, mins, maxs, 1, nullptr, 0);
+    const fx eye[3] = {0, 0, fxFromInt(48)}, toss[3] = {fxFromInt(40), 0, fxFromInt(60)};
+    for (int n = 0; n < 4; ++n)
+        shellEject(a, kPieceShell, eye, toss);
+    int shards = 0, shells = 0;
+    for (const Piece &piece : a.pieces)
+    {
+        shards += piece.kind == kPieceShard;
+        shells += piece.kind == kPieceShell;
+    }
+    check(thrown == 20 && shards == 20 && shells == 4,
+          "a big crate broken on a DS throws 20 pieces, and four casings after it are all seen");
+}
+
 int main()
 {
+    testCasingRoom();
     testDebrisLeavesMonstersAlone();
     testMarkChoice();
     testSharedSpread();
