@@ -70,6 +70,11 @@ std::uint32_t Global::vblanks()
     return vblankCount;
 }
 
+bool Global::hasRoom()
+{
+    return global.isDSi || hlrt::slot2::pakBytes() != 0;
+}
+
 namespace
 {
     bool vblanksCounted = false;

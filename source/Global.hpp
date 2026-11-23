@@ -85,6 +85,10 @@ public:
 
     /// Vertical blanks since boot: the game's clock. Sixty to the second.
     static std::uint32_t vblanks();
+    /// The memory for what a DS has not the room for: a DSi, or a DS with an
+    /// Expansion Pak (whose RAM takes what main RAM would hold, and gives
+    /// that room back). Not the clock nor the polygons: isDSi says those.
+    static bool hasRoom();
     /// For the next VBlank, the program's other threads given the CPU
     /// meanwhile -- the wireless library's, the think worker -- where
     /// swiWaitForVBlank halts it in place: dswifi's thread, above the

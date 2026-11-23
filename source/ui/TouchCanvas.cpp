@@ -4,7 +4,9 @@
 
 #include "Global.hpp"
 #include "HlRemap.hpp"
+#include "platform/Slot2.hpp"
 
+#include <algorithm>
 #include <cstring>
 
 namespace hlrt
@@ -265,12 +267,14 @@ namespace hlrt
         loaded_ = true;
         for (int n = 0; n < hldata::kFontCount; ++n)
         {
-            // (The console's letters, for the lessons, on a DSi only: a DS
-            // has not the room to keep them, its tightest maps a few KB
-            // from not loading -- t0a0b, 8 KB. There the lessons are in
-            // the game's other faces.)
-            if (n == hldata::kFontConsole && !isDSiMode())
+            // (The console's letters, for the lessons, not on a DS without an
+            // Expansion Pak: it has not the room to keep them, its tightest
+            // maps a few KB from not loading -- t0a0b, 8 KB. There the
+            // lessons are in the game's other faces. A DS with a Pak keeps
+            // them in it: read a byte at a time, as they are drawn.)
+            if (n == hldata::kFontConsole && !Global::hasRoom())
                 continue;
+            const bool inPak = n == hldata::kFontConsole && !global.isDSi;
             std::FILE *file = std::fopen(global.commonPath(hldata::kFontFiles[n]).c_str(), "rb");
             if (file == nullptr)
                 continue;
@@ -278,14 +282,38 @@ namespace hlrt
             const long size = std::ftell(file);
             std::fseek(file, 0, SEEK_SET);
             // (The size is the card's word: bounded before it is believed.)
-            std::uint8_t *block = size > 0 && size < 64 * 1024 ? static_cast<std::uint8_t *>(std::malloc(size)) : nullptr;
-            const bool got = block != nullptr &&
-                             std::fread(block, 1, static_cast<std::size_t>(size), file) == static_cast<std::size_t>(size);
+            const bool sane = size > 0 && size < 64 * 1024;
+            std::uint8_t *block = !sane ? nullptr
+                                  : inPak ? slot2::keep(static_cast<std::size_t>(size))
+                                          : static_cast<std::uint8_t *>(std::malloc(size));
+            bool got = block != nullptr;
+            if (got && inPak)
+            {
+                // (Into the Pak a piece at a time, in halfwords and words.)
+                alignas(4) std::uint8_t piece[1024];
+                for (long at = 0; got && at < size; at += sizeof(piece))
+                {
+                    const std::size_t count =
+                        std::min<std::size_t>(sizeof(piece), static_cast<std::size_t>(size - at));
+                    got = std::fread(piece, 1, count, file) == count;
+                    if (got)
+                        slot2::write(block + at, piece, count);
+                }
+            }
+            else if (got)
+            {
+                got = std::fread(block, 1, static_cast<std::size_t>(size), file) == static_cast<std::size_t>(size);
+            }
             std::fclose(file);
             // (Kept for good if it is a font: these are for as long as the
             // game runs.)
             if (!got || !fonts_[n].open(block, static_cast<std::size_t>(size)))
-                std::free(block);
+            {
+                if (inPak)
+                    slot2::let(block);
+                else
+                    std::free(block);
+            }
         }
     }
 
