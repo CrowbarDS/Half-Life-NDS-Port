@@ -1256,8 +1256,9 @@ namespace hldata
         return mask;
     }
 
-    /// The kinds a DS leaves out of a map, and their models: its heap has
-    /// no room for them on the tightest (the rats: t0a0b).
+    /// The kinds a DS without an Expansion Pak leaves out of a map, and
+    /// their models: its heap has no room for them on the tightest (the
+    /// rats: t0a0b).
     inline bool actorDsiOnly(std::uint8_t kind)
     {
         return kind == static_cast<std::uint8_t>(ActorKind::Rat);

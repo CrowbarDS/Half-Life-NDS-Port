@@ -79,6 +79,7 @@ extern "C" const hlrt::EngineFuncs hlEngine = {
     .topClear = [](hlrt::TopText &t) { t.clear(); },
     .rumbleKick = [](int strength, int blanks) { hlrt::rumble::kick(strength, blanks); },
     .vblanks = &Global::vblanks,
+    .hasRoom = &Global::hasRoom,
 #ifdef HLDS_PROFILE
     .perfNow = &hlrt::DebugLog::Perf::now,
     .perfAdd = [](int section, std::uint32_t ticks) {

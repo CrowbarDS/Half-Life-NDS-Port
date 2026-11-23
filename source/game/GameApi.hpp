@@ -47,7 +47,7 @@ namespace hlrt
     class TopText;
 
     /// Changed whenever either table or anything they carry changes shape.
-    inline constexpr std::uint32_t kGameApiVersion = 17;
+    inline constexpr std::uint32_t kGameApiVersion = 18;
 
     /// The sizes of what both sides lay out, compared at the handshake: a
     /// library built from other headers, or with other settings, is refused
@@ -110,6 +110,7 @@ namespace hlrt
         /// A Rumble Pak's jolt (platform/Rumble.hpp): a shot.
         void (*rumbleKick)(int strength, int blanks);
         std::uint32_t (*vblanks)();
+        bool (*hasRoom)();
         // (The profiling build's clock: DebugLog.hpp. Null without it.)
         std::uint32_t (*perfNow)();
         void (*perfAdd)(int section, std::uint32_t ticks);

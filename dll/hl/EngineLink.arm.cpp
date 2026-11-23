@@ -100,6 +100,7 @@ namespace hlrt
 } // namespace hlrt
 
 std::uint32_t Global::vblanks() { return hlEngine.vblanks(); }
+bool Global::hasRoom() { return hlEngine.hasRoom(); }
 
 namespace hldata
 {

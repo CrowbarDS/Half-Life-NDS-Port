@@ -1018,12 +1018,13 @@ namespace hldata
             actors.pieces[i].kind = 0;
     }
 
-    /// What a DS leaves out of the map (actorDsiOnly): not there, and never
-    /// made. After actorsInit, and again after a state is laid back (one
-    /// from a DSi has them).
-    inline void consoleActors(LogicWorld &w, bool dsi)
+    /// What a DS without an Expansion Pak leaves out of the map
+    /// (actorDsiOnly): not there, and never made. After actorsInit, and again
+    /// after a state is laid back (one from a DSi or a Pak's DS has them).
+    /// `hasRoom`: Global::hasRoom.
+    inline void consoleActors(LogicWorld &w, bool hasRoom)
     {
-        if (dsi || w.actors == nullptr || w.actors->records == nullptr)
+        if (hasRoom || w.actors == nullptr || w.actors->records == nullptr)
             return;
         ActorWorld &a = *w.actors;
         for (int i = 0; i < a.recordCount && i < a.count; ++i)

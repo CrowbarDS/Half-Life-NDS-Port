@@ -848,7 +848,7 @@ namespace hlrt
                 continue;
             }
             // (Worn only by what a DS leaves out of the map: consoleActors.)
-            if (!global.isDSi && hldata::modelRefDsiOnly(level.view.modelRefs[i]))
+            if (!Global::hasRoom() && hldata::modelRefDsiOnly(level.view.modelRefs[i]))
                 continue;
 #ifdef HLDS_CHILD
             // (Sent the game: a model of the group's base was kept when it
