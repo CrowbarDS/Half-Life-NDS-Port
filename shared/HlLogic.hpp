@@ -1143,13 +1143,21 @@ namespace hldata
         {
             if (w.actors == nullptr || w.world == nullptr)
                 return;
-            static constexpr std::int8_t kWays[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
-            for (const auto &way : kWays)
+            // (A sign whose wall the converter found: towards that wall
+            // first, so that one near a corner is on the floor it was put
+            // on and not the wall beside it. Then every way, as before.)
+            const bool known = (record.extra[3] & 1u) != 0;
+            static constexpr std::int8_t kWays[7][3] = {{0, 0, 0},  {1, 0, 0},  {-1, 0, 0}, {0, 1, 0},
+                                                        {0, -1, 0}, {0, 0, 1},  {0, 0, -1}};
+            for (int k = known ? 0 : 1; k < 7; ++k)
             {
-                const fx from[3] = {record.move[0] - fxFromInt(way[0] * 6), record.move[1] - fxFromInt(way[1] * 6),
-                                    record.move[2] - fxFromInt(way[2] * 6)};
-                const fx to[3] = {record.move[0] + fxFromInt(way[0] * 6), record.move[1] + fxFromInt(way[1] * 6),
-                                  record.move[2] + fxFromInt(way[2] * 6)};
+                const auto &way = kWays[k];
+                // (Way 0: against the wall's normal, Q14 -> six units.)
+                const fx step[3] = {k == 0 ? -record.mins[0] * 6 >> 2 : fxFromInt(way[0] * 6),
+                                    k == 0 ? -record.mins[1] * 6 >> 2 : fxFromInt(way[1] * 6),
+                                    k == 0 ? -record.mins[2] * 6 >> 2 : fxFromInt(way[2] * 6)};
+                const fx from[3] = {record.move[0] - step[0], record.move[1] - step[1], record.move[2] - step[2]};
+                const fx to[3] = {record.move[0] + step[0], record.move[1] + step[1], record.move[2] + step[2]};
                 fx at[3], normal[3];
                 if (!traceShotWall(*w.world, from, to, at, normal))
                     continue;
@@ -1157,13 +1165,17 @@ namespace hldata
                 if (picture == kDecalSign)
                 {
                     // A sign: one of the map's sprites, as large as its
-                    // picture (a texel a unit), its colour its own.
+                    // picture (a texel a unit), its colour its own, lying
+                    // as the wall's texture lies (on the wall found).
                     const std::uint32_t sprite = record.extra[2];
                     if (w.level == nullptr || sprite >= w.level->spriteCount)
                         return;
                     const SpriteRef &ref = w.level->sprites[sprite];
                     const int half = (ref.worldWidth > ref.worldHeight ? ref.worldWidth : ref.worldHeight) / 2;
-                    decalAdd(*w.actors, picture, at, normal, half, static_cast<std::uint16_t>(sprite), -1, true);
+                    Decal &decal =
+                        decalAdd(*w.actors, picture, at, normal, half, static_cast<std::uint16_t>(sprite), -1, true);
+                    decal.turn = static_cast<std::uint8_t>(
+                        kDecalTheMaps | (k == 0 ? (record.extra[3] >> 1) & (kSignTurnMask | kSignMirror) : 0));
                     return;
                 }
                 const int family = decalFamily(picture);

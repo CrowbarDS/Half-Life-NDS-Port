@@ -555,6 +555,18 @@ namespace hlrt
                     return false;
                 for (int i = 0; i < 3; ++i)
                     u[i] = static_cast<fx>((static_cast<std::int64_t>(right[i]) << 12) / length);
+                // ... then turned on the wall, as the wall's texture lies
+                // there in the game (kSignTurnMask: sixty-fourths of a turn,
+                // from that right towards that up).
+                if (const int steps = decal.turn & kSignTurnMask; steps != 0)
+                {
+                    fx sine, cosine;
+                    fxSinCos(static_cast<std::uint16_t>(steps << 10), sine, cosine);
+                    const std::int32_t up[3] = {(n[1] * u[2] - n[2] * u[1]) >> 12, (n[2] * u[0] - n[0] * u[2]) >> 12,
+                                                (n[0] * u[1] - n[1] * u[0]) >> 12};
+                    for (int i = 0; i < 3; ++i)
+                        u[i] = (u[i] * cosine + up[i] * sine) >> 12;
+                }
                 halfU = (sign->worldWidth + 1) / 2;
                 halfV = (sign->worldHeight + 1) / 2;
             }
@@ -1199,6 +1211,15 @@ namespace hlrt
             {
                 int s0, t0, s1, t1;
                 cell(*signRef, 0, s0, t0, s1, t1);
+                // (A sign whose wall's texture is flipped: its rows the
+                // other way, its top at the bottom. Its corners stay in
+                // their order, facing the way they face.)
+                if (decal.turn & kSignMirror)
+                {
+                    const int top = t0;
+                    t0 = t1;
+                    t1 = top;
+                }
                 const int corners[4][2] = {{s0, t1}, {s1, t1}, {s1, t0}, {s0, t0}};
                 std::memcpy(st, corners, sizeof(st));
                 GFX_COLOR = 0x7FFF;

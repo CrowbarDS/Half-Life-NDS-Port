@@ -444,7 +444,7 @@ namespace
         if (game == nullptr)
             return;
         Game &g = *game;
-        int signs = 0, inRange = 0;
+        int signs = 0, inRange = 0, walled = 0;
         std::set<std::uint32_t> pictures;
         for (std::uint32_t i = 0; i < g.view.logicCount; ++i)
         {
@@ -453,28 +453,55 @@ namespace
                 continue;
             ++signs;
             inRange += r.extra[2] < g.view.spriteCount;
+            walled += (r.extra[3] & 1u) != 0;
+            if (!(r.extra[3] & 1u))
+                std::printf("test_incident: a sign at %d %d %d is on no face found\n", fxToInt(r.move[0]),
+                            fxToInt(r.move[1]), fxToInt(r.move[2]));
             pictures.insert(r.extra[2]);
         }
-        std::printf("test_incident: t0a0 has %d signs, of %zu pictures\n", signs, pictures.size());
+        std::printf("test_incident: t0a0 has %d signs, of %zu pictures, %d on a known wall\n", signs, pictures.size(),
+                    walled);
         // (Its large 1 to 4, its numbers 1 to 3, an arrow and a turn.)
         check(signs >= 30 && inRange == signs && pictures.size() == 9, "t0a0's numbers and signs are the map's own sprites");
+        // (All but one: the {MED#S2 at 1489 484 -26 hangs in the air, with
+        // nothing within twenty units -- the game shows nothing there.)
+        check(walled == signs - 1, "... each on a face of the world the converter found");
         // Near the first large number: it is put on its wall.
         g.player.origin[0] = fxFromInt(492);
         g.player.origin[1] = fxFromInt(880);
         g.player.origin[2] = fxFromInt(-43);
         for (int n = 0; n < 5; ++n)
             g.frame();
-        int placed = 0;
+        int placed = 0, onTheirWall = 0, lying = 0;
         for (int i = 0; i < kMaxDecals; ++i)
         {
             const Decal &d = g.actors.decals[i];
             if (!d.active || d.picture != kDecalSign)
                 continue;
             ++placed;
-            std::printf("test_incident: a sign at %d %d %d facing %d %d %d, %d across\n", fxToInt(d.at[0]),
-                        fxToInt(d.at[1]), fxToInt(d.at[2]), d.normal[0], d.normal[1], d.normal[2], d.half * 2);
+            std::printf("test_incident: a sign at %d %d %d facing %d %d %d, %d across, turned %d/64%s\n",
+                        fxToInt(d.at[0]), fxToInt(d.at[1]), fxToInt(d.at[2]), d.normal[0], d.normal[1], d.normal[2],
+                        d.half * 2, d.turn & kSignTurnMask, (d.turn & kSignMirror) ? ", flipped" : "");
+            // On the very wall the converter found for it.
+            for (std::uint32_t r = 0; r < g.view.logicCount; ++r)
+            {
+                const LogicRecord &mark = g.view.logic[r];
+                if (mark.kind != static_cast<std::uint8_t>(LogicKind::Mark) || mark.extra[0] != kDecalSign ||
+                    !(mark.extra[3] & 1u))
+                    continue;
+                const fx gap[3] = {mark.move[0] - d.at[0], mark.move[1] - d.at[1], mark.move[2] - d.at[2]};
+                if (fxLength(gap) > fxFromInt(8))
+                    continue;
+                const std::int64_t facing = static_cast<std::int64_t>(mark.mins[0]) * d.normal[0] +
+                                            static_cast<std::int64_t>(mark.mins[1]) * d.normal[1] +
+                                            static_cast<std::int64_t>(mark.mins[2]) * d.normal[2];
+                onTheirWall += facing > static_cast<std::int64_t>(16384) * kFxOne * 99 / 100;
+                lying += (d.turn & (kSignTurnMask | kSignMirror)) == ((mark.extra[3] >> 1) & (kSignTurnMask | kSignMirror));
+                break;
+            }
         }
         check(placed > 0, "... and those near the player are on their walls");
+        check(onTheirWall == placed && lying == placed, "... the walls the converter found, lying as their textures do");
     }
 
     /// c1a0d's suit, taken: it says its whole logon (!HEV_AAx), at once and

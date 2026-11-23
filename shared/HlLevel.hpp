@@ -52,7 +52,7 @@
 namespace hldata
 {
     inline constexpr char kLevelMagic[4] = {'H', 'L', 'D', 'S'};
-    inline constexpr std::uint16_t kLevelVersion = 81;
+    inline constexpr std::uint16_t kLevelVersion = 82;
     /// The oldest level format this build reads. (49: a map's textures are
     /// stored in its archive as they are, never compressed, so that one that
     /// streams is read straight in during play. 50: each texture's record
@@ -722,7 +722,12 @@ namespace hldata
         /// (HlLevel: LightPatch). kLogicStartOpen: it starts off.
         Light,
         /// A mark that appears on the wall at `move` when it is used:
-        /// extra[0] which (a kDecal*), extra[1] how big.
+        /// extra[0] which (a kDecal*), extra[1] how big. A sign (kDecalSign):
+        /// extra[2] its sprite, and extra[3] bit 0 that the wall it is on
+        /// is known (format 82): `mins` is the way that wall faces (Q14),
+        /// and extra[3] >> 1 is how the sign lies on it (kSignTurn*), as
+        /// the wall's texture does in the game. 0 (a map cooked before):
+        /// on whatever wall is near, upright.
         Mark,
         /// A brush that swings about its origin: `move[0]` is how far
         /// (turns * 65536), `speed` how fast at most (the same a second),
@@ -1008,6 +1013,14 @@ namespace hldata
         std::uint32_t extra[4];   ///< what its kind says (LogicKind)
     };
     inline constexpr std::uint16_t kNoBrush = 0xFFFF;
+
+    /// How a sign lies on its wall (a Mark's extra[3] >> 1, and its
+    /// Decal's turn): the low six bits turn it about the wall's normal, in
+    /// sixty-fourths of a turn, from upright (on a wall: its top the
+    /// world's up; on a floor or ceiling: towards the world's X); kSignMirror
+    /// shows it the other way out, as a texture flipped in the editor is.
+    inline constexpr std::uint8_t kSignTurnMask = 0x3F;
+    inline constexpr std::uint8_t kSignMirror = 0x40;
 
     /// A Breakable's or a Pushable's extra[1]: what it is made of (its low
     /// half: the game's materials, 0 to 9) ...

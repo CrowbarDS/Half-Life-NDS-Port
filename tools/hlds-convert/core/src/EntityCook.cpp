@@ -1294,6 +1294,117 @@ namespace hlds
                 static_cast<std::int32_t>(std::lround(std::remainder(degrees, 360.0) * 65536.0 / 360.0)) & 0xFFFF);
         }
 
+        /// The wall a sign (an infodecal of the map's own picture) is on:
+        /// the world's face nearest `origin` that it lies on, as the game
+        /// finds the surfaces under a decal. The way that face looks
+        /// (`normal`), and how the picture lies on it (kSignTurn*): in the
+        /// game a decal's right is the face's texture's s axis and its
+        /// down the t axis, so it turns and flips as the texture does. False
+        /// if no face is under it.
+        bool signWall(const BspFile &bsp, const double *origin, double *normal, std::uint8_t &turn)
+        {
+            if (bsp.models.empty())
+                return false;
+            const BspModel &world = bsp.models[0];
+            int best = -1;
+            double bestDistance = 0, bestNormal[3] = {0, 0, 0};
+            for (int f = world.firstFace; f < world.firstFace + world.faceCount; ++f)
+            {
+                if (f < 0 || static_cast<std::size_t>(f) >= bsp.faces.size())
+                    break;
+                const BspFace &face = bsp.faces[static_cast<std::size_t>(f)];
+                if (face.plane >= bsp.planes.size() || face.edgeCount < 3)
+                    continue;
+                const BspPlane &plane = bsp.planes[face.plane];
+                const double sign = face.side != 0 ? -1.0 : 1.0;
+                const double n[3] = {plane.normal[0] * sign, plane.normal[1] * sign, plane.normal[2] * sign};
+                const double distance = origin[0] * n[0] + origin[1] * n[1] + origin[2] * n[2] - plane.dist * sign;
+                // (In front of it or on it, within a hand's breadth.)
+                if (distance < -2 || distance > 8 || (best >= 0 && std::fabs(distance) >= bestDistance))
+                    continue;
+                const double q[3] = {origin[0] - n[0] * distance, origin[1] - n[1] * distance,
+                                     origin[2] - n[2] * distance};
+                // Inside its outline (a face is convex), give or take a unit
+                // or two.
+                int above = 0, below = 0;
+                for (int e = 0; e < face.edgeCount; ++e)
+                {
+                    const std::size_t at = static_cast<std::size_t>(face.firstEdge + e);
+                    if (at >= bsp.surfEdges.size())
+                        return false;
+                    const std::int32_t edge = bsp.surfEdges[at];
+                    const BspEdge &pair = bsp.edges[static_cast<std::size_t>(edge < 0 ? -edge : edge)];
+                    const float *a = bsp.vertices[edge < 0 ? pair.v[1] : pair.v[0]].point;
+                    const float *b = bsp.vertices[edge < 0 ? pair.v[0] : pair.v[1]].point;
+                    const double ab[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+                    const double aq[3] = {q[0] - a[0], q[1] - a[1], q[2] - a[2]};
+                    const double c = (ab[1] * aq[2] - ab[2] * aq[1]) * n[0] + (ab[2] * aq[0] - ab[0] * aq[2]) * n[1] +
+                                     (ab[0] * aq[1] - ab[1] * aq[0]) * n[2];
+                    const double length = std::sqrt(ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2]);
+                    if (c > 2 * length)
+                        ++above;
+                    else if (c < -2 * length)
+                        ++below;
+                }
+                if (above > 0 && below > 0)
+                    continue;
+                best = f;
+                bestDistance = std::fabs(distance);
+                for (int i = 0; i < 3; ++i)
+                    bestNormal[i] = n[i];
+            }
+            if (best < 0)
+                return false;
+            const BspFace &face = bsp.faces[static_cast<std::size_t>(best)];
+            if (face.texInfo < 0 || static_cast<std::size_t>(face.texInfo) >= bsp.texInfos.size())
+                return false;
+            const double *n = bestNormal;
+            // The texture's axes, laid flat on the face.
+            const BspTexInfo &info = bsp.texInfos[static_cast<std::size_t>(face.texInfo)];
+            double axis[2][3];
+            for (int k = 0; k < 2; ++k)
+            {
+                const double along = info.vecs[k][0] * n[0] + info.vecs[k][1] * n[1] + info.vecs[k][2] * n[2];
+                double length = 0;
+                for (int i = 0; i < 3; ++i)
+                {
+                    axis[k][i] = info.vecs[k][i] - along * n[i];
+                    length += axis[k][i] * axis[k][i];
+                }
+                length = std::sqrt(length);
+                if (length < 1e-6)
+                    return false;
+                for (int i = 0; i < 3; ++i)
+                    axis[k][i] /= length;
+            }
+            // The port's upright (EffectDraw's shapeMake): right = ref x n,
+            // with ref the world's up on a wall, its X on a floor; up = n x right.
+            const bool wall = n[2] < 0.7 && n[2] > -0.7;
+            const double ref[3] = {wall ? 0.0 : 1.0, 0.0, wall ? 1.0 : 0.0};
+            double right[3] = {ref[1] * n[2] - ref[2] * n[1], ref[2] * n[0] - ref[0] * n[2], ref[0] * n[1] - ref[1] * n[0]};
+            const double rightLength = std::sqrt(right[0] * right[0] + right[1] * right[1] + right[2] * right[2]);
+            if (rightLength < 1e-6)
+                return false;
+            for (double &v : right)
+                v /= rightLength;
+            const double up[3] = {n[1] * right[2] - n[2] * right[1], n[2] * right[0] - n[0] * right[2],
+                                  n[0] * right[1] - n[1] * right[0]};
+            // How far the texture's s axis is turned from that right, towards
+            // that up; and whether its t axis (the picture's down) then
+            // points down or, flipped, up.
+            const double cosine = axis[0][0] * right[0] + axis[0][1] * right[1] + axis[0][2] * right[2];
+            const double sine = axis[0][0] * up[0] + axis[0][1] * up[1] + axis[0][2] * up[2];
+            const int steps = static_cast<int>(std::lround(std::atan2(sine, cosine) * 32.0 / 3.14159265358979323846));
+            turn = static_cast<std::uint8_t>(steps & hldata::kSignTurnMask);
+            const double s[3] = {axis[0][0], axis[0][1], axis[0][2]};
+            const double sUp[3] = {n[1] * s[2] - n[2] * s[1], n[2] * s[0] - n[0] * s[2], n[0] * s[1] - n[1] * s[0]};
+            if (sUp[0] * axis[1][0] + sUp[1] * axis[1][1] + sUp[2] * axis[1][2] > 0)
+                turn |= hldata::kSignMirror;
+            for (int i = 0; i < 3; ++i)
+                normal[i] = n[i];
+            return true;
+        }
+
         void turnedFrom(const Entity &entity, hldata::LogicRecord &record)
         {
             double angles[3];
@@ -2238,6 +2349,15 @@ namespace hlds
                     record.extra[0] = static_cast<std::uint32_t>(which);
                     record.extra[1] = static_cast<std::uint32_t>(half);
                     record.extra[2] = sign;
+                    // A sign: the wall it is on, and how it lies there.
+                    double normal[3];
+                    std::uint8_t turn = 0;
+                    if (which == kDecalSign && signWall(bsp, origin, normal, turn))
+                    {
+                        for (int a = 0; a < 3; ++a)
+                            record.mins[a] = static_cast<std::int16_t>(std::lround(normal[a] * 16384.0));
+                        record.extra[3] = 1u | static_cast<std::uint32_t>(turn) << 1;
+                    }
                 }
             }
             else if (cls == "func_pendulum" && brushRecordOfEntity[e] >= 0)
