@@ -13,10 +13,14 @@
 # says where, for whoever cuts it out.
 #
 # The player starts with every weapon and the crowbar in hand.
+#
+# REF_GAME=bshift: Blue Shift's map and game code (setup.sh).
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 HL="${HL_DIR:-$HOME/.steam/debian-installation/steamapps/common/Half-Life}"
+GAME="${REF_GAME:-valve}"
 REF="$HL/hlds_ref"
+[ "$GAME" = valve ] || REF="$HL/hlds_ref_$GAME"
 MAP="${1:?map}"
 AT="${2:?x y z yaw}"
 SCRIPT="${3:-sleep 2}"
@@ -37,7 +41,7 @@ read -r REF_W REF_H <<< "${REF_SIZE:-640 480}"
 # The map, with the player's start moved (place.py), in the side folder:
 # found there before the game's own.
 # shellcheck disable=SC2086
-python3 "$ROOT/tools/ref/place.py" "$HL/valve/maps/$MAP.bsp" "$REF/maps/$MAP.bsp" $AT || exit 1
+REF_STANDARD=1 python3 "$ROOT/tools/ref/place.py" "$HL/$GAME/maps/$MAP.bsp" "$REF/maps/$MAP.bsp" $AT || exit 1
 
 # The keys, in the side folder's own config (which the game reads whenever
 # it likes, and writes back when it stops: it is ours, not the player's).
@@ -128,7 +132,7 @@ trap 'exit 1' INT TERM
 sleep 1
 cd "$HL" || exit 1
 DISPLAY="$DISP" LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 SteamAppId=70 SteamGameId=70 \
-    setsid "$RUNTIME" ./hl.sh -game hlds_ref -windowed -w "$REF_W" -h "$REF_H" -novid $SOUND -nomouse -condebug \
+    setsid "$RUNTIME" ./hl.sh -game "$(basename "$REF")" -windowed -w "$REF_W" -h "$REF_H" -novid $SOUND -nomouse -condebug \
     +sv_cheats 1 +map "$MAP" +exec ref.cfg >"$REF/run.log" 2>&1 &
 GAME=$!
 cd "$ROOT" || exit 1
@@ -149,8 +153,13 @@ for _ in $(seq 1 80); do
     sleep 0.5
 done
 sleep "${REF_SETTLE:-6}"
-# Everything to hand, the crowbar in it, and nothing can hurt.
-python3 tools/emu/xin.py "key F8 0.1; sleep 0.2; key F5 0.1; sleep 0.6; key F6 0.1; sleep 1.5; $SCRIPT"
+# Everything to hand, the crowbar in it, and nothing can hurt. (REF_UNARMED:
+# nothing given -- impulse 101 gives the suit too -- and only god.)
+if [ -n "${REF_UNARMED:-}" ]; then
+    python3 tools/emu/xin.py "key F8 0.1; sleep 0.2; $SCRIPT"
+else
+    python3 tools/emu/xin.py "key F8 0.1; sleep 0.2; key F5 0.1; sleep 0.6; key F6 0.1; sleep 1.5; $SCRIPT"
+fi
 # REF_UNTIL=<pattern>: then wait (REF_UNTIL_TIMEOUT seconds at most, 300 by
 # default) until the game's console says it -- the game runs slower than
 # its clock without a graphics card, so a script's length says little.

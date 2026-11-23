@@ -483,6 +483,18 @@ int main(int argc, char **argv)
             std::fprintf(stderr, "diag_replay: %s: %s\n", nod.string().c_str(), error.c_str());
     }
     globals.set(kGlobalSkill, gameSkill);
+    // DIAG_GAME (diag.sh, a scenario's "# game"): which game it is, as the
+    // console's choice sets it -- HLDS_VALVE_DIR is then that game's folder.
+    if (const char *name = std::getenv("DIAG_GAME"); name != nullptr && name[0] != '\0')
+    {
+        const GameId id = gameFromFolder(name);
+        if (id == kGameCount)
+        {
+            std::fprintf(stderr, "diag_replay: no game %s\n", name);
+            return 1;
+        }
+        activeGame = id;
+    }
     finish(g, &globals, std::getenv("HLDS_VALVE_DIR"));
     if (!g.ok)
         return 1;
@@ -494,9 +506,14 @@ int main(int argc, char **argv)
     g.player.arsenal = &arsenal;
     g.player.cheats = &cheats;
     cheats.god = true;
-    for (const char *thing : kImpulse101)
-        give(g.player, thing);
-    g.player.inv.current = kWeaponCrowbar;
+    // (DIAG_UNARMED, a scenario's "# unarmed": nothing given, as the real
+    // game's run gives nothing -- impulse 101 gives the suit.)
+    if (std::getenv("DIAG_UNARMED") == nullptr)
+    {
+        for (const char *thing : kImpulse101)
+            give(g.player, thing);
+        g.player.inv.current = kWeaponCrowbar;
+    }
     g.logic.noAutoaim.value = true;
     int picked = 0; // (a weapon_<name> asked for, for the next weapons tick)
     LampState lamp;  // (the suit's lamp: "impulse 100" switches it)

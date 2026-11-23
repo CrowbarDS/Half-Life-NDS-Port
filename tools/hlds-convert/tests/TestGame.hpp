@@ -208,7 +208,10 @@ namespace hldstest
             ModelCookReport report;
             std::vector<std::uint8_t> bytes;
             std::vector<std::string> clips, clipsDsi;
-            if (!mdl.load(std::string(dir) + "/" + need.file, error))
+            // (An expansion's folder, then Half-Life's beside it, as the
+            // game looks.)
+            if (!mdl.load(std::string(dir) + "/" + need.file, error) &&
+                !mdl.load((std::filesystem::path(dir).parent_path() / "valve" / need.file).string(), error))
                 continue;
             // (The DS's clips; HLDS_TEST_DSI=1: a DSi's.)
             modelClips(mdl, need, clips, clipsDsi);

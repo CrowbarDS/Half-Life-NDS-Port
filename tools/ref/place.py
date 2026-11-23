@@ -7,8 +7,9 @@ real game has no command that puts the player at a place, and this is how
 a reference run begins at the same spot as a run of the port.
 
 Only the entity text is changed. (A BSP's header is a version and fifteen
-{offset, length} pairs; the entities are the first. The new text is put at
-the end of the file and the pair pointed at it.)
+{offset, length} pairs; the entities are the first -- the second in Blue
+Shift's maps, which have the first two swapped. The new text is put at the
+end of the file and the pair pointed at it.)
 
 With REF_BARE set in the environment, only the world and the start are kept,
 so that nothing is heard but the player (the map's machinery and voices would
@@ -24,9 +25,18 @@ def main():
     src, dst = sys.argv[1], sys.argv[2]
     x, y, z, yaw = (float(v) for v in sys.argv[3:7])
     data = bytearray(open(src, 'rb').read())
-    version, offset, length = struct.unpack_from('<iii', data, 0)
+    version = struct.unpack_from('<i', data, 0)[0]
     if version != 30:
         sys.exit('not a Half-Life map: %s' % src)
+    # (Which of the first two pairs is the text: it starts with a brace, as
+    # the converter's BspFile tells them apart.)
+    pair = 4
+    offset, length = struct.unpack_from('<ii', data, 4)
+    if not data[offset:offset + 1] == b'{':
+        other = struct.unpack_from('<ii', data, 12)
+        if data[other[0]:other[0] + 1] == b'{':
+            pair = 12
+            offset, length = other
     text = data[offset:offset + length].split(b'\0')[0].decode('latin-1')
     # The entities, one {...} each -- told apart with an eye on the quotes:
     # a texture's name may begin with a brace ("{blood2").
@@ -61,7 +71,13 @@ def main():
     lump = ('\n'.join(out) + '\n').encode('latin-1') + b'\0'
     while len(data) % 4:
         data.append(0)
-    struct.pack_into('<ii', data, 4, len(data), len(lump))
+    struct.pack_into('<ii', data, pair, len(data), len(lump))
+    # REF_STANDARD: the first two pairs in Half-Life's order, the entities
+    # first. (The engine reads Blue Shift's swapped order only when the game's
+    # folder is "bshift" itself: the side folder's copy must be a plain map.)
+    if pair == 12 and os.environ.get('REF_STANDARD'):
+        first, second = data[4:12], data[12:20]
+        data[4:12], data[12:20] = second, first
     data += lump
     open(dst, 'wb').write(data)
 

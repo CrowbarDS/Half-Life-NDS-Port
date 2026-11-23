@@ -15,6 +15,10 @@
 #   # start <x y z yaw>
 #   # keep <pattern>       classes kept besides the world and the start
 #                          (default func_.*: the brushes, not the monsters)
+#   # game bshift          another game than Half-Life (setup.sh's REF_GAME;
+#                          the fork's bshift-diag build, beside it)
+#   # unarmed              the player is given nothing (no impulse 101, which
+#                          gives the suit), only god
 # and its lines are the inputs, one span of frames each (cl_dll/diag_input.cpp
 # in the SDK fork says how they read).
 #
@@ -36,6 +40,12 @@ head_of() { sed -n "s/^# *$1 \+//p" "$SCEN" | head -1; }
 MAP="$(head_of map)"
 AT="$(head_of start)"
 KEEP="$(head_of keep)"
+GAME="$(head_of game)"
+GAME="${GAME:-valve}"
+grep -q '^# *unarmed' "$SCEN" && export REF_UNARMED=1 DIAG_UNARMED=1
+export REF_GAME="$GAME"
+REFDIR="$HL/hlds_ref"
+[ "$GAME" = valve ] || REFDIR="$HL/hlds_ref_$GAME"
 [ -n "$MAP" ] && [ -n "$AT" ] || { echo "$SCEN: needs '# map' and '# start' lines" >&2; exit 1; }
 # How long the script plays, in frames (60 a second at fps_max 60).
 FRAMES=$(awk '!/^ *#/ && !/^cmd / && NF >= 5 { n += $1 } END { print n + 0 }' "$SCEN")
@@ -45,7 +55,8 @@ mkdir -p "$OUT"
 port() {
     local replay="$ROOT/build/convert/diag_replay"
     # (The monsters' models are cooked from the game's own folder.)
-    export HLDS_VALVE_DIR="${HLDS_VALVE_DIR:-$HL/valve}"
+    # (Another game's own folder, Half-Life's beside it under: DIAG_GAME.)
+    export HLDS_VALVE_DIR="${HLDS_VALVE_DIR:-$HL/$GAME}" DIAG_GAME="$GAME"
     [ -x "$replay" ] || { echo "no $replay: build the converter (cmake --build build/convert --target diag_replay)" >&2; exit 1; }
     # (Each frame as long as the game's command was: its log.)
     "$replay" "$OUT/$NAME.bsp" "$SCEN" "$OUT/${NAME}_ds.csv" 120 "$OUT/${NAME}_pc.csv" || exit 1
@@ -56,13 +67,13 @@ if [ -n "${DIAG_PORT_ONLY:-}" ]; then
     port
     exit 0
 fi
-LOG="$HL/hlds_ref/diag/$NAME.csv"
+LOG="$REFDIR/diag/$NAME.csv"
 rm -f "$LOG" "$OUT/${NAME}_pc.csv"
 
 export REF_DIAG=1 REF_BARE=1 REF_KEEP="${KEEP:-func_.*}"
 # The same map copy for the port.
 # shellcheck disable=SC2086
-python3 "$ROOT/tools/ref/place.py" "$HL/valve/maps/$MAP.bsp" "$OUT/$NAME.bsp" $AT || exit 1
+python3 "$ROOT/tools/ref/place.py" "$HL/$GAME/maps/$MAP.bsp" "$OUT/$NAME.bsp" $AT || exit 1
 # One command sent for each frame (the game's default sends 30 a second,
 # two frames' commands at a time); every frame the same step of time,
 # DIAG_STEP seconds (1/60 by default), however slowly the game really runs
@@ -84,6 +95,6 @@ cp "$LOG" "$OUT/${NAME}_pc.csv"
 # The node graph the game made of the copy (it makes one whenever the map is
 # newer than its graph), for the port's monsters to find their ways by.
 rm -f "$OUT/$NAME.nod"
-[ -f "$HL/hlds_ref/maps/graphs/$MAP.nod" ] && cp "$HL/hlds_ref/maps/graphs/$MAP.nod" "$OUT/$NAME.nod"
+[ -f "$REFDIR/maps/graphs/$MAP.nod" ] && cp "$REFDIR/maps/graphs/$MAP.nod" "$OUT/$NAME.nod"
 echo "$OUT/${NAME}_pc.csv: $(grep -c '^pl,' "$OUT/${NAME}_pc.csv") commands"
 port

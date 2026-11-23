@@ -1,0 +1,9 @@
+# Blue Shift's first moments: the player starts on the suit in the room the
+# titles are shown in, and a teleport sends them into the tram. Which comes
+# first, the suit or the teleport? (The real game: the suit.)
+# game bshift
+# map ba_tram1
+# start 80 -304 3126 181
+# keep .*
+# unarmed
+240 0 0 181 0
