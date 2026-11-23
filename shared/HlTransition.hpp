@@ -315,7 +315,8 @@ namespace hldata
                 if (person && (actor.item & kPersonPreDisaster))
                     visitor.kind |= kVisitorPreDisaster;
                 visitor.flags = actor.flags;
-                visitor.light = static_cast<std::uint8_t>(actor.light > kVisitorLight ? kVisitorLight : actor.light);
+                const int bright = actor.light & kActorLightLevel;
+                visitor.light = static_cast<std::uint8_t>(bright > kVisitorLight ? kVisitorLight : bright);
                 if (minded)
                 {
                     // Its health (absolute once it has thought: HlAiCore's

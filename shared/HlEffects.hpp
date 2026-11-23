@@ -345,19 +345,47 @@ namespace hldata
             state.phase = 0;
             break;
         case LogicKind::Render:
+        {
             // How solid what it names is drawn from now on: not at all, a
-            // part, or as it was made.
-            for (int i = 0; i < w.recordCount; ++i)
+            // part, or as it was made. The game sets its render mode and
+            // amount on each (CRenderFxManager::Use): in the normal mode an
+            // amount means nothing, what it names is simply there; in any
+            // other, an amount of 0 is nothing. (extra[2], format 82: its
+            // flags -- 2 the amount left as it is, 4 the mode -- with 0x100;
+            // a map cooked before goes by the amount alone.)
+            if (record.target == 0)
+                break;
+            const bool known = (record.extra[2] & 0x100u) != 0;
+            const bool keepAmount = (record.extra[2] & 2u) != 0, keepMode = (record.extra[2] & 4u) != 0;
+            const std::uint32_t amount = record.extra[0];
+            const bool normal = known && !keepMode && record.extra[1] == 0;
+            // 1 shown, 0 unseen, -1 as it is.
+            const int shown = normal ? 1 : (keepAmount ? -1 : (amount == 0 ? 0 : 1));
+            for (int i = 0; i < w.recordCount && w.brushStates != nullptr; ++i)
             {
-                if (w.records[i].name != record.target || record.target == 0 ||
-                    w.records[i].brush == kNoBrush || w.brushStates == nullptr)
+                if (w.records[i].name != record.target || w.records[i].brush == kNoBrush || shown < 0)
                     continue;
-                const std::uint32_t amount = record.extra[0];
                 w.brushStates[w.records[i].brush].look =
-                    amount == 0 ? kBrushUnseen
-                                : (amount >= 250 ? 0 : static_cast<std::uint8_t>(1 + amount * 30 / 255));
+                    shown == 0 ? kBrushUnseen
+                               : (normal || amount >= 250 ? 0 : static_cast<std::uint8_t>(1 + amount * 30 / 255));
+            }
+            // ... and the models by that name (Blue Shift's soldiers behind
+            // their door, the gun on the floor; the G-Man who is there and
+            // then is not).
+            if (known && shown >= 0 && w.actors != nullptr)
+            {
+                ActorWorld &a = *w.actors;
+                for (int i = 0; i < a.count; ++i)
+                {
+                    ActorState &actor = a.states[i];
+                    if (actor.name != record.target)
+                        continue;
+                    actor.light = static_cast<std::uint8_t>(shown ? actor.light & ~kActorLightUnseen
+                                                                  : actor.light | kActorLightUnseen);
+                }
             }
             break;
+        }
         case LogicKind::Fade:
             // extra[3]: bit 0 Fade From; with bit 31, the colour (RGB15) in
             // bits 8-23 (a map cooked before that is black).

@@ -3477,9 +3477,10 @@ namespace hlds
                 record.extra[0] = static_cast<std::uint32_t>(
                     std::clamp(std::lround(numberKey(entity, "renderamt")), 0L, 255L));
                 record.extra[1] = static_cast<std::uint32_t>(std::max(0.0, numberKey(entity, "rendermode")));
-                // (Flag 2: it leaves the amount as it is; then there is
-                // nothing here for it to do.)
-                if (spawnflags & 2)
+                // Its flags (format 82): 2 leaves the amount as it is, 4 the
+                // mode. (Both left: there is nothing here for it to do.)
+                record.extra[2] = static_cast<std::uint32_t>(spawnflags & 6) | 0x100u;
+                if ((spawnflags & 2) && ((spawnflags & 4) || record.extra[1] != 0))
                     make = false;
                 renderTarget = true;
             }
@@ -3939,6 +3940,15 @@ namespace hlds
             // (SF_MONSTER_FADECORPSE: its body fades once it has fallen.)
             if (entity.className().rfind("monster_", 0) == 0 && (static_cast<int>(numberKey(entity, "spawnflags")) & 512))
                 actor.light |= kActorLightFadeCorpse;
+            // Drawn see-through to nothing (a render mode other than normal
+            // and the glow's, with an amount of 0): unseen until an
+            // env_render shows it. (A hologram flickers in by itself.)
+            {
+                const int mode = static_cast<int>(numberKey(entity, "rendermode"));
+                if (mode != 0 && mode != 3 && std::lround(numberKey(entity, "renderamt")) <= 0 &&
+                    static_cast<int>(numberKey(entity, "renderfx")) != 16)
+                    actor.light |= kActorLightUnseen;
+            }
             const std::string actorClass = lowered(entity.className());
             if (info.kind == ActorKind::Xen)
             {
@@ -4069,11 +4079,14 @@ namespace hlds
                 const int mode = static_cast<int>(numberKey(entity, "rendermode"));
                 if (info.kind == ActorKind::Generic && (mode == 2 || mode == 5))
                 {
+                    // (Of nothing at all, unseen: kActorLightUnseen, above.)
                     const std::uint32_t look =
                         static_cast<int>(numberKey(entity, "renderfx")) == 16
                             ? kActorLookHologram
-                            : static_cast<std::uint32_t>(
-                                  std::clamp(std::lround(numberKey(entity, "renderamt") * 7 / 255), 1L, 6L));
+                            : (actor.light & kActorLightUnseen)
+                                  ? 0u
+                                  : static_cast<std::uint32_t>(
+                                        std::clamp(std::lround(numberKey(entity, "renderamt") * 7 / 255), 1L, 6L));
                     actor.item |= look << kActorLookShift;
                 }
                 // (Luther's head is darker: the model's second skin.)

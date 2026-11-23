@@ -1811,6 +1811,14 @@ namespace hldata
     /// ActorRecord::light, its top bit: the map's SF_MONSTER_FADECORPSE --
     /// dead, it fades away (the game's FadeMonster). The rest is the light.
     inline constexpr std::uint8_t kActorLightFadeCorpse = 0x80;
+    /// ... and the one below it (from level version 82): drawn not at all,
+    /// the map has it see-through to nothing (a render mode other than
+    /// normal, with an amount of 0) until an env_render shows it -- Blue
+    /// Shift's soldiers waiting behind a door, the gun on the floor. At run
+    /// time ActorState::light's same bit, which env_render sets and clears.
+    inline constexpr std::uint8_t kActorLightUnseen = 0x40;
+    /// How bright it stands, of the light's bits (0..31).
+    inline constexpr std::uint8_t kActorLightLevel = 0x1F;
 
     enum class EntityClass : std::uint16_t
     {

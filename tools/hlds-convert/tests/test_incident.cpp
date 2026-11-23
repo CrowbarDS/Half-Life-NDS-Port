@@ -1089,6 +1089,57 @@ namespace
         }
         activeGame = was;
     }
+
+    /// Blue Shift's env_renders of the normal mode (an amount of 0, which
+    /// the game takes no notice of in that mode): ba_security2's gun on the
+    /// floor, a model unseen until "drop_gun"; ba_tram1's bottom of the lift
+    /// shaft, a brush unseen until "bottomslide".
+    void testBlueShiftRender(const std::string &bshift)
+    {
+        const GameId was = activeGame;
+        activeGame = kGameBlueShift;
+        if (const std::unique_ptr<Game> game = load(bshift.c_str(), "ba_security2"))
+        {
+            Game &g = *game;
+            g.frame();
+            const int name = nameOf(g, "pistol");
+            int gun = -1;
+            for (int i = 0; i < g.actors.count && gun < 0; ++i)
+                gun = g.actors.states[i].active && g.actors.states[i].name == name ? i : -1;
+            check(gun >= 0, "ba_security2's gun on the floor");
+            if (gun >= 0)
+            {
+                const bool before = (g.actors.states[gun].light & kActorLightUnseen) != 0;
+                logicFire(g.logic, g.player, static_cast<std::uint16_t>(nameOf(g, "drop_gun")), -1, kUseToggle, 0);
+                g.frame();
+                const bool after = (g.actors.states[gun].light & kActorLightUnseen) != 0;
+                std::printf("test_incident: ba_security2's gun %s, then after drop_gun %s\n", before ? "unseen" : "SEEN",
+                            after ? "STILL UNSEEN" : "seen");
+                check(before && !after, "ba_security2: the gun is unseen until its env_render shows it");
+            }
+        }
+        if (const std::unique_ptr<Game> game = load(bshift.c_str(), "ba_tram1"))
+        {
+            Game &g = *game;
+            g.frame();
+            const int name = nameOf(g, "MonoRenderBottom");
+            int brush = -1;
+            for (std::uint32_t i = 0; i < g.view.logicCount && brush < 0; ++i)
+                brush = g.view.logic[i].name == name && g.view.logic[i].brush != kNoBrush ? g.view.logic[i].brush : -1;
+            check(brush >= 0, "ba_tram1's bottom of the lift shaft");
+            if (brush >= 0)
+            {
+                const int before = g.brushStates[brush].look;
+                logicFire(g.logic, g.player, static_cast<std::uint16_t>(nameOf(g, "bottomslide")), -1, kUseToggle, 0);
+                g.frame();
+                std::printf("test_incident: ba_tram1's MonoRenderBottom look %d, then after bottomslide %d\n", before,
+                            g.brushStates[brush].look);
+                check(before == kBrushUnseen && g.brushStates[brush].look == 0,
+                      "ba_tram1: the shaft's bottom is unseen until its env_render shows it");
+            }
+        }
+        activeGame = was;
+    }
 } // namespace
 
 int main()
@@ -1118,6 +1169,7 @@ int main()
         {
             testBlueShiftStart(bshift.string());
             testBlueShiftUniform(bshift.string());
+            testBlueShiftRender(bshift.string());
         }
         else
             std::printf("test_incident: no Blue Shift beside Half-Life, its start was not tried\n");

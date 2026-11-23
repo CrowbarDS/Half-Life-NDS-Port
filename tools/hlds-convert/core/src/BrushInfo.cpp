@@ -76,13 +76,17 @@ namespace hlds
     {
         std::vector<BrushInfo> brushes;
         // The names an env_render shows (an amount above 0, and the amount
-        // not left as it is: flag 2): c1a0d's burst stew, unseen until its
-        // microwave goes off.
+        // not left as it is: flag 2; or the normal mode, the mode not left
+        // as it is: flag 4): c1a0d's burst stew, unseen until its microwave
+        // goes off.
         std::vector<std::string> shown;
         for (const Entity &entity : entities)
         {
-            if (entity.className() == "env_render" && !(intKey(entity, "spawnflags") & 2) &&
-                intKey(entity, "renderamt") > 0 && !entity.value("target").empty())
+            // (Or one of the normal render mode, whatever its amount: the
+            // game draws that as it was made -- Blue Shift's.)
+            const int flags = intKey(entity, "spawnflags");
+            if (entity.className() == "env_render" && !entity.value("target").empty() &&
+                ((!(flags & 2) && intKey(entity, "renderamt") > 0) || (!(flags & 4) && intKey(entity, "rendermode") == 0)))
                 shown.emplace_back(entity.value("target"));
         }
         for (std::size_t e = 0; e < entities.size(); ++e)

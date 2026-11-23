@@ -104,6 +104,9 @@ namespace hlrt
         /// ITCM: draw's loop is there, and this is most often 0.)
         [[gnu::noinline]] int seeThroughLook(const ActorWorld &actors, const ActorState &actor, int id, bool &glow)
         {
+            // (Unseen, as the map or an env_render has it: not drawn.)
+            if (actor.light & kActorLightUnseen)
+                return -1;
             // (A body the game fades: as much of it as is left. An
             // assassin cloaked: its renderamt, of 255.)
             const int fading = corpseFadeLeft(actor);
@@ -369,7 +372,7 @@ namespace hlrt
             GFX_TEX_FORMAT = 0;
         }
         // Lit by the one light: how bright the actor stands sets its colour.
-        const int bright = actor.light > 31 ? 31 : actor.light;
+        const int bright = actor.light & kActorLightLevel;
         // The lamp's light, if it falls near (lampShade): the second light,
         // its way set in view space -- with the direction matrix at identity
         // the hardware takes the vector as it is given (every bone's own is
