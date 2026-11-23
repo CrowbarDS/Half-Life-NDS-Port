@@ -1,12 +1,13 @@
 libnds: turn IME back on whenever a thread is resumed
 
-libnds 426b9c98 dropped this line from the context switch. On a real console an interrupt that is already arriving can
-still be taken just after a critical section has written IME = 0; libnds
-then preempts, and the thread it switches to runs with IME 0. On the ARM7
-that thread is the FIFO one, which reads the SD card for the ARM9 in DSi
-mode: with no interrupts, map loads hang (seen on a 3DS in DSi mode; melonDS
-does not take that interrupt). Applied to the pinned libnds until BlocksDS
-fixes it upstream (docker/Dockerfile, docker/versions.env).
+libnds 426b9c98 dropped this line from the context switch, as the FIFO
+thread no longer needed it. With libnds as it is now (223ccb43 included),
+map loads hung on a 3DS in DSi mode, and the hang went with this line put
+back. A check on every cothread yield caught the ARM7's FIFO thread
+(fifoProcessThread) going to wait with IME 0 there; what leaves IME at 0 is
+not found yet (melonDS never shows it). Until it is, a thread is resumed with
+interrupts on, as before 426b9c98. Applied to the pinned libnds
+(docker/Dockerfile, docker/versions.env); reported to BlocksDS.
 
 diff --git a/source/common/cothread/context.s b/source/common/cothread/context.s
 --- a/source/common/cothread/context.s
@@ -15,9 +16,9 @@ diff --git a/source/common/cothread/context.s b/source/common/cothread/context.s
      bic     r1, r1, #CPSR_FLAG_IRQ_DIS
      msr     spsr, r1
  
-+    // Enable IME as well: a thread can be preempted by an interrupt taken
-+    // just after it wrote IME = 0, and the next thread would run with every
-+    // interrupt off.
++    // Enable IME as well (as before 426b9c98): something leaves IME at 0
++    // when the ARM7's FIFO thread yields, not yet found; until it is, every
++    // thread resumes with interrupts on.
 +    mov     r3, #0x4000000
 +    mov     r4, #1
 +    str     r4, [r3, #0x208]
