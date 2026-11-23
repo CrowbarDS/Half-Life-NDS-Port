@@ -38,9 +38,15 @@ namespace hlrt
         static constexpr int kLampVerticesDs = 240;
         bool lampAlight() const { return lampOn_; }
 
-        /// Load the display's pictures. After the 3D engine is brought up
+        /// Load what the display keeps. After the 3D engine is brought up
         /// (and again each time it is: forget() first).
         void load();
+        /// The display's pictures (the digits, the suit, the train's): read
+        /// as each map is loaded, its archive mounted -- they are the map's
+        /// overlay's (HudDraw.arm.cpp). Nothing if they are there already.
+        void loadPictures();
+        /// ... let go of: the map's overlay leaving (GameDll.arm.cpp).
+        void forgetPictures();
         /// The marks' sheet, if it is not there yet: as a map loads, in
         /// Bank D with the map's textures that are not 4x4 (BankD).
         void loadDecals();

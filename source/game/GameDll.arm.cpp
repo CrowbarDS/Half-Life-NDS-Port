@@ -134,7 +134,13 @@ namespace hlrt
 #endif
             return true;
         });
-        ovl::setLeaveCheck(ovl::Id::Map, []() { return !NEA_NpacIsMounted("map"); });
+        ovl::setLeaveCheck(ovl::Id::Map, []() {
+            if (NEA_NpacIsMounted("map"))
+                return false;
+            // (The display's pictures go with it: read again with a map.)
+            hudDraw.forgetPictures();
+            return true;
+        });
         // (A save written a step at a time is the saves' work's to finish.)
         ovl::setLeaveCheck(ovl::Id::Save, []() { return !SaveGame::busy(); });
 #endif

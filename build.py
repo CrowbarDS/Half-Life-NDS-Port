@@ -129,9 +129,11 @@ wifi_twl.make(os.path.join(os.path.expandvars('${BLOCKSDSEXT}'), 'dswifi_dl'), W
 import json
 import ovl
 # Region A: the front end's code (front) and what only a mounted map uses
-# (map), which is the larger -- the region is the map's size, and the front
-# end may grow to it at no cost to a map's heap. The program reaches either
-# only through its gates (source/render/ProfileView.cpp, source/Global.cpp).
+# (map: its archive's index, and the display's pictures), which is the
+# larger -- the region is the map's size, and the front end may grow to it
+# at no cost to a map's heap. The program reaches either only through its
+# gates (source/render/ProfileView.cpp, source/Global.cpp,
+# source/render/HudDraw.arm.cpp).
 OVERLAYS = {'regions': [
     {'name': 'A', 'overlays': [
         {'name': 'front', 'id': 'Front', 'mode': 'code',

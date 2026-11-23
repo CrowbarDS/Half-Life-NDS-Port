@@ -10,6 +10,7 @@
 #include "render/GlowLayer.hpp"
 
 #include "Global.hpp"
+#include "Overlay.hpp"
 #include "HlFont.hpp"
 #include "HlHudLayout.hpp"
 #include "HlLamp.hpp"
@@ -134,7 +135,30 @@ namespace hlrt
         /// The display's pictures (ui/hud.128x128.htx), as the card has them:
         /// A3I5 texels, whose top three bits are how bright (the game's
         /// display is added to the picture, its brightness its alpha here).
-        std::uint8_t atlas[kHudAtlasWidth * kHudAtlasHeight];
+        /// With the train's (trainPictures, below), the map's overlay's
+        /// (build.py's OVERLAYS): nothing but a map's display draws them, so
+        /// the front end's code has their memory while no map is mounted.
+        /// Read as each map is loaded (HudDraw::loadPictures), reached
+        /// through `atlas` and `trainPictures`, set by picturesRoom (a gate);
+        /// forgotten as the overlay leaves (hlrt::loadGame's leave checks).
+        constexpr std::size_t kAtlasBytes = kHudAtlasWidth * kHudAtlasHeight;
+        constexpr std::size_t kTrainBytes = kHudTrainWidth * kHudTrainHeight;
+        alignas(4) std::uint8_t atlasRoom[kAtlasBytes] HL_OVL_BSS(map);
+        alignas(4) std::uint8_t trainRoom[kTrainBytes] HL_OVL_BSS(map);
+#if HL_OVL_COUNT > 0
+        std::uint8_t *atlas = nullptr;
+        std::uint8_t *trainPictures = nullptr;
+        HL_OVL_GATED void picturesRoom()
+        {
+            HL_OVL_GATE(Map);
+            atlas = atlasRoom;
+            trainPictures = trainRoom;
+        }
+#else
+        // (No overlays, the child: always there, read once as it starts.)
+        std::uint8_t *const atlas = atlasRoom;
+        std::uint8_t *const trainPictures = trainRoom;
+#endif
 
         /// Its sprites' sheet: video bank F, 256 by 128 in sixteen colours,
         /// which follows TopText's (bank G) in the sprites' tiles -- tile 512
@@ -259,9 +283,8 @@ namespace hlrt
                 }
             }
         }
-        /// The pictures of a driven train's speed (kHudTrainFile), as the
-        /// display's are: read, A3I5.
-        std::uint8_t trainPictures[kHudTrainWidth * kHudTrainHeight];
+        // (The pictures of a driven train's speed, kHudTrainFile, as the
+        // display's are, read, A3I5: trainPictures, above.)
         /// Picture `n` of them onto the sheet at (x, y), in its 32 square.
         void blitTrain(int x, int y, int n)
         {
@@ -501,6 +524,16 @@ namespace hlrt
         // (Sent the game: what it was sent is read while it starts up.)
         loadDecals();
 #endif
+#if HL_OVL_COUNT == 0
+        loadPictures();
+#endif
+    }
+
+    void HudDraw::loadPictures()
+    {
+#if HL_OVL_COUNT > 0
+        picturesRoom();
+#endif
         // The display's pictures: read, not uploaded (its sprites are made
         // from them: draw()). The 640 set's if the card has it, else the
         // 320 set's.
@@ -515,9 +548,9 @@ namespace hlrt
             {
                 if (TextureCache::readFile(global.commonPath(file).c_str(), kHudAtlasWidth, kHudAtlasHeight, 1, header,
                                            body, kBody) &&
-                    header.texelBytes == sizeof(atlas))
+                    header.texelBytes == kAtlasBytes)
                 {
-                    std::memcpy(atlas, body, sizeof(atlas));
+                    std::memcpy(atlas, body, kAtlasBytes);
                     atlas_ = true;
                     atlas640_ = file == kHud640File;
                     sheetMade = false;
@@ -535,9 +568,9 @@ namespace hlrt
             hldata::TextureHeader header;
             if (TextureCache::readFile(global.commonPath(kHudTrainFile).c_str(), kHudTrainWidth, kHudTrainHeight, 1,
                                        header, body, kBody) &&
-                header.texelBytes == sizeof(trainPictures))
+                header.texelBytes == kTrainBytes)
             {
-                std::memcpy(trainPictures, body, sizeof(trainPictures));
+                std::memcpy(trainPictures, body, kTrainBytes);
                 train_ = true;
                 shownTrain = -1;
             }
@@ -558,6 +591,17 @@ namespace hlrt
         sheetMade = false;
     }
 #endif
+
+    void HudDraw::forgetPictures()
+    {
+        atlas_ = false;
+        train_ = false;
+        sheetMade = false;
+#if HL_OVL_COUNT > 0
+        atlas = nullptr;
+        trainPictures = nullptr;
+#endif
+    }
 
     void HudDraw::forget()
     {

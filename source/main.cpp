@@ -937,6 +937,12 @@ namespace
             error = "Map not found on the card.";
             return LoadResult::Failed;
         }
+#ifndef HLDS_CHILD
+        // The display's pictures, in the map's overlay with its archive's
+        // index (HudDraw.arm.cpp): first, while nothing of the map is on the
+        // heap to be parted by the block they are read through.
+        hlrt::hudDraw.loadPictures();
+#endif
         if (!hlrt::level.load(error))
             return LoadResult::Failed;
 #ifdef HLDS_CHILD
