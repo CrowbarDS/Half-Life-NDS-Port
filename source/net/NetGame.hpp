@@ -236,8 +236,10 @@ namespace hlrt
         /// A demo being served, or played from it (HlDemo.hpp); 0: a game.
         int demo() const { return match_.rules.demo; }
 #ifndef HLDS_CHILD
-        /// Whether all of a demo's streams are on this card.
-        bool demoThere(int group);
+        /// Whether all of a demo's streams are on this card: `unknown` if it
+        /// cannot be looked at now (a map up has the front end's memory).
+        bool demoThere(int group, bool unknown);
+        bool demoThereBody(int group); ///< (its work, in the front end's overlay)
         /// The host: serve a demo, and nothing else. False if the radio would
         /// not start.
         bool demoHost(int group);
@@ -584,6 +586,7 @@ namespace hlrt
         int airSend(int frames);
         void airAsk(int from, const std::uint8_t *bytes, int size);
         void serveNext();
+        void serveNextBody(); ///< (its work, in the front end's overlay)
 #else
         hldata::AirHead airAsked_;
         bool airPending_ = false;

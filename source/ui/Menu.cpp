@@ -562,8 +562,8 @@ namespace hlrt
         }
         saveThere = saves_ != nullptr && saveMostRecent(*saves_) >= 0;
 #ifndef HLDS_CHILD
-        demoThere_[0] = netGame.demoThere(hldata::kDemoHazard);
-        demoThere_[1] = netGame.demoThere(hldata::kDemoUplink);
+        demoThere_[0] = netGame.demoThere(hldata::kDemoHazard, demoThere_[0]);
+        demoThere_[1] = netGame.demoThere(hldata::kDemoUplink, demoThere_[1]);
 #endif
     }
 

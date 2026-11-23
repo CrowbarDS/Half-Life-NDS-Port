@@ -2093,7 +2093,18 @@ namespace hlrt
         netlink::admit(true);
     }
 
-    void NetGame::serveNext()
+    HL_OVL_GATED void NetGame::serveNext()
+    {
+#if HL_OVL_COUNT > 0
+        // (Only while serving, with no map up: start's and frame's.)
+        if (!ovl::tryLoad(ovl::Id::Front))
+            return;
+#endif
+        HL_OVL_GATE(Front);
+        serveNextBody();
+    }
+
+    HL_OVL_CODE(front) void NetGame::serveNextBody()
     {
         unsigned mask = guests_ & netlink::clients();
         // Those in DSi mode first, the map at full quality, all of it in one
@@ -3097,7 +3108,19 @@ namespace hlrt
 #ifndef HLDS_CHILD
     // ---------------------------------------------------------- serving a demo
 
-    bool NetGame::demoThere(int group)
+    HL_OVL_GATED bool NetGame::demoThere(int group, bool unknown)
+    {
+#if HL_OVL_COUNT > 0
+        // (The title's, and NEW GAME's -- in a pause too, a map up: what was
+        // known then.)
+        if (!ovl::tryLoad(ovl::Id::Front))
+            return unknown;
+#endif
+        HL_OVL_GATE(Front);
+        return demoThereBody(group);
+    }
+
+    HL_OVL_CODE(front) bool NetGame::demoThereBody(int group)
     {
         const char *const *maps = netDemoMaps(group);
         const auto there = [](const std::string &path)
@@ -3117,7 +3140,9 @@ namespace hlrt
 
     namespace
     {
-        std::uint32_t demoFileLength(const std::string &path)
+        // (These four are the demo server's alone: in the front end's
+        // overlay with it.)
+        HL_OVL_CODE(front) std::uint32_t demoFileLength(const std::string &path)
         {
             std::uint32_t length = 0;
             if (std::FILE *file = std::fopen(path.c_str(), "rb"))
@@ -3129,14 +3154,14 @@ namespace hlrt
             }
             return length;
         }
-        std::string demoTrackPath(int track)
+        HL_OVL_CODE(front) std::string demoTrackPath(int track)
         {
             char name[16];
             musicFileName(track, name, sizeof(name));
             return global.dataPath(std::string("music/") + name);
         }
         /// The tracks a demo's map plays, as its bank says (kDemoTracksFile).
-        int demoBankTracks(const std::string &bank, int *tracks)
+        HL_OVL_CODE(front) int demoBankTracks(const std::string &bank, int *tracks)
         {
             std::FILE *file = std::fopen(bank.c_str(), "rb");
             if (file == nullptr)
@@ -3173,9 +3198,9 @@ namespace hlrt
         }
         /// The checksum of what is sent of a stream: `first`, then (if any)
         /// `second` at demoBankAt.
-        std::uint32_t demoStreamCrc(const std::string &first, const std::string &second)
+        HL_OVL_CODE(front) std::uint32_t demoStreamCrc(const std::string &first, const std::string &second)
         {
-            static std::uint8_t chunk[4096];
+            static std::uint8_t chunk[4096] HL_OVL_BSS(front);
             std::uint32_t crc = kCrcStart, length = 0;
             if (std::FILE *file = std::fopen(first.c_str(), "rb"))
             {
