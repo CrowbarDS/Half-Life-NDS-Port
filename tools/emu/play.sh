@@ -13,6 +13,9 @@
 # and it is taken (debug_start.txt's "go" lines; source/main.cpp): a walk of
 # maps by their own ways (tools/emu/campaign_walk.py).
 # EMU_AUDIO=<file> captures the sound (see below).
+# EMU_PAK=1 (or rumble): a Memory Expansion Pak (or a Rumble Pak) in slot 2,
+# put in from the emulator's menu (it has no setting for it) and the console
+# started again with it; one console, DS mode only.
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 MODE="${1:?ds or dsi}"
@@ -69,7 +72,14 @@ SCRIPT="${2:-sleep 5}"
 # (One console: its window is put where the coordinates in README.md are
 # measured from -- Qt does not always open it there.)
 if [ "${EMU_INSTANCES:-1}" = 1 ]; then
-    SCRIPT="sleep 1.5; place 0 0 25; $SCRIPT"
+    PAK=""
+    # (File > Insert add-on cart > the Pak, then System > Reset.)
+    case "${EMU_PAK:-}" in
+        "") ;;
+        rumble) PAK="sleep 1; tap 20 40; sleep 0.8; tap 120 260; sleep 0.8; tap 170 257; sleep 1; tap 75 40; sleep 0.8; tap 97 102; sleep 1; " ;;
+        *) PAK="sleep 1; tap 20 40; sleep 0.8; tap 120 260; sleep 0.8; tap 190 228; sleep 1; tap 75 40; sleep 0.8; tap 97 102; sleep 1; " ;;
+    esac
+    SCRIPT="sleep 1.5; place 0 0 25; $PAK$SCRIPT"
 fi
 # EMU_PICK2: what the second instance is started on, as a touch of the
 # recent list's menu (default its first entry, the ROM the first was started

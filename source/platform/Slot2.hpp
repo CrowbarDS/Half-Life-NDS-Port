@@ -8,9 +8,15 @@
 // with no byte writes (a byte written is not written): it is a store the game
 // copies FROM -- a map's textures, its sounds that main RAM has no room for --
 // never something read where the time goes, nor what the sound hardware or the
-// 3D engine reads by themselves. What is put in it is put for one map (take,
-// then reset when the map is let go), through write, which stores halfwords and
-// words only.
+// 3D engine reads by themselves. What is put in it goes in through write,
+// which stores halfwords and words only.
+//
+// Its blocks are the SDK's (slot2_memalign, a heap of its own over the Pak),
+// of two kinds: those taken for the map being played (take), let go together
+// when the map is (reset); and those kept for as long as the game runs (keep).
+// Only the main thread may take or let go of one: the SDK's heap keeps its
+// lock in the Pak itself, a byte, which the Pak does not store -- the lock is
+// always free, and two threads in it at once would break its lists.
 //
 // A 3-in-1 cart has RAM and a motor at the same addresses, one at a time: the
 // RAM is used, and the cart counts as having no motor.
@@ -41,6 +47,14 @@ namespace hlrt::slot2
     /// Bytes taken for this map.
     std::size_t used();
 
+    /// `bytes` of the Pak for as long as the game runs, 32-byte aligned; null
+    /// when it is full or there is no Pak.
+    std::uint8_t *keep(std::size_t bytes);
+    /// What keep gave, given back.
+    void let(std::uint8_t *block);
+    /// Bytes kept for the whole game.
+    std::size_t kept();
+
     /// Copies `bytes` from `src` (anywhere, any alignment) to `dst` in the Pak
     /// (even address) with 16- and 32-bit stores only. An odd last byte keeps
     /// the byte after it as it was.
@@ -54,6 +68,9 @@ namespace hlrt::slot2
     inline std::uint8_t *take(std::size_t) { return nullptr; }
     inline void reset() {}
     inline std::size_t used() { return 0; }
+    inline std::uint8_t *keep(std::size_t) { return nullptr; }
+    inline void let(std::uint8_t *) {}
+    inline std::size_t kept() { return 0; }
     inline void write(std::uint8_t *, const void *, std::size_t) {}
 #endif
 } // namespace hlrt::slot2
