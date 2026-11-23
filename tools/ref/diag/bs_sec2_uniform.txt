@@ -1,0 +1,10 @@
+# Blue Shift's ba_security2: Barney's vest and helmet on their shelf in the
+# locker room (item_armorvest at 651 1361 220, item_helmet at 651 1352 263,
+# as the map puts them). Where do they come to rest? The player stands
+# back from them and does nothing.
+# game bshift
+# map ba_security2
+# start 651 1250 230 90
+# keep func_.*|item_.*
+# unarmed
+120 0 0 90 0

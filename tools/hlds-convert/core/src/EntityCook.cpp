@@ -322,6 +322,11 @@ namespace hlds
                 if (lowered(cls) != item.cls)
                     continue;
                 info = {true, ActorKind::Item, item.file, {"idle"}, "idle"};
+                // (A model with no "idle" lies as its first sequence has it,
+                // as the game shows it: Blue Shift's vest and helmet have
+                // idle1 and on. Not in the rest pose of its bones, turned
+                // and off to one side.)
+                info.firstSequence = true;
                 // (A tripmine lying about is the held model's mine alone, as
                 // it lies on the ground: below.)
                 if (item.kind == ItemKind::Tripmine)
@@ -768,7 +773,10 @@ namespace hlds
                     std::vector<std::string> &dsi)
     {
         ds.clear();
-        if (need.firstSequence && !mdl.sequences.empty())
+        // (Its first sequence, unless it is asked for by name anyway.)
+        if (need.firstSequence && !mdl.sequences.empty() &&
+            std::none_of(need.clips.begin(), need.clips.end(), [&](const std::string &clip)
+                         { return lowered(clip) == lowered(mdl.sequences[0].label); }))
             ds.push_back(mdl.sequences[0].label);
         ds.insert(ds.end(), need.clips.begin(), need.clips.end());
         // (A monster that chooses by what clips are for: on a DSi every one

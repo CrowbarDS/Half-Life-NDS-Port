@@ -1051,6 +1051,44 @@ namespace
         }
         activeGame = was;
     }
+
+    /// Blue Shift's ba_security2: Barney's vest and helmet on their shelf in
+    /// the locker room. Where the game has them come to rest (its log,
+    /// tools/ref/diag/bs_sec2_uniform.txt): the vest where the map put it,
+    /// at z 220, the helmet dropped from 263 to 260.03 -- and each lying as
+    /// its model's first sequence has it, which has no "idle".
+    void testBlueShiftUniform(const std::string &bshift)
+    {
+        const GameId was = activeGame;
+        activeGame = kGameBlueShift;
+        const std::unique_ptr<Game> game = load(bshift.c_str(), "ba_security2");
+        if (game != nullptr)
+        {
+            Game &g = *game;
+            for (int n = 0; n < 3; ++n)
+                g.frame();
+            double vest = -1, helmet = -1;
+            int posed = 0;
+            for (int i = 0; i < g.actors.count; ++i)
+            {
+                const ActorState &a = g.actors.states[i];
+                if (!a.active || a.kind != static_cast<std::uint8_t>(ActorKind::Item))
+                    continue;
+                const auto kind = static_cast<ItemKind>(a.item);
+                if (kind != ItemKind::ArmorVest && kind != ItemKind::Helmet)
+                    continue;
+                (kind == ItemKind::ArmorVest ? vest : helmet) = a.pos[2] / 4096.0;
+                const ModelView *model = actorModel(g.actors, a);
+                posed += model != nullptr && model->header->clipCount != 0;
+            }
+            std::printf("test_incident: ba_security2's vest at z %.2f (the game 220.00), helmet at %.2f (260.03)\n",
+                        vest, helmet);
+            check(std::fabs(vest - 220) < 1 && std::fabs(helmet - 260.03) < 1,
+                  "ba_security2: the vest and helmet lie on their shelf where the game has them");
+            check(posed == 2, "... each with a clip to lie as (its first sequence)");
+        }
+        activeGame = was;
+    }
 } // namespace
 
 int main()
@@ -1079,6 +1117,7 @@ int main()
         if (std::filesystem::exists(bshift / "maps" / "ba_tram1.bsp"))
         {
             testBlueShiftStart(bshift.string());
+            testBlueShiftUniform(bshift.string());
         }
         else
             std::printf("test_incident: no Blue Shift beside Half-Life, its start was not tried\n");

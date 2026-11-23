@@ -4087,7 +4087,9 @@ namespace hldata
     {
         ActorWorld &a = *w.actors;
         const ActorState &actor = a.states[i];
-        if (player.health <= 0 || !detail::touchesPlayer(player, actor.pos, fxFromInt(12), fxFromInt(24)))
+        // (The game's item box: 32 across and 16 high, from where it lies
+        // -- CItem::Spawn's UTIL_SetSize.)
+        if (player.health <= 0 || !detail::touchesPlayer(player, actor.pos, fxFromInt(16), fxFromInt(16)))
             return;
         if (a.shared)
         {
