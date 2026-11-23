@@ -18,7 +18,16 @@ namespace hlrt
 
         constexpr int kPromptHigh = 16;
         constexpr int kKey = 24, kLeft = 8;
-        constexpr int kBottom = 180, kWideHigh = 12, kWide = 60, kWides = 4;
+        constexpr int kBottom = 180, kWideHigh = 12, kWide = 48, kWides = 5;
+        // The bottom row's keys, in order.
+        enum Wide
+        {
+            kShift,
+            kSymbols, ///< #+=: the symbols' keys, or the letters' again
+            kSpace,
+            kEnter,
+            kCancel,
+        };
         // The line: "] " (or "< ", when its start is off the left), then
         // kShown cells of eight pixels, then ">" when there is more on the
         // right.
@@ -78,12 +87,19 @@ namespace hlrt
     {
         Canvas &canvas = touchCanvas.canvas();
         const FontView &font = touchCanvas.font(kFontMedium);
-        const char text[2] = {LineEdit::keyChar(layout_, row, col, edit_.capitals()), '\0'};
+        char text[2] = {LineEdit::keyChar(layout_, row, col, edit_.capitals(), edit_.symbols), '\0'};
+        // (No key there: the place left empty, as the last page's key wiped.)
         if (text[0] == ' ')
+        {
+            canvas.fill(kLeft + col * kKey, keysTop_ + row * kKey, kKey - 1, kKey - 1, kUiBack);
             return;
+        }
+        // (Rubbing out: DEL, in the small letters -- "<" is a key of #+='s.)
+        const bool rubOut = text[0] == kKeyRubOut;
+        const FontView &face = rubOut ? touchCanvas.font(kFontSmall) : font;
         canvas.button(kLeft + col * kKey, keysTop_ + row * kKey, kKey - 1, kKey - 1, down);
-        drawTextCentred(canvas, font, kLeft + col * kKey + kKey / 2, keysTop_ + row * kKey + (kKey - font.height()) / 2,
-                        text, inkFor(font, down ? kUiWhite : kUiOrange));
+        drawTextCentred(canvas, face, kLeft + col * kKey + kKey / 2, keysTop_ + row * kKey + (kKey - face.height()) / 2,
+                        rubOut ? "DEL" : text, inkFor(face, down ? kUiWhite : kUiOrange));
     }
 
     void Keyboard::keys()
@@ -97,14 +113,16 @@ namespace hlrt
 
     void Keyboard::wide(int n, bool down)
     {
-        static const char *const kNames[kWides] = {"SHIFT", "SPACE", "ENTER", "CANCEL"};
+        static const char *const kNames[kWides] = {"SHIFT", "#+=", "SPACE", "ENTER", "CANCEL"};
         Canvas &canvas = touchCanvas.canvas();
         const FontView &small = touchCanvas.font(kFontSmall);
-        // (SHIFT: down while locked, lit while on.)
-        const bool lit = down || (n == 0 && edit_.capitals());
-        canvas.button(kLeft + n * kWide, kBottom, kWide - 1, kWideHigh, down || (n == 0 && edit_.shift == Shift::Locked));
+        // (SHIFT: down while locked, lit while on. #+=: "abc" while the
+        // symbols are up, for the letters again.)
+        const bool lit = down || (n == kShift && edit_.capitals());
+        canvas.button(kLeft + n * kWide, kBottom, kWide - 1, kWideHigh,
+                      down || (n == kShift && edit_.shift == Shift::Locked));
         drawTextCentred(canvas, small, kLeft + n * kWide + kWide / 2, kBottom + (kWideHigh - small.height()) / 2,
-                        kNames[n], inkFor(small, lit ? kUiWhite : kUiOrange));
+                        n == kSymbols && edit_.symbols ? "abc" : kNames[n], inkFor(small, lit ? kUiWhite : kUiOrange));
     }
 
     void Keyboard::draw()
@@ -167,19 +185,24 @@ namespace hlrt
                      touch.px < kLeft + kWides * kWide)
             {
                 const int x = touch.px - kLeft;
-                const int n = x < kWide ? 0 : (x < 2 * kWide ? 1 : (x < 3 * kWide ? 2 : 3));
+                const int n = x / kWide < kWides ? x / kWide : kWides - 1;
                 sound.ui(kUiSoundPress);
                 heldWide_ = n;
-                if (n == 0)
+                if (n == kShift)
                 {
                     edit_.shiftTap(frame_);
                     keys();
                 }
-                else if (n == 2)
+                else if (n == kSymbols)
+                {
+                    edit_.symbols = !edit_.symbols;
+                    keys();
+                }
+                else if (n == kEnter)
                 {
                     event = Event::Enter;
                 }
-                else if (n == 3)
+                else if (n == kCancel)
                 {
                     event = Event::Cancel;
                 }
@@ -191,25 +214,29 @@ namespace hlrt
                     if (capitals != edit_.capitals())
                     {
                         keys();
-                        wide(0, false);
+                        wide(kShift, false);
                     }
                 }
                 wide(n, true);
             }
             else if (touch.px >= kLeft && touch.py >= keysTop_ && col < kKeyColumns && row < kKeyRows)
             {
-                const char c = kKeyTable[layout_][row][col];
+                const char c = LineEdit::keyChar(layout_, row, col, false, edit_.symbols);
                 const bool capitals = edit_.capitals();
-                sound.ui(kUiSoundTick);
-                if (c == kKeyRubOut ? edit_.erase() : edit_.insert(c))
-                    event = Event::Changed;
+                // (A place with no key: nothing.)
+                if (c != ' ')
+                {
+                    sound.ui(kUiSoundTick);
+                    if (c == kKeyRubOut ? edit_.erase() : edit_.insert(c))
+                        event = Event::Changed;
+                }
                 heldRow_ = row;
                 heldCol_ = col;
                 // (A capital once: the keys are small letters again.)
                 if (capitals != edit_.capitals())
                 {
                     keys();
-                    wide(0, false);
+                    wide(kShift, false);
                 }
                 else
                 {

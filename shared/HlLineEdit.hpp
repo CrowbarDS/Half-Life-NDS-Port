@@ -22,14 +22,20 @@ namespace hldata
     };
 
     /// The keys, four rows of ten, in each layout: the digits first (the
-    /// same in both, and never shifted), '<' rubbing out. Both have the
-    /// same characters.
+    /// same in both, and never shifted), kKeyRubOut rubbing out (drawn "<").
+    /// Both have the same characters.
     inline constexpr int kKeyRows = 4, kKeyColumns = 10;
+    inline constexpr char kKeyRubOut = '\x7f';
     inline constexpr const char *kKeyTable[kKeyboardLayouts][kKeyRows] = {
-        {"1234567890", "qwertyuiop", "asdfghjkl_", "zxcvbnm-.<"},
-        {"1234567890", "azertyuiop", "qsdfghjklm", "wxcvbn_-.<"},
+        {"1234567890", "qwertyuiop", "asdfghjkl_", "zxcvbnm-.\x7f"},
+        {"1234567890", "azertyuiop", "qsdfghjklm", "wxcvbn_-.\x7f"},
     };
-    inline constexpr char kKeyRubOut = '<';
+    /// #+='s keys, in place of the letters: every printable ASCII character
+    /// the letters' keys have not (_ - . are there), once -- a Wi-Fi key's,
+    /// a server's name, a line of chat -- rubbing out where it was; a space
+    /// is no key.
+    inline constexpr const char *kSymbolTable[kKeyRows] = {
+        "!@#$%^&*()", "~`\"':;+={}", "[]\\|/?<>, ", "         \x7f"};
     /// Two taps on SHIFT this close together (in frames, 0.4 s) lock it.
     inline constexpr std::uint32_t kCapsLockFrames = 24;
 
@@ -49,16 +55,18 @@ namespace hldata
         std::size_t scroll = 0; ///< the first character on show
         Shift shift = Shift::Off;
         std::uint32_t lastShiftTap = 0;
+        bool symbols = false; ///< #+='s keys up, in place of the letters
 
         LineEdit(std::string &line, std::size_t longest) : text(line), most(longest) { replaced(); }
 
-        /// What a key in `layout` types (capitals: a letter's capital).
-        static char keyChar(int layout, int row, int col, bool capitals)
+        /// What a key in `layout` types (capitals: a letter's capital;
+        /// symbols: #+='s keys).
+        static char keyChar(int layout, int row, int col, bool capitals, bool symbols = false)
         {
             if (layout < 0 || layout >= kKeyboardLayouts || row < 0 || row >= kKeyRows || col < 0 ||
                 col >= kKeyColumns)
                 return ' ';
-            const char c = kKeyTable[layout][row][col];
+            const char c = symbols ? kSymbolTable[row][col] : kKeyTable[layout][row][col];
             return capitals && c >= 'a' && c <= 'z' ? static_cast<char>(c - 'a' + 'A') : c;
         }
 

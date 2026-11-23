@@ -2,6 +2,8 @@
 // at the cursor and over a selection, the longest a line may be, SHIFT once
 // and locked, what is on show of a long line, and the two layouts' keys.
 
+#include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <string>
 
@@ -170,6 +172,33 @@ namespace
         for (char c = 'a'; c <= 'z'; ++c)
             letters = letters && qwerty.find(c) != std::string::npos;
         check(letters, "... every letter among them");
+
+        // #+='s keys: with the letters', every printable character once.
+        bool symbolRows = true;
+        std::string symbols;
+        for (int row = 0; row < kKeyRows; ++row)
+        {
+            symbolRows = symbolRows && std::string(kSymbolTable[row]).size() == kKeyColumns;
+            symbols += kSymbolTable[row];
+        }
+        check(symbolRows, "the symbols: four rows of ten too");
+        bool every = true;
+        for (int c = 33; c < 127; ++c)
+        {
+            const bool letter = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+            const char key = letter ? static_cast<char>(std::tolower(c)) : static_cast<char>(c);
+            const auto inLetters = std::count(qwerty.begin(), qwerty.end(), key);
+            const auto inSymbols = std::count(symbols.begin(), symbols.end(), static_cast<char>(c));
+            // (A letter's capital is its small letter's key; every other
+            // character is on the one page or the other, once.)
+            every = every && (letter ? inLetters >= 1 && inSymbols == 0 : inLetters + inSymbols == 1);
+        }
+        check(every, "... every printable character once, on the letters' keys or the symbols'");
+        check(std::count(symbols.begin(), symbols.end(), kKeyRubOut) == 1, "... and the symbols rub out too");
+        check(LineEdit::keyChar(kKeyboardQwerty, 0, 8, false, true) == '(' &&
+                  LineEdit::keyChar(kKeyboardAzerty, 0, 9, true, true) == ')' &&
+                  LineEdit::keyChar(kKeyboardQwerty, 3, 5, false, true) == ' ' && LineEdit::keyChar(kKeyboardQwerty, 2, 9, false, true) == ' ',
+              "a symbol key's character, the same in either layout and with SHIFT; a place without one");
     }
 } // namespace
 

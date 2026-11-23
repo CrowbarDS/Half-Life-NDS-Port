@@ -1,7 +1,8 @@
 #pragma once
 
 // The touch screen's keyboard: a line being typed, the keys under it, and
-// SHIFT / SPACE / ENTER / CANCEL along the bottom. The COMMAND console types
+// SHIFT / #+= / SPACE / ENTER / CANCEL along the bottom (#+=: every other
+// printable character on the keys, in place of the letters, and back). The COMMAND console types
 // its lines with it, and the profile the player's name.
 //
 // The line has a cursor: the stylus puts it where it touches the line, and
