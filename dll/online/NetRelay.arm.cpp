@@ -27,6 +27,9 @@
 #include "HlIni.hpp"
 #include "HlNet.hpp"
 #include "HlRelay.hpp"
+// (Its own copies of these: the program's are in its front end's overlay.)
+#define HL_WIFI_SLOTS_LINKAGE static inline
+#include "HlWifiSlots.hpp"
 
 // What is learnt of dswifi's Internet side, kept:
 //
@@ -94,6 +97,9 @@ namespace hlrt::relay
         HL_TWL_TEXT(kNoIni, "No server.ini on the card (_nds/hl_nds/data)");
         HL_TWL_TEXT(kNoStart, "The wireless would not start (%d)");
         HL_TWL_TEXT(kNoNetwork, "No saved Wi-Fi connection would connect");
+        HL_TWL_TEXT(kSlotNoConnect, "Slot %d (%s) would not connect: is its key right?");
+        HL_TWL_TEXT(kSlotBadKey, "Slot %d's key is not one a %s network takes");
+        HL_TWL_TEXT(kNeedsDsi, "%s needs WPA: a DSi's, in its own mode");
         HL_TWL_TEXT(kNoName, "The relay's name was not found");
         HL_TWL_TEXT(kNoSocket, "No socket for the relay");
         HL_TWL_TEXT(kNoAnswer, "The relay did not answer (%s:%d)");
@@ -145,7 +151,7 @@ namespace hlrt::relay
         bool iniRead = false;
         bool iniThere = false;
         int failCode = 0;
-        char whyText[64] = "";
+        char whyText[128] = "";
 
         struct State
         {
@@ -737,12 +743,106 @@ namespace hlrt::relay
         Connect phase = Connect::Off;
         std::uint32_t phaseAt = 0;
 
+        // ONLINE SETTINGS' own connections (shared/HlWifiSlots.hpp, the
+        // card's wifi.ini): looked for first, a scan's worth, and the first
+        // in range joined; else the console's own saved ones.
+        constexpr std::uint32_t kScanFrames = 2 * 60;
+        WifiSlot slots[kWifiSlots];
+        enum class Look : std::uint8_t
+        {
+            None,     ///< the console's own (Wifi_AutoConnect)
+            Mode,     ///< the library asked into its Internet mode, to scan
+            Scanning, ///< the networks in range being heard
+        };
+        Look look = Look::None;
+        std::uint32_t lookAt = 0;
+        int slotTried = -1;   ///< the slot joined, -1: the console's own
+        int wpaSkipped = -1;  ///< a WPA slot in range a DS could not join
+        int badKey = -1;      ///< a slot in range whose key is not its kind's
+
+        bool readSlots()
+        {
+            for (WifiSlot &slot : slots)
+                slot = WifiSlot{};
+            static const char kRead[] = "rb";
+            std::FILE *file = std::fopen(global.dataPath(kWifiFile).c_str(), kRead);
+            if (file == nullptr)
+                return false;
+            char text[2048];
+            const std::size_t size = std::fread(text, 1, sizeof(text), file);
+            std::fclose(file);
+            wifiSlotsRead(text, size, slots);
+            for (const WifiSlot &slot : slots)
+            {
+                if (slot.used())
+                    return true;
+            }
+            return false;
+        }
+
+        /// The first of the slots heard in the scan joined: false if none.
+        bool joinSlot()
+        {
+            const int count = Wifi_GetNumAP();
+            for (int n = 0; n < kWifiSlots; ++n)
+            {
+                const WifiSlot &slot = slots[n];
+                if (!slot.used())
+                    continue;
+                const std::size_t length = std::strlen(slot.ssid);
+                for (int i = 0; i < count; ++i)
+                {
+                    Wifi_AccessPoint ap;
+                    Wifi_GetAPData(i, &ap);
+                    if (ap.ssid_len != length || std::memcmp(ap.ssid, slot.ssid, length) != 0)
+                        continue;
+                    if (slot.security == WifiSecurity::Wpa && !isDSiMode())
+                    {
+                        wpaSkipped = n;
+                        break;
+                    }
+                    std::uint8_t key[64];
+                    const int keyBytes = wifiKeyBytes(slot, key);
+                    if (keyBytes < 0)
+                    {
+                        badKey = n;
+                        break;
+                    }
+                    if (slot.manualIp)
+                        Wifi_SetIP(slot.ip, slot.gateway, slot.mask, slot.dns1, slot.dns2);
+                    else
+                        Wifi_SetIP(0, 0, 0, 0, 0);
+                    if (Wifi_ConnectSecureAP(&ap, keyBytes > 0 ? key : nullptr, static_cast<std::size_t>(keyBytes)) != 0)
+                        break;
+                    slotTried = n;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+
         void failConnect(int code, const char *text)
         {
             fail(code, text);
             closeSocket();
             wifiOff();
             phase = Connect::Failed;
+        }
+
+        void failJoining()
+        {
+            char text[96];
+            if (slotTried >= 0)
+                std::snprintf(text, sizeof(text), kSlotNoConnect, slotTried + 1, slots[slotTried].ssid);
+            else if (badKey >= 0)
+                std::snprintf(text, sizeof(text), kSlotBadKey, badKey + 1,
+                              slots[badKey].security == WifiSecurity::Wep ? "WEP" : "WPA");
+            else if (wpaSkipped >= 0)
+                std::snprintf(text, sizeof(text), kNeedsDsi, slots[wpaSkipped].ssid);
+            else
+                std::snprintf(text, sizeof(text), kText, kNoNetwork);
+            failConnect(3, text);
         }
 
         void stepConnect()
@@ -773,8 +873,21 @@ namespace hlrt::relay
                     return;
                 }
                 wifiUp = true;
-                // The console's own saved connections.
-                Wifi_AutoConnect();
+                slotTried = wpaSkipped = badKey = -1;
+                // The game's own connections looked for first (in the
+                // library's Internet mode, where it scans for networks);
+                // with none, the console's own saved ones.
+                if (readSlots())
+                {
+                    Wifi_InternetMode();
+                    look = Look::Mode;
+                }
+                else
+                {
+                    look = Look::None;
+                    Wifi_AutoConnect();
+                }
+                lookAt = now;
                 phase = Connect::Joining;
                 phaseAt = now;
                 return;
@@ -782,11 +895,33 @@ namespace hlrt::relay
             {
                 // (The IP stack's thread gets its address meanwhile.)
                 cothread_yield();
+                if (look == Look::Mode)
+                {
+                    if (Wifi_LibraryModeReady())
+                    {
+                        Wifi_ScanMode();
+                        look = Look::Scanning;
+                        lookAt = now;
+                    }
+                    else if (now - lookAt >= kAnswerFrames)
+                        failConnect(3, kNoNetwork);
+                    return;
+                }
+                if (look == Look::Scanning)
+                {
+                    if (now - lookAt < kScanFrames)
+                        return;
+                    look = Look::None;
+                    phaseAt = now;
+                    if (!joinSlot())
+                        Wifi_AutoConnect();
+                    return;
+                }
                 const int status = Wifi_AssocStatus();
                 if (status == ASSOCSTATUS_ASSOCIATED)
                     phase = Connect::Finding;
                 else if (status == ASSOCSTATUS_CANNOTCONNECT || now - phaseAt >= kConnectFrames)
-                    failConnect(3, kNoNetwork);
+                    failJoining();
                 return;
             }
             case Connect::Finding:
@@ -885,11 +1020,12 @@ namespace hlrt::relay
     const char *connectText()
     {
         static const char kStarting[] = "Starting the wireless...";
+        static const char kLooking[] = "Looking for your networks...";
         static const char kJoining[] = "Joining a saved network...";
         static const char kFinding[] = "Finding the relay...";
         static const char kWaiting[] = "Waiting for the relay...";
         return phase == Connect::Starting  ? kStarting
-               : phase == Connect::Joining ? kJoining
+               : phase == Connect::Joining ? (look != Look::None ? kLooking : kJoining)
                : phase == Connect::Finding ? kFinding
                                            : kWaiting;
     }

@@ -62,6 +62,18 @@ namespace hlrt::netlink
     // ----------------------------------------------------------- a client
     /// Look for hosts.
     bool scan();
+    /// ONLINE SETTINGS: every network in range, not games -- the radio
+    /// started for local play if it is not (false if it cannot be: online
+    /// already, NetRelay.hpp's holdsWifi), and listening for them. found()
+    /// and apAt() then; powerDown() when done.
+    bool apScan();
+    struct AccessPoint
+    {
+        char ssid[33];
+        std::uint8_t security; ///< 0 open, 1 WEP, 2 WPA or WPA2
+        int rssi;
+    };
+    bool apAt(int index, AccessPoint &out);
     /// How many things the scan has found, and whether number `index` is a
     /// host of this game that lets people in: its name, and how many are in
     /// it of how many.

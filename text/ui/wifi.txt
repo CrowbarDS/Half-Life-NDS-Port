@@ -1,0 +1,50 @@
+# ONLINE SETTINGS: the game's own Wi-Fi connections for online play
+# (shared/HlWifiSlots.hpp, the card's wifi.ini), and its pages
+# (source/ui/Menu.cpp). Before play only.
+@home front
+
+# ONLINE's row.
+RowSettings = ONLINE SETTINGS
+# Titles.
+TitleSettings = ONLINE SETTINGS
+TitleSlot = CONNECTION %d
+TitleScan = NETWORKS NEAR
+TitleConsole = THE CONSOLE'S OWN
+# ONLINE SETTINGS' rows: a slot, by its number.
+SlotEmpty = %d  (empty)
+SlotUsed = %d  %s
+# Under its rows.
+SettingsTried = Tried in order, then the console's own.
+SettingsPlain = Keys are kept on the card as typed.
+# A connection's rows.
+RowNetwork = Network
+RowKind = Security
+RowKey = Key
+RowAddress = Address
+RowMask = Mask
+RowGateway = Gateway
+RowDns1 = DNS
+RowCopy = COPY FROM CONSOLE
+ValueNone = none
+ValueAuto = automatic
+# The networks heard: TYPE A NAME for one that does not say it.
+RowTypeName = TYPE A NAME
+ScanLooking = Looking for networks...
+ScanNone = None heard yet.
+# Kinds of network.
+KindOpen = open
+KindWep = WEP
+KindWpa = WPA
+# The keyboard's headings.
+AskNetwork = NETWORK NAME
+AskKey = KEY
+AskAddress = ADDRESS (EMPTY: AUTOMATIC)
+AskMask = MASK
+AskGateway = GATEWAY
+AskDns1 = DNS
+# Why a row can do nothing, or why it did not.
+DsiOnly = WPA: a DSi's alone, in its own mode
+NotAnAddress = That is not an address (four numbers, dots between)
+NoConsoleSlots = The console has no saved connection
+ScanOnline = Online already: restart the game to scan
+NoScan = The wireless would not start

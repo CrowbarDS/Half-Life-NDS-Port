@@ -158,6 +158,10 @@ namespace hlrt
             NetConnecting = 25, ///< ... going online first: how far it has got, and CANCEL
             NetChat = 26,     ///< CHAT: a line typed for everyone in the game (the match goes on)
             Game = 27,        ///< CHOOSE GAME: which of the games on the card
+            NetWifi = 28,     ///< ONLINE SETTINGS: the game's own Wi-Fi connections
+            NetWifiSlot = 29, ///< ... one of them
+            NetWifiScan = 30, ///< ... the networks in range, to choose from
+            NetWifiConsole = 31, ///< ... the console's own saved ones, to copy
         };
 
         // A sheet: a page of its own, drawn and touched apart from the rows
@@ -250,6 +254,26 @@ namespace hlrt
         Action sheetAct(int row);
         void typeName();
         void typeNameBody(); ///< (its work, in the front end's overlay: Menu.cpp)
+        // ONLINE SETTINGS (Menu.cpp): each through a gate into the front
+        // end's overlay, as the rest of the front end.
+        bool wifiPage() const
+        {
+            return page_ == Page::NetWifi || page_ == Page::NetWifiSlot || page_ == Page::NetWifiScan ||
+                   page_ == Page::NetWifiConsole;
+        }
+        void wifiOpenBody();
+        Action wifiFire(int id, int row);
+        Action wifiFireBody(int id, int row);
+        void wifiBack();
+        void wifiBackBody();
+        void wifiFrame();
+        void wifiFrameBody();
+        void wifiDraw();
+        void wifiDrawBody();
+        const char *wifiTitle();
+        const char *wifiTitleBody();
+        void wifiRows(); ///< (the page's rows made again: in the overlay, from the bodies)
+        void wifiEdit(int id); ///< (... a row's value typed: likewise)
         Action sheetBarPress(int button);
         Action sheetYes();
         void sheetAsk(int what, const char *question);

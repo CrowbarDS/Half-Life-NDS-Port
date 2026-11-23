@@ -44,6 +44,7 @@ namespace hlrt::netlink
         bool started = false;
         bool hosting = false;
         bool client = false;
+        bool apScanning = false; ///< ONLINE SETTINGS' (apScan)
         bool offering = false;
 
         // What has come, and has not been read: a ring that the interrupt
@@ -193,7 +194,7 @@ namespace hlrt::netlink
             Wifi_IdleMode();
             waitForMode();
         }
-        hosting = client = false;
+        hosting = client = apScanning = false;
         forget();
     }
 
@@ -334,11 +335,41 @@ namespace hlrt::netlink
         return true;
     }
 
+    bool apScan()
+    {
+        if (relay || !start())
+            return false;
+        client = false;
+        hosting = false;
+        Wifi_ScanModeFilter(WSCAN_LIST_AP_ALL);
+        apScanning = true;
+        return true;
+    }
+
+    bool apAt(int index, AccessPoint &out)
+    {
+        if (!apScanning || index < 0 || index >= Wifi_GetNumAP())
+            return false;
+        Wifi_AccessPoint ap;
+        Wifi_GetAPData(index, &ap);
+        // (A network that does not say its name, or a console's game: none
+        // to keep.)
+        if (ap.ssid_len == 0 || ap.ssid[0] == 0 || (ap.flags & WFLAG_APDATA_NINTENDO_TAG))
+            return false;
+        std::memcpy(out.ssid, ap.ssid, sizeof(out.ssid));
+        out.ssid[32] = 0;
+        out.security = ap.security_type == AP_SECURITY_OPEN  ? 0
+                       : ap.security_type == AP_SECURITY_WEP ? 1
+                                                             : 2;
+        out.rssi = ap.rssi;
+        return true;
+    }
+
     int found()
     {
         if (relay)
             return netrelay::found();
-        return client ? Wifi_GetNumAP() : 0;
+        return client || apScanning ? Wifi_GetNumAP() : 0;
     }
 
     bool hostAt(int index, char *name, int room, int *players, int *most)

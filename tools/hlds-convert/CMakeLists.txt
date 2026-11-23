@@ -192,6 +192,7 @@ if(HLDS_BUILD_TESTS)
             test_avi
             test_net
             test_netmaps
+            test_wifislots
             test_netnext
             test_demo
             test_airfetch
