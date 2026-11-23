@@ -924,6 +924,7 @@ int main(int argc, char **argv)
             }
         }
         g.logic.useHeld.value = useHeld;
+        itemsTouch(g.logic, g.player);
         logicTick(g.logic, g.player, ms);
         g.logic.viewTurn = 0;
         const fx eye[3] = {g.player.origin[0], g.player.origin[1], g.player.origin[2] + g.player.viewHeight};

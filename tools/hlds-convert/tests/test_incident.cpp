@@ -1025,6 +1025,32 @@ namespace
         check(g.logic.states[glass].move == MoveState::AtTop && (g.player.inv.have & kHaveSuit),
               "... and once its button has raised the glass, the suit is taken");
     }
+
+    /// Blue Shift's start (ba_tram1): the player is put down on the suit,
+    /// inside a teleport to the tram. In the game the suit is taken first --
+    /// the head-up display and the flashlight are there from the first
+    /// frame of the ride.
+    void testBlueShiftStart(const std::string &bshift)
+    {
+        const GameId was = activeGame;
+        activeGame = kGameBlueShift;
+        const std::unique_ptr<Game> game = load(bshift.c_str(), "ba_tram1");
+        if (game != nullptr)
+        {
+            Game &g = *game;
+            g.player.origin[0] = fxFromInt(80);
+            g.player.origin[1] = fxFromInt(-304);
+            g.player.origin[2] = fxFromInt(3126);
+            for (int n = 0; n < 3; ++n)
+                g.frame();
+            std::printf("test_incident: ba_tram1, three frames in: at %d %d %d, the suit %s\n",
+                        fxToInt(g.player.origin[0]), fxToInt(g.player.origin[1]), fxToInt(g.player.origin[2]),
+                        (g.player.inv.have & kHaveSuit) ? "taken" : "NOT TAKEN");
+            check(fxToInt(g.player.origin[2]) < 2000, "ba_tram1: the teleport puts the player in the tram");
+            check((g.player.inv.have & kHaveSuit) != 0, "... with the suit they were put down on");
+        }
+        activeGame = was;
+    }
 } // namespace
 
 int main()
@@ -1048,6 +1074,14 @@ int main()
         testScenes(dir);
         testTripmine(dir);
         testSuitBehindGlass(dir);
+        // (Blue Shift, where it is installed beside Half-Life.)
+        const std::filesystem::path bshift = std::filesystem::path(dir).parent_path() / "bshift";
+        if (std::filesystem::exists(bshift / "maps" / "ba_tram1.bsp"))
+        {
+            testBlueShiftStart(bshift.string());
+        }
+        else
+            std::printf("test_incident: no Blue Shift beside Half-Life, its start was not tried\n");
     }
     else
     {

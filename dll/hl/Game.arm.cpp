@@ -936,6 +936,9 @@ namespace hlrt
             // (A box isn't pushed by someone holding USE, who is pulling it.
             // Not in a match: a guest's USE isn't sent as it is held.)
             logic.useHeld.value = input.useHeld && !netGame.playing();
+            // (What the player stands in is theirs before a trigger moves
+            // them: monstersTick's itemsTouch says why.)
+            itemsTouch(logic, player.state);
             logicTick(logic, player.state, ms);
             // What the player rides has turned: so has their view.
             camera.yaw = static_cast<std::uint16_t>(camera.yaw + logic.viewTurn);

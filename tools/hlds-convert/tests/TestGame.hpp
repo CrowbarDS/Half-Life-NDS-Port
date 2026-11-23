@@ -142,6 +142,7 @@ namespace hldstest
         }
         void frame()
         {
+            itemsTouch(logic, player);
             logicTick(logic, player, 33);
             logic.viewTurn = 0;
             monstersTick(logic, player, 33);

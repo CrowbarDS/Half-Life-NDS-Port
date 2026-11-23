@@ -4081,6 +4081,51 @@ namespace hldata
         }
     } // namespace detail
 
+    /// Item `i`, if the player touches it: taken (or, in a match,
+    /// wanted: whoever runs the game says who has it).
+    inline void itemTouch(LogicWorld &w, PlayerState &player, int i)
+    {
+        ActorWorld &a = *w.actors;
+        const ActorState &actor = a.states[i];
+        if (player.health <= 0 || !detail::touchesPlayer(player, actor.pos, fxFromInt(12), fxFromInt(24)))
+            return;
+        if (a.shared)
+        {
+            // Everybody's: wanted, if it would be of any use (tried on a
+            // copy), and whoever runs the game says who has it (itemPickUp,
+            // then). (On a copy of what they carry, the Arsenal too.)
+            PlayerState trial = player;
+            Arsenal trialArsenal = player.arsenal != nullptr ? *player.arsenal : Arsenal();
+            trial.arsenal = player.arsenal != nullptr ? &trialArsenal : nullptr;
+            std::uint32_t got = 0;
+            // (Weapons stay: a weapon only for who has not got it -- what is
+            // with it is not taken by who has.)
+            const bool weapon = itemViewModel(static_cast<ItemKind>(actor.item)) != nullptr;
+            if (a.wanted == -1 && detail::itemTakeAt(w, trial, i, got) &&
+                (!w.weaponsStay.value || !weapon || (got & kGotWeapon)))
+                a.wanted = static_cast<std::int16_t>(i);
+        }
+        else
+            itemPickUp(w, player, i);
+    }
+
+    /// The items the player stands in, taken before the frame's triggers
+    /// run: in the game a player's touches come one after another, and one
+    /// put down on an item inside a teleport (ba_tram1's suit, under the
+    /// start) has the item before the teleport takes them away. (monstersTick
+    /// does the same again after the logic, for what the frame brought them to.)
+    inline void itemsTouch(LogicWorld &w, PlayerState &player)
+    {
+        if (w.actors == nullptr)
+            return;
+        ActorWorld &a = *w.actors;
+        for (int i = 0; i < a.count; ++i)
+        {
+            if (a.states[i].active && a.states[i].kind == static_cast<std::uint8_t>(ActorKind::Item))
+                itemTouch(w, player, i);
+        }
+    }
+
     inline void monstersTick(LogicWorld &w, PlayerState &player, int ms)
     {
         if (w.actors == nullptr || w.world == nullptr)
@@ -4183,28 +4228,7 @@ namespace hldata
                 actor.hurtMs -= ms;
             if (actor.kind == static_cast<std::uint8_t>(ActorKind::Item))
             {
-                if (player.health > 0 && detail::touchesPlayer(player, actor.pos, fxFromInt(12), fxFromInt(24)))
-                {
-                    if (a.shared)
-                    {
-                        // Everybody's: wanted, if it would be of any use
-                        // (tried on a copy), and whoever runs the game says
-                        // who has it (itemPickUp, then).
-                        // (On a copy of what they carry, the Arsenal too.)
-                        PlayerState trial = player;
-                        Arsenal trialArsenal = player.arsenal != nullptr ? *player.arsenal : Arsenal();
-                        trial.arsenal = player.arsenal != nullptr ? &trialArsenal : nullptr;
-                        std::uint32_t got = 0;
-                        // (Weapons stay: a weapon only for who has not got
-                        // it -- what is with it is not taken by who has.)
-                        const bool weapon = itemViewModel(static_cast<ItemKind>(actor.item)) != nullptr;
-                        if (a.wanted == -1 && detail::itemTakeAt(w, trial, i, got) &&
-                            (!w.weaponsStay.value || !weapon || (got & kGotWeapon)))
-                            a.wanted = static_cast<std::int16_t>(i);
-                    }
-                    else
-                        itemPickUp(w, player, i);
-                }
+                itemTouch(w, player, i);
                 continue;
             }
             if (isTurret(actor.kind))
