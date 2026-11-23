@@ -30,6 +30,10 @@ namespace hlrt::netlink
     /// Play and joinDirect are the radio's alone.)
     void useRelay(bool on);
     bool usingRelay();
+    /// Whether the radio, or online the Wi-Fi, is started: the console may
+    /// not sleep then (a link would be lost, and the library does not
+    /// expect it).
+    bool radioOn();
 
     /// Leave whatever was going on and be silent. Safe at any time.
     void shutdown();

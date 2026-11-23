@@ -173,6 +173,15 @@ namespace hlrt::netlink
         return relay;
     }
 
+    bool radioOn()
+    {
+#ifndef HLDS_CHILD
+        if (relay || netrelay::holdsWifi())
+            return true;
+#endif
+        return started;
+    }
+
     int failStage()
     {
         if (relay)

@@ -32,6 +32,7 @@
 #include "data/SpriteCache.hpp"
 #include "data/TextureCache.hpp"
 #include "data/TextureStream.hpp"
+#include "data/VramWriter.hpp"
 #include "platform/Rumble.hpp"
 #include "platform/Slot2.hpp"
 #include "game/Families.hpp"
@@ -2030,6 +2031,57 @@ namespace
     }
 }
 
+namespace
+{
+    /// How many passes in a row the lid has been seen shut.
+    int lidShutPasses = 0;
+
+    /// The lid shut long enough to mean it (a knock on the hinge is not),
+    /// and nothing that would be lost by sleeping: no game between consoles,
+    /// no radio. (Read from the keys the last pass took.)
+    bool lidWantsSleep()
+    {
+        if ((keysHeld() & KEY_LID) == 0)
+        {
+            lidShutPasses = 0;
+            return false;
+        }
+        if (++lidShutPasses < 10)
+            return false;
+        return !hlrt::netGame.on() && !hlrt::netlink::radioOn();
+    }
+
+    /// The console asleep until the lid opens, put to sleep from here --
+    /// between passes, where nothing is half done -- and not by libnds
+    /// whenever its message comes (main() turns that off): a card read, a
+    /// write to video memory or the sound's mix cut off by the sleep could
+    /// leave the game broken when it wakes (issue 12). The sound is held
+    /// and the DSP stopped first, and started again after.
+    void sleepUntilLidOpens()
+    {
+        hlrt::sound.holdPipeline(true);
+        const bool dsp = hlrt::sound.extended();
+        hlrt::sound.setDsp(false);
+        for (int n = 0; n < 8 && !hlrt::vramWriter.idle(); ++n)
+            Global::waitVBlank();
+
+        // (libnds's: the ARM7 told, which sleeps until the lid opens; this
+        // waits a little for it, and goes on when it wakes.)
+        systemSleep();
+        // (Woken -- or, where nothing sleeps, as long as it stays shut.)
+        do
+        {
+            Global::waitVBlank();
+            scanKeys();
+        } while ((keysHeld() & KEY_LID) != 0);
+
+        if (dsp)
+            hlrt::sound.setDsp(true);
+        hlrt::sound.holdPipeline(false);
+        lidShutPasses = 0;
+    }
+} // namespace
+
 // The overlay loader's halt (source/Overlay.hpp): the game's own.
 extern "C" [[noreturn]] void hlOvlHalt(const char *what, const char *detail)
 {
@@ -2052,6 +2104,9 @@ int main(int argc, char *argv[])
     // an exception nobody catches does.
     std::set_new_handler([] { haltWith("Cannot go on:", "Not enough memory for this map.", loadingMap); });
     global.Init(argc > 0 ? argv[0] : nullptr);
+    // The lid: the game puts the console to sleep itself, when nothing is
+    // half done (sleepUntilLidOpens), not libnds whenever it is shut.
+    disableSleep();
     // The game library, first: before anything else takes the heap, so that
     // it sits next to the program (GameDll.arm.cpp).
     const char *gameWhy = nullptr;
@@ -2207,6 +2262,8 @@ int main(int argc, char *argv[])
                 Global::waitVBlank();
             }
             hlrt::input.poll(false);
+            if (lidWantsSleep())
+                sleepUntilLidOpens();
             hlrt::sound.frame();
             hlrt::netGame.frame();
 #ifndef HLDS_CHILD
@@ -2659,6 +2716,20 @@ int main(int argc, char *argv[])
         hlrt::hudDraw.present();
         hlrt::bottomScreen.present();
         hlrt::guard::frame();
+        // The lid shut: on its own, the game paused as START pauses it, and
+        // the console asleep until it opens.
+        if (lidWantsSleep())
+        {
+            if (!paused)
+            {
+                paused = true;
+                hlrt::sound.setPaused(true);
+                hlrt::input.dropWeaponList();
+                hlrt::menu.open();
+            }
+            sleepUntilLidOpens();
+            lastVblank = lastPass = Global::vblanks();
+        }
         Global::latchDrawClock();
         // What is to be written to video memory is queued (VramWriter writes
         // it in the vertical blanks), and what is written is drawn.
