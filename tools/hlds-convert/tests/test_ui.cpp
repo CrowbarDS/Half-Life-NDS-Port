@@ -807,6 +807,35 @@ namespace
     {
         using namespace lampgrid;
         static LampGrid grid; // (as the console has it: not on the stack)
+        {
+            // A piece sent as a quad must not be one the hardware draws
+            // wrongly once rounded to quarter units (GBATEK's prohibited
+            // quads): a square is; a side's middle a step inside its line is
+            // not (concave); exactly on its line, it is.
+            auto quad = [](std::initializer_list<std::array<double, 2>> xy)
+            {
+                std::array<LampVertex, 4> q{};
+                int i = 0;
+                for (const auto &p : xy)
+                {
+                    q[i].pos[0] = static_cast<fx>(p[0] * kFxOne);
+                    q[i].pos[1] = static_cast<fx>(p[1] * kFxOne);
+                    q[i].pos[2] = 0;
+                    ++i;
+                }
+                return q;
+            };
+            auto safe = [](const std::array<LampVertex, 4> &q)
+            {
+                const LampVertex *v[4] = {&q[0], &q[1], &q[2], &q[3]};
+                return LampGrid::quadSafe(v);
+            };
+            check(safe(quad({{0, 0}, {16, 0}, {16, 16}, {0, 16}})), "lamp: a square piece goes as a quad");
+            check(!safe(quad({{0, 0}, {8, 0.25}, {16, 0}, {8, 16}})),
+                  "lamp: ... not one with a corner a step inside the line of its neighbours");
+            check(safe(quad({{0, 0}, {8, 0}, {16, 0}, {8, 16}})),
+                  "lamp: ... but one with a corner exactly on that line, yes");
+        }
         const fx up[3] = {0, 0, kFxOne};
         const LampGridTexture texture{64, 64, 64, 64};
         const LampLight light{{fxFromInt(10), fxFromInt(5), fxFromInt(10)}, 256};

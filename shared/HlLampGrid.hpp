@@ -241,6 +241,68 @@ namespace hldata
             return true;
         }
 
+        /// Whether the quad v[0..3] is one the hardware draws right from any
+        /// view once its corners are rounded to the quarter units they are
+        /// sent in -- not one of GBATEK's "prohibited quads" (crossed sides,
+        /// a corner of more than 180 degrees). The converter's rule
+        /// (MeshOptimize.cpp): each corner exactly in line with its
+        /// neighbours, or turning the quad's way -- by more than 1.5 steps,
+        /// unless the four are exactly in one plane. (A piece too large to
+        /// judge in 64 bits is not one: it goes as triangles.)
+        static bool quadSafe(const LampVertex *const *v)
+        {
+            std::int64_t q[4][3];
+            for (int i = 0; i < 4; ++i)
+                for (int k = 0; k < 3; ++k)
+                {
+                    q[i][k] = (v[i]->pos[k] + 512) >> 10;
+                    const std::int64_t d = q[i][k] - q[0][k];
+                    if (d > 4096 || d < -4096) // (1,024 units: the lamp reaches 80)
+                        return false;
+                }
+            auto cross = [&](int a, int b, int c, std::int64_t *out)
+            {
+                const std::int64_t e1[3] = {q[b][0] - q[a][0], q[b][1] - q[a][1], q[b][2] - q[a][2]};
+                const std::int64_t e2[3] = {q[c][0] - q[a][0], q[c][1] - q[a][1], q[c][2] - q[a][2]};
+                out[0] = e1[1] * e2[2] - e1[2] * e2[1];
+                out[1] = e1[2] * e2[0] - e1[0] * e2[2];
+                out[2] = e1[0] * e2[1] - e1[1] * e2[0];
+            };
+            std::int64_t turn[4][3], facing[3] = {0, 0, 0};
+            for (int i = 0; i < 4; ++i)
+            {
+                cross((i + 3) & 3, i, (i + 1) & 3, turn[i]);
+                for (int k = 0; k < 3; ++k)
+                    facing[k] += turn[i][k];
+            }
+            std::int64_t n0[3];
+            cross(0, 1, 2, n0);
+            const bool planar =
+                n0[0] * (q[3][0] - q[0][0]) + n0[1] * (q[3][1] - q[0][1]) + n0[2] * (q[3][2] - q[0][2]) == 0;
+            for (int i = 0; i < 4; ++i)
+            {
+                const std::int64_t *t = turn[i];
+                if (t[0] == 0 && t[1] == 0 && t[2] == 0)
+                    continue; // exactly in line
+                // (Its sign as the quad faces. Corners within 2^13 of each
+                // other: a turn's terms within 2^27, the facing's 2^29, every
+                // product and sum here within 2^60.)
+                if (t[0] * facing[0] + t[1] * facing[1] + t[2] * facing[2] <= 0)
+                    return false;
+                if (planar)
+                    continue;
+                // More than 1.5 steps off the line through its neighbours:
+                // |turn|^2 > 2.25 |next - previous|^2.
+                const int a = (i + 3) & 3, c = (i + 1) & 3;
+                const std::int64_t e[3] = {q[c][0] - q[a][0], q[c][1] - q[a][1], q[c][2] - q[a][2]};
+                const std::int64_t area2 = t[0] * t[0] + t[1] * t[1] + t[2] * t[2];
+                const std::int64_t length2 = e[0] * e[0] + e[1] * e[1] + e[2] * e[2];
+                if (4 * area2 <= 9 * length2)
+                    return false;
+            }
+            return true;
+        }
+
         // ---- What the tests look at ------------------------------------
         /// The lines of the last surface (stream units), and the light the
         /// game adds at each crossing (sixteenths of the light map's).
@@ -951,7 +1013,9 @@ namespace hldata
                 bool flat = false;
                 for (int i = 0; i < count && !flat; ++i)
                     flat = !turns(c, count, i);
-                if (!flat || count == 3)
+                // (A quad as it is sent, rounded to the quarter unit, must
+                // not be one the hardware draws wrongly: else triangles.)
+                if (count == 3 || (!flat && quadSafe(v)))
                     return out.polygon(v, count, p.ds, p.dt);
             }
             // More (or a quad with a corner in line): a fan, from a corner
