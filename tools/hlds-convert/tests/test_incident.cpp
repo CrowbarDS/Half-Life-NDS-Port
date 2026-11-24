@@ -1362,6 +1362,49 @@ namespace
         }
         activeGame = was;
     }
+
+    /// Blue Shift's ba_security2, on camera 2's monitor: a worker (gina_push,
+    /// a monster_generic of the hologram's shape, her origin her middle)
+    /// stands on an unseen platform that rolls beside the cart she pushes --
+    /// the game's push takes her along with it, step for step with the cart.
+    void testBlueShiftCartWorker(const std::string &bshift)
+    {
+        const GameId was = activeGame;
+        activeGame = kGameBlueShift;
+        if (const std::unique_ptr<Game> game = load(bshift.c_str(), "ba_security2"))
+        {
+            Game &g = *game;
+            const int name = nameOf(g, "gina_push");
+            int worker = -1;
+            for (int i = 0; i < g.actors.count && worker < 0; ++i)
+                worker = g.actors.states[i].name == name ? i : -1;
+            int cart = -1;
+            for (std::uint32_t i = 0; i < g.view.logicCount && cart < 0; ++i)
+            {
+                const LogicRecord &r = g.view.logic[i];
+                if (r.name == nameOf(g, "move_sample") && r.brush != kNoBrush &&
+                    g.view.models[g.view.brushes[r.brush].model].mins[0] < 700) // (the cart, not the platform)
+                    cart = r.brush;
+            }
+            check(worker >= 0 && cart >= 0, "ba_security2's cart and its worker");
+            if (worker >= 0 && cart >= 0)
+            {
+                for (int n = 0; n < 30; ++n)
+                    g.frame();
+                const ActorState &a = g.actors.states[worker];
+                const double startWorker = a.pos[0] / 4096.0, startCart = g.brushStates[cart].pos[0] / 4096.0;
+                logicFire(g.logic, g.player, static_cast<std::uint16_t>(nameOf(g, "move_sample")), -1,
+                          kUseToggle, 0);
+                for (int n = 0; n < 30 * 6; ++n)
+                    g.frame();
+                const double byWorker = a.pos[0] / 4096.0 - startWorker, byCart = g.brushStates[cart].pos[0] / 4096.0 - startCart;
+                std::printf("test_incident: ba_security2's cart went %.0f units in 6 s, its worker %.0f\n", byCart, byWorker);
+                check(byCart > 200 && std::fabs(byWorker - byCart) < 8,
+                      "ba_security2: the cart's worker keeps up with it, on the platform under her");
+            }
+        }
+        activeGame = was;
+    }
 } // namespace
 
 int main()
@@ -1397,6 +1440,7 @@ int main()
             testBlueShiftRangeGuard(bshift.string());
             testBlueShiftElevator(bshift.string());
             testBlueShiftMonitors(bshift.string());
+            testBlueShiftCartWorker(bshift.string());
         }
         else
             std::printf("test_incident: no Blue Shift beside Half-Life, its start was not tried\n");

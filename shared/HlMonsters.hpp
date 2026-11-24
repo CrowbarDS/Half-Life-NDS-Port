@@ -3609,16 +3609,20 @@ namespace hldata
         inline void peopleGround(LogicWorld &w, ActorState &actor, int ms)
         {
             const MoveWorld &world = *w.world;
+            // (The middle of their box above their origin: 36, or none for a
+            // monster_generic of the player's or the hologram's shape, whose
+            // origin is its middle -- c.f. actorToFloorAs.)
+            const fx middle = actorCentred(actor) ? 0 : fxFromInt(36);
             if (actor.groundMover == -2)
             {
-                const fx from[3] = {actor.pos[0], actor.pos[1], actor.pos[2] + fxFromInt(36 + 1)};
-                const fx to[3] = {actor.pos[0], actor.pos[1], actor.pos[2] + fxFromInt(36 - 24)};
+                const fx from[3] = {actor.pos[0], actor.pos[1], actor.pos[2] + middle + fxFromInt(1)};
+                const fx to[3] = {actor.pos[0], actor.pos[1], actor.pos[2] + middle - fxFromInt(24)};
                 const Trace tr = traceAll(world, false, from, to);
                 actor.groundMover = -1;
                 if (!tr.startSolid && !tr.allSolid && tr.fraction < kFractionOne && tr.mover >= 0)
                 {
                     actor.groundMover = tr.mover;
-                    actor.pos[2] = tr.endPos[2] - fxFromInt(36);
+                    actor.pos[2] = tr.endPos[2] - middle;
                     for (int k = 0; k < 3; ++k)
                         actor.groundAt[k] = w.brushStates[tr.mover].pos[k];
                 }
@@ -3628,7 +3632,7 @@ namespace hldata
                 // (The game's gravity, 800 units a second each second.)
                 actor.velocity[2] -= fxFromInt(800) * ms / 1000;
                 const fx step = fxTimesMs(actor.velocity[2], ms);
-                const fx from[3] = {actor.pos[0], actor.pos[1], actor.pos[2] + fxFromInt(36)};
+                const fx from[3] = {actor.pos[0], actor.pos[1], actor.pos[2] + middle};
                 const fx to[3] = {from[0], from[1], from[2] + step};
                 const Trace tr = traceAll(world, false, from, to);
                 if (tr.startSolid || tr.allSolid)
@@ -3639,7 +3643,7 @@ namespace hldata
                 }
                 else if (tr.fraction < kFractionOne)
                 {
-                    actor.pos[2] = tr.endPos[2] - fxFromInt(36);
+                    actor.pos[2] = tr.endPos[2] - middle;
                     actor.airborne = false;
                     actor.velocity[2] = 0;
                     actor.groundMover = tr.mover;
@@ -3681,10 +3685,10 @@ namespace hldata
             // (Only where the world has room for them, as the game's push
             // moves no one into a wall or a ceiling: one it cannot take along
             // is left where they are, for what comes into them to crush.)
-            const fx middle[3] = {actor.pos[0] + under.pos[0] - actor.groundAt[0],
-                                  actor.pos[1] + under.pos[1] - actor.groundAt[1],
-                                  actor.pos[2] + under.pos[2] - actor.groundAt[2] + fxFromInt(36)};
-            if (!positionFree(world, false, middle))
+            const fx moved[3] = {actor.pos[0] + under.pos[0] - actor.groundAt[0],
+                                 actor.pos[1] + under.pos[1] - actor.groundAt[1],
+                                 actor.pos[2] + under.pos[2] - actor.groundAt[2] + middle};
+            if (!positionFree(world, false, moved))
             {
                 actor.groundMover = -1;
                 return;
@@ -4302,9 +4306,10 @@ namespace hldata
             }
             // (A monster_generic too, as the game's MOVETYPE_STEP: ba_elevator's
             // two scientists ride the lift down -- left behind, they were hurt,
-            // and that loses the game. Not one whose origin is its middle.)
+            // and that loses the game; ba_security2's cart worker, of the
+            // hologram's shape, rides the platform that walks her beside it.)
             if (isPerson(actor.kind) || actor.kind == static_cast<std::uint8_t>(ActorKind::Gman) ||
-                (actor.kind == static_cast<std::uint8_t>(ActorKind::Generic) && !actorCentred(actor)))
+                actor.kind == static_cast<std::uint8_t>(ActorKind::Generic))
             {
                 // (They stand on what is under them -- a lift, a train -- and
                 // go where it goes, or fall: in a scene too, as the game's push
