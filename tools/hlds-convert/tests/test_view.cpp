@@ -4,6 +4,7 @@
 // made here, and where rounds land in another. With HLDS_VALVE_DIR set, a
 // real fall in a real map, and rounds on its faces.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -1201,6 +1202,38 @@ void testCasingRoom()
           "a big crate broken on a DS throws 20 pieces, and four casings after it are all seen");
 }
 
+/// Who may come in from the map next door is cooked with walk and run, to
+/// be told where to go; a mine on a wall there comes as it is.
+void testVisitorClips()
+{
+    std::vector<Entity> here, next;
+    std::string error;
+    const bool parsed = parseEntities("{\n\"classname\" \"worldspawn\"\n}\n", here, error) &&
+                        parseEntities("{\n\"classname\" \"info_landmark\"\n\"targetname\" \"door\"\n"
+                                      "\"origin\" \"0 0 0\"\n}\n"
+                                      "{\n\"classname\" \"monster_tripmine\"\n\"targetname\" \"mine\"\n"
+                                      "\"origin\" \"64 0 32\"\n}\n"
+                                      "{\n\"classname\" \"monster_zombie\"\n\"targetname\" \"zed\"\n"
+                                      "\"origin\" \"128 0 0\"\n}\n",
+                                      next, error);
+    std::vector<ModelNeed> needs;
+    if (parsed)
+        addVisitorNeeds(here, next, "door", needs);
+    auto has = [&](const char *name, const char *clip)
+    {
+        for (const ModelNeed &need : needs)
+        {
+            if (need.name == name)
+                return std::find(need.clips.begin(), need.clips.end(), clip) != need.clips.end();
+        }
+        return false;
+    };
+    check(parsed && has("zombie", "walk") && has("zombie", "run"),
+          "a zombie by the door next door is cooked to walk and run here");
+    check(has("v_tripmine", "world") && !has("v_tripmine", "walk") && !has("v_tripmine", "run"),
+          "... a tripmine by it, as it lies on its wall, and not to walk");
+}
+
 /// What a breakable comes apart into, cooked: its material's model of
 /// pieces (the game's), or its own ("gibmodel"); none for the glass that
 /// never breaks, for no material, or for a box that only moves.
@@ -1365,6 +1398,7 @@ void testBreakGibs(const char *dir)
 
 int main()
 {
+    testVisitorClips();
     testBreakGibNeeds();
     testCasingRoom();
     testDebrisLeavesMonstersAlone();

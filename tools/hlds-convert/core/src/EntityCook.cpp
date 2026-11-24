@@ -280,6 +280,30 @@ namespace hlds
         constexpr int kMaxMakerPlaces = 16;
         constexpr int kMakerPlacesInPlace = 3;
 
+        /// Whether an actor of this kind may move about, and so be told to
+        /// walk or run: not what stays where the map put it -- a mine on a
+        /// wall, a gun on its mount, a barnacle, a tentacle in its pit, a
+        /// plant of Xen, a body, a pickup.
+        bool walks(ActorKind kind)
+        {
+            switch (kind)
+            {
+            case ActorKind::Tripmine:
+            case ActorKind::Item:
+            case ActorKind::Pose:
+            case ActorKind::Barnacle:
+            case ActorKind::Miniturret:
+            case ActorKind::Sentry:
+            case ActorKind::Turret:
+            case ActorKind::Tentacle:
+            case ActorKind::Xen:
+            case ActorKind::Cycler:
+                return false;
+            default:
+                return true;
+            }
+        }
+
         ActorInfo actorOf(const Entity &entity)
         {
             ActorInfo info;
@@ -1258,8 +1282,12 @@ namespace hlds
             addActivities(*need, info.dsActivities);
             for (const std::string &clip : info.clips)
                 add(clip);
-            add("walk");
-            add("run");
+            // (One that moves may be told to walk or run once it is here.)
+            if (walks(info.kind))
+            {
+                add("walk");
+                add("run");
+            }
             for (const Entity &script : entities)
             {
                 if (name.empty() || !isScript(std::string(script.className())) ||
