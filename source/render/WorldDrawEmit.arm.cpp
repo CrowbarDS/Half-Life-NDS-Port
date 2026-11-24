@@ -82,6 +82,7 @@ namespace hlrt
         const std::uint32_t *sent = list_;
         const std::uint32_t *const end = list_ + kListWords;
         constexpr int kPiece = 512; // words worth starting the DMA for
+        const std::uint32_t worldFormat = NEA_PolyFormatGet(), overFormat = overlayFormat();
 
         // The near surfaces, then the far (THE ORDER, WorldDraw.hpp).
         for (int tier = 0; tier < 2; ++tier)
@@ -93,7 +94,12 @@ namespace hlrt
                 const int b = __builtin_ctz(bits);
                 bits &= bits - 1;
                 const Surface &surface = view.surfaces[(w << 5) + b];
-                if (at + surface.gxWords + 4 > end)
+                // (The light a DSi lays over it, if any: after it, between a
+                // polygon format of its own and the world's again.)
+                std::uint16_t overWords = 0;
+                const std::uint32_t *over = level.overlayOf(static_cast<std::uint32_t>((w << 5) + b), overWords);
+                const std::uint32_t need = surface.gxWords + 4u + (over != nullptr ? overWords + 4u : 0u);
+                if (at + need > end)
                 {
                     // No room left (it does not happen: see kListWords): all
                     // of it goes, and the list is begun again.
@@ -111,7 +117,7 @@ namespace hlrt
                     }
                     at = list_;
                     sent = list_;
-                    if (surface.gxWords + 4 > kListWords)
+                    if (need > static_cast<std::uint32_t>(kListWords))
                         continue;
                 }
                 if (surface.texture != bound)
@@ -128,6 +134,15 @@ namespace hlrt
                 }
                 std::memcpy(at, level.gxAt(surface), surface.gxWords * 4u);
                 at += surface.gxWords;
+                if (over != nullptr)
+                {
+                    *at++ = FIFO_COMMAND_PACK(FIFO_POLY_FORMAT, FIFO_NOP, FIFO_NOP, FIFO_NOP);
+                    *at++ = overFormat;
+                    std::memcpy(at, over, overWords * 4u);
+                    at += overWords;
+                    *at++ = FIFO_COMMAND_PACK(FIFO_POLY_FORMAT, FIFO_NOP, FIFO_NOP, FIFO_NOP);
+                    *at++ = worldFormat;
+                }
                 if (at - sent >= kPiece && !ndmaBusy(0))
                 {
                     feed(sent, static_cast<std::uint32_t>(at - sent));
@@ -200,6 +215,16 @@ namespace hlrt
                 // simply waits while it is full.
                 for (int n = surface.gxWords; n > 0; --n)
                     GFX_FIFO = *word++;
+                // (The light a DSi lays over it, as emitList sends it.)
+                std::uint16_t overWords = 0;
+                if (const std::uint32_t *over = level.overlayOf(static_cast<std::uint32_t>((w << 5) + b), overWords))
+                {
+                    const std::uint32_t worldFormat = NEA_PolyFormatGet();
+                    GFX_POLY_FORMAT = overlayFormat();
+                    for (int n = overWords; n > 0; --n)
+                        GFX_FIFO = *over++;
+                    GFX_POLY_FORMAT = worldFormat;
+                }
             }
         }
     }

@@ -1,17 +1,18 @@
 #pragma once
 
-// "dsi.gx": a DSi's finer runs of some of the level's surfaces -- those whose
-// light their corners cannot carry, a pool of lamp light in the middle of a
-// wall, cut into triangles through points of light inside them (the
-// converter's LightRefine.hpp). A member of the map's archive beside the
-// level; a DSi reads it with the level and draws each surface it names from
-// its run here instead of from the level's stream (with its own counts of
-// polygons and vertices, for the pass's budget). A DS never reads it, and the
-// level is the same for both: a save, or a game between consoles, never
-// knows of it.
+// "dsi.gx": a DSi's light laid over some of the level's surfaces -- those
+// whose light their corners cannot carry, a pool of lamp light in the middle
+// of a wall -- cut into squares of the lightmap's grid, each point lit as the
+// lightmap has it (the converter's LightRefine.hpp). A member of the map's
+// archive beside the level; a DSi reads it with the level and draws each run
+// here over its surface's own, see-through (alpha 30) at the same depth,
+// straight after it (with the run's polygons and vertices added to the
+// surface's, for the pass's budget). A DS never reads it, and the level is
+// the same for both: a save, or a game between consoles, never knows of it.
+// (Version 1's runs were drawn instead of the surface's own.)
 //
-// Only surfaces no changing light reaches have a finer run: a LightPatch
-// names words of the level's own stream.
+// Only surfaces no changing light reaches have one: a LightPatch changes
+// words of the level's own stream, and the light over it would not change.
 //
 //   DsiGxHeader
 //   DsiGxSurface[count]   by surface, rising
@@ -27,13 +28,13 @@ namespace hldata
 {
     inline constexpr char kDsiGxMember[] = "dsi.gx";
     inline constexpr char kDsiGxMagic[4] = {'H', 'L', 'D', 'F'};
-    inline constexpr std::uint16_t kDsiGxVersion = 1;
+    inline constexpr std::uint16_t kDsiGxVersion = 2;
 
     struct DsiGxHeader
     {
         char magic[4];
         std::uint16_t version;
-        std::uint16_t count;    ///< surfaces with a finer run
+        std::uint16_t count;    ///< surfaces with light over them
         std::uint32_t levelCrc; ///< the level's LevelHeader::crc32: of that level only
         std::uint32_t words;    ///< of all the runs together
     };
@@ -43,7 +44,7 @@ namespace hldata
     {
         std::uint16_t surface;  ///< into Surfaces
         std::uint16_t words;
-        std::uint16_t polygons; ///< what it costs the geometry engine, as Surface's
+        std::uint16_t polygons; ///< what it costs the geometry engine, besides the surface's own
         std::uint16_t vertices;
         std::uint32_t ofs;      ///< its first word, among the runs
     };

@@ -66,15 +66,15 @@ namespace hlds
         std::vector<hldata::MessageRecord> messages;
         std::vector<hldata::ModelSound> modelSounds;
         std::vector<hldata::LightPatch> lightPatches;
-        /// A DSi's finer runs of some surfaces (LightRefine.hpp): not in the
-        /// level, but a member of its own beside it (HlDsiGx.hpp).
+        /// A DSi's light laid over some surfaces (LightRefine.hpp): not in
+        /// the level, but a member of its own beside it (HlDsiGx.hpp).
         struct FineSurface
         {
             std::uint16_t surface = 0;
             std::vector<std::uint32_t> words;
             int polygons = 0, vertices = 0;
             /// Not written: what it is worth -- the light it puts right
-            /// (error times area) for each polygon it adds.
+            /// (error times area) for each polygon it adds (all of its own).
             double worth = 0;
             /// Not written: the light it was off by before and is after
             /// (mean error, of 255, times texels), for the report.

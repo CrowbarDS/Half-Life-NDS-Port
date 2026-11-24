@@ -1100,15 +1100,12 @@ namespace hlds
                 }
                 clampedTexCoords = clampedTexCoords || built.texCoordsClamped;
 
-                // A DSi's finer run of it, where light its corners cannot
-                // carry falls inside its faces (LightRefine.hpp): steady
-                // light only -- a LightPatch names words of the plain run.
+                // A DSi's light laid over it, where light its corners cannot
+                // carry falls inside its faces (LightRefine.hpp): steady light
+                // only -- a LightPatch names words of the plain run, and the
+                // overlay's light would not change with it.
                 if (!changing && !flatColour && !fullBright && options.dsiRefine)
                 {
-                    std::vector<std::vector<MeshFace>> pieces;
-                    std::vector<const MeshFace *> finer;
-                    bool any = false;
-                    double wrong = 0, left = 0, texels = 0;
                     auto texelsOf = [](const MeshFace &f)
                     {
                         double size = 0;
@@ -1118,40 +1115,34 @@ namespace hlds
                         return size;
                     };
                     const LightRefine how;
+                    bool needs = false;
+                    double wrong = 0, texels = 0;
                     for (const MeshFace *member : members)
                     {
-                        pieces.push_back(refineLight(*member, bsp, light, placed, how));
-                        any = any || !pieces.back().empty();
-                        if (!pieces.back().empty())
-                        {
-                            // (Its error, by its size: texels.)
-                            const double size = texelsOf(*member);
-                            wrong += cornerLightError(*member, bsp, light, placed) * size;
-                            texels += size;
-                            for (const MeshFace &piece : pieces.back())
-                                left += cornerLightError(piece, bsp, light, placed) * texelsOf(piece);
-                        }
+                        const double off = cornerLightError(*member, bsp, light, placed);
+                        const double size = texelsOf(*member);
+                        needs = needs || (member->points.size() >= 3 && off > how.limit);
+                        wrong += off * size;
+                        texels += size;
                     }
-                    for (std::size_t k = 0; k < members.size(); ++k)
+                    const LightOverlay overlay =
+                        needs ? lightOverlay(members, bsp, light, placed, how) : LightOverlay();
+                    const double left = overlay.error * texels;
+                    if (!overlay.pieces.empty() && left < wrong)
                     {
-                        if (pieces[k].empty())
-                            finer.push_back(members[k]);
-                        else
-                            for (const MeshFace &piece : pieces[k])
-                                finer.push_back(&piece);
-                    }
-                    if (any)
-                    {
-                        const BuiltSurface fine = buildGroupSurface(finer, sizeOf(bspTexture, form), tex.width, tex.height);
-                        if (!fine.outOfRange && fine.polygons > built.polygons && fine.words.size() <= 0xFFFF &&
-                            fine.polygons <= 0xFFFF && fine.vertices <= 0xFFFF)
+                        std::vector<const MeshFace *> pieces;
+                        for (const MeshFace &piece : overlay.pieces)
+                            pieces.push_back(&piece);
+                        const BuiltSurface over = buildGroupSurface(pieces, sizeOf(bspTexture, form), tex.width, tex.height);
+                        if (!over.outOfRange && over.polygons > 0 && over.words.size() <= 0xFFFF &&
+                            built.polygons + over.polygons <= 0xFFFF && built.vertices + over.vertices <= 0xFFFF)
                         {
                             CookedLevel::FineSurface entry;
                             entry.surface = static_cast<std::uint16_t>(level.surfaces.size());
-                            entry.words = fine.words;
-                            entry.polygons = fine.polygons;
-                            entry.vertices = fine.vertices;
-                            entry.worth = (wrong - left) / (fine.polygons - built.polygons);
+                            entry.words = over.words;
+                            entry.polygons = over.polygons;
+                            entry.vertices = over.vertices;
+                            entry.worth = (wrong - left) / over.polygons;
                             entry.before = wrong;
                             entry.after = left;
                             entry.texels = texels;
@@ -1864,8 +1855,8 @@ namespace hlds
             level.farUnits = static_cast<std::uint32_t>(seen.farUnits);
             report.seenGivenUp = seen.givenUp;
             report.hotspots = seen.hotspots;
-            // ... and a DSi's, with its finer runs: as many of them as keep
-            // its worst view within kDsiFineMore polygons of this one, those
+            // ... and a DSi's, with the light laid over its surfaces: as many
+            // as keep its worst view within kDsiFineMore polygons of this one, those
             // that put most light right for each polygon kept first (a tenth
             // of what is left let go at a time).
             if (!level.dsiFine.empty())
@@ -1880,8 +1871,10 @@ namespace hlds
                     fine.surfaces = level.surfaces;
                     for (const CookedLevel::FineSurface &entry : level.dsiFine)
                     {
-                        fine.surfaces[entry.surface].polygons = static_cast<std::uint16_t>(entry.polygons);
-                        fine.surfaces[entry.surface].vertices = static_cast<std::uint16_t>(entry.vertices);
+                        fine.surfaces[entry.surface].polygons =
+                            static_cast<std::uint16_t>(level.surfaces[entry.surface].polygons + entry.polygons);
+                        fine.surfaces[entry.surface].vertices =
+                            static_cast<std::uint16_t>(level.surfaces[entry.surface].vertices + entry.vertices);
                     }
                     const SeenWorst seenFine = seenWorst(bsp, fine, portals);
                     report.dsiWorstPolygons = seenFine.polygons;
@@ -1896,7 +1889,7 @@ namespace hlds
                 double before = 0, after = 0, texels = 0;
                 for (const CookedLevel::FineSurface &entry : level.dsiFine)
                 {
-                    report.dsiFinePolygons += entry.polygons - level.surfaces[entry.surface].polygons;
+                    report.dsiFinePolygons += entry.polygons;
                     ++report.dsiFineSurfaces;
                     before += entry.before;
                     after += entry.after;

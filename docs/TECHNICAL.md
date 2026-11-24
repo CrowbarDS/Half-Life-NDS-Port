@@ -39,20 +39,30 @@ Milestone 11, "levels of detail".
   map). Faces a changing light falls on are read as before, as their
   `LightPatch` needs. A DSi goes further where a face's corners still
   cannot carry its light -- a pool of lamp light in the middle of a wall:
-  such a face is given points of light inside it, one at a time, each on
-  the lightmap sample where the face as lit so far is furthest from its
-  lightmap -- the middle of the pool, the edge of a shadow -- until nowhere
-  is 10 of 255 off or it has twelve; and it is cut into triangles through
-  them from the inside (its edges keep their vertices: no crack against a
-  neighbour). Against points on a grid every four samples, for about the
-  same polygons, that leaves a third of the error (hldemo2's split faces:
-  off by 29.8 of 255, then 8.7, where the grid left 17.6). Those finer runs are
-  a member of the map's archive of their own (`dsi.gx`, HlDsiGx.hpp) that
-  a DSi reads with the level and draws in place of the surfaces' own; a DS
-  never reads it, and the level is the same for both. The converter keeps
-  as many as leave the DSi's worst view within 150 polygons of the DS's,
-  those that put most light right for each polygon first (hldemo2: 61
-  surfaces, +1,068 polygons, its worst view 877 to 1,011).
+  it lays the light over the surface, as the lamp lays its own (below).
+  The surface is drawn as a DS draws it, then again over itself, cut into
+  squares of the lightmap's own grid -- a sample every 16 texels along
+  the texture's axes; 32 or 64 where the light is smooth enough -- each
+  point inside lit as the lightmap has it there, each point on a face's
+  outline as the face's own corners have it, so the overlay ends without
+  a step. A square is a quad, which the hardware blends from corner to
+  corner as the game blends its lightmap between samples: no triangle's
+  crease. It is drawn see-through (alpha 30), so after every solid
+  polygon, and only where the wall is (the same depth): what it misses --
+  the edge of a pixel, a wall seen side-on -- is the wall as a DS draws
+  it, so it may put points anywhere, on the edges too, with no crack to
+  open. (Cutting the faces themselves instead, a point on an edge would
+  open a crack against the neighbour that has not got it; kept off the
+  edges, the squares covered a third of a face, and the rest was again
+  triangles fanned from its corners.) The overlays are a member of the
+  map's archive of their own (`dsi.gx`, HlDsiGx.hpp) that a DSi reads
+  with the level; each is sent straight after its surface, in the same
+  list, and the lamp reads it in its surface's place. A DS never reads
+  it, and the level is the same for both. The converter keeps as many as
+  leave the DSi's worst view within 150 polygons of the DS's, those that
+  put most light right for each polygon first (hldemo2: 34 surfaces,
+  +1,215 polygons, their light off by 30.1 of 255 before and 10.8 after;
+  its worst view 877 to 993).
   Neighbouring faces share vertices in
   quad strips, and faces are merged only where that provably changes nothing
   on screen (about 12% fewer vertices over the campaign).

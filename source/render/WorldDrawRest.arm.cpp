@@ -289,6 +289,11 @@ namespace hlrt
             break;
         }
 
+        // (Drawn solid as the world is: then the light a DSi lays over its
+        // surfaces goes over them, as over the world's.)
+        const bool solid = look == 0 && static_cast<RenderClass>(brush.renderClass) == RenderClass::Opaque;
+        const std::uint32_t brushFormat = NEA_PolyFormatGet();
+
         // Vertices are quarter units and positions are Q12 units: >> 10.
         const bool moved = pos[0] != 0 || pos[1] != 0 || pos[2] != 0 || turned;
         if (moved)
@@ -366,6 +371,17 @@ namespace hlrt
             const std::uint32_t *word = level.gxAt(*surface);
             for (int k = surface->gxWords; k > 0; --k)
                 GFX_FIFO = *word++;
+            // (The light a DSi lays over it: on a brush drawn solid alone.)
+            std::uint16_t overWords = 0;
+            const std::uint32_t *over =
+                solid ? level.overlayOf(static_cast<std::uint32_t>(surface - view.surfaces), overWords) : nullptr;
+            if (over != nullptr)
+            {
+                GFX_POLY_FORMAT = overlayFormat();
+                for (int k = overWords; k > 0; --k)
+                    GFX_FIFO = *over++;
+                GFX_POLY_FORMAT = brushFormat;
+            }
             stats_.polygons += surface->polygons;
             stats_.vertices += surface->vertices;
             ++stats_.surfaces;
@@ -751,7 +767,14 @@ namespace hlrt
             const LampLight light{{at[0], at[1], at[2]}, strength};
             LampGridCounts made;
             ++counts.surfaces;
-            room = lampGrid.build(level.gxAt(surface), surface.gxWords, normal, light, texture, step, sender, &made);
+            // (Over the light a DSi lays over the surface, where it has one:
+            // the lamp adds to that.)
+            std::uint16_t overWords = 0;
+            const std::uint32_t *over =
+                level.overlayOf(static_cast<std::uint32_t>(&surface - view.surfaces), overWords);
+            room = over != nullptr
+                       ? lampGrid.build(over, overWords, normal, light, texture, step, sender, &made)
+                       : lampGrid.build(level.gxAt(surface), surface.gxWords, normal, light, texture, step, sender, &made);
             counts.triangles += made.polygons;
             counts.pieces += made.cells + made.pieces;
         };

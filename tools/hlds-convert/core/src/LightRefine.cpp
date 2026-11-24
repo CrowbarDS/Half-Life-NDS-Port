@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <map>
 
 #include "HlFixed.hpp"
 
@@ -110,338 +111,277 @@ namespace hlds
 
     namespace
     {
-        using Tri = std::array<int, 3>;
+        /// A point of a piece, as it is cut.
+        struct Spot
+        {
+            FacePoint p;
+        };
 
-        /// A face cut into triangles: its points (the face's corners first)
-        /// and the triangles through them, all the face's way round.
-        struct Cut
+        /// `poly` (convex, in s/t) cut to one side of the line `axis` =
+        /// `at`: the side above it when `above`.
+        std::vector<Spot> clipTo(const std::vector<Spot> &poly, int axis, double at, bool above)
+        {
+            auto value = [&](const Spot &x) { return axis == 0 ? x.p.s : x.p.t; };
+            auto keep = [&](const Spot &x) { return above ? value(x) >= at - 1e-9 : value(x) <= at + 1e-9; };
+            std::vector<Spot> out;
+            for (std::size_t i = 0; i < poly.size(); ++i)
+            {
+                const Spot &a = poly[i], &b = poly[(i + 1) % poly.size()];
+                if (keep(a))
+                    out.push_back(a);
+                const double va = value(a) - at, vb = value(b) - at;
+                if ((va < -1e-9 && vb > 1e-9) || (va > 1e-9 && vb < -1e-9))
+                {
+                    const double u = va / (va - vb);
+                    Spot m;
+                    for (int q = 0; q < 3; ++q)
+                        m.p.pos[q] = a.p.pos[q] + (b.p.pos[q] - a.p.pos[q]) * u;
+                    m.p.s = a.p.s + (b.p.s - a.p.s) * u;
+                    m.p.t = a.p.t + (b.p.t - a.p.t) * u;
+                    // (Exactly on the line: no rounding off it.)
+                    (axis == 0 ? m.p.s : m.p.t) = at;
+                    m.p.colour = 0;
+                    out.push_back(m);
+                }
+            }
+            // (Points that fell together: one.)
+            std::vector<Spot> kept;
+            for (const Spot &x : out)
+                if (kept.empty() || std::fabs(kept.back().p.s - x.p.s) + std::fabs(kept.back().p.t - x.p.t) > 1e-6)
+                    kept.push_back(x);
+            while (kept.size() > 1 &&
+                   std::fabs(kept.back().p.s - kept.front().p.s) + std::fabs(kept.back().p.t - kept.front().p.t) <= 1e-6)
+                kept.pop_back();
+            return kept;
+        }
+
+        /// The colour of a 5-bit channel `shift` blended from `a` to `b`.
+        std::uint16_t blend555(std::uint16_t a, std::uint16_t b, double u)
+        {
+            std::uint16_t out = 0;
+            for (const int shift : {0, 5, 10})
+            {
+                const double v = ((a >> shift) & 31) * (1 - u) + ((b >> shift) & 31) * u;
+                out = static_cast<std::uint16_t>(out | (std::clamp(static_cast<int>(std::lround(v)), 0, 31) << shift));
+            }
+            return out;
+        }
+
+        /// A piece laid over a face, as it is drawn.
+        struct Piece
         {
             std::vector<FacePoint> points;
-            std::vector<Tri> tris;
-            double sign = 1;
-
-            double area2(int a, int b, int c) const
-            {
-                const FacePoint &A = points[static_cast<std::size_t>(a)], &B = points[static_cast<std::size_t>(b)],
-                                &C = points[static_cast<std::size_t>(c)];
-                return (B.s - A.s) * (C.t - A.t) - (B.t - A.t) * (C.s - A.s);
-            }
-            bool turnsRight(int a, int b, int c) const { return area2(a, b, c) * sign > 1e-9; }
-
-            /// The triangle (s, t) is in (on its edges too, with `edge`),
-            /// and its weights; -1 if none.
-            int locate(double s, double t, double &wa, double &wb, double &wc, bool edge) const
-            {
-                const double least = edge ? -1e-6 : 1e-3;
-                for (std::size_t i = 0; i < tris.size(); ++i)
-                {
-                    const Tri &tr = tris[i];
-                    if (weights(points[static_cast<std::size_t>(tr[0])], points[static_cast<std::size_t>(tr[1])],
-                                points[static_cast<std::size_t>(tr[2])], s, t, wa, wb, wc) &&
-                        wa >= least && wb >= least && wc >= least)
-                        return static_cast<int>(i);
-                }
-                return -1;
-            }
-
-            /// The brightness drawn at (s, t); false if it is not on the face.
-            bool drawnAt(double s, double t, double &out) const
-            {
-                double wa, wb, wc;
-                const int in = locate(s, t, wa, wb, wc, true);
-                if (in < 0)
-                    return false;
-                const Tri &tr = tris[static_cast<std::size_t>(in)];
-                out = wa * luma555(points[static_cast<std::size_t>(tr[0])].colour) +
-                      wb * luma555(points[static_cast<std::size_t>(tr[1])].colour) +
-                      wc * luma555(points[static_cast<std::size_t>(tr[2])].colour);
-                return true;
-            }
-
-            /// The triangle across edge (a, b) of triangle `self`, and its
-            /// third corner; -1 if the edge is the face's own.
-            int across(std::size_t self, int a, int b, int &third) const
-            {
-                for (std::size_t i = 0; i < tris.size(); ++i)
-                {
-                    if (i == self)
-                        continue;
-                    const Tri &o = tris[i];
-                    for (int e = 0; e < 3; ++e)
-                        if (o[static_cast<std::size_t>(e)] == b && o[static_cast<std::size_t>((e + 1) % 3)] == a)
-                        {
-                            third = o[static_cast<std::size_t>((e + 2) % 3)];
-                            return static_cast<int>(i);
-                        }
-                }
-                return -1;
-            }
-
-            bool inCircle(const Tri &tr, int d) const
-            {
-                const FacePoint &A = points[static_cast<std::size_t>(tr[0])], &B = points[static_cast<std::size_t>(tr[1])],
-                                &C = points[static_cast<std::size_t>(tr[2])], &D = points[static_cast<std::size_t>(d)];
-                const double ax = A.s - D.s, ay = A.t - D.t, bx = B.s - D.s, by = B.t - D.t, cx = C.s - D.s, cy = C.t - D.t;
-                const double det = (ax * ax + ay * ay) * (bx * cy - cx * by) - (bx * bx + by * by) * (ax * cy - cx * ay) +
-                                   (cx * cx + cy * cy) * (ax * by - bx * ay);
-                return det * sign > 1e-9;
-            }
-
-            /// `point` put in: the triangle it is in cut in three, and the
-            /// edges about it turned while that makes them nearer
-            /// Delaunay's. False if it lies on no triangle's inside.
-            bool insert(const FacePoint &point)
-            {
-                double wa, wb, wc;
-                const int in = locate(point.s, point.t, wa, wb, wc, false);
-                if (in < 0)
-                    return false;
-                points.push_back(point);
-                const int p = static_cast<int>(points.size() - 1);
-                const Tri was = tris[static_cast<std::size_t>(in)];
-                tris[static_cast<std::size_t>(in)] = {p, was[0], was[1]};
-                tris.push_back({p, was[1], was[2]});
-                tris.push_back({p, was[2], was[0]});
-                std::vector<std::pair<int, int>> edges = {{was[0], was[1]}, {was[1], was[2]}, {was[2], was[0]}};
-                for (int guard = 0; !edges.empty() && guard < 4096; ++guard)
-                {
-                    const auto [a, b] = edges.back();
-                    edges.pop_back();
-                    std::size_t self = tris.size();
-                    for (std::size_t i = 0; i < tris.size(); ++i)
-                        if (tris[i] == Tri{p, a, b})
-                            self = i;
-                    if (self == tris.size())
-                        continue;
-                    int d = -1;
-                    const int other = across(self, a, b, d);
-                    if (other < 0 || !inCircle(tris[self], d) || !turnsRight(p, a, d) || !turnsRight(p, d, b))
-                        continue;
-                    tris[self] = {p, a, d};
-                    tris[static_cast<std::size_t>(other)] = {p, d, b};
-                    edges.push_back({a, d});
-                    edges.push_back({d, b});
-                }
-                return true;
-            }
+            bool whole = false; ///< the whole square: blended across it both ways
+            double s0 = 0, t0 = 0;
         };
-
-        /// A sample of the face's lightmap that is seen: where, and how
-        /// bright the map has it.
-        struct Seen
-        {
-            double s, t, v;
-        };
-
-        /// How far what `cut` draws is from the lightmap, summed over `seen`
-        /// (those in `only`'s triangles alone, if given).
-        double cutError(const Cut &cut, const std::vector<Seen> &seen)
-        {
-            double sum = 0;
-            for (const Seen &x : seen)
-            {
-                double drawn;
-                if (cut.drawnAt(x.s, x.t, drawn))
-                    sum += std::fabs(drawn - x.v);
-            }
-            return sum;
-        }
-
-        /// Each edge inside the face turned the other way across its two
-        /// triangles where that draws the lightmap better -- light, not
-        /// shape, choosing the diagonal: a crease where the light bends,
-        /// not across a pool of it. Until none is worth turning.
-        void flipByLight(Cut &cut, const std::vector<Seen> &seen)
-        {
-            for (int pass = 0; pass < 8; ++pass)
-            {
-                bool turned = false;
-                for (std::size_t self = 0; self < cut.tris.size(); ++self)
-                    for (int e = 0; e < 3; ++e)
-                    {
-                        const Tri tr = cut.tris[self];
-                        const int a = tr[static_cast<std::size_t>(e)], b = tr[static_cast<std::size_t>((e + 1) % 3)],
-                                  c = tr[static_cast<std::size_t>((e + 2) % 3)];
-                        int d = -1;
-                        const int other = cut.across(self, a, b, d);
-                        if (other < 0 || static_cast<std::size_t>(other) < self)
-                            continue; // (each edge once)
-                        // (a, b, c) and (b, a, d) as they are; (c, a, d) and
-                        // (c, d, b) turned -- if both keep the way round.
-                        if (!cut.turnsRight(c, a, d) || !cut.turnsRight(c, d, b))
-                            continue;
-                        Cut trial = cut;
-                        trial.tris[self] = {c, a, d};
-                        trial.tris[static_cast<std::size_t>(other)] = {c, d, b};
-                        // (Only the samples of the two triangles change.)
-                        Cut pair, pairTurned;
-                        pair.points = pairTurned.points = cut.points;
-                        pair.sign = pairTurned.sign = cut.sign;
-                        pair.tris = {cut.tris[self], cut.tris[static_cast<std::size_t>(other)]};
-                        pairTurned.tris = {trial.tris[self], trial.tris[static_cast<std::size_t>(other)]};
-                        if (cutError(pairTurned, seen) + 0.5 < cutError(pair, seen))
-                        {
-                            cut = std::move(trial);
-                            turned = true;
-                        }
-                    }
-                if (!turned)
-                    break;
-            }
-        }
     } // namespace
 
-    std::vector<MeshFace> refineLight(const MeshFace &face, const BspFile &bsp, const LightBake &light,
-                                      const double *origin, const LightRefine &how)
+    LightOverlay lightOverlay(const std::vector<const MeshFace *> &members, const BspFile &bsp,
+                              const LightBake &light, const double *origin, const LightRefine &how)
     {
-        if (face.points.size() < 3 || cornerLightError(face, bsp, light, origin) <= how.limit)
-            return {};
-        const std::size_t corners = face.points.size();
-        std::vector<std::pair<const BspFace *, std::vector<std::array<double, 2>>>> sources;
-        for (const int f : face.sources)
-            sources.push_back({&bsp.faces[static_cast<std::size_t>(f)], outline(bsp, light, bsp.faces[static_cast<std::size_t>(f)])});
-        auto sourceOf = [&](double s, double t) -> const BspFace *
+        // Each face's outline in s/t, its corners' colours as its run has them.
+        auto outlineColour = [](const MeshFace &face, double s, double t, std::uint16_t &out)
         {
-            for (const auto &[maybe, o] : sources)
-                if (insideOutline(o, s, t))
-                    return maybe;
-            return nullptr;
+            const std::size_t n = face.points.size();
+            for (std::size_t i = 0; i < n; ++i)
+            {
+                const FacePoint &a = face.points[i], &b = face.points[(i + 1) % n];
+                const double ds = b.s - a.s, dt = b.t - a.t, len2 = ds * ds + dt * dt;
+                if (len2 < 1e-12)
+                    continue;
+                const double u = ((s - a.s) * ds + (t - a.t) * dt) / len2;
+                const double off = std::fabs((s - a.s) * dt - (t - a.t) * ds) / std::sqrt(len2);
+                if (u >= -1e-6 && u <= 1 + 1e-6 && off <= 1e-4)
+                {
+                    out = blend555(a.colour, b.colour, std::clamp(u, 0.0, 1.0));
+                    return true;
+                }
+            }
+            return false;
         };
-        double lo[2] = {1e30, 1e30}, hi[2] = {-1e30, -1e30};
-        for (const FacePoint &p : face.points)
-        {
-            lo[0] = std::min(lo[0], p.s);
-            lo[1] = std::min(lo[1], p.t);
-            hi[0] = std::max(hi[0], p.s);
-            hi[1] = std::max(hi[1], p.t);
-        }
-        // Every sample of the face that is seen, to be held to (edges and
-        // all); and those clear of the edges, where a point may go -- lit as
-        // the lightmap has it there.
-        std::vector<Seen> seen;
-        std::vector<FacePoint> pool;
-        const double cell = kSpacing * (how.greedy ? 1 : how.step);
-        for (double t = std::ceil(lo[1] / kSpacing) * kSpacing; t <= hi[1]; t += kSpacing)
-            for (double s = std::ceil(lo[0] / kSpacing) * kSpacing; s <= hi[0]; s += kSpacing)
-            {
-                int k;
-                double wa, wb, wc;
-                if (!inFan(face.points, s, t, k, wa, wb, wc))
-                    continue;
-                const BspFace *src = sourceOf(s, t);
-                if (src == nullptr || light.sampleInSolid(*src, s, t, origin))
-                    continue;
-                seen.push_back({s, t, luma(light.sample(*src, s, t))});
-                if (std::fmod(s, cell) != 0 || std::fmod(t, cell) != 0)
-                    continue;
-                bool clear = true;
-                for (std::size_t i = 0; i < corners && clear; ++i)
-                {
-                    const FacePoint &a = face.points[i], &b = face.points[(i + 1) % corners];
-                    const double ds = b.s - a.s, dt = b.t - a.t, len = std::sqrt(ds * ds + dt * dt);
-                    clear = len < 1e-6 || std::fabs(ds * (t - a.t) - dt * (s - a.s)) / len >= kMargin;
-                }
-                if (!clear)
-                    continue;
-                FacePoint p{};
-                const FacePoint &a = face.points[0], &b = face.points[static_cast<std::size_t>(k)],
-                                &c = face.points[static_cast<std::size_t>(k + 1)];
-                for (int q = 0; q < 3; ++q)
-                    p.pos[q] = wa * a.pos[q] + wb * b.pos[q] + wc * c.pos[q];
-                p.s = s;
-                p.t = t;
-                const Rgb lit = light.sample(*src, s, t, origin);
-                p.colour = hldata::rgb555Near(lit.r, lit.g, lit.b);
-                pool.push_back(p);
-            }
-        if (pool.empty() || seen.empty())
-            return {};
 
-        Cut cut;
-        cut.points = face.points;
-        for (std::size_t k = 1; k + 1 < corners; ++k)
-            cut.tris.push_back({0, static_cast<int>(k), static_cast<int>(k + 1)});
-        double orient = 0;
-        for (const Tri &tr : cut.tris)
-            orient += cut.area2(tr[0], tr[1], tr[2]);
-        cut.sign = orient >= 0 ? 1 : -1;
-
-        if (!how.greedy)
+        // A face's pieces for squares of `size` texels.
+        auto piecesOf = [&](const MeshFace &face, double size, std::vector<Piece> &out)
         {
-            // Every one of the grid's points.
-            for (const FacePoint &point : pool)
-                cut.insert(point);
-        }
-        else
-        {
-            // A point at a time: of the samples the face is furthest from now,
-            // the one whose point -- the edges about it turned by light --
-            // brings the whole face nearest its lightmap; until none brings it
-            // nearer by enough (a dark sample at a shadow's edge, which would
-            // spread its dark over the light beside it, is never taken), or
-            // the face has its most.
-            constexpr std::size_t kTried = 6;
-            const double enough = 0.25 * static_cast<double>(seen.size());
-            double now = cutError(cut, seen);
-            std::vector<char> used(pool.size(), 0);
-            for (int added = 0; added < how.most; ++added)
+            std::vector<std::pair<const BspFace *, std::vector<std::array<double, 2>>>> sources;
+            for (const int f : face.sources)
+                sources.push_back({&bsp.faces[static_cast<std::size_t>(f)], outline(bsp, light, bsp.faces[static_cast<std::size_t>(f)])});
+            double lo[2] = {1e30, 1e30}, hi[2] = {-1e30, -1e30};
+            std::vector<Spot> whole;
+            for (const FacePoint &p : face.points)
             {
-                std::vector<std::pair<double, std::size_t>> worst;
-                for (std::size_t c = 0; c < pool.size(); ++c)
-                {
-                    double drawn;
-                    if (used[c] || !cut.drawnAt(pool[c].s, pool[c].t, drawn))
-                        continue;
-                    const double off = std::fabs(drawn - luma555(pool[c].colour));
-                    if (off > how.stopAt)
-                        worst.push_back({off, c});
-                }
-                if (worst.empty())
-                    break;
-                std::sort(worst.begin(), worst.end(), [](const auto &x, const auto &y) { return x.first > y.first; });
-                Cut best;
-                double bestError = now;
-                std::size_t taken = pool.size();
-                for (std::size_t n = 0; n < worst.size() && n < kTried; ++n)
-                {
-                    Cut trial = cut;
-                    if (!trial.insert(pool[worst[n].second]))
-                    {
-                        used[worst[n].second] = 1;
-                        continue;
-                    }
-                    flipByLight(trial, seen);
-                    const double e = cutError(trial, seen);
-                    if (e < bestError)
-                    {
-                        bestError = e;
-                        best = std::move(trial);
-                        taken = worst[n].second;
-                    }
-                }
-                if (taken == pool.size() || now - bestError < enough)
-                    break;
-                used[taken] = 1;
-                cut = std::move(best);
-                now = bestError;
+                lo[0] = std::min(lo[0], p.s);
+                lo[1] = std::min(lo[1], p.t);
+                hi[0] = std::max(hi[0], p.s);
+                hi[1] = std::max(hi[1], p.t);
+                whole.push_back({p});
             }
-        }
-        if (cut.points.size() == corners)
-            return {};
-        std::vector<MeshFace> out;
-        for (const Tri &tr : cut.tris)
+            for (double t0 = std::floor(lo[1] / size) * size; t0 < hi[1] - 1e-9; t0 += size)
+                for (double s0 = std::floor(lo[0] / size) * size; s0 < hi[0] - 1e-9; s0 += size)
+                {
+                    std::vector<Spot> poly = clipTo(whole, 0, s0, true);
+                    poly = clipTo(poly, 0, s0 + size, false);
+                    poly = clipTo(poly, 1, t0, true);
+                    poly = clipTo(poly, 1, t0 + size, false);
+                    if (poly.size() < 3)
+                        continue;
+                    double area = 0;
+                    for (std::size_t k = 1; k + 1 < poly.size(); ++k)
+                        area += (poly[k].p.s - poly[0].p.s) * (poly[k + 1].p.t - poly[0].p.t) -
+                                (poly[k + 1].p.s - poly[0].p.s) * (poly[k].p.t - poly[0].p.t);
+                    if (std::fabs(area) / 2 < 0.05)
+                        continue; // (a sliver: what it would cover the wall shows)
+                    Piece piece;
+                    piece.s0 = s0;
+                    piece.t0 = t0;
+                    bool square = poly.size() == 4;
+                    for (Spot &x : poly)
+                    {
+                        square = square && (x.p.s == s0 || x.p.s == s0 + size) && (x.p.t == t0 || x.p.t == t0 + size);
+                        std::uint16_t colour = 0;
+                        // On the outline: as the face's own run has it there.
+                        if (outlineColour(face, x.p.s, x.p.t, colour))
+                            x.p.colour = colour;
+                        else
+                        {
+                            // Inside: the lightmap there, or the run's own light
+                            // where the lightmap has only solid to say.
+                            const BspFace *src = nullptr;
+                            for (const auto &[maybe, o] : sources)
+                                if (insideOutline(o, x.p.s, x.p.t))
+                                {
+                                    src = maybe;
+                                    break;
+                                }
+                            int k;
+                            double wa, wb, wc;
+                            if (src != nullptr && !light.sampleInSolid(*src, x.p.s, x.p.t, origin))
+                            {
+                                const Rgb lit = light.sample(*src, x.p.s, x.p.t, origin);
+                                x.p.colour = hldata::rgb555Near(lit.r, lit.g, lit.b);
+                            }
+                            else if (inFan(face.points, x.p.s, x.p.t, k, wa, wb, wc))
+                            {
+                                const std::uint16_t ab = blend555(face.points[0].colour,
+                                                                  face.points[static_cast<std::size_t>(k)].colour,
+                                                                  wb / std::max(1e-9, wa + wb));
+                                x.p.colour = blend555(ab, face.points[static_cast<std::size_t>(k + 1)].colour, wc);
+                            }
+                        }
+                        piece.points.push_back(x.p);
+                    }
+                    piece.whole = square;
+                    out.push_back(std::move(piece));
+                }
+        };
+
+        // How far a set of pieces is from the lightmap: each sample of the
+        // faces, read in the piece it falls in (a square blended both ways,
+        // as the hardware draws a quad; a cut piece by its triangles).
+        auto drawnIn = [](const Piece &piece, double size, double s, double t, double &out)
         {
-            if (!cut.turnsRight(tr[0], tr[1], tr[2]))
+            if (piece.whole)
+            {
+                const double u = (s - piece.s0) / size, w = (t - piece.t0) / size;
+                if (u < -1e-9 || w < -1e-9 || u > 1 + 1e-9 || w > 1 + 1e-9)
+                    return false;
+                double v[4] = {0, 0, 0, 0}; // (s0,t0) (s1,t0) (s1,t1) (s0,t1)
+                for (const FacePoint &p : piece.points)
+                    v[p.t > piece.t0 ? (p.s > piece.s0 ? 2 : 3) : (p.s > piece.s0 ? 1 : 0)] = luma555(p.colour);
+                out = (1 - w) * ((1 - u) * v[0] + u * v[1]) + w * ((1 - u) * v[3] + u * v[2]);
+                return true;
+            }
+            int k;
+            double wa, wb, wc;
+            if (!inFan(piece.points, s, t, k, wa, wb, wc))
+                return false;
+            out = wa * luma555(piece.points[0].colour) + wb * luma555(piece.points[static_cast<std::size_t>(k)].colour) +
+                  wc * luma555(piece.points[static_cast<std::size_t>(k + 1)].colour);
+            return true;
+        };
+
+        LightOverlay best;
+        bool any = false;
+        for (const double size : {4 * kSpacing, 2 * kSpacing, kSpacing})
+        {
+            std::vector<std::vector<Piece>> pieces(members.size());
+            int polygons = 0;
+            for (std::size_t m = 0; m < members.size(); ++m)
+            {
+                piecesOf(*members[m], size, pieces[m]);
+                for (const Piece &piece : pieces[m])
+                    polygons += static_cast<int>(piece.points.size() - 1) / 2; // (an n-gon: quads, and a triangle if odd)
+            }
+            if (any && polygons > how.mostPolygons)
+                break;
+            // Its error, over every sample of the faces that is seen.
+            double sum = 0;
+            int count = 0;
+            for (std::size_t m = 0; m < members.size(); ++m)
+            {
+                const MeshFace &face = *members[m];
+                std::map<std::pair<long, long>, std::vector<std::size_t>> byCell;
+                for (std::size_t i = 0; i < pieces[m].size(); ++i)
+                    byCell[{std::lround(pieces[m][i].s0 / size), std::lround(pieces[m][i].t0 / size)}].push_back(i);
+                for (const int f : face.sources)
+                {
+                    const BspFace &src = bsp.faces[static_cast<std::size_t>(f)];
+                    if (src.lightOfs < 0 || (bsp.texInfos[static_cast<std::size_t>(src.texInfo)].flags & kTexSpecial))
+                        continue;
+                    const std::vector<std::array<double, 2>> o = outline(bsp, light, src);
+                    const LightExtents e = light.extents(src);
+                    for (int j = 0; j < e.height; ++j)
+                        for (int i = 0; i < e.width; ++i)
+                        {
+                            const double ps = (e.minS + i) * kSpacing, pt = (e.minT + j) * kSpacing;
+                            int k;
+                            double wa, wb, wc;
+                            if (!insideOutline(o, ps, pt) || !inFan(face.points, ps, pt, k, wa, wb, wc) ||
+                                light.sampleInSolid(src, ps, pt, origin))
+                                continue;
+                            // (On a square's side or corner: any square about it.)
+                            bool found = false;
+                            double drawn = 0;
+                            for (int dj = 0; dj < 2 && !found; ++dj)
+                                for (int di = 0; di < 2 && !found; ++di)
+                                {
+                                    const auto cell = byCell.find({static_cast<long>(std::floor(ps / size)) - di,
+                                                                   static_cast<long>(std::floor(pt / size)) - dj});
+                                    if (cell == byCell.end())
+                                        continue;
+                                    for (const std::size_t at : cell->second)
+                                        if (!found && drawnIn(pieces[m][at], size, ps, pt, drawn))
+                                            found = true;
+                                }
+                            if (!found)
+                                continue;
+                            sum += std::fabs(drawn - luma(light.sample(src, ps, pt)));
+                            ++count;
+                        }
+                }
+            }
+            LightOverlay trial;
+            trial.size = size;
+            trial.polygons = polygons;
+            trial.error = count > 0 ? sum / count : 0;
+            for (std::size_t m = 0; m < members.size(); ++m)
+                for (Piece &piece : pieces[m])
+                {
+                    MeshFace out;
+                    out.key = members[m]->key;
+                    for (int q = 0; q < 3; ++q)
+                        out.normal[q] = members[m]->normal[q];
+                    out.sources = members[m]->sources;
+                    out.points = std::move(piece.points);
+                    trial.pieces.push_back(std::move(out));
+                }
+            if (trial.pieces.empty())
                 continue;
-            MeshFace piece;
-            piece.key = face.key;
-            for (int q = 0; q < 3; ++q)
-                piece.normal[q] = face.normal[q];
-            piece.sources = face.sources;
-            for (const int i : tr)
-                piece.points.push_back(cut.points[static_cast<std::size_t>(i)]);
-            out.push_back(std::move(piece));
+            best = std::move(trial);
+            any = true;
+            if (best.error <= how.stopAt)
+                break;
         }
-        return out;
+        return best;
     }
 } // namespace hlds

@@ -34,7 +34,7 @@ namespace hlds
         /// nothing visible (MeshOptimize.hpp). Off leaves every vertex of the
         /// map in place and only shares them between neighbouring faces.
         bool guardedMerges = true;
-        /// A DSi's finer runs of the surfaces whose light their corners
+        /// A DSi's light laid over the surfaces whose light their corners
         /// cannot carry (LightRefine.hpp, CookedLevel::dsiFine).
         bool dsiRefine = true;
         /// No surface of the world spans two leaves: a face is merged and
@@ -92,7 +92,7 @@ namespace hlds
         int facePolygons = 0;
         int faceVertices = 0;
         int merges = 0;          ///< faces merged into a neighbour
-        int dsiFineSurfaces = 0; ///< surfaces given a DSi's finer run ...
+        int dsiFineSurfaces = 0; ///< surfaces given a DSi's light over them ...
         int dsiFinePolygons = 0; ///< ... and the polygons that adds
         int dsiWorstPolygons = 0, dsiWorstVertices = 0; ///< the worst view on a DSi, with them
         double dsiErrorBefore = 0, dsiErrorAfter = 0;   ///< their faces' light error, of 255, before and after

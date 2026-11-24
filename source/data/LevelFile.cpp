@@ -35,8 +35,10 @@ namespace hlrt
         freeDsCut();
         std::free(fineBlock_);
         fineBlock_ = nullptr;
+        std::free(overOf_);
+        overOf_ = nullptr;
+        fineTable_ = nullptr;
         fine_ = nullptr;
-        fineFrom_ = 0xFFFFFFFFu;
         fineCount_ = 0;
 #endif
     }
@@ -186,31 +188,33 @@ namespace hlrt
             member.size < sizeof(hldata::DsiGxHeader) || member.size > kMostFine)
             return;
         auto *bytes = static_cast<std::uint8_t *>(std::malloc(member.size));
-        if (bytes == nullptr)
-            return;
-        if (!cardReadMember(member, 0, bytes, member.size) ||
+        auto *over = static_cast<std::uint16_t *>(std::malloc(view.surfaceCount * sizeof(std::uint16_t)));
+        if (bytes == nullptr || over == nullptr || !cardReadMember(member, 0, bytes, member.size) ||
             !hldata::dsiGxValid(bytes, member.size, view.surfaceCount, view.header->crc32))
         {
             std::free(bytes);
+            std::free(over);
             return;
         }
         hldata::DsiGxHeader header;
         std::memcpy(&header, bytes, sizeof(header));
         const auto *table = reinterpret_cast<const hldata::DsiGxSurface *>(bytes + sizeof(header));
         fineBlock_ = bytes;
+        fineTable_ = table;
         fine_ = reinterpret_cast<const std::uint32_t *>(bytes + sizeof(header) + header.count * sizeof(hldata::DsiGxSurface));
-        fineFrom_ = view.gxWordCount;
         fineCount_ = header.count;
-        // (The level's block is the console's own: its surfaces are written
-        // in place, as LightPatch writes its stream.)
+        overOf_ = over;
+        std::memset(over, 0xFF, view.surfaceCount * sizeof(std::uint16_t));
+        // (The level's block is the console's own: the surfaces' counts are
+        // written in place, as LightPatch writes its stream. Their words stay
+        // the level's: the light over them is sent after them.)
         auto *surfaces = const_cast<hldata::Surface *>(view.surfaces);
         for (std::uint32_t i = 0; i < header.count; ++i)
         {
             hldata::Surface &s = surfaces[table[i].surface];
-            s.gxOfs = fineFrom_ + table[i].ofs;
-            s.gxWords = table[i].words;
-            s.polygons = table[i].polygons;
-            s.vertices = table[i].vertices;
+            over[table[i].surface] = static_cast<std::uint16_t>(i);
+            s.polygons = static_cast<std::uint16_t>(s.polygons + table[i].polygons);
+            s.vertices = static_cast<std::uint16_t>(s.vertices + table[i].vertices);
         }
     }
 

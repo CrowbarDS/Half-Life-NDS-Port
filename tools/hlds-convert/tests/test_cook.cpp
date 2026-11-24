@@ -6,6 +6,11 @@
 // consistently wrong -- every wall facing outwards, say -- which a round-trip
 // test alone never would.
 
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <map>
+#include <set>
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
@@ -391,11 +396,12 @@ static void testChapters()
     }
 }
 
-/// hldemo2's walls with pools of lamp light inside them: a DSi's finer runs
-/// of those surfaces -- each a run the console's reader takes, with more
-/// polygons than the surface's own, none of a surface any changing light
-/// reaches -- in a member a DSi checks before it trusts, and the worst view
-/// they make kept near the DS's.
+/// hldemo2's walls with pools of lamp light inside them: a DSi's light laid
+/// over those surfaces -- each a run the console's reader takes, none over a
+/// surface any changing light reaches -- in a member a DSi checks before it
+/// trusts, and the worst view they make kept near the DS's. Each covers its
+/// surface whole, mostly in squares of the lightmap's grid, and meets the
+/// surface's own light at its corners: no step where it ends.
 void testDsiFine(const char *dir)
 {
     BspFile bsp;
@@ -408,23 +414,100 @@ void testDsiFine(const char *dir)
     CookedLevel level;
     CookReport report;
     check(cookLevel(bsp, CookOptions(), {}, level, report, error), "hldemo2 cooks");
-    std::printf("test_cook: hldemo2: %d surfaces lit finer on a DSi, +%d polygons; worst view %d -> %d\n",
+    std::printf("test_cook: hldemo2: light over %d surfaces on a DSi, +%d polygons; worst view %d -> %d\n",
                 report.dsiFineSurfaces, report.dsiFinePolygons, level.worstPolygons, report.dsiWorstPolygons);
-    check(!level.dsiFine.empty() && report.dsiFinePolygons > 0, "... some of its surfaces have a DSi's finer run");
-    check(report.dsiWorstPolygons <= level.worstPolygons + 150, "... and its worst view stays within 150 polygons");
-    bool runs = true, more = true, steady = true;
+    check(!level.dsiFine.empty() && report.dsiFinePolygons > 0, "... some of its surfaces have light over them");
+    check(report.dsiWorstPolygons <= level.worstPolygons + 150,
+          "... and its worst view, with it, stays within 150 polygons");
+
+    // The runs as polygons, each its corners.
+    auto polygonsOf = [](const std::vector<GxRun> &decoded)
+    {
+        std::vector<std::vector<GxVertex>> out;
+        for (const GxRun &run : decoded)
+        {
+            const std::vector<GxVertex> &v = run.vertices;
+            switch (run.type)
+            {
+            case GxPrimitive::Triangles:
+                for (std::size_t i = 0; i + 2 < v.size(); i += 3)
+                    out.push_back({v[i], v[i + 1], v[i + 2]});
+                break;
+            case GxPrimitive::Quads:
+                for (std::size_t i = 0; i + 3 < v.size(); i += 4)
+                    out.push_back({v[i], v[i + 1], v[i + 2], v[i + 3]});
+                break;
+            case GxPrimitive::TriangleStrip:
+                for (std::size_t i = 0; i + 2 < v.size(); ++i)
+                    out.push_back({v[i], v[i + 1], v[i + 2]});
+                break;
+            case GxPrimitive::QuadStrip:
+                for (std::size_t i = 0; i + 3 < v.size(); i += 2)
+                    out.push_back({v[i], v[i + 1], v[i + 3], v[i + 2]});
+                break;
+            }
+        }
+        return out;
+    };
+    auto areaOf = [](const std::vector<std::vector<GxVertex>> &polygons)
+    {
+        double area = 0;
+        for (const auto &p : polygons)
+            for (std::size_t k = 1; k + 1 < p.size(); ++k)
+            {
+                const double e1[3] = {double(p[k].x - p[0].x), double(p[k].y - p[0].y), double(p[k].z - p[0].z)};
+                const double e2[3] = {double(p[k + 1].x - p[0].x), double(p[k + 1].y - p[0].y),
+                                      double(p[k + 1].z - p[0].z)};
+                const double c[3] = {e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2],
+                                     e1[0] * e2[1] - e1[1] * e2[0]};
+                area += std::sqrt(c[0] * c[0] + c[1] * c[1] + c[2] * c[2]) / 2;
+            }
+        return area;
+    };
+    bool runs = true, steady = true, covers = true, meets = true;
+    long polygons = 0, quads = 0;
+    double worstCover = 0;
     for (const CookedLevel::FineSurface &entry : level.dsiFine)
     {
-        std::vector<GxRun> decoded;
+        std::vector<GxRun> plainRuns, overRuns;
         std::string why;
-        runs = runs && decodeGxStream(entry.words.data(), entry.words.size(), decoded, why);
         const Surface &surface = level.surfaces[entry.surface];
-        more = more && entry.polygons > surface.polygons;
+        const bool decoded = decodeGxStream(entry.words.data(), entry.words.size(), overRuns, why) &&
+                             decodeGxStream(level.gxStream.data() + surface.gxOfs, surface.gxWords, plainRuns, why);
+        runs = runs && decoded;
         for (const LightPatch &patch : level.lightPatches)
             steady = steady && (patch.word < surface.gxOfs || patch.word >= surface.gxOfs + surface.gxWords);
+        if (!decoded)
+            continue;
+        const auto plain = polygonsOf(plainRuns), over = polygonsOf(overRuns);
+        polygons += static_cast<long>(over.size());
+        for (const auto &p : over)
+            quads += p.size() == 4;
+        const double a = areaOf(plain), b = areaOf(over);
+        worstCover = std::max(worstCover, std::fabs(a - b) / std::max(1.0, a));
+        covers = covers && std::fabs(a - b) <= 0.02 * a;
+        // Where the overlay has a corner of the surface's own, it has the
+        // surface's light there.
+        using Place = std::array<int, 3>;
+        std::map<Place, std::set<std::uint16_t>> own;
+        for (const auto &p : plain)
+            for (const GxVertex &v : p)
+                own[{v.x, v.y, v.z}].insert(v.colour);
+        for (const auto &p : over)
+            for (const GxVertex &v : p)
+            {
+                const auto found = own.find({v.x, v.y, v.z});
+                if (found != own.end() && found->second.count(v.colour) == 0)
+                    meets = false;
+            }
     }
-    check(runs && more, "... each a run the console reads, with more polygons than the surface's own");
-    check(steady, "... and none of a surface a changing light reaches");
+    std::printf("test_cook: hldemo2's overlays: %ld polygons, %ld quads; area off the surface's by %.2f%% at most\n",
+                polygons, quads, 100 * worstCover);
+    check(runs, "... each a run the console reads");
+    check(steady, "... and none over a surface a changing light reaches");
+    check(covers, "... each covering its surface whole (its area within 2%)");
+    check(quads * 2 >= polygons, "... mostly in squares of the lightmap's grid, sent as quads");
+    check(meets, "... and at the surface's own corners, the surface's own light: no step where it ends");
     std::vector<std::uint8_t> bytes = dsiGxBytes(level, 0x1234u);
     const auto surfaces = static_cast<std::uint32_t>(level.surfaces.size());
     check(dsiGxValid(bytes.data(), bytes.size(), surfaces, 0x1234u), "the member is one a DSi takes, for its level");

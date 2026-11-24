@@ -15,6 +15,7 @@
 #include <string>
 
 #include "HlDsCut.hpp"
+#include "HlDsiGx.hpp"
 #include "HlLevelReader.hpp"
 
 #ifndef HLDS_CHILD
@@ -98,25 +99,34 @@ namespace hlrt
         /// The words from `ofs` on, their page read in if it was not.
         const std::uint32_t *pagedGx(std::uint32_t ofs);
         void freeDsCut();
-        /// A DSi's finer runs of some surfaces (HlDsiGx.hpp): read with the
-        /// level, and those surfaces made to name them -- a gxOfs of
-        /// `fineFrom_` and on is a word of `fine_`, not of the level's.
+        /// A DSi's light laid over some surfaces (HlDsiGx.hpp): read with the
+        /// level, and those surfaces' counts made to take it in (it is drawn
+        /// with them, and the pass's budget counts it).
         void readDsiFine();
         std::uint8_t *fineBlock_ = nullptr;
+        const hldata::DsiGxSurface *fineTable_ = nullptr;
         const std::uint32_t *fine_ = nullptr;
-        std::uint32_t fineFrom_ = 0xFFFFFFFFu;
+        std::uint16_t *overOf_ = nullptr; ///< by surface: its place in the table, 0xFFFF for none
         std::uint16_t fineCount_ = 0;
     public:
-        /// A surface's geometry words: in the level, or a DSi's finer run of
-        /// it, or (a DS reading them from the card) in the slot its page was
-        /// read into -- valid until the next call.
+        /// A surface's geometry words: in the level, or (a DS reading them
+        /// from the card) in the slot its page was read into -- valid until
+        /// the next call.
         const std::uint32_t *gxAt(const hldata::Surface &surface)
         {
-            if (surface.gxOfs >= fineFrom_)
-                return fine_ + (surface.gxOfs - fineFrom_);
             return view.gxStream != nullptr ? view.gxStream + surface.gxOfs : pagedGx(surface.gxOfs);
         }
-        /// How many surfaces a DSi draws from its finer runs on this map.
+        /// The light a DSi lays over the surface `index` (HlDsiGx.hpp): its
+        /// geometry words, and in `words` how many; null if it has none.
+        const std::uint32_t *overlayOf(std::uint32_t index, std::uint16_t &words) const
+        {
+            if (overOf_ == nullptr || overOf_[index] == 0xFFFF)
+                return nullptr;
+            const hldata::DsiGxSurface &entry = fineTable_[overOf_[index]];
+            words = entry.words;
+            return fine_ + entry.ofs;
+        }
+        /// How many surfaces a DSi lays light over on this map.
         std::uint16_t fineSurfaces() const { return fineCount_; }
         /// Pages of geometry read from the card since the map began.
         std::uint32_t gxPagesRead() const { return pagesRead_; }
@@ -136,6 +146,7 @@ namespace hlrt
         std::size_t pakBytes() const { return 0; }
         std::uint16_t dsCut() const { return 0; }
         const std::uint32_t *gxAt(const hldata::Surface &surface) { return view.gxStream + surface.gxOfs; }
+        const std::uint32_t *overlayOf(std::uint32_t, std::uint16_t &) const { return nullptr; }
         std::uint32_t gxPagesRead() const { return 0; }
         const std::uint8_t *visRow(int leaf, const std::uint8_t *&end)
         {

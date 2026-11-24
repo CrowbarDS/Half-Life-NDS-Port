@@ -215,6 +215,17 @@ namespace hlrt
         {
             return static_cast<NEA_OtherFormatEnum>(kPolygonMode | (fogOn_ ? NEA_FOG_ENABLE : 0));
         }
+        /// What a DSi's light laid over a surface is drawn with (HlDsiGx.hpp):
+        /// see-through (alpha 30), so it comes after every solid polygon,
+        /// over the wall; only where the wall is (the same depth, as the
+        /// lamp); the wall's depth left as it is, for the marks and the lamp
+        /// after it. (Polygon ID 0, the solid world's: no see-through thing
+        /// has it, so the lamp and the marks are still drawn over it.)
+        std::uint32_t overlayFormat() const
+        {
+            return POLY_ALPHA(30) | POLY_ID(0) | static_cast<std::uint32_t>(NEA_CULL_NONE) |
+                   static_cast<std::uint32_t>(polygonMode()) | static_cast<std::uint32_t>(NEA_DEPTH_TEST_EQUAL);
+        }
         /// Set the hardware's fog for the pass about to be drawn.
         void applyFog();
         int polygonBudget() const { return kPolygonBudget + budget_.extra; }
