@@ -1447,6 +1447,19 @@ namespace hlrt
             int halfWide = known->worldWidth * scale / 32;
             int halfHigh = known->worldHeight * scale / 32;
             int alpha = effectAlpha(record);
+            // A security monitor's scan lines, before the camera looked
+            // through (its mark: HlEffects, Game's noise): the game adds a
+            // tenth of their green; blended, that much would turn the whole
+            // picture green -- the faintest there is, and the lines' noise
+            // does the rest.
+            if (logic.camera >= 0 && (logic.records[logic.camera].extra[2] & 4u) != 0)
+            {
+                const fx *eye = logic.states[logic.camera].base;
+                const std::int32_t d[3] = {fxToInt(record.move[0] - eye[0]), fxToInt(record.move[1] - eye[1]),
+                                           fxToInt(record.move[2] - eye[2])};
+                if (d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < 96 * 96)
+                    alpha = 1;
+            }
             // A glow that dissipates (HlSprite.hpp): its size kept on the
             // screen, fainter with distance.
             if ((record.extra[3] & 2) && !(record.extra[3] & 8))
