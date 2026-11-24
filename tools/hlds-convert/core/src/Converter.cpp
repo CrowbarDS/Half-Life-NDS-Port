@@ -765,11 +765,16 @@ namespace hlds
                 return false;
             }
             // A clip the hand is told to play and its model has not got is
-            // a weapon that stands still when it should move: said.
+            // a weapon that stands still when it should move: said. (Not a
+            // fidget, the hand's now-and-then move: without it the hand keeps
+            // on as it is held -- Blue Shift's RPG has no fidget2.)
             if (!quiet && need.name.rfind("v_", 0) == 0)
             {
                 for (const std::string &missing : modelReport.missingClips)
-                    result.warnings.push_back("model '" + need.file + "' has no clip '" + missing + "'");
+                {
+                    if (missing.rfind("fidget", 0) != 0)
+                        result.warnings.push_back("model '" + need.file + "' has no clip '" + missing + "'");
+                }
             }
             out.atlas = std::move(cooked.atlas);
             out.indexed = std::move(cooked.indexed);
