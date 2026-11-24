@@ -4,6 +4,8 @@
 #include <cctype>
 #include <cstring>
 #include <fstream>
+#include <mutex>
+#include <map>
 
 namespace hlds
 {
@@ -57,21 +59,38 @@ namespace hlds
     {
         path_ = path;
         index_.clear();
-        std::ifstream in(path, std::ios::binary);
-        if (!in)
+        // (Shared with every other map that has it open: by its path, its
+        // size and its time, as long as one of them does.)
+        static std::mutex sharedMutex;
+        static std::map<std::string, std::weak_ptr<const std::vector<std::uint8_t>>> shared;
+        std::error_code ec;
+        const std::string key = path.string() + "|" + std::to_string(std::filesystem::file_size(path, ec)) + "|" +
+                                std::to_string(std::filesystem::last_write_time(path, ec).time_since_epoch().count());
         {
-            error = "cannot open " + path.string();
-            return false;
+            const std::lock_guard<std::mutex> lock(sharedMutex);
+            bytes_ = shared[key].lock();
+            if (bytes_ == nullptr)
+            {
+                std::ifstream in(path, std::ios::binary);
+                if (!in)
+                {
+                    error = "cannot open " + path.string();
+                    return false;
+                }
+                bytes_ = std::make_shared<const std::vector<std::uint8_t>>(
+                    (std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+                shared[key] = bytes_;
+            }
         }
-        bytes_.assign((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        const std::vector<std::uint8_t> &bytes = *bytes_;
 
         WadHeader header;
-        if (bytes_.size() < sizeof(header))
+        if (bytes.size() < sizeof(header))
         {
             error = path.string() + " is too small to be a WAD";
             return false;
         }
-        std::memcpy(&header, bytes_.data(), sizeof(header));
+        std::memcpy(&header, bytes.data(), sizeof(header));
         if (std::memcmp(header.ident, "WAD3", 4) != 0)
         {
             error = path.string() + " is not a WAD3 file";
@@ -80,7 +99,7 @@ namespace hlds
         if (header.lumpCount < 0 || header.dirOffset < 0 ||
             static_cast<std::size_t>(header.dirOffset) +
                     static_cast<std::size_t>(header.lumpCount) * sizeof(WadLump) >
-                bytes_.size())
+                bytes.size())
         {
             error = path.string() + " has a directory outside the file";
             return false;
@@ -89,7 +108,7 @@ namespace hlds
         for (std::int32_t i = 0; i < header.lumpCount; ++i)
         {
             WadLump lump;
-            std::memcpy(&lump, bytes_.data() + header.dirOffset + i * sizeof(WadLump),
+            std::memcpy(&lump, bytes.data() + header.dirOffset + i * sizeof(WadLump),
                         sizeof(lump));
             // Only uncompressed mip textures. Everything else in a WAD (fonts,
             // pictures) is not something a map face can name.
@@ -97,7 +116,7 @@ namespace hlds
                 continue;
             if (lump.filePos < 0 || lump.diskSize < static_cast<std::int32_t>(sizeof(MipTex)) ||
                 static_cast<std::size_t>(lump.filePos) + static_cast<std::size_t>(lump.diskSize) >
-                    bytes_.size())
+                    bytes.size())
                 continue;
             std::size_t len = 0;
             while (len < sizeof(lump.name) && lump.name[len] != '\0')
@@ -131,7 +150,7 @@ namespace hlds
             error = "texture '" + std::string(lowerName) + "' is not in " + path_.string();
             return false;
         }
-        const std::uint8_t *base = bytes_.data() + it->second.offset;
+        const std::uint8_t *base = bytes_->data() + it->second.offset;
         const std::size_t size = it->second.size;
         MipTex mip;
         std::memcpy(&mip, base, sizeof(mip));

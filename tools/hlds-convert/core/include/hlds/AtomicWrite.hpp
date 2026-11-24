@@ -25,6 +25,10 @@ namespace hlds
     bool readFile(const std::filesystem::path &path, std::vector<std::uint8_t> &bytes,
                   std::string &error);
 
+    /// Lets go of every file readFile has kept for the next reader: at the
+    /// end of a run's maps, of its common files -- nothing after needs them.
+    void forgetReadFiles();
+
     /// Whether a file is one of writeFileAtomic's temporaries (a run cut
     /// short leaves them): never cooked output, never packed.
     bool isTempName(const std::filesystem::path &path);

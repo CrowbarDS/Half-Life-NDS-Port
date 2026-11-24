@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -47,7 +48,9 @@ namespace hlds
         };
 
         std::filesystem::path path_;
-        std::vector<std::uint8_t> bytes_;
+        /// The file, read once for every map cooked at the same time: one
+        /// copy of halflife.wad for all of them, let go with the last.
+        std::shared_ptr<const std::vector<std::uint8_t>> bytes_;
         std::unordered_map<std::string, Entry> index_;
     };
 

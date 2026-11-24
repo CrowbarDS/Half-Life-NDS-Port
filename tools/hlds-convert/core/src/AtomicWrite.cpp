@@ -25,9 +25,10 @@ namespace hlds
     namespace
     {
         /// Files that have already been read by a previous map do not need to
-        /// be reprocessed for the next map. Biggest offenders include
-        /// halflife.wad and shared map sounds and models.
-        constexpr std::uint64_t kCacheLimit = 384ull * 1024 * 1024;
+        /// be read again for the next: shared map sounds and models. (Not
+        /// more than this: it is the converter's memory, and the GUI keeps it
+        /// for as long as it is open -- forgetReadFiles lets it go.)
+        constexpr std::uint64_t kCacheLimit = 128ull * 1024 * 1024;
         constexpr std::uint64_t kCacheFileLimit = 96ull * 1024 * 1024;
 
         struct CachedFile
@@ -44,9 +45,20 @@ namespace hlds
         std::uint64_t cacheClock = 0;
         std::atomic<std::uint64_t> tempCounter{0};
 
+        /// Not a map's level (read once), a cooked texture (each map's own),
+        /// nor anything in the temporary folder -- the texture encoder's
+        /// output, read once and deleted.
         bool worthKeeping(const std::filesystem::path &path)
         {
-            return path.parent_path().filename() != "maps";
+            const std::filesystem::path folder = path.parent_path().filename();
+            if (folder == "maps" || folder == "tex")
+                return false;
+            static const std::string temp = []
+            {
+                std::error_code ec;
+                return std::filesystem::temp_directory_path(ec).string();
+            }();
+            return temp.empty() || path.string().rfind(temp, 0) != 0;
         }
 
         /// What was read of a file before is not its contents once it has
@@ -318,6 +330,13 @@ namespace hlds
             cache[key] = CachedFile{copy, statSize, time, ++cacheClock};
         }
         return true;
+    }
+
+    void forgetReadFiles()
+    {
+        const std::lock_guard<std::mutex> lock(cacheMutex);
+        cache.clear();
+        cacheTotal = 0;
     }
 
     bool isTempName(const std::filesystem::path &path)

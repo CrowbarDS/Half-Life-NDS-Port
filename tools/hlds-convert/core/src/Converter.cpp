@@ -30,6 +30,7 @@
 #include "HlDsRoom.hpp"
 #include "HlLevelReader.hpp"
 #include "hlds/AtomicWrite.hpp"
+#include "hlds/SystemMemory.hpp"
 #include "hlds/BrushInfo.hpp"
 #include "hlds/BspFile.hpp"
 #include "hlds/Cooker.hpp"
@@ -2624,6 +2625,8 @@ namespace hlds
         cancel_ = cancel;
         say("Preparing what all the maps share");
         common_ = cookCommon();
+        // (What it read is not what the maps read: let go.)
+        forgetReadFiles();
         if (cancelled())
             return failed;
         {
@@ -2639,6 +2642,15 @@ namespace hlds
         unsigned jobs = std::min(options_.jobs > 0 ? static_cast<unsigned>(options_.jobs)
                                                    : std::max(1u, std::thread::hardware_concurrency()),
                                  kMostJobs);
+        // (Left to itself, no more maps at once than the memory free has
+        // room for: a big map takes about 300 MB as it is cooked.)
+        if (options_.jobs <= 0)
+        {
+            constexpr std::uint64_t kMapBytes = 300ull * 1024 * 1024;
+            const std::uint64_t free = freeMemoryBytes();
+            if (free != 0)
+                jobs = std::min<unsigned>(jobs, static_cast<unsigned>(std::max<std::uint64_t>(1, free / kMapBytes)));
+        }
         jobs = std::max(1u, std::min<unsigned>(jobs, static_cast<unsigned>(names.size())));
         std::atomic<std::size_t> next{0};
         std::atomic<int> failedCount{0};
@@ -2693,6 +2705,8 @@ namespace hlds
         if (hldata::gameInfo(options_.game).multiplayer)
             packAirGroups();
         say("Writing the list of maps");
+        // (Nothing after this reads them again.)
+        forgetReadFiles();
         if (!writeManifest(error))
             return failed + 1;
         return failed;

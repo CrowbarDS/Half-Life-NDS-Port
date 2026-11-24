@@ -55,6 +55,7 @@ add_library(hlds_convert_core STATIC
     core/src/LightBake.cpp
     core/src/LightFit.cpp
     core/src/LightRefine.cpp
+    core/src/SystemMemory.cpp
     core/src/Lz77.cpp
     core/src/MdlFile.cpp
     core/src/ModelCook.cpp
