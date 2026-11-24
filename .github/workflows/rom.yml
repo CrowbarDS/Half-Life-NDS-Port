@@ -16,7 +16,7 @@ jobs:
   rom:
     needs: image
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     permissions:
       contents: read
       packages: read
@@ -58,3 +58,35 @@ jobs:
             half-life-nds-port.nds
             child/out/hl-child-twl.nds
             build/hl/hl.dsl
+
+      # The same ROMs for whoever works on the port, built after the
+      # release's are taken: a development build (debug_start.txt and the
+      # readout: tools/emu/play.sh's EMU_START), and one with the frame-time
+      # readout besides (HLDS_PROFILE). Each is copied out as it is made --
+      # every variant writes the same files -- with its program's symbols,
+      # to read an address by.
+      - name: Build the development ROMs
+        run: |
+          HLDS_DEV=1 ./make.sh
+          mkdir -p dist/dev/child
+          cp half-life-nds-port.nds build/arm9/arm9.elf build/hl/hl.dsl dist/dev/
+          cp child/out/hl-child-twl.nds dist/dev/child/
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rom-dev
+          if-no-files-found: error
+          path: dist/dev/
+
+      - name: Build the profiling ROMs
+        run: |
+          HLDS_DEV=1 HLDS_PROFILE=1 ./make.sh
+          mkdir -p dist/profile/child
+          cp half-life-nds-port.nds build/arm9/arm9.elf build/hl/hl.dsl dist/profile/
+          cp child/out/hl-child-twl.nds dist/profile/child/
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rom-profile
+          if-no-files-found: error
+          path: dist/profile/
