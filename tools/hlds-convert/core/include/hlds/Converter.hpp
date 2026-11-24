@@ -138,6 +138,9 @@ namespace hlds
         /// What a DS leaves out of the level (HlDsCut.hpp's flags; 0: nothing).
         int dsCut = 0;
         bool dsWeaponSkins = false; ///< ... the weapons' skins smaller on a DS
+        /// How many models of what breaks a DS loads, having the room (else
+        /// they are a DSi's only, and a DS throws patches of the texture).
+        int dsBreakGibs = 0;
         /// ... the models' animation keys read from the card (kDsCutKeys):
         /// the cache a DS keeps of them, in KB.
         int dsKeyCacheKb = 0;

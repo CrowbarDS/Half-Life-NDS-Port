@@ -1546,6 +1546,46 @@ namespace hlds
             if (total > soundAllowance)
                 result.warnings.push_back("its sounds are " + std::to_string(total / 1024) + " KB; a DS has room for " +
                                           std::to_string(soundAllowance / 1024) + " KB: it plays without the rest");
+            // The models what breaks comes apart into (breakGibRef: a DSi's
+            // only, as the cooker marks them) are a DS's too where its heap
+            // has the room for them beside every sound it keeps, and some to
+            // spare: there its breakables come apart as a DSi's do.
+            if (dsLevelWhole != 0)
+            {
+                std::vector<std::size_t> gibRefs;
+                std::size_t gibBytes = 0;
+                for (std::size_t r = 0; r < level.modelRefs.size(); ++r)
+                {
+                    const hldata::ModelRef &ref = level.modelRefs[r];
+                    if (!hldata::modelRefDsiOnly(ref))
+                        continue;
+                    bool breaks = false, worn = false;
+                    for (const hldata::LogicRecord &record : level.logic)
+                        breaks = breaks || ((record.kind == static_cast<std::uint8_t>(hldata::LogicKind::Breakable) ||
+                                             record.kind == static_cast<std::uint8_t>(hldata::LogicKind::Pushable)) &&
+                                            hldata::breakGibRef(record) == static_cast<int>(r));
+                    for (const hldata::ActorRecord &actor : level.actors)
+                        worn = worn || actor.model == r;
+                    if (!breaks || worn)
+                        continue;
+                    for (const ModelOut &model : models)
+                    {
+                        if (model.name == ref.name)
+                            gibBytes += model.bytes.size();
+                    }
+                    gibRefs.push_back(r);
+                }
+                constexpr std::size_t kDsGibSpare = 16 * 1024;
+                if (!gibRefs.empty() && hldata::dsSoundRoom(dsCost) >= total + gibBytes + kDsGibSpare)
+                {
+                    for (const std::size_t r : gibRefs)
+                        level.modelRefs[r].name[sizeof(level.modelRefs[r].name) - 1] = '\0';
+                    dsModelBytes();
+                    result.dsModelKb = static_cast<int>(dsCost.models / 1024);
+                    result.dsNeedBeforeSounds = hldata::dsMapNeedBeforeSounds(dsCost);
+                    result.dsBreakGibs = static_cast<int>(gibRefs.size());
+                }
+            }
             // A DSi's copies: whatever the game has at a better rate than a
             // DS is given, at that rate (22 kHz at most) -- while they fit
             // what a DSi is allowed, the longest going without first.

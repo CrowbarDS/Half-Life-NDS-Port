@@ -238,6 +238,8 @@ namespace
                 cuts += "; geometry read from the card";
             if ((r.dsCut & hldata::kDsCutLightPatch) != 0)
                 cuts += "; no light changes";
+            if (r.dsBreakGibs != 0)
+                cuts += "; breakables' pieces as models (" + std::to_string(r.dsBreakGibs) + ")";
             if (r.dsWeaponSkins)
                 cuts += "; weapons' skins smaller";
             if ((r.dsCut & hldata::kDsCutKeys) != 0)
