@@ -203,6 +203,26 @@ int main()
     readManifest(onCard.data(), onCard.size(), back);
     check(back.startMap == "second", "--start changes it, without regard to case");
 
+    // A card that had no game's start map -- only Uplink, say -- then the
+    // whole game: it starts where the game starts, not where the card did.
+    write(root / "valve" / "maps" / "c0a0.bsp", buildBoxRoom());
+    options.startMap.clear();
+    hlds::Converter whole(options);
+    whole.cookMaps({"c0a0"}, nullptr, nullptr, nullptr, error);
+    hlds::readFile(data / "manifest.bin", onCard, error);
+    readManifest(onCard.data(), onCard.size(), back);
+    check(back.startMap == "c0a0", "the game's own start map, once there, takes over from one that was all there was");
+    // ... and a start chosen with the game's own there is kept.
+    options.startMap = "second";
+    hlds::Converter chosen(options);
+    chosen.cookMaps({}, nullptr, nullptr, nullptr, error);
+    options.startMap.clear();
+    hlds::Converter again(options);
+    again.cookMaps({"boxroom"}, nullptr, nullptr, nullptr, error);
+    hlds::readFile(data / "manifest.bin", onCard, error);
+    readManifest(onCard.data(), onCard.size(), back);
+    check(back.startMap == "second", "a start chosen over the game's own is kept by later runs");
+
     hlds::ConvertOptions wrong = options;
     wrong.gameDir = root / "card";
     check(!hlds::Converter(wrong).preflight().empty(), "preflight names a folder with no maps");

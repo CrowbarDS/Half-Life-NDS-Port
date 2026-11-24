@@ -2742,6 +2742,11 @@ namespace hlds
         manifest.converterVersion = kConverterVersion;
         const fs::path dir = cardDir();
         std::string previousStart, previousTitle;
+        // (Whether the start it had was chosen: the game's own start map was
+        // there too, and it started elsewhere. Else it was only what there
+        // was -- an Uplink-only card's hldemo1 -- and gives way to the
+        // game's own once that is there.)
+        bool previousChosen = false;
         {
             std::vector<std::uint8_t> old;
             std::string ignored;
@@ -2752,6 +2757,8 @@ namespace hlds
             {
                 previousStart = previous.startMap;
                 previousTitle = previous.title;
+                previousChosen = previous.game == options_.game &&
+                                 previous.find(hldata::gameInfo(options_.game).startMap) != nullptr;
             }
         }
 
@@ -2842,10 +2849,11 @@ namespace hlds
         if (manifest.title.empty())
             manifest.title = previousTitle;
 
-        // The start map: what was asked for, else what it was, else the
-        // game's first map, else whatever there is.
+        // The start map: what was asked for, else what was chosen before,
+        // else the game's first map, else what it was, else whatever there is.
+        const std::string own = hldata::gameInfo(options_.game).startMap;
         for (const std::string &candidate :
-             {lower(options_.startMap), previousStart, std::string(hldata::gameInfo(options_.game).startMap)})
+             {lower(options_.startMap), previousChosen ? previousStart : std::string(), own, previousStart})
         {
             if (!candidate.empty() && manifest.find(candidate) != nullptr)
             {
