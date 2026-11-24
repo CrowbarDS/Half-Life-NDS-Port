@@ -479,6 +479,13 @@ namespace hlaudio
     void install()
     {
         fifoSetValue32Handler(FIFO_USER_01, linkHandler, nullptr);
+        // The block's address may have come already -- the ARM9 sends it at
+        // once, and on a 3DS this is reached only after its TwlBg has been
+        // asked about the top screen (Rtcom.cpp) -- and libnds no longer
+        // hands what was waiting to a handler as it is set (its commit
+        // e17ac694): taken here, or there is no sound at all.
+        while (fifoCheckValue32(FIFO_USER_01))
+            linkHandler(fifoGetValue32(FIFO_USER_01), nullptr);
         // The bus clock, for the load figures.
         TIMER_CR(1) = 0;
         TIMER_DATA(1) = 0;
