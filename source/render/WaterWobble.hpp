@@ -19,14 +19,20 @@
 // tools/hwtest/fxprobe). A DSi's only: a DS feeds by DMA 0 in its FIFO mode,
 // always 112 words at a time, which in the emulator holds DMA 1 back.
 
+// The same lines, through a security monitor's camera (Blue Shift's, by the
+// scan lines its map hangs before it): a picture that is not quite steady --
+// each line off by a pixel or none, new every frame, and a band of lines torn
+// further across that rolls down the picture, as a monitor's does.
+
 namespace hlrt
 {
     class WaterWobble
     {
     public:
-        /// Once a game frame: whether the eyes are under water. Stops by
-        /// itself once it is not called (a menu, a map loading).
-        void frame(bool under);
+        /// Once a game frame: whether the eyes are under water, and whether
+        /// the view is a monitor's (which wins). Stops by itself once it is
+        /// not called (a menu, a map loading).
+        void frame(bool under, bool monitor = false);
         /// From the vertical blank interrupt.
         void onVblank();
 

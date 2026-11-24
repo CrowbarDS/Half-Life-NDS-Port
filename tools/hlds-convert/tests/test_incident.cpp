@@ -1332,6 +1332,36 @@ namespace
         }
         activeGame = was;
     }
+
+    /// Blue Shift's security monitors: ba_security2's three cameras have the
+    /// map's scan lines (sprites/interlace.spr) hung just before them, and
+    /// are cooked as monitors -- their picture torn and shaken on a DSi;
+    /// ba_canal1's camera, a cut-scene's, has none and is not.
+    void testBlueShiftMonitors(const std::string &bshift)
+    {
+        const GameId was = activeGame;
+        activeGame = kGameBlueShift;
+        for (const char *map : {"ba_security2", "ba_canal1"})
+        {
+            const std::unique_ptr<Game> game = load(bshift.c_str(), map);
+            if (game == nullptr)
+                continue;
+            int cameras = 0, monitors = 0;
+            for (std::uint32_t i = 0; i < game->view.logicCount; ++i)
+            {
+                const LogicRecord &r = game->view.logic[i];
+                if (r.kind != static_cast<std::uint8_t>(LogicKind::Camera))
+                    continue;
+                ++cameras;
+                monitors += (r.extra[2] & 4u) != 0;
+            }
+            std::printf("test_incident: %s: %d cameras, %d of them monitors\n", map, cameras, monitors);
+            const bool security = std::string(map) == "ba_security2";
+            check(cameras > 0 && monitors == (security ? cameras : 0),
+                  security ? "ba_security2: its three cameras are monitors" : "ba_canal1: its cut-scene's camera is not");
+        }
+        activeGame = was;
+    }
 } // namespace
 
 int main()
@@ -1366,6 +1396,7 @@ int main()
             testBlueShiftLift(bshift.string());
             testBlueShiftRangeGuard(bshift.string());
             testBlueShiftElevator(bshift.string());
+            testBlueShiftMonitors(bshift.string());
         }
         else
             std::printf("test_incident: no Blue Shift beside Half-Life, its start was not tried\n");

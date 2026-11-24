@@ -1412,6 +1412,9 @@ namespace hlrt
         // water" until there is fog; and, on a DSi, it wobbles.
         const bool under = player.state.waterLevel == 3 && !player.noclip;
         screenFade.setDim(under);
-        waterWobble.frame(under);
+        // (Through a security monitor's camera, its picture torn and shaken
+        // instead: the converter's mark, Blue Shift's scan lines before it.)
+        const bool monitor = logic.camera >= 0 && (logic.records[logic.camera].extra[2] & 4u) != 0;
+        waterWobble.frame(under, monitor);
     }
 } // namespace hlrt

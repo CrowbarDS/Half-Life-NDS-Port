@@ -2897,6 +2897,23 @@ namespace hlds
                     }
                     break;
                 }
+                // A security monitor's: the map has the scan lines of one
+                // (sprites/interlace.spr, Blue Shift's) hung just in front of
+                // it -- extra[2] bit 2, and the picture is a monitor's
+                // (Game: the lines torn and shaken). A cut-scene's camera
+                // has none.
+                for (const Entity &other : entities)
+                {
+                    double point[3];
+                    if (lowered(other.className()) != "env_sprite" || !other.vec3("origin", point))
+                        continue;
+                    const std::string sprite = lowered(other.value("model"));
+                    if (sprite.size() < 13 || sprite.compare(sprite.size() - 13, 13, "interlace.spr") != 0)
+                        continue;
+                    const double d[3] = {point[0] - origin[0], point[1] - origin[1], point[2] - origin[2]};
+                    if (d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < 96.0 * 96.0)
+                        record.extra[2] |= 4;
+                }
                 record.waitMs = std::max(0, millis(numberKey(entity, "wait")));
             }
             else if (cls == "speaker")

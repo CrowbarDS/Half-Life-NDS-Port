@@ -38,22 +38,50 @@ namespace hlrt
             }
             DC_FlushRange(table, sizeof(tables[0]));
         }
+
+        /// A monitor's table: every line off by -1, 0 or 1 pixels at random,
+        /// new each frame; and 6 lines torn 3 pixels across, rolling down
+        /// the picture once in 2 seconds (96 lines a second: 192 / 120 a
+        /// blank, as eighths).
+        HL_TWL_CODE void buildNoise(int n)
+        {
+            std::uint16_t *table = tables[n];
+            const std::uint32_t blanks = Global::vblanks();
+            std::uint32_t seed = blanks * 2654435761u + 0x9E3779B9u;
+            const int band = static_cast<int>((blanks * 13u) >> 3) % kLines;
+            for (int line = 0; line <= kLines; ++line)
+            {
+                seed ^= seed << 13;
+                seed ^= seed >> 17;
+                seed ^= seed << 5;
+                int moved = static_cast<int>(seed % 3u) - 1;
+                const int into = line - band;
+                if (into >= 0 && into < 6)
+                    moved += 3;
+                table[line] = static_cast<std::uint16_t>(moved & 511);
+            }
+            DC_FlushRange(table, sizeof(tables[0]));
+        }
 #endif
     } // namespace
 
-    void WaterWobble::frame(bool under)
+    void WaterWobble::frame(bool under, bool monitor)
     {
 #ifdef HLDS_CHILD
         (void)under;
+        (void)monitor;
 #else
-        if (!under || !isDSiMode())
+        if ((!under && !monitor) || !isDSiMode())
         {
             fresh_ = 0;
             return;
         }
         // (Into the table not being shown; the next vertical blank takes it.)
         const int next = table_ == 0 ? 1 : 0;
-        build(next);
+        if (monitor)
+            buildNoise(next);
+        else
+            build(next);
         table_ = next;
         fresh_ = 3;
 #endif
