@@ -302,6 +302,24 @@ namespace
         check(same, "... and each vertex is the same place on the texture as before");
     }
 
+    /// A vertex welded onto a side (a T-junction) and snapped a grid step
+    /// inside its line makes the quad it is a corner of concave -- one
+    /// GBATEK's "prohibited quads", drawn wrongly by the hardware. It goes as
+    /// triangles instead; and the surface still covers its face.
+    void testNoProhibitedQuad()
+    {
+        MeshFace square = face({{0, 0, 20}, {0, 16, 20}, {16, 16, 20}, {16, 0, 20}, {8, 0.2, 20}});
+        const BuiltSurface s = buildGroupSurface({&square}, TextureSize{64, 64}, 64, 64);
+        std::vector<GxRun> runs;
+        std::string error;
+        check(decodeGxStream(s.words.data(), s.words.size(), runs, error), "a square with a welded side decodes");
+        const double normal[3] = {square.normal[0], square.normal[1], square.normal[2]};
+        const GxShapeAudit audit = auditGxShapes(runs, normal);
+        check(audit.quadsSafe() && audit.clean(),
+              "... with no quad the DS would draw wrongly, the welded vertex snapped into it or not");
+        check(std::fabs(s.area - 16.0 * 16.0) < 4.0, "... and still covers its face");
+    }
+
     void testRules()
     {
         // Two flat-lit squares side by side: one quad, with the two points on
@@ -533,6 +551,12 @@ namespace
             }
             check(g->shapes.clean(), "every polygon leads with a turn the way it faces");
         }
+        // ... and no quad the hardware may draw wrongly: none concave, none
+        // crossed, none with a corner bent off its line by the grid alone.
+        std::printf("  %s: quads concave %d, crossed %d, near a line %d (of %d polygons)\n", name,
+                    guarded.shapes.concaveQuads, guarded.shapes.crossedQuads, guarded.shapes.nearQuads,
+                    guarded.shapes.polygons);
+        check(guarded.shapes.quadsSafe(), "no quad the DS would draw wrongly");
 
         int badPlanes = 0, cracksBefore = 0, cracksAfter = 0, dropped = 0, wrong = 0;
         for (std::size_t m = 0; m < plain.models.size(); ++m)
@@ -693,6 +717,7 @@ namespace
 int main()
 {
     testRules();
+    testNoProhibitedQuad();
     testFarApartTexture();
     testMaps();
     if (g_failures == 0)

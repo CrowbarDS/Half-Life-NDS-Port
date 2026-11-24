@@ -276,6 +276,9 @@ namespace hlds
         reversed += o.reversed;
         reflex += o.reflex;
         noArea += o.noArea;
+        concaveQuads += o.concaveQuads;
+        crossedQuads += o.crossedQuads;
+        nearQuads += o.nearQuads;
         return *this;
     }
 
@@ -342,6 +345,36 @@ namespace hlds
                 ++audit.flatLead;
             else if (anyFit && side(first) < 0)
                 ++audit.reversed;
+            if (n == 4)
+            {
+                // Each corner, strictly: exactly in line, turning the way the
+                // quad faces by more than 1.5 steps, or neither.
+                int against[4] = {0, 0, 0, 0};
+                bool near = false;
+                // (Exactly in one plane on the grid: a corner turning its way
+                // at all is convex from every view.)
+                const Vec n0 = cross(*ring[0], *ring[1], *ring[2]);
+                const bool planar = n0[0] * (ring[3]->x - ring[0]->x) + n0[1] * (ring[3]->y - ring[0]->y) +
+                                        n0[2] * (ring[3]->z - ring[0]->z) ==
+                                    0;
+                for (int i = 0; i < 4; ++i)
+                {
+                    const GxVertex &a = *ring[(i + 3) % 4], &b = *ring[i], &c = *ring[(i + 1) % 4];
+                    const Vec turn = cross(a, b, c);
+                    if (turn == Vec{0, 0, 0})
+                        continue;
+                    if (side(turn) <= 0)
+                        against[i] = 1;
+                    else if (!planar && height2(a, b, c) <= 1.5 * 1.5)
+                        near = true;
+                }
+                if ((against[0] && against[2]) || (against[1] && against[3]))
+                    ++audit.crossedQuads;
+                else if (against[0] || against[1] || against[2] || against[3])
+                    ++audit.concaveQuads;
+                else if (near)
+                    ++audit.nearQuads;
+            }
             for (int i = 0; i < n; ++i)
             {
                 // A corner that is a vertex ON a side, off the line only by

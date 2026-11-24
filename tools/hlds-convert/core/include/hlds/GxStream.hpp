@@ -127,8 +127,18 @@ namespace hlds
         int reversed = 0;  ///< leading three wound against the surface
         int reflex = 0;    ///< some corner turns the wrong way
         int noArea = 0;    ///< nothing to draw at all
+        // The quads the hardware may draw wrongly (GBATEK's "prohibited
+        // quads": crossed sides, a corner of more than 180 degrees), judged
+        // with no allowance for the grid: a corner exactly in line with its
+        // neighbours is fine (it stays in line however it is seen); one off
+        // its line by the grid's rounding is not.
+        int concaveQuads = 0; ///< a corner turns against the facing
+        int crossedQuads = 0; ///< two opposite corners do: its sides cross
+        int nearQuads = 0;    ///< not flat on the grid, and a corner turns the right way by no more than it can blur
 
         bool clean() const { return flatLead == 0 && reversed == 0 && reflex == 0 && noArea == 0; }
+        /// No quad the hardware may draw wrongly.
+        bool quadsSafe() const { return concaveQuads == 0 && crossedQuads == 0 && nearQuads == 0; }
         GxShapeAudit &operator+=(const GxShapeAudit &o);
     };
 

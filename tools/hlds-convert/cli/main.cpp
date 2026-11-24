@@ -780,9 +780,16 @@ namespace
                              "%d are wound backwards, %d have a reflex corner, %d have no area\n",
                              s, one.flatLead, one.reversed, one.reflex, one.noArea);
             }
+            if (!one.quadsSafe())
+            {
+                std::fprintf(stderr,
+                             "error: surface %u: quads the DS would draw wrongly: %d concave, %d crossed, "
+                             "%d bent off a line by the grid\n",
+                             s, one.concaveQuads, one.crossedQuads, one.nearQuads);
+            }
             shapes += one;
         }
-        if (!shapes.clean())
+        if (!shapes.clean() || !shapes.quadsSafe())
             return 1;
 
         const auto *dir = reinterpret_cast<const hldata::SectionDir *>(
@@ -797,7 +804,7 @@ namespace
         printLevelReport(reportLevel(view));
         std::printf("  every surface decodes: %ld polygons, %ld vertices in all\n", polygons,
                     vertices);
-        std::printf("  every polygon leads with a turn, the way its surface faces\n");
+        std::printf("  every polygon leads with a turn, the way its surface faces; no quad the DS draws wrongly\n");
         std::printf("  worst leaf by PVS: %u polygons, %u vertices (limit %d / %d a pass)\n",
                     view.header->worstPolygons, view.header->worstVertices, kPolygonLimit,
                     kVertexLimit);

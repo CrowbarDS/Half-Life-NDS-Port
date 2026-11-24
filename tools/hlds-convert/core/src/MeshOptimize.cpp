@@ -845,6 +845,68 @@ namespace hlds
             }
             return true;
         });
+        // A quad the hardware may draw wrongly -- GBATEK's "prohibited quads":
+        // crossed sides, a corner of more than 180 degrees -- goes as two
+        // triangles instead. Judged on the grid, with no allowance: each corner
+        // must be exactly in line with its neighbours (in line however it is
+        // seen) or turn the group's way by more than 1.5 steps. A vertex on a
+        // side (a T-junction welded in), snapped a step off its line, is a
+        // corner that turns a little either way: inward, the quad is concave
+        // whatever the view; outward and off the plane, from some views.
+        // (Cut through its worst corner, so that neither triangle has it as a
+        // middle vertex off its line.)
+        {
+            // (Whether the four lie exactly in one plane, on the grid: then a
+            // quad whose corners all turn its way, however little, is convex
+            // from every view -- a level floor, a pool of liquid.)
+            auto flat = [&](const std::array<int, 4> &q)
+            {
+                const Grid n = corner(q[0], q[1], q[2]);
+                const std::int64_t d[3] = {verts[q[3]].x - verts[q[0]].x, verts[q[3]].y - verts[q[0]].y,
+                                           verts[q[3]].z - verts[q[0]].z};
+                return n[0] * d[0] + n[1] * d[1] + n[2] * d[2] == 0;
+            };
+            std::vector<std::array<int, 4>> kept;
+            kept.reserve(quads.size());
+            for (const std::array<int, 4> &q : quads)
+            {
+                const bool planar = flat(q);
+                int worst = -1;
+                double worstTurn = 0;
+                for (int c = 0; c < 4; ++c)
+                {
+                    const int p = q[(c + 3) % 4], v = q[c], n = q[(c + 1) % 4];
+                    const Grid turn = corner(p, v, n);
+                    if (turn == Grid{0, 0, 0})
+                        continue; // exactly in line
+                    // How far it turns the group's way: its height off the line
+                    // through its neighbours, signed, in grid steps squared.
+                    const double e[3] = {double(verts[n].x - verts[p].x), double(verts[n].y - verts[p].y),
+                                         double(verts[n].z - verts[p].z)};
+                    const double length2 = e[0] * e[0] + e[1] * e[1] + e[2] * e[2];
+                    const double area2 = double(turn[0]) * turn[0] + double(turn[1]) * turn[1] +
+                                         double(turn[2]) * turn[2];
+                    const double height2 = length2 > 0 ? area2 / length2 : 0;
+                    const double signedTurn = leads(p, v, n) > 0 ? height2 : -height2;
+                    if (signedTurn > 1.5 * 1.5 || (planar && signedTurn > 0))
+                        continue;
+                    if (worst < 0 || signedTurn < worstTurn)
+                    {
+                        worst = c;
+                        worstTurn = signedTurn;
+                    }
+                }
+                if (worst < 0)
+                {
+                    kept.push_back(q);
+                    continue;
+                }
+                const int a = q[worst], b = q[(worst + 1) % 4], c = q[(worst + 2) % 4], d = q[(worst + 3) % 4];
+                triangles.push_back({a, b, c});
+                triangles.push_back({a, c, d});
+            }
+            quads = std::move(kept);
+        }
         std::erase_if(triangles, [&](const std::array<int, 3> &t)
         {
             return leads(t[0], t[1], t[2]) <= 0;
