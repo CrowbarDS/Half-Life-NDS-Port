@@ -1447,18 +1447,23 @@ namespace hlrt
             int halfWide = known->worldWidth * scale / 32;
             int halfHigh = known->worldHeight * scale / 32;
             int alpha = effectAlpha(record);
+            std::uint16_t colour = effectColour(record);
             // A security monitor's scan lines, before the camera looked
             // through (its mark: HlEffects, Game's noise): the game adds a
-            // tenth of their green; blended, that much would turn the whole
-            // picture green -- the faintest there is, and the lines' noise
-            // does the rest.
+            // tenth of their green, which leaves the picture's own colours;
+            // blended, even the faintest pulls a dark one towards green --
+            // so the faintest there is, in grey (the sprite's own picture
+            // gives the lines), and the lines' noise does the rest.
             if (logic.camera >= 0 && (logic.records[logic.camera].extra[2] & 4u) != 0)
             {
                 const fx *eye = logic.states[logic.camera].base;
                 const std::int32_t d[3] = {fxToInt(record.move[0] - eye[0]), fxToInt(record.move[1] - eye[1]),
                                            fxToInt(record.move[2] - eye[2])};
                 if (d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < 96 * 96)
+                {
                     alpha = 1;
+                    colour = 0x7FFF;
+                }
             }
             // A glow that dissipates (HlSprite.hpp): its size kept on the
             // screen, fainter with distance.
@@ -1481,7 +1486,7 @@ namespace hlrt
             }
             if (!worldDraw.ballVisible(at, halfWide > halfHigh ? halfWide : halfHigh))
                 return;
-            const SpriteRef *ref = sprite(record.extra[0], alpha, effectColour(record));
+            const SpriteRef *ref = sprite(record.extra[0], alpha, colour);
             // (Its frame of the game's own count, as the atlas has it.)
             const int source = ref->sourceFrames ? ref->sourceFrames : 1;
             const int frame = ((logic.states[i].phase >> 8) % source) * ref->frames / source;
