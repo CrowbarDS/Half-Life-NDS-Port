@@ -3666,7 +3666,18 @@ namespace hldata
                 actor.velocity[2] = 0;
                 return;
             }
-            // ... or has moved: so have they.
+            // ... or has moved: so have they. (Unless it was put somewhere --
+            // a train on a teleport corner, more than a brush ever moves in a
+            // tick: then they stay, and look again for what is under them.)
+            for (int k = 0; k < 3; ++k)
+            {
+                const fx moved = under.pos[k] - actor.groundAt[k];
+                if (moved > fxFromInt(64) || moved < -fxFromInt(64))
+                {
+                    actor.groundMover = -2;
+                    return;
+                }
+            }
             for (int k = 0; k < 3; ++k)
             {
                 actor.pos[k] += under.pos[k] - actor.groundAt[k];

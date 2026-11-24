@@ -1672,7 +1672,10 @@ namespace hldata
             // where it waits across the map, a loop's way back to its start.
             if (w.corners[here.next].flags & kCornerTeleport)
             {
-                moveBrush(w, player, record.brush, target);
+                // (Put there, as the game's UTIL_SetOrigin: nobody on it is
+                // taken along -- ba_elevator's scientists stay in the shaft as
+                // the stand-in lift goes, and the real one comes under them.)
+                logicMoveBrushTo(w, record.brush, target);
                 trainArrived(w, player, index, here.next);
                 // (Put there from a stop: what comes after is setting off.)
                 if (!passing)
