@@ -1647,6 +1647,25 @@ namespace hldata
         return live;
     }
 
+    /// Where in the box `mins`..`maxs` a piece of what has broken is
+    /// thrown from, by `chance`: a spot out of the world's solid -- a box
+    /// sunk into a wall, debris set into a ceiling -- tried for as often
+    /// as the game's client tries (32 times); false if there is none, and
+    /// that piece is not thrown. (No world: anywhere.)
+    inline constexpr int kBurstTries = 32;
+    template <class Chance>
+    bool burstSpot(const MoveWorld *world, const fx *mins, const fx *maxs, Chance &chance, fx *at)
+    {
+        for (int tries = 0; tries < kBurstTries; ++tries)
+        {
+            for (int k = 0; k < 3; ++k)
+                at[k] = mins[k] + static_cast<fx>((static_cast<std::int64_t>(maxs[k] - mins[k]) * (chance() & 255)) >> 8);
+            if (world == nullptr || world->nodes == nullptr || pointContents(*world, at) != kContentsSolid)
+                return true;
+        }
+        return false;
+    }
+
     /// Something made of `material` and as big as the box `mins`..`maxs`
     /// has broken: its pieces, each a patch of one of `textures` (the
     /// thing's own; none: plain). As the game's (TE_BREAKMODEL, its client's
@@ -1656,9 +1675,10 @@ namespace hldata
     /// each from anywhere in it, at `along` (the blow's way, for one that
     /// flies that way; null, none) give or take 100 units a second across
     /// and up to 100 up; and gone after two and a half seconds and up to one
-    /// more. Returns how many.
+    /// more; each from where in it the `world` is not solid (burstSpot).
+    /// Returns how many.
     inline int piecesBurst(ActorWorld &a, const fx *mins, const fx *maxs, int material, const std::uint16_t *textures,
-                           int textureCount, const fx *along = nullptr)
+                           int textureCount, const fx *along = nullptr, const MoveWorld *world = nullptr)
     {
         const BreakStyle style = breakStyle(material);
         const int size[3] = {fxToInt(maxs[0] - mins[0]), fxToInt(maxs[1] - mins[1]), fxToInt(maxs[2] - mins[2])};
@@ -1678,16 +1698,16 @@ namespace hldata
         };
         // (-100..100: 201 by a multiply.)
         auto either = [&chance]() { return static_cast<int>(((chance() & 0xFFFFu) * 201) >> 16) - 100; };
+        int thrown = 0;
         for (int n = 0; n < count; ++n)
         {
             fx at[3], velocity[3];
+            if (!burstSpot(world, mins, maxs, chance, at))
+                continue;
+            ++thrown;
             for (int k = 0; k < 3; ++k)
-            {
-                const fx span = maxs[k] - mins[k];
-                at[k] = mins[k] + static_cast<fx>((static_cast<std::int64_t>(span) * (chance() & 255)) >> 8);
                 velocity[k] = (along != nullptr ? along[k] : 0) +
                               fxFromInt(k == 2 ? static_cast<int>(((chance() & 0xFFFFu) * 101) >> 16) : either());
-            }
             Piece &piece = pieceAdd(a, kPieceShard, at, velocity, 2500 + static_cast<int>(((chance() & 0xFFFFu) * 1001) >> 16),
                                     chance());
             piece.half = static_cast<std::uint8_t>(style.half + chance() % 3);
@@ -1699,7 +1719,7 @@ namespace hldata
             piece.t = static_cast<std::uint8_t>(chance() & 7);
             piece.colour = textureCount > 0 ? 0x7FFF : static_cast<std::uint16_t>(14 | 14 << 5 | 14 << 10);
         }
-        return count;
+        return thrown;
     }
 
     /// Something set flying. Null if there is no room for another.
@@ -1818,7 +1838,7 @@ namespace hldata
     /// more than there is room for. None (0) if the model is not loaded:
     /// then it is patches of its texture after all.
     inline int breakGibsBurst(ActorWorld &a, const fx *mins, const fx *maxs, int material, int model,
-                              const fx *along = nullptr)
+                              const fx *along = nullptr, const MoveWorld *world = nullptr)
     {
         const int pieces = gibPieces(a, model);
         if (pieces == 0)
@@ -1836,15 +1856,15 @@ namespace hldata
             return roll >> 8;
         };
         auto within = [&chance](int n) { return static_cast<int>(((chance() & 0xFFFFu) * static_cast<std::uint32_t>(n)) >> 16); };
+        int thrown = 0;
         for (int n = 0; n < count; ++n)
         {
             fx at[3], velocity[3];
+            if (!burstSpot(world, mins, maxs, chance, at))
+                continue;
+            ++thrown;
             for (int k = 0; k < 3; ++k)
-            {
-                const fx span = maxs[k] - mins[k];
-                at[k] = mins[k] + static_cast<fx>((static_cast<std::int64_t>(span) * (chance() & 255)) >> 8);
                 velocity[k] = (along != nullptr ? along[k] : 0) + fxFromInt(k == 2 ? within(101) : within(201) - 100);
-            }
             const int ms = (2500 + within(1001)) * a.lifePercent / 100;
             // (A piece the cook has left nothing of -- glassgibs' first --
             // is passed over for the next.)
@@ -1856,6 +1876,6 @@ namespace hldata
             gib.pitch = static_cast<std::uint16_t>(chance());
             gib.spin = static_cast<std::int16_t>(30 + within(60));
         }
-        return count;
+        return thrown;
     }
 } // namespace hldata

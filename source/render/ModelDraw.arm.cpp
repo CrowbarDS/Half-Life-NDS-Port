@@ -857,7 +857,7 @@ namespace hlrt
                 const ModelView &model = actors.models[gib.model];
                 const std::int16_t centre[3] = {static_cast<std::int16_t>(fxToInt(gib.pos[0])),
                                                 static_cast<std::int16_t>(fxToInt(gib.pos[1])),
-                                                static_cast<std::int16_t>(fxToInt(gib.pos[2] - kCrouchedFeet))};
+                                                static_cast<std::int16_t>(fxToInt(gib.pos[2]))};
                 if (!worldDraw.ballVisible(centre, 12))
                     continue;
                 int p = 0, v = 0;
@@ -1074,8 +1074,6 @@ namespace hlrt
             piece.clip = actors.models[gib.model].header->clipCount != 0 ? 0 : -1;
             for (int k = 0; k < 3; ++k)
                 piece.pos[k] = gib.pos[k];
-            // (It moves as a crouched person's box: lying at the bottom of it.)
-            piece.pos[2] -= kCrouchedFeet;
             fx sy, cy, sp, cp;
             fxSinCos(gib.yaw, sy, cy);
             fxSinCos(gib.pitch, sp, cp);

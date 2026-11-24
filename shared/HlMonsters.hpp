@@ -1874,7 +1874,9 @@ namespace hldata
                     to[i] = gib.pos[i] + fxTimesMs(gib.velocity[i], ms);
                 gib.yaw = static_cast<std::uint16_t>(gib.yaw + gib.spin * ms);
                 gib.pitch = static_cast<std::uint16_t>(gib.pitch + (gib.spin / 2) * ms);
-                const Trace t = traceAll(*w.world, true, gib.pos, to);
+                // (A point, as the game's gibs are: CGib::Spawn's size of
+                // nothing, a break model's pieces.)
+                const Trace t = tracePoint(*w.world, gib.pos, to);
                 if (t.startSolid)
                 {
                     // Thrown from inside something (a monster hard against a
@@ -1894,7 +1896,7 @@ namespace hldata
                         landedSpeed = gib.velocity[2] < 0 ? -gib.velocity[2] : gib.velocity[2];
                     }
                     const int met = tossBounce(gib.velocity, t, kTossGib, ms, gravityOf(player));
-                    tossOn(*w.world, t, gib.velocity, ms, to);
+                    tossOn(*w.world, t, gib.velocity, ms, to, true);
                     gib.spin = static_cast<std::int16_t>(gib.spin / 2);
                     // On something flat enough to lie on, and slow: it lies.
                     if (met == kTossResting)

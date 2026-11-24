@@ -808,6 +808,9 @@ namespace
         {
             for (Piece &piece : a.pieces)
                 piece.kind = 0;
+            // (The monsters' chances move on between one break and the
+            // next, as they do in play: else each round is the last again.)
+            aiRandom(a);
             piecesBurst(a, mins, maxs, 1, nullptr, 0);
             for (int n = 0; n < 45; ++n)
             {
@@ -1158,6 +1161,22 @@ void testDebrisLeavesMonstersAlone()
     const int onDs = fight(*ds), onDsi = fight(*dsi);
     check(ds->actors.seed == dsi->actors.seed && onDs == onDsi,
           "... so a fight goes the same on a DS as on a DSi, which has room for more of them");
+
+    // Debris set three quarters into the floor (as a map's scripted debris
+    // is into a ceiling): its pieces come only out of what is open, as many
+    // as there is open room for -- never inside the floor, to lie unseen.
+    {
+        ActorWorld &a = dsi->actors;
+        for (Piece &piece : a.pieces)
+            piece = Piece();
+        const fx mins[3] = {fxFromInt(-40), fxFromInt(-40), fxFromInt(-48)};
+        const fx maxs[3] = {fxFromInt(40), fxFromInt(40), fxFromInt(16)};
+        const int open = piecesBurst(a, mins, maxs, 1, nullptr, 0, nullptr, &dsi->move);
+        bool clear = true;
+        for (const Piece &piece : a.pieces)
+            clear = clear && (piece.kind != kPieceShard || pointContents(dsi->move, piece.pos) != kContentsSolid);
+        check(open > 0 && clear, "debris sunk into the floor throws its pieces from what is open of it, none from inside");
+    }
 }
 
 /// A crate broken on a DS, with its room for 24 small things: its pieces
@@ -1282,7 +1301,7 @@ void testBreakGibs(const char *dir)
     const int pieces = gibPieces(a, crate);
     const std::uint32_t seed = a.seed;
     const fx mins[3] = {fxFromInt(40), fxFromInt(-16), 0}, maxs[3] = {fxFromInt(72), fxFromInt(16), fxFromInt(32)};
-    const int thrown = breakGibsBurst(a, mins, maxs, 1, crate);
+    const int thrown = breakGibsBurst(a, mins, maxs, 1, crate, nullptr, &g.move);
     int flying = 0;
     bool bodies = true, lasting = true;
     for (const Gib &gib : a.gibs)
@@ -1296,6 +1315,15 @@ void testBreakGibs(const char *dir)
     check(pieces > 0 && thrown == (32 * 32 + 32 * 32 + 32 * 32) / 432 && flying == thrown && bodies,
           "the crate broken throws as many of the game's pieces of wood as of its texture, each one of them");
     check(lasting && a.seed == seed, "... for as long, and of chances of their own");
+    // (Thrown from a box on the floor, low in it: they move as points, as
+    // the game's do -- not as a crouched person, which the floor would hold
+    // them inside of and soon put out.)
+    for (int n = 0; n < 3; ++n)
+        g.frame();
+    int still = 0;
+    for (const Gib &gib : a.gibs)
+        still += gib.active && gib.leftMs > 2000;
+    check(still == thrown, "... and none of them lost in the floor it lay on");
     a.gibLimit = 4;
     check(breakGibsBurst(a, mins, maxs, 1, crate) == 4, "... no more than there is room for");
     a.gibLimit = kMaxGibs;

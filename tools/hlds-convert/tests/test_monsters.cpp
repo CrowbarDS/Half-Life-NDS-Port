@@ -777,9 +777,8 @@ namespace
         for (const Gib &gib : g.actors.gibs)
         {
             lying += gib.active && gib.resting;
-            // (Each where a crouching person's middle could be: on a floor.)
-            inWorld = inWorld && (!gib.active ||
-                                  hullPointContents(g.move.crouched, g.move.crouched.root, gib.pos) != kContentsSolid);
+            // (Each out of the world's solid: a point, as the game's gibs are.)
+            inWorld = inWorld && (!gib.active || pointContents(g.move, gib.pos) != kContentsSolid);
         }
         std::printf("test_monsters: gibs: %d of 4 lying after 5 s, the highest got %d units up\n", lying,
                     fxToInt(highest - actor.pos[2]));

@@ -1182,9 +1182,9 @@ namespace hlrt
                 // texture.)
                 const int gibs = breakGibRef(record);
                 if (gibs < 0 || gibPieces(actors, gibs) == 0)
-                    piecesBurst(actors, mins, maxs, material, textures, textureCount, way);
+                    piecesBurst(actors, mins, maxs, material, textures, textureCount, way, &world);
                 else
-                    breakGibsBurst(actors, mins, maxs, material, gibs, way);
+                    breakGibsBurst(actors, mins, maxs, material, gibs, way, &world);
                 // (The marks that were on it go with it.)
                 for (Decal &decal : actors.decals)
                 {
