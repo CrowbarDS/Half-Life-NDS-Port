@@ -5,6 +5,8 @@
 #include <cstring>
 #include <chrono>
 #include <fstream>
+#include <functional>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -44,6 +46,17 @@ namespace hlds
         std::uint64_t cacheTotal = 0;
         std::uint64_t cacheClock = 0;
         std::atomic<std::uint64_t> tempCounter{0};
+
+        /// Several maps cooked at once may write the same shared file (a
+        /// texture of one name and size, each with its own palette): each
+        /// puts its own in place and checks it before the next may, else one
+        /// reads back what another has just put there. (One of these by the
+        /// path; writing the temporary, the slow part, is not held up.)
+        std::mutex placeLocks[64];
+        std::mutex &placeLockOf(const std::filesystem::path &path)
+        {
+            return placeLocks[std::hash<std::string>{}(path.lexically_normal().string()) % std::size(placeLocks)];
+        }
 
         /// Not a map's level (read once), a cooked texture (each map's own),
         /// nor anything in the temporary folder -- the texture encoder's
@@ -227,6 +240,7 @@ namespace hlds
             std::filesystem::remove(temp, ec);
             return false;
         }
+        const std::lock_guard<std::mutex> placing(placeLockOf(path));
         moveIntoPlace(temp, path, ec);
         if (ec)
         {

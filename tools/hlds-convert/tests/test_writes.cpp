@@ -4,10 +4,13 @@
 // read again, not taken from what was read before; a font the console would
 // not take is caught; and a temporary a run left behind is never packed.
 
+#include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "HlUi.hpp"
@@ -70,6 +73,44 @@ namespace
         for (auto it = fs::directory_iterator(folder, ec); !ec && it != fs::directory_iterator(); it.increment(ec))
             files.push_back(it->path());
         return files;
+    }
+
+    /// Several maps cooked at once write the same shared file (a texture of
+    /// one name and size, made with another palette by each): each write is
+    /// placed and checked whole, none fails for another's, and what is left
+    /// is one of them, whole.
+    void testSameFileAtOnce(const fs::path &root)
+    {
+        const fs::path file = root / "shared" / "tex.htx";
+        constexpr int kThreads = 8, kWrites = 100;
+        std::vector<std::vector<std::uint8_t>> bytes;
+        for (int t = 0; t < kThreads; ++t)
+            bytes.emplace_back(4096 + 512 * t, static_cast<std::uint8_t>(0x10 + t));
+        std::atomic<int> failed{0};
+        std::vector<std::thread> threads;
+        for (int t = 0; t < kThreads; ++t)
+        {
+            threads.emplace_back([&, t]()
+                                 {
+                                     for (int n = 0; n < kWrites; ++n)
+                                     {
+                                         std::string error;
+                                         if (!writeFileAtomic(file, bytes[t], error))
+                                             ++failed;
+                                     }
+                                 });
+        }
+        for (std::thread &thread : threads)
+            thread.join();
+        check(failed == 0, "the same file written by 8 at once, 100 times each: no write fails for another's");
+        std::vector<std::uint8_t> back;
+        std::string error;
+        check(readFile(file, back, error) && std::find(bytes.begin(), bytes.end(), back) != bytes.end(),
+              "... and it is left whole, as one of them wrote it");
+        const std::vector<fs::path> files = listed(file.parent_path());
+        check(files.size() == 1, "... with no temporary left beside it");
+        if (failed != 0)
+            std::printf("  (%d of %d writes failed)\n", failed.load(), kThreads * kWrites);
     }
 
     void testWrite(const fs::path &root)
@@ -182,6 +223,7 @@ int main()
     std::error_code ec;
     fs::remove_all(root, ec);
     testWrite(root);
+    testSameFileAtOnce(root);
     testFontWhole();
     testPackCommon(root);
     fs::remove_all(root, ec);
