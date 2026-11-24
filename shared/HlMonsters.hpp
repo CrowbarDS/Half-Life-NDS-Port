@@ -541,12 +541,15 @@ namespace hldata
             return player.origin[2] - (player.ducked ? kCrouchedFeet : kStandingFeet);
         }
 
-        /// Whether a box with its feet at `feet` is in the player.
-        inline bool touchesPlayer(const PlayerState &player, const fx *feet, fx half, fx height)
+        /// Whether a box with its feet at `feet` is in the player: `half`
+        /// either way across, from `below` under the feet to `height` above
+        /// them; the player's own box grown by `grow` every way.
+        inline bool touchesPlayer(const PlayerState &player, const fx *feet, fx half, fx height, fx below = 0,
+                                  fx grow = 0)
         {
-            const fx mins[3] = {feet[0] - half, feet[1] - half, feet[2]};
+            const fx mins[3] = {feet[0] - half, feet[1] - half, feet[2] - below};
             const fx maxs[3] = {feet[0] + half, feet[1] + half, feet[2] + height};
-            return playerTouchesBox(player, mins, maxs, 0);
+            return playerTouchesBox(player, mins, maxs, grow);
         }
 
     } // namespace detail
@@ -3702,6 +3705,56 @@ namespace hldata
             }
         }
 
+        /// Something lying about on a brush -- a weapon, an item -- goes where
+        /// the brush goes, as the game's push takes what lies on it:
+        /// ba_security2's pistol, lifted to the player on its tray. What is
+        /// under it is looked for once (groundMover -2, as a map starts it):
+        /// a brush where it lies -- or a little above, one that has begun to
+        /// rise this tick, which lifts it onto itself. (When the brush goes,
+        /// or is put somewhere, it is left where it is.)
+        inline void itemGround(LogicWorld &w, ActorState &actor)
+        {
+            if (actor.groundMover == -2)
+            {
+                actor.groundMover = -1;
+                // (From 19 up: a brush is met as a crouching person's box.)
+                const fx from[3] = {actor.pos[0], actor.pos[1], actor.pos[2] + fxFromInt(19)};
+                const fx to[3] = {actor.pos[0], actor.pos[1], actor.pos[2] - fxFromInt(4)};
+                const Trace t = tracePoint(*w.world, from, to);
+                if (!t.startSolid && t.fraction < kFractionOne && t.mover >= 0 && t.mover < w.brushCount &&
+                    t.endPos[2] >= actor.pos[2] - fxFromInt(4))
+                {
+                    actor.pos[2] = t.endPos[2] > actor.pos[2] ? t.endPos[2] : actor.pos[2];
+                    actor.groundMover = t.mover;
+                    for (int k = 0; k < 3; ++k)
+                        actor.groundAt[k] = w.brushStates[t.mover].pos[k];
+                }
+                return;
+            }
+            if (actor.groundMover < 0 || actor.groundMover >= w.brushCount)
+                return;
+            const BrushState &under = w.brushStates[actor.groundMover];
+            if (!under.active || !w.movers[actor.groundMover].solid)
+            {
+                actor.groundMover = -1;
+                return;
+            }
+            for (int k = 0; k < 3; ++k)
+            {
+                const fx moved = under.pos[k] - actor.groundAt[k];
+                if (moved > fxFromInt(64) || moved < -fxFromInt(64))
+                {
+                    actor.groundMover = -1;
+                    return;
+                }
+            }
+            for (int k = 0; k < 3; ++k)
+            {
+                actor.pos[k] += under.pos[k] - actor.groundAt[k];
+                actor.groundAt[k] = under.pos[k];
+            }
+        }
+
         /// The places that hurt (trigger_hurt) hurt whoever is in them, not
         /// the player alone: half a second's worth every half second.
         /// The most trigger volumes the monsters set off that a map may
@@ -4141,9 +4194,19 @@ namespace hldata
     {
         ActorWorld &a = *w.actors;
         const ActorState &actor = a.states[i];
-        // (The game's item box: 32 across and 16 high, from where it lies
-        // -- CItem::Spawn's UTIL_SetSize.)
-        if (player.health <= 0 || !detail::touchesPlayer(player, actor.pos, fxFromInt(16), fxFromInt(16)))
+        // The game's boxes, as the engine touches them: an item's and
+        // ammunition's 32 across and 16 high (CItem::Spawn's UTIL_SetSize)
+        // with the unit the engine puts round every box; a weapon's 48
+        // across and 16 high, with none (CBasePlayerItem's own
+        // SetObjectCollisionBox); a weaponbox's 32 by 16. The player's box
+        // has the engine's unit too. (A crouch in front of hldemo2's low
+        // shelf of grenades reaches them.)
+        const ItemKind kind = static_cast<ItemKind>(actor.item);
+        const bool weapon = itemIsWeapon(kind), box = kind == ItemKind::Weaponbox;
+        const fx half = fxFromInt(weapon ? 24 : (box ? 16 : 17));
+        const fx below = weapon || box ? 0 : fxFromInt(1);
+        const fx height = fxFromInt(weapon || box ? 16 : 17);
+        if (player.health <= 0 || !detail::touchesPlayer(player, actor.pos, half, height, below, fxFromInt(1)))
             return;
         if (a.shared)
         {
@@ -4156,7 +4219,6 @@ namespace hldata
             std::uint32_t got = 0;
             // (Weapons stay: a weapon only for who has not got it -- what is
             // with it is not taken by who has.)
-            const bool weapon = itemViewModel(static_cast<ItemKind>(actor.item)) != nullptr;
             if (a.wanted == -1 && detail::itemTakeAt(w, trial, i, got) &&
                 (!w.weaponsStay.value || !weapon || (got & kGotWeapon)))
                 a.wanted = static_cast<std::int16_t>(i);
@@ -4177,8 +4239,13 @@ namespace hldata
         ActorWorld &a = *w.actors;
         for (int i = 0; i < a.count; ++i)
         {
-            if (a.states[i].active && a.states[i].kind == static_cast<std::uint8_t>(ActorKind::Item))
-                itemTouch(w, player, i);
+            if (!a.states[i].active || a.states[i].kind != static_cast<std::uint8_t>(ActorKind::Item))
+                continue;
+            // (What it lies on, looked for before anything has moved this
+            // tick: a brush that rises at once is under it, not over it.)
+            if (a.states[i].groundMover == -2 && w.world != nullptr && w.brushStates != nullptr && w.movers != nullptr)
+                detail::itemGround(w, a.states[i]);
+            itemTouch(w, player, i);
         }
     }
 
@@ -4284,6 +4351,8 @@ namespace hldata
                 actor.hurtMs -= ms;
             if (actor.kind == static_cast<std::uint8_t>(ActorKind::Item))
             {
+                if (w.brushStates != nullptr && w.movers != nullptr)
+                    detail::itemGround(w, actor);
                 itemTouch(w, player, i);
                 continue;
             }

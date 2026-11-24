@@ -1026,6 +1026,141 @@ namespace
               "... and once its button has raised the glass, the suit is taken");
     }
 
+    /// What lies about is taken from as far off as the game's boxes allow:
+    /// a weapon 24 either way of where it lies, an item 17, with the unit
+    /// the engine puts round the player. hldemo2's grenades, in a low cubby
+    /// the player cannot step into, are taken by a crouch in front of it
+    /// (37 units off) -- and not from a step further back.
+    void testPickUpReach(const char *dir)
+    {
+        auto grenadeAt = [](Game &g, int x) -> int
+        {
+            int best = -1;
+            for (int i = 0; i < g.actors.count; ++i)
+            {
+                const ActorState &a = g.actors.states[i];
+                if (a.active && a.kind == static_cast<std::uint8_t>(ActorKind::Item) &&
+                    a.item == static_cast<std::uint8_t>(ItemKind::Grenades) &&
+                    (best < 0 || std::abs(fxToInt(a.pos[0]) - x) < std::abs(fxToInt(g.actors.states[best].pos[0]) - x)))
+                    best = i;
+            }
+            return best;
+        };
+        auto tryFrom = [&](int y, bool &found, double &lies) -> bool
+        {
+            const std::unique_ptr<Game> game = load(dir, "hldemo2");
+            found = false;
+            if (game == nullptr)
+                return false;
+            Game &g = *game;
+            const int grenade = grenadeAt(g, 2388);
+            found = grenade >= 0;
+            if (!found)
+                return false;
+            const ActorState &a = g.actors.states[grenade];
+            lies = a.pos[2] / 4096.0;
+            g.player.ducked = true;
+            g.player.origin[0] = a.pos[0];
+            g.player.origin[1] = fxFromInt(y);
+            g.player.origin[2] = fxFromInt(160) + kCrouchedFeet;
+            const bool room = positionFree(g.move, true, g.player.origin);
+            itemsTouch(g.logic, g.player);
+            return room && !g.actors.states[grenade].active;
+        };
+        bool found = false;
+        double lies = 0;
+        const bool near = tryFrom(704, found, lies);
+        check(found, "hldemo2: its grenades in their cubby");
+        if (!found)
+            return;
+        const bool far = tryFrom(712, found, lies);
+        std::printf("test_incident: hldemo2's grenade lies at z %.2f (the shelf, 168); crouched 37 units off: %s; "
+                    "45 off: %s\n",
+                    lies, near ? "taken" : "NOT TAKEN", far ? "TAKEN" : "left");
+        check(std::fabs(lies - 168) < 1, "... lying on their shelf, where the game drops them (a point)");
+        check(near && !far, "... taken by a crouch in front of it, as in the game; not from a step back");
+    }
+
+    /// Blue Shift's first pistol (ba_security2): an unseen weapon on the
+    /// counter of the range, given by the guard. From the nearest place a
+    /// player stands, it is taken.
+    void testBlueShiftPistol(const std::string &bshift)
+    {
+        const GameId was = activeGame;
+        activeGame = kGameBlueShift;
+        if (const std::unique_ptr<Game> game = load(bshift.c_str(), "ba_security2"))
+        {
+            Game &g = *game;
+            int pistol = -1;
+            for (int i = 0; i < g.actors.count && pistol < 0; ++i)
+                pistol = g.actors.states[i].active && g.actors.states[i].kind == static_cast<std::uint8_t>(ActorKind::Item) &&
+                                 g.actors.states[i].item == static_cast<std::uint8_t>(ItemKind::Glock)
+                             ? i
+                             : -1;
+            check(pistol >= 0, "ba_security2: the pistol the guard gives");
+            if (pistol >= 0)
+            {
+                const ActorState &gun = g.actors.states[pistol];
+                const int lay = fxToInt(gun.pos[2]);
+
+
+                // (The guard puts it on the counter: the tray under it, an
+                // unseen train, lifts it from 412 to 440 -- to where the
+                // player takes it.)
+                logicFire(g.logic, g.player, static_cast<std::uint16_t>(nameOf(g, "drop_gun")), -1, kUseToggle, 0);
+                for (int n = 0; n < 30; ++n)
+                    g.frame();
+                std::printf("test_incident: ba_security2's pistol lies at z %d on its tray, lifted to %d\n", lay,
+                            fxToInt(gun.pos[2]));
+                check(lay == 416 && fxToInt(gun.pos[2]) >= 440, "... on its tray, as the game drops it, and lifted with it");
+                // The nearest spot round it where a player stands (on what
+                // is under them), of sixteen ways out.
+                fx best[3] = {0, 0, 0};
+                int bestReach = 1 << 30;
+                for (int way = 0; way < 16; ++way)
+                {
+                    fx sine, cosine;
+                    fxSinCos(static_cast<std::uint16_t>(way * 4096), sine, cosine);
+                    for (int d = 16; d <= 64; d += 2)
+                    {
+                        // (From above the counter, if it is in the way.)
+                        Trace t;
+                        t.startSolid = true;
+                        for (int up = 40; up <= 160 && t.startSolid; up += 8)
+                        {
+                            const fx from[3] = {gun.pos[0] + cosine * d, gun.pos[1] + sine * d, gun.pos[2] + fxFromInt(up)};
+                            const fx to[3] = {from[0], from[1], from[2] - fxFromInt(240)};
+                            t = traceAll(g.move, false, from, to);
+                        }
+                        // (On the floor beside it: not up on the counter.)
+                        if (t.startSolid || t.fraction >= kFractionOne || t.endPos[2] - kStandingFeet > gun.pos[2] + fxFromInt(8))
+                            continue;
+                        const int reach = std::max(std::abs(fxToInt(t.endPos[0] - gun.pos[0])),
+                                                   std::abs(fxToInt(t.endPos[1] - gun.pos[1])));
+                        if (reach < bestReach)
+                        {
+                            bestReach = reach;
+                            for (int k = 0; k < 3; ++k)
+                                best[k] = t.endPos[k];
+                        }
+                        break;
+                    }
+                }
+                for (int k = 0; k < 3; ++k)
+                    g.player.origin[k] = best[k];
+                g.player.ducked = false;
+                itemsTouch(g.logic, g.player);
+                const bool taken = !g.actors.states[pistol].active;
+                std::printf("test_incident: ba_security2's pistol at %d %d %d; nearest a player stands: %d across (at "
+                            "%d %d %d); %s\n",
+                            fxToInt(gun.pos[0]), fxToInt(gun.pos[1]), fxToInt(gun.pos[2]), bestReach, fxToInt(best[0]),
+                            fxToInt(best[1]), fxToInt(best[2]), taken ? "taken" : "NOT TAKEN");
+                check(bestReach < (1 << 30) && taken, "... is taken from where the player stands beside it");
+            }
+        }
+        activeGame = was;
+    }
+
     /// Blue Shift's start (ba_tram1): the player is put down on the suit,
     /// inside a teleport to the tram. In the game the suit is taken first --
     /// the head-up display and the flashlight are there from the first
@@ -1428,6 +1563,7 @@ int main()
         testScenes(dir);
         testTripmine(dir);
         testSuitBehindGlass(dir);
+        testPickUpReach(dir);
         // (Blue Shift, where it is installed beside Half-Life.)
         const std::filesystem::path bshift = std::filesystem::path(dir).parent_path() / "bshift";
         if (std::filesystem::exists(bshift / "maps" / "ba_tram1.bsp"))
@@ -1435,6 +1571,7 @@ int main()
             testBlueShiftStart(bshift.string());
             testBlueShiftTramWater(bshift.string());
             testBlueShiftUniform(bshift.string());
+            testBlueShiftPistol(bshift.string());
             testBlueShiftRender(bshift.string());
             testBlueShiftLift(bshift.string());
             testBlueShiftRangeGuard(bshift.string());

@@ -1171,6 +1171,12 @@ namespace hldata
         // stay put; the rest come down in the box they walk about in.
         const bool point = record.kind == static_cast<std::uint8_t>(ActorKind::Pose) ||
                            record.kind == static_cast<std::uint8_t>(ActorKind::Furniture);
+        // (... and a weapon lying about: the game tosses it as a point,
+        // CBasePlayerItem::FallInit, onto what is under it as it is drawn --
+        // a brush too: ba_security2's pistol on the tray that lifts it to the
+        // player.)
+        const bool weapon = record.kind == static_cast<std::uint8_t>(ActorKind::Item) &&
+                            itemIsWeapon(static_cast<ItemKind>(record.item & 0xFFu));
         const bool stays = actorStaysPut(record.kind);
         if (stays)
         {
@@ -1184,6 +1190,23 @@ namespace hldata
         else if (point)
         {
             pointToFloor(world, actor.pos, fxFromInt(256));
+        }
+        else if (weapon)
+        {
+            // (From 19 up: a brush is met as a crouching person's box, and a
+            // line begun within 18 of its top is begun inside it -- the
+            // tray is 4 under the pistol. What is met above where the map
+            // put it is not what it lies on: then from a unit up.)
+            for (const int up : {19, 1})
+            {
+                const fx from[3] = {actor.pos[0], actor.pos[1], actor.pos[2] + fxFromInt(up)};
+                const fx to[3] = {actor.pos[0], actor.pos[1], actor.pos[2] - fxFromInt(256)};
+                const Trace t = tracePoint(world, from, to);
+                if (t.startSolid || t.fraction >= kFractionOne || t.endPos[2] > actor.pos[2] + fxFromInt(1))
+                    continue;
+                actor.pos[2] = t.endPos[2] < actor.pos[2] ? t.endPos[2] : actor.pos[2];
+                break;
+            }
         }
         else if (record.kind == static_cast<std::uint8_t>(ActorKind::Sitter) ||
                  record.kind == static_cast<std::uint8_t>(ActorKind::Item))

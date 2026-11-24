@@ -1546,6 +1546,21 @@ namespace hldata
     /// other actor (so that a save made before they were points at the same
     /// actors it did).
     inline constexpr ItemKind kItemFirstMore = ItemKind::Crossbow;
+    /// Whether `item` is a weapon lying about (the game's CBasePlayerItem):
+    /// it falls as a point, and is taken from further off than an item.
+    constexpr bool itemIsWeapon(ItemKind item)
+    {
+        switch (item)
+        {
+        case ItemKind::Crowbar: case ItemKind::Glock: case ItemKind::Shotgun: case ItemKind::Grenades:
+        case ItemKind::Mp5: case ItemKind::Python: case ItemKind::Crossbow: case ItemKind::Satchel:
+        case ItemKind::Tripmine: case ItemKind::Snark: case ItemKind::Rpg: case ItemKind::Gauss:
+        case ItemKind::Egon: case ItemKind::Hornetgun:
+            return true;
+        default:
+            return false;
+        }
+    }
     /// ... and the first of the last ones, cooked after those (so that a
     /// save of a map of version 30 points at the same actors it did).
     inline constexpr ItemKind kItemFirstLast = ItemKind::Rpg;
