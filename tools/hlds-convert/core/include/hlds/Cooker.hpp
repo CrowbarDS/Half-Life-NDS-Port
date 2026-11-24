@@ -95,6 +95,7 @@ namespace hlds
         int dsiFineSurfaces = 0; ///< surfaces given a DSi's finer run ...
         int dsiFinePolygons = 0; ///< ... and the polygons that adds
         int dsiWorstPolygons = 0, dsiWorstVertices = 0; ///< the worst view on a DSi, with them
+        double dsiErrorBefore = 0, dsiErrorAfter = 0;   ///< their faces' light error, of 255, before and after
         int removedVertices = 0; ///< mid-edge vertices dropped
         int weldedVertices = 0;  ///< vertices given to sides that ran past them
         double sourceArea = 0;   ///< of every drawn face, square units, on the grid

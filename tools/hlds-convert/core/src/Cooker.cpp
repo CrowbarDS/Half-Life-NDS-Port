@@ -1108,19 +1108,28 @@ namespace hlds
                     std::vector<std::vector<MeshFace>> pieces;
                     std::vector<const MeshFace *> finer;
                     bool any = false;
-                    double wrong = 0;
+                    double wrong = 0, left = 0, texels = 0;
+                    auto texelsOf = [](const MeshFace &f)
+                    {
+                        double size = 0;
+                        const std::vector<FacePoint> &p = f.points;
+                        for (std::size_t k = 1; k + 1 < p.size(); ++k)
+                            size += std::fabs((p[k].s - p[0].s) * (p[k + 1].t - p[0].t) - (p[k + 1].s - p[0].s) * (p[k].t - p[0].t)) / 2;
+                        return size;
+                    };
+                    const LightRefine how;
                     for (const MeshFace *member : members)
                     {
-                        pieces.push_back(refineLight(*member, bsp, light, placed, LightRefine{}));
+                        pieces.push_back(refineLight(*member, bsp, light, placed, how));
                         any = any || !pieces.back().empty();
                         if (!pieces.back().empty())
                         {
                             // (Its error, by its size: texels.)
-                            double size = 0;
-                            const std::vector<FacePoint> &p = member->points;
-                            for (std::size_t k = 1; k + 1 < p.size(); ++k)
-                                size += std::fabs((p[k].s - p[0].s) * (p[k + 1].t - p[0].t) - (p[k + 1].s - p[0].s) * (p[k].t - p[0].t)) / 2;
+                            const double size = texelsOf(*member);
                             wrong += cornerLightError(*member, bsp, light, placed) * size;
+                            texels += size;
+                            for (const MeshFace &piece : pieces.back())
+                                left += cornerLightError(piece, bsp, light, placed) * texelsOf(piece);
                         }
                     }
                     for (std::size_t k = 0; k < members.size(); ++k)
@@ -1142,7 +1151,10 @@ namespace hlds
                             entry.words = fine.words;
                             entry.polygons = fine.polygons;
                             entry.vertices = fine.vertices;
-                            entry.worth = wrong / (fine.polygons - built.polygons);
+                            entry.worth = (wrong - left) / (fine.polygons - built.polygons);
+                            entry.before = wrong;
+                            entry.after = left;
+                            entry.texels = texels;
                             level.dsiFine.push_back(std::move(entry));
                         }
                     }
@@ -1881,11 +1893,17 @@ namespace hlds
                 std::sort(level.dsiFine.begin(), level.dsiFine.end(),
                           [](const CookedLevel::FineSurface &a, const CookedLevel::FineSurface &b)
                           { return a.surface < b.surface; });
+                double before = 0, after = 0, texels = 0;
                 for (const CookedLevel::FineSurface &entry : level.dsiFine)
                 {
                     report.dsiFinePolygons += entry.polygons - level.surfaces[entry.surface].polygons;
                     ++report.dsiFineSurfaces;
+                    before += entry.before;
+                    after += entry.after;
+                    texels += entry.texels;
                 }
+                report.dsiErrorBefore = texels > 0 ? before / texels : 0;
+                report.dsiErrorAfter = texels > 0 ? after / texels : 0;
             }
         }
         return true;

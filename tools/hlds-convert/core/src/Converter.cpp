@@ -2113,6 +2113,8 @@ namespace hlds
         result.dsiFinePolygons = report.dsiFinePolygons;
         result.dsiWorstPolygons = report.dsiWorstPolygons;
         result.dsiWorstVertices = report.dsiWorstVertices;
+        result.dsiErrorBefore = report.dsiErrorBefore;
+        result.dsiErrorAfter = report.dsiErrorAfter;
         {
             std::size_t words = 0;
             for (const CookedLevel::FineSurface &entry : level.dsiFine)

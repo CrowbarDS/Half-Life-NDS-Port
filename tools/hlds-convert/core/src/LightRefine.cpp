@@ -113,10 +113,41 @@ namespace hlds
     {
         if (face.points.size() < 3 || cornerLightError(face, bsp, light, origin) <= how.limit)
             return {};
-        // The points of light inside: on the lightmap's grid, every `step`
-        // samples, clear of the edges, each lit by the source face it lies in.
-        std::vector<FacePoint> points = face.points;
-        const std::size_t corners = points.size();
+        const std::size_t corners = face.points.size();
+        std::vector<std::pair<const BspFace *, std::vector<std::array<double, 2>>>> sources;
+        for (const int f : face.sources)
+            sources.push_back({&bsp.faces[static_cast<std::size_t>(f)], outline(bsp, light, bsp.faces[static_cast<std::size_t>(f)])});
+        // Where a point may go: each lightmap sample inside the face, seen,
+        // clear of its edges -- lit as the lightmap has it there.
+        auto candidate = [&](double s, double t, FacePoint &p) -> bool
+        {
+            for (std::size_t i = 0; i < corners; ++i)
+            {
+                const FacePoint &a = face.points[i], &b = face.points[(i + 1) % corners];
+                const double ds = b.s - a.s, dt = b.t - a.t, len = std::sqrt(ds * ds + dt * dt);
+                if (len >= 1e-6 && std::fabs(ds * (t - a.t) - dt * (s - a.s)) / len < kMargin)
+                    return false;
+            }
+            int k;
+            double wa, wb, wc;
+            if (!inFan(face.points, s, t, k, wa, wb, wc))
+                return false;
+            const BspFace *src = nullptr;
+            for (const auto &[maybe, o] : sources)
+                if (src == nullptr && insideOutline(o, s, t))
+                    src = maybe;
+            if (src == nullptr || light.sampleInSolid(*src, s, t, origin))
+                return false;
+            const FacePoint &a = face.points[0], &b = face.points[static_cast<std::size_t>(k)],
+                            &c = face.points[static_cast<std::size_t>(k + 1)];
+            for (int q = 0; q < 3; ++q)
+                p.pos[q] = wa * a.pos[q] + wb * b.pos[q] + wc * c.pos[q];
+            p.s = s;
+            p.t = t;
+            const Rgb lit = light.sample(*src, s, t, origin);
+            p.colour = hldata::rgb555Near(lit.r, lit.g, lit.b);
+            return true;
+        };
         double lo[2] = {1e30, 1e30}, hi[2] = {-1e30, -1e30};
         for (const FacePoint &p : face.points)
         {
@@ -125,50 +156,22 @@ namespace hlds
             hi[0] = std::max(hi[0], p.s);
             hi[1] = std::max(hi[1], p.t);
         }
-        const double cell = kSpacing * how.step;
-        std::vector<std::pair<const BspFace *, std::vector<std::array<double, 2>>>> sources;
-        for (const int f : face.sources)
-            sources.push_back({&bsp.faces[static_cast<std::size_t>(f)], outline(bsp, light, bsp.faces[static_cast<std::size_t>(f)])});
+        const double cell = kSpacing * (how.greedy ? 1 : how.step);
+        std::vector<FacePoint> pool;
         for (double t = std::ceil(lo[1] / cell) * cell; t <= hi[1]; t += cell)
             for (double s = std::ceil(lo[0] / cell) * cell; s <= hi[0]; s += cell)
             {
-                // (Clear of every edge by the margin.)
-                bool clear = true;
-                for (std::size_t i = 0; i < corners && clear; ++i)
-                {
-                    const FacePoint &a = face.points[i], &b = face.points[(i + 1) % corners];
-                    const double ds = b.s - a.s, dt = b.t - a.t, len = std::sqrt(ds * ds + dt * dt);
-                    if (len < 1e-6)
-                        continue;
-                    clear = std::fabs(ds * (t - a.t) - dt * (s - a.s)) / len >= kMargin;
-                }
-                int k;
-                double wa, wb, wc;
-                if (!clear || !inFan(face.points, s, t, k, wa, wb, wc))
-                    continue;
-                const BspFace *src = nullptr;
-                for (const auto &[candidate, o] : sources)
-                    if (src == nullptr && insideOutline(o, s, t))
-                        src = candidate;
-                if (src == nullptr)
-                    continue;
                 FacePoint p{};
-                const FacePoint &a = face.points[0], &b = face.points[static_cast<std::size_t>(k)],
-                                &c = face.points[static_cast<std::size_t>(k + 1)];
-                for (int q = 0; q < 3; ++q)
-                    p.pos[q] = wa * a.pos[q] + wb * b.pos[q] + wc * c.pos[q];
-                p.s = s;
-                p.t = t;
-                const Rgb lit = light.sample(*src, s, t, origin);
-                p.colour = hldata::rgb555Near(lit.r, lit.g, lit.b);
-                points.push_back(p);
+                if (candidate(s, t, p))
+                    pool.push_back(p);
             }
-        if (points.size() == corners)
+        if (pool.empty())
             return {};
 
         // Triangles: the face's fan, then each point put in and the edges
         // about it turned while that makes them nearer Delaunay's. An edge
         // of the face itself has one triangle only, so it is never turned.
+        std::vector<FacePoint> points = face.points;
         using Tri = std::array<int, 3>;
         std::vector<Tri> tris;
         for (std::size_t k = 1; k + 1 < corners; ++k)
@@ -192,7 +195,6 @@ namespace hlds
                                (cx * cx + cy * cy) * (ax * by - bx * ay);
             return det * sign > 1e-9;
         };
-        // The triangle across edge (a, b) of `tr`: index and its third corner.
         auto across = [&](std::size_t self, int a, int b, int &third) -> int
         {
             for (std::size_t i = 0; i < tris.size(); ++i)
@@ -209,35 +211,37 @@ namespace hlds
             }
             return -1;
         };
-        for (std::size_t n = corners; n < points.size(); ++n)
+        // The triangle (s, t) is strictly in, and its weights; -1 if none.
+        auto locate = [&](double s, double t, double &wa, double &wb, double &wc) -> int
         {
-            const int p = static_cast<int>(n);
-            // The triangle it is in (not on an edge of: then left out).
-            int in = -1;
-            for (std::size_t i = 0; i < tris.size() && in < 0; ++i)
+            for (std::size_t i = 0; i < tris.size(); ++i)
             {
-                double wa, wb, wc;
                 const Tri &tr = tris[i];
-                if (!weights(points[static_cast<std::size_t>(tr[0])], points[static_cast<std::size_t>(tr[1])],
-                             points[static_cast<std::size_t>(tr[2])], points[n].s, points[n].t, wa, wb, wc))
-                    continue;
-                if (wa > 1e-3 && wb > 1e-3 && wc > 1e-3)
-                    in = static_cast<int>(i);
+                if (weights(points[static_cast<std::size_t>(tr[0])], points[static_cast<std::size_t>(tr[1])],
+                            points[static_cast<std::size_t>(tr[2])], s, t, wa, wb, wc) &&
+                    wa > 1e-3 && wb > 1e-3 && wc > 1e-3)
+                    return static_cast<int>(i);
             }
+            return -1;
+        };
+        auto insert = [&](const FacePoint &point) -> bool
+        {
+            double wa, wb, wc;
+            const int in = locate(point.s, point.t, wa, wb, wc);
             if (in < 0)
-                continue;
+                return false;
+            points.push_back(point);
+            const int p = static_cast<int>(points.size() - 1);
             const Tri was = tris[static_cast<std::size_t>(in)];
             tris[static_cast<std::size_t>(in)] = {p, was[0], was[1]};
             tris.push_back({p, was[1], was[2]});
             tris.push_back({p, was[2], was[0]});
-            // Edges opposite p, to be looked at.
             std::vector<std::pair<int, int>> edges = {{was[0], was[1]}, {was[1], was[2]}, {was[2], was[0]}};
             int guard = 0;
             while (!edges.empty() && ++guard < 4096)
             {
                 const auto [a, b] = edges.back();
                 edges.pop_back();
-                // The triangle (p, a, b), and the one across a-b.
                 std::size_t self = tris.size();
                 for (std::size_t i = 0; i < tris.size(); ++i)
                     if (tris[i] == Tri{p, a, b})
@@ -248,8 +252,7 @@ namespace hlds
                 const int other = across(self, a, b, d);
                 if (other < 0 || !inCircle(tris[self], d))
                     continue;
-                // Turned: (p, a, d) and (p, d, b) -- if both keep the face's
-                // way round (a corner that would fold one over is left).
+                // (Turned only if both keep the face's way round.)
                 if (area2(p, a, d) * sign <= 1e-9 || area2(p, d, b) * sign <= 1e-9)
                     continue;
                 tris[self] = {p, a, d};
@@ -257,7 +260,55 @@ namespace hlds
                 edges.push_back({a, d});
                 edges.push_back({d, b});
             }
+            return true;
+        };
+
+        if (!how.greedy)
+        {
+            // Every one of the grid's points.
+            for (const FacePoint &point : pool)
+                insert(point);
         }
+        else
+        {
+            // Each point where the face, as it is lit so far, is furthest
+            // from its lightmap -- the middle of a pool of light, the edge of
+            // a shadow -- until nowhere is far, or the face has its most.
+            std::vector<char> used(pool.size(), 0);
+            for (int added = 0; added < how.most; ++added)
+            {
+                int best = -1;
+                double worst = how.stopAt;
+                for (std::size_t c = 0; c < pool.size(); ++c)
+                {
+                    if (used[c])
+                        continue;
+                    double wa, wb, wc;
+                    const int in = locate(pool[c].s, pool[c].t, wa, wb, wc);
+                    if (in < 0)
+                    {
+                        used[c] = 1; // (on an edge now: never a point)
+                        continue;
+                    }
+                    const Tri &tr = tris[static_cast<std::size_t>(in)];
+                    const double drawn = wa * luma555(points[static_cast<std::size_t>(tr[0])].colour) +
+                                         wb * luma555(points[static_cast<std::size_t>(tr[1])].colour) +
+                                         wc * luma555(points[static_cast<std::size_t>(tr[2])].colour);
+                    const double off = std::fabs(drawn - luma555(pool[c].colour));
+                    if (off > worst)
+                    {
+                        worst = off;
+                        best = static_cast<int>(c);
+                    }
+                }
+                if (best < 0)
+                    break;
+                used[static_cast<std::size_t>(best)] = 1;
+                insert(pool[static_cast<std::size_t>(best)]);
+            }
+        }
+        if (points.size() == corners)
+            return {};
         std::vector<MeshFace> out;
         for (const Tri &tr : tris)
         {

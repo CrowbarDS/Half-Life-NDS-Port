@@ -76,6 +76,9 @@ namespace hlds
             /// Not written: what it is worth -- the light it puts right
             /// (error times area) for each polygon it adds.
             double worth = 0;
+            /// Not written: the light it was off by before and is after
+            /// (mean error, of 255, times texels), for the report.
+            double before = 0, after = 0, texels = 0;
         };
         std::vector<FineSurface> dsiFine;
         std::vector<hldata::SpriteRef> sprites;
