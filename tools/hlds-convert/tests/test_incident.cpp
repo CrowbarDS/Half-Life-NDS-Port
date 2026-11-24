@@ -1274,6 +1274,64 @@ namespace
         }
         activeGame = was;
     }
+
+    /// Blue Shift's ba_elevator: the lift the player boards is a stand-in;
+    /// as its doors shut (swap_stuff) it is put away in a store room and the
+    /// real one is put in the shaft in its place -- both on corners they are
+    /// put on, not taken to. Then the real one goes down its shaft with the
+    /// player and the two scientists, stopping and shaking, and nobody is
+    /// lost on the way (the game is lost only if they die before let_em_die).
+    void testBlueShiftElevator(const std::string &bshift)
+    {
+        const GameId was = activeGame;
+        activeGame = kGameBlueShift;
+        if (const std::unique_ptr<Game> game = load(bshift.c_str(), "ba_elevator"))
+        {
+            Game &g = *game;
+            auto recordNamed = [&](const char *name)
+            {
+                const int id = nameOf(g, name);
+                for (std::uint32_t i = 0; i < g.view.logicCount; ++i)
+                    if (g.view.logic[i].name == id && g.view.logic[i].brush != kNoBrush)
+                        return static_cast<int>(i);
+                return -1;
+            };
+            const int lift = recordNamed("elevator"), fake = recordNamed("fake_elevator");
+            check(lift >= 0 && fake >= 0, "ba_elevator's lift and its stand-in");
+            if (lift >= 0 && fake >= 0)
+            {
+                // In the stand-in, in the shaft, its button pressed.
+                g.player.origin[0] = fxFromInt(-288), g.player.origin[1] = fxFromInt(1408),
+                g.player.origin[2] = fxFromInt(3250);
+                for (int n = 0; n < 30; ++n)
+                    g.frame();
+                logicFire(g.logic, g.player, static_cast<std::uint16_t>(nameOf(g, "mgr_elev_start")), -1, kUseToggle, 0);
+                const BrushState &car = g.brushStates[g.view.logic[lift].brush];
+                const fx built[3] = {car.pos[0], car.pos[1], car.pos[2]};
+                double strayed = 0, lowest = 1e9;
+                bool swapped = false;
+                for (int n = 0; n < 30 * 150 && g.logic.reloadMs < 0; ++n)
+                {
+                    g.frame();
+                    const double x = (car.pos[0] - built[0]) / 4096.0, y = (car.pos[1] - built[1]) / 4096.0;
+                    // (In the shaft: its middle on the corners' column, -288 1408.)
+                    if (std::fabs(x) > 1 || std::fabs(y) > 1)
+                        swapped = true;
+                    if (swapped)
+                        strayed = std::max(strayed, std::hypot(x - (-288 - 368), y - (1408 - 1040)));
+                    lowest = std::min(lowest, g.player.origin[2] / 4096.0);
+                }
+                std::printf("test_incident: ba_elevator: the lift %s, at most %.1f off its shaft; the player down to z "
+                            "%.0f; the game %s\n",
+                            swapped ? "put in its shaft" : "NEVER MOVED", strayed, lowest,
+                            g.logic.reloadMs < 0 ? "goes on" : "LOST");
+                check(swapped && strayed < 1, "ba_elevator: the lift is put in its shaft and keeps to it");
+                check(lowest < 2000, "... and takes the player down");
+                check(g.logic.reloadMs < 0, "... and nobody in it is lost on the way");
+            }
+        }
+        activeGame = was;
+    }
 } // namespace
 
 int main()
@@ -1307,6 +1365,7 @@ int main()
             testBlueShiftRender(bshift.string());
             testBlueShiftLift(bshift.string());
             testBlueShiftRangeGuard(bshift.string());
+            testBlueShiftElevator(bshift.string());
         }
         else
             std::printf("test_incident: no Blue Shift beside Half-Life, its start was not tried\n");

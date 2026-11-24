@@ -3678,6 +3678,17 @@ namespace hldata
                     return;
                 }
             }
+            // (Only where the world has room for them, as the game's push
+            // moves no one into a wall or a ceiling: one it cannot take along
+            // is left where they are, for what comes into them to crush.)
+            const fx middle[3] = {actor.pos[0] + under.pos[0] - actor.groundAt[0],
+                                  actor.pos[1] + under.pos[1] - actor.groundAt[1],
+                                  actor.pos[2] + under.pos[2] - actor.groundAt[2] + fxFromInt(36)};
+            if (!positionFree(world, false, middle))
+            {
+                actor.groundMover = -1;
+                return;
+            }
             for (int k = 0; k < 3; ++k)
             {
                 actor.pos[k] += under.pos[k] - actor.groundAt[k];
@@ -3844,6 +3855,32 @@ namespace hldata
                     fx local[3];
                     toMoverSpace(mover, middle, local);
                     if (hullPositionFree(mover.standing, local))
+                        continue;
+                    // Only a step's height into its floor: lifted onto it, and
+                    // taken along, as the game's push lifts what stands in what
+                    // rises under it -- ba_elevator's scientists, stood on the
+                    // stand-in lift a little lower than the real one put round
+                    // them. (The people and what stands like them ride it.)
+                    bool lifted = false;
+                    for (int up = 1; up <= 18 && !lifted; ++up)
+                    {
+                        const fx raised[3] = {local[0], local[1], local[2] + fxFromInt(up)};
+                        const fx above[3] = {middle[0], middle[1], middle[2] + fxFromInt(up)};
+                        // (Room for them there, in the world and among the
+                        // other brushes: one the push would press into a ceiling
+                        // or another brush is crushed -- c1a1's vat door, coming
+                        // up into its lift car.)
+                        if (!hullPositionFree(mover.standing, raised) || !positionFree(*w.world, false, above))
+                            continue;
+                        actor.pos[2] += fxFromInt(up);
+                        actor.groundMover = static_cast<std::int16_t>(record.brush);
+                        actor.airborne = false;
+                        actor.velocity[2] = 0;
+                        for (int k = 0; k < 3; ++k)
+                            actor.groundAt[k] = w.brushStates[record.brush].pos[k];
+                        lifted = true;
+                    }
+                    if (lifted)
                         continue;
                     actor.hurtMs = 500;
                     monsterHurt(w, i, record.damage, false, kHitGeneric, kDmgCrush, kAiNone);
@@ -4263,11 +4300,19 @@ namespace hldata
                 actorPlaceBox(a, i);
                 continue;
             }
-            if (isPerson(actor.kind) || actor.kind == static_cast<std::uint8_t>(ActorKind::Gman))
+            // (A monster_generic too, as the game's MOVETYPE_STEP: ba_elevator's
+            // two scientists ride the lift down -- left behind, they were hurt,
+            // and that loses the game. Not one whose origin is its middle.)
+            if (isPerson(actor.kind) || actor.kind == static_cast<std::uint8_t>(ActorKind::Gman) ||
+                (actor.kind == static_cast<std::uint8_t>(ActorKind::Generic) && !actorCentred(actor)))
             {
-                // (No scene has them: they stand on what is under them -- a
-                // lift, a train -- and go where it goes, or fall.)
-                if (actor.script < 0 && actor.kind != static_cast<std::uint8_t>(ActorKind::Sitter) &&
+                // (They stand on what is under them -- a lift, a train -- and
+                // go where it goes, or fall: in a scene too, as the game's push
+                // takes whoever stands on it, unless the scene is walking them
+                // to its mark -- ba_elevator's scientists play theirs in the
+                // lift as it goes down.)
+                if ((actor.script < 0 || actor.scriptPhase != kActorMoving) &&
+                    actor.kind != static_cast<std::uint8_t>(ActorKind::Sitter) &&
                     w.brushStates != nullptr && w.movers != nullptr && !aiHeld(a, i))
                 {
                     detail::peopleGround(w, actor, ms);
