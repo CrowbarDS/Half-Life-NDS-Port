@@ -208,7 +208,9 @@ namespace hlrt
                          (hldata::drawDistanceFor(settings.graphics.drawDistance, mapFarUnits) << 12);
     }
 
-    HL_ITCM void Camera::apply() const
+    // (Not in ITCM: a few times a frame, and the 64-bit divide needed the
+    // room -- HwMath.s.)
+    void Camera::apply() const
     {
         glMatrixMode(GL_MODELVIEW);
         glLoadMatrix4x3(&view);

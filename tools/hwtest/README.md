@@ -144,10 +144,13 @@ too high: there the probe says FAIL, and the emulator is wrong, not the game.
 Times the game's 64-bit divide three ways, in bus-clock ticks per call, and
 counts wrong answers (the count must be 0):
 
-- **hardware**: the game's own (`source/HwMath.s`, its profiling left out);
-- **soft**: `shared/HlSoftDiv.hpp`, by multiplies and shifts alone, which an
-  interrupt handler or a thread could use, behind the same registers;
-- **library**: the compiler's `__aeabi_ldivmod` / `__aeabi_uldivmod`.
+- **hardware**: the divider, as the game drove it until 2026-11-24;
+- **C++**: `shared/HlSoftDiv.hpp`, by multiplies and shifts alone, as the
+  compiler makes it, behind the same registers;
+- **game**: the game's divide now (`source/HwMath.s`, linked as the game
+  links it): the same steps written by hand;
+- **library**: the compiler's `__aeabi_ldivmod` / `__aeabi_uldivmod`, which
+  also gives the answers the others are checked against.
 
 On the game's shapes of divide: a trace's fraction `(t << 30) / d`, a vector
 made unit `(v << 12) / length`, a clip's place in its span (unsigned), and the
@@ -175,10 +178,16 @@ answer right (3 of the mix's 1024 left to the library):
 | DS mode: anim | 62 (62) | 80 (80) | 188 (546) |
 | DS mode: mix | 62 (62) | 91 (92) | 274 (655) |
 
-So on a DSi the soft divide is a fifth faster than the hardware's, and on a
-DS a half slower: its ARM9 runs at half the DSi's clock and the bus at the
-same, so the same instructions cost it twice the ticks. On both it is two to
-six times the library's, and cold it costs what it costs warm (in ITCM).
+(The "soft" column is the C++ form; this run had no "game" line yet.) So
+on a DSi the C++ form is a fifth faster than the hardware's, and on a DS a
+half slower: its ARM9 runs at half the DSi's clock and the bus at the same,
+so the same instructions cost it twice the ticks. On both it is two to six
+times the library's, and cold it costs what it costs warm (in ITCM).
+
+The hand-written form (the "game" line), in melonDS, warm: about 24 ticks on
+a DSi and 45-49 on a DS, where melonDS gives the hardware 50 and 52. **Its
+console figures are still to come.** `divcontract/` passes it in melonDS on
+both (every answer, every register kept, the interrupt bit left alone).
 
 ## dspmath/ — the ARM9's 16-bit multiplies
 

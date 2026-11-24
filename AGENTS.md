@@ -38,7 +38,7 @@ Example:
 - Fixed point in hot paths.
 - No runtime division in hot paths. `tools/arm9-report.sh` lists what the hot list calls.
 - Nothing in a DS guest's match peak that a menu uses.
-- No interrupt handler may use the divider or the square-root unit, directly or through any call: that covers our 64-bit divide and root, and libnds's `div32`, `sqrt32`, `normalizef32` and the like. Each unit holds one sum, and libnds's routines don't hold interrupts off. `tools/irq-divider.py` fails the build otherwise; a new handler goes in its list.
+- No interrupt handler may use the divider or the square-root unit, directly or through any call: that covers our root, and libnds's `div32`, `sqrt32`, `normalizef32` and the like. Each unit holds one sum, and libnds's routines don't hold interrupts off. Our 64-bit divide (`source/HwMath.s`, Kuratius's) uses neither unit and may be used anywhere. `tools/irq-divider.py` fails the build otherwise; a new handler goes in its list.
 - Settings are written when leaving a page, not on every change.
 - Check integer maths with integers: a root by `r*r <= v < (r+1)*(r+1)`, a quotient by Python's `//` or `math.isqrt`, never through a double. melonDS is not the reference for the console's divider and root units: `tools/hwtest/` probes are.
 - A product of two 16-bit values in ARM code: `shared/HlDsp.hpp` (SMULxy, SMULWy, SMLAxy). A 64-bit divide by a constant whose numerator fits 32 bits: divide in 32 bits, which is a multiply.

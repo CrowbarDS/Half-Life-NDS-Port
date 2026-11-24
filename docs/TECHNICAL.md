@@ -655,13 +655,22 @@ Milestone 11, "levels of detail".
 - The arithmetic. Everything that runs every frame is compiled as ARM
   (the build tool had been compiling the `.arm.cpp` files as Thumb, where
   every 64-bit multiply is a call), and the compiler's 64-bit divide and
-  the fixed-point square root go to the console's own divider and
-  square-root unit (`source/HwMath.s`): same answers, 54 bus ticks a divide
-  and 28 a root on a DSi (`tools/hwtest/divmath/`). The link wraps the
-  library's two names (`--wrap`), and what the unit would answer otherwise
-  still goes to the library: a divide by zero or by -1, and unsigned numbers
-  with the top bit set. `tools/hwtest/divcontract/` holds quotients and
-  remainders against the library's, word for word.
+  the fixed-point square root are the game's own (`source/HwMath.s`; the
+  link wraps the library's two divide names, `--wrap`). The divide is
+  Kuratius's, by multiplies alone (`shared/HlSoftDiv.hpp`; `test_softdiv`
+  holds it to the host's divide): a reciprocal of the divisor by shifts and
+  adds and two Newton steps, the quotient from it put right from its
+  remainder. It takes every divide whose divisor and quotient fit 32 bits --
+  the game's -- and leaves the rest to the library (by zero, the one by -1
+  that overflows, a wider quotient: 3 in 1,024 of the probe's mix). It never
+  touches the divider, so an interrupt handler or the think worker may divide
+  with nothing held off. Written by hand, in bus ticks a call: about 24 on a
+  DSi and 47 on a DS in melonDS (the divider took 54 and 62 on the consoles,
+  the C++ form of the same 40-45 and 80-91; `tools/hwtest/softdiv/`). The
+  root is still the square-root unit's, 28 ticks on a DSi, interrupts held
+  off while it works (`tools/hwtest/divmath/`). `tools/hwtest/divcontract/`
+  holds quotients, remainders and roots against the library's, word for
+  word.
   A build with `HLDS_PROFILE` checks the hardware's sums against the slow
   way at start-up and says so in `perf.txt`; and it notes where each divide
   and root is asked for (the call's return address, interrupts held off, in
@@ -1549,9 +1558,10 @@ game if a frame runs without the mutex. A map's leaving lets the worker
 finish its question first, without pauses, before what the question reads
 goes. The worker sleeps on a semaphore that each question asked counts up
 (`ThinkQueue::posted`), rather than waking every frame to find nothing.
-What it calls may use the divider and the square-root unit only through
-`source/HwMath.s`, which holds the interrupts off while it does: a switch
-of threads does not save the units (`tools/irq-divider.py` checks it).
+What it calls may divide as it likes (the game's divide uses no unit) and
+take roots only through `source/HwMath.s`, which holds the interrupts off
+while it does: a switch of threads does not save the square-root unit
+(`tools/irq-divider.py` checks it).
 libnds's comutex and cosema are not used with the interrupts held off, nor
 from an interrupt, where only `cothread_send_signal` is. The frame's wait
 is for the next VBlank, as ever: libnds remembers a VBlank no thread waited

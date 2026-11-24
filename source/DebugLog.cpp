@@ -17,7 +17,7 @@ extern "C" char __sp_usr[];
 // The interrupts' stack (ds_arm9.ld): from __dtcm_data_top up to __sp_irq_user.
 extern "C" char __dtcm_data_top[], __sp_irq_user[];
 // (HwMath.s: the divides and the roots the hardware has been asked for.)
-extern "C" std::uint32_t hlHwCount[2];
+extern "C" std::uint32_t hlHwCount[3]; // (divides, roots, divides left to the library: HwMath.s)
 // (The linker's: the program's code, and the top of the interrupt stack,
 // under which the BIOS keeps what an interrupt broke into.)
 extern "C" char __text_start[], __text_end[], __sp_irq[];
@@ -313,11 +313,14 @@ namespace hlrt::DebugLog::Perf
             ++irqLow;
         if (std::FILE *log = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
         {
-            std::fprintf(log, "time: %s %s %d frames, stack %d, irq stack %d, waiter stack %lu, divides %lu, roots %lu",
+            std::fprintf(log,
+                         "time: %s %s %d frames, stack %d, irq stack %d, waiter stack %lu, divides %lu (library %lu), "
+                         "roots %lu",
                          map, global.isDSi ? "DSi" : "DS", framesIn, static_cast<int>((top - low) * 4),
                          static_cast<int>((irqTop - irqLow) * 4),
                          static_cast<unsigned long>(Global::vblankWaiterPeak()),
                          static_cast<unsigned long>(hlHwCount[0] / static_cast<unsigned>(framesIn)),
+                         static_cast<unsigned long>(hlHwCount[2] / static_cast<unsigned>(framesIn)),
                          static_cast<unsigned long>(hlHwCount[1] / static_cast<unsigned>(framesIn)));
             for (int i = 0; i < kCount; ++i)
                 std::fprintf(log, ", %s %lu/%lu", kNames[i],
@@ -384,7 +387,7 @@ namespace hlrt::DebugLog::Perf
             worst[i] = 0;
         }
         framesIn = 0;
-        hlHwCount[0] = hlHwCount[1] = 0;
+        hlHwCount[0] = hlHwCount[1] = hlHwCount[2] = 0;
         // (The frame the writing is in is not one of the game's.)
         for (int i = 0; i < kCount; ++i)
             running[i] = 0;

@@ -1,7 +1,9 @@
 // The soft divide probe: the divide without the divider (HlSoftDiv.hpp,
-// Kuratius's method) against the game's hardware divide (source/HwMath.s)
-// and the library's, on the game's own shapes of divide -- and whether its
-// answers are right.
+// Kuratius's method) against the hardware divide the game had and the
+// library's, on the game's own shapes of divide -- and whether its answers
+// are right. "game" is the game's divide as it is now (source/HwMath.s, the
+// same steps by hand, linked here as the game links it); "C++" is
+// HlSoftDiv.hpp as the compiler makes it.
 //
 // Every figure is bus-clock ticks per call (33.5 MHz on a DS and a DSi alike),
 // the cost of the measuring taken off. "warm" is with the code in the cache,
@@ -24,8 +26,10 @@ extern "C"
     void divHw();
     void divSoft();
     void divSoftU();
-    void __aeabi_ldivmod();
-    void __aeabi_uldivmod();
+    void __wrap___aeabi_ldivmod();
+    void __wrap___aeabi_uldivmod();
+    void __real___aeabi_ldivmod();
+    void __real___aeabi_uldivmod();
     extern volatile std::uint32_t softOther;
 }
 
@@ -55,29 +59,23 @@ namespace
         return (next() & 1) ? -v : v;
     }
 
+    // (The answers are the library's own, called by name: a "/" here would
+    // be the divide under test.)
     void put(Case &c, std::int64_t n, std::int64_t d)
     {
-        const std::int64_t q = n / d, r = n % d; // the library's: this probe does not replace it
         c.in[0] = static_cast<std::uint32_t>(n);
         c.in[1] = static_cast<std::uint32_t>(n >> 32);
         c.in[2] = static_cast<std::uint32_t>(d);
         c.in[3] = static_cast<std::uint32_t>(d >> 32);
-        c.want[0] = static_cast<std::uint32_t>(q);
-        c.want[1] = static_cast<std::uint32_t>(q >> 32);
-        c.want[2] = static_cast<std::uint32_t>(r);
-        c.want[3] = static_cast<std::uint32_t>(r >> 32);
+        probeTime(reinterpret_cast<const void *>(__real___aeabi_ldivmod), c.in, c.want);
     }
     void putUnsigned(Case &c, std::uint64_t n, std::uint64_t d)
     {
-        const std::uint64_t q = n / d, r = n % d;
         c.in[0] = static_cast<std::uint32_t>(n);
         c.in[1] = static_cast<std::uint32_t>(n >> 32);
         c.in[2] = static_cast<std::uint32_t>(d);
         c.in[3] = static_cast<std::uint32_t>(d >> 32);
-        c.want[0] = static_cast<std::uint32_t>(q);
-        c.want[1] = static_cast<std::uint32_t>(q >> 32);
-        c.want[2] = static_cast<std::uint32_t>(r);
-        c.want[3] = static_cast<std::uint32_t>(r >> 32);
+        probeTime(reinterpret_cast<const void *>(__real___aeabi_uldivmod), c.in, c.want);
     }
 
     /// A trace's fraction: (t << 30) / d, |t| at most |d|.
@@ -88,7 +86,9 @@ namespace
             std::int64_t d = ofBits(22);
             if (d == 0)
                 d = 7;
-            std::int64_t t = ofBits(22) % d;
+            std::int64_t t = ofBits(22);
+            while ((t < 0 ? -t : t) > (d < 0 ? -d : d)) // (no "%": it is the divide under test)
+                t /= 2;
             put(c, t << 30, d);
         }
     }
@@ -98,7 +98,10 @@ namespace
         for (Case &c : cases)
         {
             const std::int64_t length = (ofBits(24) & 0xFFFFFF) | 1;
-            put(c, (ofBits(24) % length) << 12, length);
+            std::int64_t v = ofBits(24);
+            while ((v < 0 ? -v : v) > length)
+                v /= 2;
+            put(c, v << 12, length);
         }
     }
     /// A clip's place in its span: (done << 12) / span, unsigned.
@@ -107,7 +110,10 @@ namespace
         for (Case &c : cases)
         {
             const std::uint64_t span = (next() & 0xFFFFFF) | 1;
-            putUnsigned(c, (next() % (span + 1)) << 12, span);
+            std::uint64_t done = next() & 0xFFFFFF;
+            while (done > span)
+                done /= 2;
+            putUnsigned(c, done << 12, span);
         }
     }
     /// Long numbers by short ones, either sign (the divider probe's mix):
@@ -172,16 +178,19 @@ namespace
         printf("%s\n", title);
         show(" hardware", measure(reinterpret_cast<const void *>(divHw)));
         softOther = 0;
-        show(" soft", measure(reinterpret_cast<const void *>(isUnsigned ? divSoftU : divSoft)));
+        show(" C++", measure(reinterpret_cast<const void *>(isUnsigned ? divSoftU : divSoft)));
         const std::uint32_t other = softOther / 3; // (three runs over the cases)
-        show(" library", measure(reinterpret_cast<const void *>(isUnsigned ? __aeabi_uldivmod : __aeabi_ldivmod)));
+        show(" game", measure(reinterpret_cast<const void *>(isUnsigned ? __wrap___aeabi_uldivmod
+                                                                         : __wrap___aeabi_ldivmod)));
+        show(" library", measure(reinterpret_cast<const void *>(isUnsigned ? __real___aeabi_uldivmod
+                                                                            : __real___aeabi_ldivmod)));
         if (other != 0)
-            printf("  (soft left %lu of %d to the library)\n", static_cast<unsigned long>(other), kCases);
+            printf("  (%lu/%d to the library)\n", static_cast<unsigned long>(other), kCases);
     }
 
     void waitForA()
     {
-        printf("\nA: again\n");
+        printf("A: again");
         for (;;)
         {
             swiWaitForVBlank();

@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Whether an interrupt handler can reach the divider or the square-root unit.
 
-The unit holds one sum at a time. Our routines (source/HwMath.s) hold interrupts
-off while they use it, but libnds's and the engine's inline divides do not: a
-handler that divided in the middle of one would leave its own answer there. So
-no handler may use it. This walks the calls in a linked ELF from every handler:
+Each unit holds one sum at a time. Our root (source/HwMath.s) holds interrupts
+off while it uses its unit, but libnds's divides and roots and the engine's
+inline ones do not: a handler that used a unit in the middle of one would
+leave its own answer there. So no handler may use them. (The game's 64-bit
+divide no longer does: HwMath.s divides by multiplies, Kuratius's way, and
+leaves the rest to the library, so a handler may divide.) This walks the calls
+in a linked ELF from every handler:
 
     tools/irq-divider.py build/arm9/arm9.elf child/build/arm9/arm9.elf
 
@@ -76,7 +79,7 @@ INSTALLERS = {
 # Calls a handler can make only past a test the walk cannot read, with why.
 # Not followed.
 GUARDED = set()
-UNITS = ("__wrap___aeabi_ldivmod", "__wrap___aeabi_uldivmod", "hlHwSqrt64")
+UNITS = ("hlHwSqrt64",)
 # Threads the frame's thread cuts off at an interrupt (libnds's preemption),
 # and which a switch of threads does not save the units for: they may use
 # them only through UNITS -- source/HwMath.s, which holds the interrupts off
