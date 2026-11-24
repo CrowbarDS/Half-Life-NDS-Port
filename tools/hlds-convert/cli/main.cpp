@@ -347,6 +347,9 @@ namespace
         std::printf("  %d portals; seen worst %d polygons / %d vertices (PVS %d / %d); far %d; %s\n", r.portals,
                     r.worstPolygons, r.worstVertices, r.pvsWorstPolygons, r.pvsWorstVertices, r.farUnits,
                     hldata::levelIsHeavy(r.worstPolygons, r.worstVertices) ? "heavy (fog always)" : "light");
+        if (r.dsiFineSurfaces != 0)
+            std::printf("  DSi: %d surfaces lit finer inside (+%d polygons, %d KB); seen worst %d polygons / %d vertices\n",
+                        r.dsiFineSurfaces, r.dsiFinePolygons, r.dsiFineKb, r.dsiWorstPolygons, r.dsiWorstVertices);
         if (verboseHotspots)
         {
             for (const auto &spot : r.hotspots)

@@ -66,6 +66,18 @@ namespace hlds
         std::vector<hldata::MessageRecord> messages;
         std::vector<hldata::ModelSound> modelSounds;
         std::vector<hldata::LightPatch> lightPatches;
+        /// A DSi's finer runs of some surfaces (LightRefine.hpp): not in the
+        /// level, but a member of its own beside it (HlDsiGx.hpp).
+        struct FineSurface
+        {
+            std::uint16_t surface = 0;
+            std::vector<std::uint32_t> words;
+            int polygons = 0, vertices = 0;
+            /// Not written: what it is worth -- the light it puts right
+            /// (error times area) for each polygon it adds.
+            double worth = 0;
+        };
+        std::vector<FineSurface> dsiFine;
         std::vector<hldata::SpriteRef> sprites;
         /// Not written: the game's path of each of `sprites`, and whether it
         /// is drawn as light (Converter cooks them and fills `sprites` in).
@@ -83,4 +95,8 @@ namespace hlds
     /// refuse.
     bool writeLevel(const CookedLevel &level, std::vector<std::uint8_t> &out,
                     std::string &error);
+    /// A DSi's finer runs of `level` (CookedLevel::dsiFine) as the member
+    /// "dsi.gx" holds them (HlDsiGx.hpp), for a level of checksum
+    /// `levelCrc` (0: the packer sets it). Empty if there are none.
+    std::vector<std::uint8_t> dsiGxBytes(const CookedLevel &level, std::uint32_t levelCrc = 0);
 } // namespace hlds

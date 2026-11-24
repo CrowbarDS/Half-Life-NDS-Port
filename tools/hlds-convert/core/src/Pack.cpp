@@ -10,6 +10,7 @@
 #include "HlArchive.hpp"
 #include "HlGuest.hpp"
 #include "HlDsCut.hpp"
+#include "HlDsiGx.hpp"
 #include "HlLevelReader.hpp"
 #include "HlModel.hpp"
 #include "HlSound.hpp"
@@ -524,6 +525,33 @@ namespace hlds
                     put(hldata::kDsVisMember, {level.begin() + vis.offset, level.begin() + vis.offset + vis.size});
                 if ((header.flags & hldata::kDsCutGx) != 0)
                     put(hldata::kDsGxMember, {level.begin() + gx.offset, level.begin() + gx.offset + gx.size});
+            }
+            // A DSi's finer runs of some surfaces (HlDsiGx.hpp), for the level
+            // as packed: its checksum set here. (Not for a console sent the
+            // map: it is not sent.)
+            std::vector<std::uint8_t> fine;
+            if (!air && readFile(stage / "maps" / (map + ".dsigx"), fine, none) && fine.size() >= sizeof(hldata::DsiGxHeader))
+            {
+                hldata::DsiGxHeader header;
+                std::memcpy(&header, fine.data(), sizeof(header));
+                const auto *level0 = reinterpret_cast<const hldata::LevelHeader *>(level.data());
+                const auto *dir = reinterpret_cast<const hldata::SectionDir *>(level.data() + sizeof(hldata::LevelHeader));
+                header.levelCrc = level0->crc32;
+                std::memcpy(fine.data(), &header, sizeof(header));
+                if (!hldata::dsiGxValid(fine.data(), fine.size(), dir[static_cast<int>(hldata::Section::Surfaces)].count,
+                                        level0->crc32))
+                {
+                    error = "the staged DSi runs do not match their level: " + map;
+                    return false;
+                }
+                NpacMember member;
+                member.path = hldata::kDsiGxMember;
+                member.data = std::move(fine);
+                packing.named.insert(member.path);
+                // (At the root, before any folder's members.)
+                auto at = std::find_if(packing.members.begin(), packing.members.end(),
+                                       [](const NpacMember &m) { return m.path.find('/') != std::string::npos; });
+                packing.members.insert(at, std::move(member));
             }
             return true;
         }

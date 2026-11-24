@@ -1,5 +1,6 @@
 #include "data/LevelFile.hpp"
 #include "data/CardRead.hpp"
+#include "HlDsiGx.hpp"
 
 #include "DebugLog.hpp"
 #include "Global.hpp"
@@ -32,6 +33,11 @@ namespace hlrt
             at = nullptr;
         pakBytes_ = 0;
         freeDsCut();
+        std::free(fineBlock_);
+        fineBlock_ = nullptr;
+        fine_ = nullptr;
+        fineFrom_ = 0xFFFFFFFFu;
+        fineCount_ = 0;
 #endif
     }
 
@@ -168,6 +174,45 @@ namespace hlrt
     /// in the block. Nothing reads through it: the view's pointer is put
     /// back to null.)
     static const std::uint8_t kOnCard[4] = {};
+
+    void Level::readDsiFine()
+    {
+        // (Of a level as it was packed with it, whole: else the surfaces are
+        // drawn as the level has them.)
+        constexpr std::uint32_t kMostFine = 512 * 1024;
+        NEA_NpacMember member;
+        if (!global.isDSi || view.header == nullptr || view.gxStream == nullptr ||
+            NEA_NpacMemberFind(global.mapPath(hldata::kDsiGxMember).c_str(), &member) != 0 || !cardMemberReadable(member) ||
+            member.size < sizeof(hldata::DsiGxHeader) || member.size > kMostFine)
+            return;
+        auto *bytes = static_cast<std::uint8_t *>(std::malloc(member.size));
+        if (bytes == nullptr)
+            return;
+        if (!cardReadMember(member, 0, bytes, member.size) ||
+            !hldata::dsiGxValid(bytes, member.size, view.surfaceCount, view.header->crc32))
+        {
+            std::free(bytes);
+            return;
+        }
+        hldata::DsiGxHeader header;
+        std::memcpy(&header, bytes, sizeof(header));
+        const auto *table = reinterpret_cast<const hldata::DsiGxSurface *>(bytes + sizeof(header));
+        fineBlock_ = bytes;
+        fine_ = reinterpret_cast<const std::uint32_t *>(bytes + sizeof(header) + header.count * sizeof(hldata::DsiGxSurface));
+        fineFrom_ = view.gxWordCount;
+        fineCount_ = header.count;
+        // (The level's block is the console's own: its surfaces are written
+        // in place, as LightPatch writes its stream.)
+        auto *surfaces = const_cast<hldata::Surface *>(view.surfaces);
+        for (std::uint32_t i = 0; i < header.count; ++i)
+        {
+            hldata::Surface &s = surfaces[table[i].surface];
+            s.gxOfs = fineFrom_ + table[i].ofs;
+            s.gxWords = table[i].words;
+            s.polygons = table[i].polygons;
+            s.vertices = table[i].vertices;
+        }
+    }
 
     bool Level::dsCutHeader(NEA_NpacMember &member, hldata::DsCutHeader &cut) const
     {
@@ -539,6 +584,7 @@ namespace hlrt
             if ((cutFlags_ & hldata::kDsCutGx) != 0)
                 view.gxStream = nullptr;
         }
+        readDsiFine();
 #endif
         return true;
     }

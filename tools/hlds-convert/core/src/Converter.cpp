@@ -26,6 +26,7 @@
 #include "HlArchive.hpp"
 #include "HlGuest.hpp"
 #include "HlDsCut.hpp"
+#include "HlDsiGx.hpp"
 #include "HlDsRoom.hpp"
 #include "HlLevelReader.hpp"
 #include "hlds/AtomicWrite.hpp"
@@ -2052,6 +2053,21 @@ namespace hlds
             }
         }
 
+        // A DSi's finer runs (HlDsiGx.hpp), its level's checksum left for
+        // the packer to set, as the DS cut's.
+        {
+            const fs::path finePath = stageDir() / "maps" / (result.name + ".dsigx");
+            std::error_code gone;
+            if (level.dsiFine.empty())
+                fs::remove(finePath, gone);
+            else
+            {
+                const std::vector<std::uint8_t> bytes = dsiGxBytes(level);
+                if (!writeFileAtomic(finePath, bytes, result.error))
+                    return result;
+            }
+        }
+
         // The level last: it is what makes the map loadable, so it lands only
         // once everything it names is on the card.
         const fs::path outPath = stageDir() / "maps" / (result.name + ".hlm");
@@ -2093,6 +2109,16 @@ namespace hlds
         result.worstPolygons = level.worstPolygons;
         result.worstVertices = level.worstVertices;
         result.pvsWorstPolygons = report.pvsWorstPolygons;
+        result.dsiFineSurfaces = report.dsiFineSurfaces;
+        result.dsiFinePolygons = report.dsiFinePolygons;
+        result.dsiWorstPolygons = report.dsiWorstPolygons;
+        result.dsiWorstVertices = report.dsiWorstVertices;
+        {
+            std::size_t words = 0;
+            for (const CookedLevel::FineSurface &entry : level.dsiFine)
+                words += entry.words.size();
+            result.dsiFineKb = static_cast<int>(words * 4 / 1024);
+        }
         result.pvsWorstVertices = report.pvsWorstVertices;
         result.farUnits = static_cast<int>(level.farUnits);
         result.portals = report.portals;

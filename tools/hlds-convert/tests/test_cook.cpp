@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "HlDsiGx.hpp"
 #include "HlLevelReader.hpp"
 #include "TestBspBuilder.hpp"
 #include "hlds/AtomicWrite.hpp"
@@ -390,6 +391,48 @@ static void testChapters()
     }
 }
 
+/// hldemo2's walls with pools of lamp light inside them: a DSi's finer runs
+/// of those surfaces -- each a run the console's reader takes, with more
+/// polygons than the surface's own, none of a surface any changing light
+/// reaches -- in a member a DSi checks before it trusts, and the worst view
+/// they make kept near the DS's.
+void testDsiFine(const char *dir)
+{
+    BspFile bsp;
+    std::string error;
+    if (!bsp.load(std::string(dir) + "/maps/hldemo2.bsp", error))
+    {
+        check(false, "hldemo2 loads");
+        return;
+    }
+    CookedLevel level;
+    CookReport report;
+    check(cookLevel(bsp, CookOptions(), {}, level, report, error), "hldemo2 cooks");
+    std::printf("test_cook: hldemo2: %d surfaces lit finer on a DSi, +%d polygons; worst view %d -> %d\n",
+                report.dsiFineSurfaces, report.dsiFinePolygons, level.worstPolygons, report.dsiWorstPolygons);
+    check(!level.dsiFine.empty() && report.dsiFinePolygons > 0, "... some of its surfaces have a DSi's finer run");
+    check(report.dsiWorstPolygons <= level.worstPolygons + 150, "... and its worst view stays within 150 polygons");
+    bool runs = true, more = true, steady = true;
+    for (const CookedLevel::FineSurface &entry : level.dsiFine)
+    {
+        std::vector<GxRun> decoded;
+        std::string why;
+        runs = runs && decodeGxStream(entry.words.data(), entry.words.size(), decoded, why);
+        const Surface &surface = level.surfaces[entry.surface];
+        more = more && entry.polygons > surface.polygons;
+        for (const LightPatch &patch : level.lightPatches)
+            steady = steady && (patch.word < surface.gxOfs || patch.word >= surface.gxOfs + surface.gxWords);
+    }
+    check(runs && more, "... each a run the console reads, with more polygons than the surface's own");
+    check(steady, "... and none of a surface a changing light reaches");
+    std::vector<std::uint8_t> bytes = dsiGxBytes(level, 0x1234u);
+    const auto surfaces = static_cast<std::uint32_t>(level.surfaces.size());
+    check(dsiGxValid(bytes.data(), bytes.size(), surfaces, 0x1234u), "the member is one a DSi takes, for its level");
+    check(!dsiGxValid(bytes.data(), bytes.size(), surfaces, 0x1235u) &&
+              !dsiGxValid(bytes.data(), bytes.size() - 4, surfaces, 0x1234u),
+          "... and not for another level, nor cut short");
+}
+
 int main()
 {
     testCdTracks();
@@ -401,6 +444,8 @@ int main()
     testLiquidTopOnly();
     testTooLarge();
     testSizesOverride();
+    if (const char *dir = std::getenv("HLDS_VALVE_DIR"); dir != nullptr && dir[0] != '\0')
+        testDsiFine(dir);
     if (g_failures == 0)
         std::printf("test_cook: ok\n");
     return g_failures == 0 ? 0 : 1;

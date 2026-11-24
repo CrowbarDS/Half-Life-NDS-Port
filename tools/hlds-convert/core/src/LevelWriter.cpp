@@ -2,6 +2,7 @@
 
 #include <cstring>
 
+#include "HlDsiGx.hpp"
 #include "HlLevelReader.hpp"
 
 namespace hlds
@@ -161,5 +162,36 @@ namespace hlds
             return false;
         }
         return true;
+    }
+
+    std::vector<std::uint8_t> dsiGxBytes(const CookedLevel &level, std::uint32_t levelCrc)
+    {
+        if (level.dsiFine.empty())
+            return {};
+        hldata::DsiGxHeader header{};
+        std::memcpy(header.magic, hldata::kDsiGxMagic, sizeof(header.magic));
+        header.version = hldata::kDsiGxVersion;
+        header.count = static_cast<std::uint16_t>(level.dsiFine.size());
+        header.levelCrc = levelCrc;
+        std::vector<hldata::DsiGxSurface> table;
+        std::vector<std::uint32_t> words;
+        for (const CookedLevel::FineSurface &entry : level.dsiFine)
+        {
+            hldata::DsiGxSurface s{};
+            s.surface = entry.surface;
+            s.words = static_cast<std::uint16_t>(entry.words.size());
+            s.polygons = static_cast<std::uint16_t>(entry.polygons);
+            s.vertices = static_cast<std::uint16_t>(entry.vertices);
+            s.ofs = static_cast<std::uint32_t>(words.size());
+            table.push_back(s);
+            words.insert(words.end(), entry.words.begin(), entry.words.end());
+        }
+        header.words = static_cast<std::uint32_t>(words.size());
+        std::vector<std::uint8_t> bytes(sizeof(header) + table.size() * sizeof(hldata::DsiGxSurface) + words.size() * 4);
+        std::memcpy(bytes.data(), &header, sizeof(header));
+        std::memcpy(bytes.data() + sizeof(header), table.data(), table.size() * sizeof(hldata::DsiGxSurface));
+        std::memcpy(bytes.data() + sizeof(header) + table.size() * sizeof(hldata::DsiGxSurface), words.data(),
+                    words.size() * 4);
+        return bytes;
     }
 } // namespace hlds

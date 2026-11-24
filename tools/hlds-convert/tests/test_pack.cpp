@@ -13,6 +13,7 @@
 #include <map>
 
 #include "HlDsCut.hpp"
+#include "HlDsiGx.hpp"
 #include <tuple>
 #include "HlLevelReader.hpp"
 #include "HlSound.hpp"
@@ -119,6 +120,17 @@ namespace
                 check(same, "each section it reads from the card is beside it, as the level has it");
                 ++next;
             }
+        }
+
+        // ... and a DSi's finer runs of some surfaces (HlDsiGx.hpp), of this
+        // level.
+        if (next < members.size() && members[next].path == hldata::kDsiGxMember)
+        {
+            const hlds::NpacMember &fine = members[next++];
+            const auto *dir = reinterpret_cast<const hldata::SectionDir *>(joined.data() + sizeof(hldata::LevelHeader));
+            check(hldata::dsiGxValid(fine.data.data(), fine.data.size(), dir[static_cast<int>(hldata::Section::Surfaces)].count,
+                                     reinterpret_cast<const hldata::LevelHeader *>(joined.data())->crc32),
+                  "a DSi's finer runs are ones a DSi reads, of this level");
         }
 
         // Folders in the order of a load, each one's files together.

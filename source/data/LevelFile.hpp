@@ -98,14 +98,26 @@ namespace hlrt
         /// The words from `ofs` on, their page read in if it was not.
         const std::uint32_t *pagedGx(std::uint32_t ofs);
         void freeDsCut();
+        /// A DSi's finer runs of some surfaces (HlDsiGx.hpp): read with the
+        /// level, and those surfaces made to name them -- a gxOfs of
+        /// `fineFrom_` and on is a word of `fine_`, not of the level's.
+        void readDsiFine();
+        std::uint8_t *fineBlock_ = nullptr;
+        const std::uint32_t *fine_ = nullptr;
+        std::uint32_t fineFrom_ = 0xFFFFFFFFu;
+        std::uint16_t fineCount_ = 0;
     public:
-        /// A surface's geometry words: in the level, or (a DS reading them
-        /// from the card) in the slot its page was read into -- valid until
-        /// the next call.
+        /// A surface's geometry words: in the level, or a DSi's finer run of
+        /// it, or (a DS reading them from the card) in the slot its page was
+        /// read into -- valid until the next call.
         const std::uint32_t *gxAt(const hldata::Surface &surface)
         {
+            if (surface.gxOfs >= fineFrom_)
+                return fine_ + (surface.gxOfs - fineFrom_);
             return view.gxStream != nullptr ? view.gxStream + surface.gxOfs : pagedGx(surface.gxOfs);
         }
+        /// How many surfaces a DSi draws from its finer runs on this map.
+        std::uint16_t fineSurfaces() const { return fineCount_; }
         /// Pages of geometry read from the card since the map began.
         std::uint32_t gxPagesRead() const { return pagesRead_; }
         /// Bytes of the level kept in the Expansion Pak, not in main memory.

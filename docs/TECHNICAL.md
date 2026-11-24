@@ -37,7 +37,17 @@ Milestone 11, "levels of detail".
   error falls by a third (c1a0 14.5 to 9.2 of 255) and the mean step where
   faces meet from 14.9 to 1.3 (`light_audit`, which measures both on any
   map). Faces a changing light falls on are read as before, as their
-  `LightPatch` needs.
+  `LightPatch` needs. A DSi goes further where a face's corners still
+  cannot carry its light -- a pool of lamp light in the middle of a wall:
+  such a face is given points of light inside it, every four lightmap
+  samples, and cut into triangles through them from the inside (its edges
+  keep their vertices: no crack against a neighbour). Those finer runs are
+  a member of the map's archive of their own (`dsi.gx`, HlDsiGx.hpp) that
+  a DSi reads with the level and draws in place of the surfaces' own; a DS
+  never reads it, and the level is the same for both. The converter keeps
+  as many as leave the DSi's worst view within 150 polygons of the DS's,
+  those that put most light right for each polygon first (hldemo2: 127
+  surfaces, +1,115 polygons, its worst view 877 to 995).
   Neighbouring faces share vertices in
   quad strips, and faces are merged only where that provably changes nothing
   on screen (about 12% fewer vertices over the campaign).

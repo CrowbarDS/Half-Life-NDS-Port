@@ -21,6 +21,7 @@
 #include "hlds/EntityParser.hpp"
 #include "hlds/FaceBuilder.hpp"
 #include "hlds/LightFit.hpp"
+#include "hlds/LightRefine.hpp"
 #include "hlds/MapStats.hpp"
 #include "hlds/MeshOptimize.hpp"
 #include "hlds/TextureCook.hpp"
@@ -1099,6 +1100,54 @@ namespace hlds
                 }
                 clampedTexCoords = clampedTexCoords || built.texCoordsClamped;
 
+                // A DSi's finer run of it, where light its corners cannot
+                // carry falls inside its faces (LightRefine.hpp): steady
+                // light only -- a LightPatch names words of the plain run.
+                if (!changing && !flatColour && !fullBright && options.dsiRefine)
+                {
+                    std::vector<std::vector<MeshFace>> pieces;
+                    std::vector<const MeshFace *> finer;
+                    bool any = false;
+                    double wrong = 0;
+                    for (const MeshFace *member : members)
+                    {
+                        pieces.push_back(refineLight(*member, bsp, light, placed, LightRefine{}));
+                        any = any || !pieces.back().empty();
+                        if (!pieces.back().empty())
+                        {
+                            // (Its error, by its size: texels.)
+                            double size = 0;
+                            const std::vector<FacePoint> &p = member->points;
+                            for (std::size_t k = 1; k + 1 < p.size(); ++k)
+                                size += std::fabs((p[k].s - p[0].s) * (p[k + 1].t - p[0].t) - (p[k + 1].s - p[0].s) * (p[k].t - p[0].t)) / 2;
+                            wrong += cornerLightError(*member, bsp, light, placed) * size;
+                        }
+                    }
+                    for (std::size_t k = 0; k < members.size(); ++k)
+                    {
+                        if (pieces[k].empty())
+                            finer.push_back(members[k]);
+                        else
+                            for (const MeshFace &piece : pieces[k])
+                                finer.push_back(&piece);
+                    }
+                    if (any)
+                    {
+                        const BuiltSurface fine = buildGroupSurface(finer, sizeOf(bspTexture, form), tex.width, tex.height);
+                        if (!fine.outOfRange && fine.polygons > built.polygons && fine.words.size() <= 0xFFFF &&
+                            fine.polygons <= 0xFFFF && fine.vertices <= 0xFFFF)
+                        {
+                            CookedLevel::FineSurface entry;
+                            entry.surface = static_cast<std::uint16_t>(level.surfaces.size());
+                            entry.words = fine.words;
+                            entry.polygons = fine.polygons;
+                            entry.vertices = fine.vertices;
+                            entry.worth = wrong / (fine.polygons - built.polygons);
+                            level.dsiFine.push_back(std::move(entry));
+                        }
+                    }
+                }
+
                 Surface surface{};
                 surface.gxOfs = static_cast<std::uint32_t>(level.gxStream.size());
                 surface.gxWords = static_cast<std::uint16_t>(built.words.size());
@@ -1803,6 +1852,41 @@ namespace hlds
             level.farUnits = static_cast<std::uint32_t>(seen.farUnits);
             report.seenGivenUp = seen.givenUp;
             report.hotspots = seen.hotspots;
+            // ... and a DSi's, with its finer runs: as many of them as keep
+            // its worst view within kDsiFineMore polygons of this one, those
+            // that put most light right for each polygon kept first (a tenth
+            // of what is left let go at a time).
+            if (!level.dsiFine.empty())
+            {
+                constexpr int kDsiFineMore = 150;
+                std::stable_sort(level.dsiFine.begin(), level.dsiFine.end(),
+                                 [](const CookedLevel::FineSurface &a, const CookedLevel::FineSurface &b)
+                                 { return a.worth > b.worth; });
+                CookedLevel fine = level;
+                for (;;)
+                {
+                    fine.surfaces = level.surfaces;
+                    for (const CookedLevel::FineSurface &entry : level.dsiFine)
+                    {
+                        fine.surfaces[entry.surface].polygons = static_cast<std::uint16_t>(entry.polygons);
+                        fine.surfaces[entry.surface].vertices = static_cast<std::uint16_t>(entry.vertices);
+                    }
+                    const SeenWorst seenFine = seenWorst(bsp, fine, portals);
+                    report.dsiWorstPolygons = seenFine.polygons;
+                    report.dsiWorstVertices = seenFine.vertices;
+                    if (seenFine.polygons <= seen.polygons + kDsiFineMore || level.dsiFine.empty())
+                        break;
+                    level.dsiFine.resize(level.dsiFine.size() - std::max<std::size_t>(1, level.dsiFine.size() / 10));
+                }
+                std::sort(level.dsiFine.begin(), level.dsiFine.end(),
+                          [](const CookedLevel::FineSurface &a, const CookedLevel::FineSurface &b)
+                          { return a.surface < b.surface; });
+                for (const CookedLevel::FineSurface &entry : level.dsiFine)
+                {
+                    report.dsiFinePolygons += entry.polygons - level.surfaces[entry.surface].polygons;
+                    ++report.dsiFineSurfaces;
+                }
+            }
         }
         return true;
     }

@@ -91,6 +91,9 @@ namespace hlds
         int worstPolygons = 0;
         int worstVertices = 0;
         int pvsWorstPolygons = 0; ///< CookReport::pvsWorstPolygons
+        /// A DSi's finer runs (CookReport::dsiFine*): how many surfaces, the
+        /// polygons they add, their words, and the worst view with them.
+        int dsiFineSurfaces = 0, dsiFinePolygons = 0, dsiFineKb = 0, dsiWorstPolygons = 0, dsiWorstVertices = 0;
         int pvsWorstVertices = 0;
         int farUnits = 0;
         int portals = 0;
