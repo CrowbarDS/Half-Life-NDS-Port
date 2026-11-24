@@ -287,8 +287,15 @@ namespace
         logicStrike(g.logic, g.player, button, 1);
         ticks(g, 1);
         check(face.frame == 1 && g.logic.states[pressed].dead, "a button_target hit shows its other face and fires");
+        // Used by what names it -- a relay -- it turns, as the game's does
+        // whatever its flags (ba_security2's lift is called so); without
+        // flag 1 the player's own USE does not find it.
+        standAt(g, 150, 0);
+        const fx eye[3] = {g.player.origin[0], g.player.origin[1], g.player.origin[2] + g.player.viewHeight};
+        const fx ahead[3] = {kFxOne, 0, 0};
+        check(logicFindUsable(g.logic, eye, ahead) != button, "... the player cannot press it (no flag 1)");
         use(g, button);
-        check((g.logic.states[button].bits & 1u) == 1u, "... and only a shot turns it, not a use (no flag 1)");
+        check((g.logic.states[button].bits & 1u) == 0u, "... but a use from the map turns it back");
     }
 
     void testBloodAndSprite()
