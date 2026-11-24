@@ -1,4 +1,4 @@
 *
 !versions.env
 !fetch.sh
-!libnds-ime-resume.patch
+!blocksds-libnds-latest.patch
