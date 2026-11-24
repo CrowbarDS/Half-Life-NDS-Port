@@ -213,6 +213,7 @@ if(HLDS_BUILD_TESTS)
             test_cascade
             test_uplink
             test_actors
+            test_softdiv
             test_sound
             test_sprite
             test_effects

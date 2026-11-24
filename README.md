@@ -140,6 +140,7 @@ Building without Docker, the DSP toolchain, and the converter's window are all c
 - **Warioware64:** the port
 - **NewGBAXL:** streaming textures, 60 fps character animation, save versioning
 - **Teiwazik:** the first CI work
+- **Kuratius:** the divide without the divider (its reciprocal method), and pointing us at the ARM9's DSP multiplies
 - [BlocksDS](https://blocksds.skylyrac.net/) and the [Wonderful Toolchain](https://wonderful.asie.pl/): the SDK and compilers
 - [Nitro Engine](https://github.com/AntonioND/nitro-engine) by Antonio Niño Díaz, through our [Nitro Engine Advanced fork](https://github.com/Warioware64/nitro-engine)
 - [dswifi](https://github.com/blocksds/dswifi), through our [fork](https://github.com/Warioware64/dswifi) with Download Play

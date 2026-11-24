@@ -139,6 +139,47 @@ PASS, 0 of 20439 wrong from 2^62 up, so `isqrt64` gives the unit the whole
 range. melonDS gets every root below 2^62 right and 6997 of those 20439 one
 too high: there the probe says FAIL, and the emulator is wrong, not the game.
 
+## softdiv/ — a divide without the divider (Kuratius's method)
+
+Times the game's 64-bit divide three ways, in bus-clock ticks per call, and
+counts wrong answers (the count must be 0):
+
+- **hardware**: the game's own (`source/HwMath.s`, its profiling left out);
+- **soft**: `shared/HlSoftDiv.hpp`, by multiplies and shifts alone, which an
+  interrupt handler or a thread could use, behind the same registers;
+- **library**: the compiler's `__aeabi_ldivmod` / `__aeabi_uldivmod`.
+
+On the game's shapes of divide: a trace's fraction `(t << 30) / d`, a vector
+made unit `(v << 12) / length`, a clip's place in its span (unsigned), and the
+divider probe's mix of long numbers by short ones, some of whose quotients
+have more than 32 bits (those the soft divide leaves to the library: the line
+under the mix says how many). Everything under test is in ITCM, as the game's
+is; the "cold" column empties the instruction cache before each call. A runs
+the page again.
+
+The host checks every answer against its own divide (`test_softdiv`: 51
+million divides, all right; the estimate is put right by 5 steps at most, and
+by none for 88% of them).
+
+Results on the owner's consoles, 2026-11-24, in bus ticks per call, every
+answer right (3 of the mix's 1024 left to the library):
+
+| Warm (cold) | hardware | soft | library |
+|---|---|---|---|
+| DSi: trace | 54 (54) | 45 (45) | 152 (554) |
+| DSi: unit | 54 (54) | 44 (44) | 95 (487) |
+| DSi: anim | 54 (54) | 40 (40) | 94 (468) |
+| DSi: mix | 54 (54) | 45 (46) | 137 (539) |
+| DS mode: trace | 62 (62) | 91 (91) | 305 (684) |
+| DS mode: unit | 62 (62) | 89 (89) | 191 (564) |
+| DS mode: anim | 62 (62) | 80 (80) | 188 (546) |
+| DS mode: mix | 62 (62) | 91 (92) | 274 (655) |
+
+So on a DSi the soft divide is a fifth faster than the hardware's, and on a
+DS a half slower: its ARM9 runs at half the DSi's clock and the bus at the
+same, so the same instructions cost it twice the ticks. On both it is two to
+six times the library's, and cold it costs what it costs warm (in ITCM).
+
 ## dspmath/ — the ARM9's 16-bit multiplies
 
 `shared/HlDsp.hpp`'s SMULxy, SMULWy, SMLAxy and SMLAWy, as ARM code, against
