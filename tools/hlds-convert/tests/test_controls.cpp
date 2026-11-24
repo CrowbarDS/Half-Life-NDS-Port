@@ -1250,6 +1250,39 @@ namespace
             check(readSettings(file.data(), file.size(), back) && back.lastGame == kGameHalfLife,
                   "a version 29 file is read, with Half-Life as the game chosen");
         }
+        {
+            // Fog was on where a map wanted it; a file from before is read with
+            // it off (once), and with no DSi light. One written now keeps both.
+            constexpr std::size_t flags = yas::mem | yas::binary | yas::no_header;
+            SettingsData old;
+            old.graphics.fog = kFogWhenNeeded;
+            yas::mem_ostream os;
+            yas::binary_oarchive<yas::mem_ostream, flags> oa(os);
+            serializeSettings(kSettingsVersionThirty, old, oa);
+            const auto buf = os.get_intrusive_buffer();
+            SettingsHeader header{};
+            std::memcpy(header.magic, kSettingsMagic, sizeof(header.magic));
+            header.version = kSettingsVersionThirty;
+            header.payloadBytes = static_cast<std::uint16_t>(buf.size);
+            header.crc32 = crc32(reinterpret_cast<const std::uint8_t *>(buf.data), static_cast<std::uint32_t>(buf.size));
+            std::vector<std::uint8_t> file(sizeof(header) + buf.size);
+            std::memcpy(file.data(), &header, sizeof(header));
+            std::memcpy(file.data() + sizeof(header), buf.data, buf.size);
+            SettingsData back;
+            back.graphics.dsiLight = 1;
+            check(readSettings(file.data(), file.size(), back) && back.graphics.fog == kFogOff &&
+                      back.graphics.dsiLight == 0,
+                  "a version 30 file is read with the fog off and no DSi light");
+            SettingsData chose;
+            chose.graphics.fog = kFogWhenNeeded;
+            chose.graphics.dsiLight = 1;
+            const std::vector<std::uint8_t> written = writeSettings(chose);
+            check(readSettings(written.data(), written.size(), back) && back.graphics.fog == kFogWhenNeeded &&
+                      back.graphics.dsiLight == 1,
+                  "... and one written now keeps the fog and the DSi light chosen");
+            check(SettingsData().graphics.fog == kFogOff && SettingsData().graphics.dsiLight == 0,
+                  "... both off unless chosen");
+        }
 
         // Each version's length, written down for the console, is the
         // length its writer makes -- every version a file is read in.

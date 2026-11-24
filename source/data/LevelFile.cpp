@@ -4,6 +4,7 @@
 
 #include "DebugLog.hpp"
 #include "Global.hpp"
+#include "Settings.hpp"
 #include "global_header.hpp"
 #include "net/GuestLoad.hpp"
 
@@ -33,13 +34,7 @@ namespace hlrt
             at = nullptr;
         pakBytes_ = 0;
         freeDsCut();
-        std::free(fineBlock_);
-        fineBlock_ = nullptr;
-        std::free(overOf_);
-        overOf_ = nullptr;
-        fineTable_ = nullptr;
-        fine_ = nullptr;
-        fineCount_ = 0;
+        freeDsiFine();
 #endif
     }
 
@@ -216,6 +211,41 @@ namespace hlrt
             s.polygons = static_cast<std::uint16_t>(s.polygons + table[i].polygons);
             s.vertices = static_cast<std::uint16_t>(s.vertices + table[i].vertices);
         }
+    }
+
+    void Level::freeDsiFine()
+    {
+        std::free(fineBlock_);
+        fineBlock_ = nullptr;
+        std::free(overOf_);
+        overOf_ = nullptr;
+        fineTable_ = nullptr;
+        fine_ = nullptr;
+        fineCount_ = 0;
+    }
+
+    void Level::setDsiLight(bool on)
+    {
+        // (Without a map, it is read with the next.)
+        if (!loaded())
+            return;
+        if (on && fineBlock_ == nullptr)
+        {
+            readDsiFine();
+            return;
+        }
+        if (on || fineBlock_ == nullptr)
+            return;
+        // Off: the surfaces' counts as the level has them again, and the
+        // light over them let go.
+        auto *surfaces = const_cast<hldata::Surface *>(view.surfaces);
+        for (std::uint32_t i = 0; i < fineCount_; ++i)
+        {
+            hldata::Surface &s = surfaces[fineTable_[i].surface];
+            s.polygons = static_cast<std::uint16_t>(s.polygons - fineTable_[i].polygons);
+            s.vertices = static_cast<std::uint16_t>(s.vertices - fineTable_[i].vertices);
+        }
+        freeDsiFine();
     }
 
     bool Level::dsCutHeader(NEA_NpacMember &member, hldata::DsCutHeader &cut) const
@@ -588,7 +618,9 @@ namespace hlrt
             if ((cutFlags_ & hldata::kDsCutGx) != 0)
                 view.gxStream = nullptr;
         }
-        readDsiFine();
+        // (A DSi's finer light on the walls, if the player has it on.)
+        if (settings.graphics.dsiLight != 0)
+            readDsiFine();
 #endif
         return true;
     }

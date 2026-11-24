@@ -131,6 +131,7 @@ namespace hlrt
             kWorldDetail,
             kModelLimit,
             kDrawDistance,
+            kDsiLight,
             kScreen,
             kDuck,
             kWalk,
@@ -1215,6 +1216,7 @@ namespace hlrt
                                      {Kind::Value, kWorldDetail, opt::RowWorldDetail},
                                      {Kind::Value, kModelLimit, opt::RowModelLimit},
                                      {Kind::Value, kDrawDistance, opt::RowDrawDistance},
+                                     {Kind::Value, kDsiLight, opt::RowDsiLight},
                                      {Kind::Value, kScreen, opt::RowScreen}};
         const Row kControlRows[] = {{Kind::Value, kScheme, opt::RowLayout},          {Kind::Value, kHand, opt::RowHand},
                                     {Kind::Value, kDuck, opt::RowCrouch},            {Kind::Value, kWalk, opt::RowWalk},
@@ -1708,6 +1710,9 @@ namespace hlrt
                     std::snprintf(out, size, "%d", settings.graphics.modelLimit);
                 break;
             case kDrawDistance: ui::putText(out, size, kDrawDistanceName[settings.graphics.drawDistance]); break;
+            case kDsiLight:
+                ui::putText(out, size, !isDSiMode() ? opt::DsiOnly : settings.graphics.dsiLight ? opt::On : opt::Off);
+                break;
             case kScreen:
                 if (settings.screenShape == hldata::kScreenAuto)
                     std::snprintf(out, size, uiText(opt::ScreenAuto), uiText(camera.wide ? opt::ScreenWide : opt::ScreenNarrow));
@@ -1783,6 +1788,7 @@ namespace hlrt
             case kWorldDetail: return opt::HelpWorldDetail.at;
             case kModelLimit: return opt::HelpModelLimit.at;
             case kDrawDistance: return opt::HelpDrawDistance.at;
+            case kDsiLight: return opt::HelpDsiLight.at;
             case kScreen: return opt::HelpScreen.at;
             case kScheme: return opt::HelpLayout.at;
             case kHand: return opt::HelpHand.at;
@@ -1946,6 +1952,13 @@ namespace hlrt
             case kModelDetail: cycle(settings.graphics.modelDetail, kDetailLevels); return true;
             case kWorldDetail: cycle(settings.graphics.worldDetail, kDetailLevels); return true;
             case kDrawDistance: cycle(settings.graphics.drawDistance, kDrawDistances); return true;
+            case kDsiLight:
+                // (A DSi's alone; on or off at once, in the map in play too.)
+                if (!isDSiMode())
+                    return false;
+                settings.graphics.dsiLight = settings.graphics.dsiLight != 0 ? 0 : 1;
+                level.setDsiLight(settings.graphics.dsiLight != 0);
+                return true;
             case kScreen:
                 cycle(settings.screenShape, hldata::kScreenChoices);
                 camera.applyScreenShape();
@@ -2412,7 +2425,8 @@ namespace hlrt
                 constexpr bool nameLocked = false;
 #endif
                 const bool dead = nameLocked || (item.id == kFirmPress && !Input::pressureSeen()) ||
-                                  (item.id == kQuality && !isDSiMode()) || (item.id == kVibration && !slot2::hasRumble()) ||
+                                  ((item.id == kQuality || item.id == kDsiLight) && !isDSiMode()) ||
+                                  (item.id == kVibration && !slot2::hasRumble()) ||
                                   (item.id == kProfSpray && logos.count() == 0) || hostDead(item.id) != nullptr;
                 drawText(band, small, x + 8, textY, item.label.text(), inkFor(small, dead ? kUiGrey : kUiWhite));
                 if (item.kind == Kind::Slider)

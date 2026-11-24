@@ -1106,10 +1106,10 @@ namespace
     void testGraphics()
     {
         SettingsData data;
-        check(data.graphics.valid() && data.graphics.fog == kFogWhenNeeded && data.graphics.fogStrength == 7 &&
+        check(data.graphics.valid() && data.graphics.fog == kFogOff && data.graphics.fogStrength == 7 &&
                   data.graphics.fogColour == 0 && data.graphics.modelDetail == 1 && data.graphics.worldDetail == 1 &&
-                  data.graphics.modelLimit == 0 && data.graphics.drawDistance == 0,
-              "to begin with: fog only where a view is cut, not quite solid, black; detail as it was");
+                  data.graphics.modelLimit == 0 && data.graphics.drawDistance == 0 && data.graphics.dsiLight == 0,
+              "to begin with: no fog (asked for, not quite solid, black); detail as it was; no DSi light");
         data.graphics.fog = kFogAlways;
         data.graphics.fogStrength = 4;
         data.graphics.fogDistance = 9;

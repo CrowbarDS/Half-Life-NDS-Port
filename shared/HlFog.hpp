@@ -29,7 +29,9 @@ namespace hldata
 
     struct GraphicsSettings
     {
-        std::uint8_t fog = kFogWhenNeeded;
+        /// Off unless asked for: it hid what the cut had left at the edge of
+        /// the view.
+        std::uint8_t fog = kFogOff;
         std::uint8_t fogStrength = 7; ///< 0..10: how solid it is at its far end
         std::uint8_t fogDistance = 5; ///< 0..10: how far off (see fogAlwaysEnd, fogCutEnd)
         std::uint8_t fogColour = 0;   ///< into kFogColour
@@ -37,12 +39,16 @@ namespace hldata
         std::uint8_t worldDetail = 1;
         std::uint8_t modelLimit = 0;  ///< how many models at once; 0: as many as the machine is good for
         std::uint8_t drawDistance = 0; ///< 0 far, 1 medium, 2 near
+        /// A DSi's finer light on walls (the light laid over them: HlDsiGx.hpp),
+        /// 0 off or 1 on; off unless asked for (settings version 31).
+        std::uint8_t dsiLight = 0;
 
         constexpr bool valid() const
         {
             return fog < kFogTypes && fogStrength <= kGraphicsMost && fogDistance <= kGraphicsMost &&
                    fogColour < kFogColours && modelDetail < kDetailLevels && worldDetail < kDetailLevels &&
-                   (modelLimit == 0 || (modelLimit >= 4 && modelLimit <= 12)) && drawDistance < kDrawDistances;
+                   (modelLimit == 0 || (modelLimit >= 4 && modelLimit <= 12)) && drawDistance < kDrawDistances &&
+                   dsiLight <= 1;
         }
     };
 

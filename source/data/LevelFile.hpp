@@ -103,6 +103,7 @@ namespace hlrt
         /// level, and those surfaces' counts made to take it in (it is drawn
         /// with them, and the pass's budget counts it).
         void readDsiFine();
+        void freeDsiFine();
         std::uint8_t *fineBlock_ = nullptr;
         const hldata::DsiGxSurface *fineTable_ = nullptr;
         const std::uint32_t *fine_ = nullptr;
@@ -128,6 +129,9 @@ namespace hlrt
         }
         /// How many surfaces a DSi lays light over on this map.
         std::uint16_t fineSurfaces() const { return fineCount_; }
+        /// The DSi light (the setting) switched on or off: the light over the
+        /// walls read now, or let go and the surfaces' counts as they were.
+        void setDsiLight(bool on);
         /// Pages of geometry read from the card since the map began.
         std::uint32_t gxPagesRead() const { return pagesRead_; }
         /// Bytes of the level kept in the Expansion Pak, not in main memory.
@@ -147,6 +151,7 @@ namespace hlrt
         std::uint16_t dsCut() const { return 0; }
         const std::uint32_t *gxAt(const hldata::Surface &surface) { return view.gxStream + surface.gxOfs; }
         const std::uint32_t *overlayOf(std::uint32_t, std::uint16_t &) const { return nullptr; }
+        void setDsiLight(bool) {}
         std::uint32_t gxPagesRead() const { return 0; }
         const std::uint8_t *visRow(int leaf, const std::uint8_t *&end)
         {
