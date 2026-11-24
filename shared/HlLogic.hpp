@@ -5288,6 +5288,7 @@ namespace hldata
                 // there to say it; from everywhere, as before, if not.
                 const fx *from = nullptr;
                 fx mouth[3];
+                int speaker = -1;
                 for (int i = 0; i < w.actors->count && from == nullptr; ++i)
                 {
                     const ActorState &actor = w.actors->states[i];
@@ -5297,9 +5298,12 @@ namespace hldata
                     mouth[1] = actor.pos[1];
                     mouth[2] = actor.pos[2] + fxFromInt(60);
                     from = mouth;
+                    speaker = i;
                 }
+                // (Whose it is: their mouth moves as it is heard.)
                 w.heard->add(static_cast<std::uint16_t>(record.extra[0]), from, static_cast<int>(record.extra[2]),
-                             from != nullptr ? kRadiusLarge : kRadiusEverywhere, kSoundSentence, record.pad);
+                             from != nullptr ? kRadiusLarge : kRadiusEverywhere, kSoundSentence, record.pad,
+                             speaker >= 0 ? static_cast<std::uint16_t>(kSoundTagActor | speaker) : std::uint16_t(0));
             }
             else if (w.heard != nullptr && useType != kUseOff)
             {

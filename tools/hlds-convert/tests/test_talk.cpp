@@ -719,6 +719,11 @@ namespace
         check(std::find(g.said.begin() + static_cast<long>(from), g.said.end(), line) != g.said.end() &&
                   aiFind(g.actors, speaker)->talk.useTime > 0,
               "... and is said when nobody is, by its speaker");
+        // (Whose it is goes with it: his mouth moves as it is heard.)
+        const auto at = std::find(g.said.begin() + static_cast<long>(from), g.said.end(), line);
+        check(at != g.said.end() &&
+                  g.saidBy[static_cast<std::size_t>(at - g.said.begin())] == (kSoundTagActor | speaker),
+              "... and goes with whose it is");
     }
 
     /// c0a0e: the guard who comes in with the tram walks to it, says the

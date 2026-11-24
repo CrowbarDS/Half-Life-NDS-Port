@@ -208,8 +208,10 @@ namespace hldata
             if (sentence < 0 || c.w.heard == nullptr)
                 return;
             const fx mouth[3] = {c.me.pos[0], c.me.pos[1], c.me.pos[2] + c.kind.eye};
+            // (Whose it is: their mouth moves as it is heard -- Sound's mouthOf.)
             c.w.heard->add(static_cast<std::uint16_t>(sentence), radius == kRadiusEverywhere ? nullptr : mouth,
-                           volume, radius, kSoundSentence, voicePitch(c));
+                           volume, radius, kSoundSentence, voicePitch(c),
+                           static_cast<std::uint16_t>(kSoundTagActor | c.index));
         }
 
         /// PlaySentence: one of a group (none: nothing at all -- a voice

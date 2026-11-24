@@ -346,7 +346,7 @@ namespace hldata
                 ++count;
             if (count != 0)
                 c.w.heard->add(lines[aiRandomLong(a, 0, count - 1)], c.me.pos, kGruntLineVolume, kRadiusLarge, kSoundSentence,
-                               c.m.talk.voicePitch);
+                               c.m.talk.voicePitch, static_cast<std::uint16_t>(kSoundTagActor | c.index));
         }
 
         /// SpeakSentence: what he was to say, if he may.

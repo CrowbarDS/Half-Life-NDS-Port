@@ -90,8 +90,11 @@ namespace hldstest
         /// door's: not the suit's, at the player, nor a speaker's).
         std::vector<int> loudestHeard;
         int sentencesHeard = 0, loudestSentence = 0;
-        /// Every line said (its index in the level's Sentences), in order.
+        /// Every line said (its index in the level's Sentences), in order;
+        /// and whose each was (its event's tag: kSoundTagActor and the actor,
+        /// or 0 for nobody's).
         std::vector<std::uint16_t> said;
+        std::vector<std::uint16_t> saidBy;
         void drain()
         {
             for (int i = 0; i < heard.count; ++i)
@@ -101,6 +104,7 @@ namespace hldstest
                 {
                     ++sentencesHeard;
                     said.push_back(event.sound);
+                    saidBy.push_back(event.tag);
                     if (!(event.flags & kSoundHere) && event.radius == kRadiusLarge)
                         loudestSentence = std::max(loudestSentence, static_cast<int>(event.volume));
                 }
