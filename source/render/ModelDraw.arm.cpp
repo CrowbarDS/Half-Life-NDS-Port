@@ -878,15 +878,17 @@ namespace hlrt
                 gibOrder_[gibFound_++] = static_cast<std::uint8_t>(i);
             }
         }
-        // The spent casings, as the game's models of them where the map has
-        // them: by the same rules as the pieces above, in a sixth of the
-        // share of their own. (What is left out is drawn as a triangle:
-        // EffectDraw.)
+        // The spent casings, each the game's model of it at its coarsest (a
+        // few triangles: ModelLean::coarse): always, under pressure too, in
+        // an allowance of their own over the share -- counted apart, and
+        // added at the end, so that the thrown things keep theirs. (One the
+        // allowance has no room for, or whose model is not in, is not drawn:
+        // never a triangle in its place. EffectDraw draws no casing.)
         pieceFound_ = 0;
         pieceModelled_ = 0;
-        if (worldDraw.pressure() < 2 && !strained_)
+        int casingPolygons = 0, casingVertices = 0;
         {
-            int casingPolygons = 0;
+            const int room = isDSiMode() ? kCasingPolygonsDsi : kCasingPolygonsDs;
             for (int i = 0; i < kMaxPieces && i < 64; ++i)
             {
                 const Piece &piece = actors.pieces[i];
@@ -907,11 +909,10 @@ namespace hlrt
                     p += model.batches[b].polygons;
                     v += model.batches[b].vertices;
                 }
-                if (polygons + p > kMaxPolygons || vertices + v > kMaxVertices || casingPolygons + p > kMaxPolygons / 6)
+                if (casingPolygons + p > room || casingVertices + v > room * 3)
                     continue;
-                polygons += p;
-                vertices += v;
                 casingPolygons += p;
+                casingVertices += v;
                 pieceOrder_[pieceFound_++] = static_cast<std::uint8_t>(i);
                 pieceModelled_ |= std::uint64_t{1} << i;
             }
@@ -995,6 +996,9 @@ namespace hlrt
             vertices += v;
             shotOrder_[shotFound_++] = static_cast<std::uint8_t>(i);
         }
+        // (The casings' own allowance, last: see above.)
+        polygons += casingPolygons;
+        vertices += casingVertices;
     }
 
     void ModelDraw::prepare()

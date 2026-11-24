@@ -46,6 +46,10 @@ namespace hlrt
         static constexpr int kMaxVertices = 3400;
         /// ... and over it, for what the player has thrown or put down.
         static constexpr int kThrownPolygons = 128;
+        /// The spent casings' own allowance, polygons (each at its coarsest,
+        /// about 8: a DS's pool of pieces is 24, a DSi's 64).
+        static constexpr int kCasingPolygonsDs = 160;
+        static constexpr int kCasingPolygonsDsi = 320;
         /// One for every actor a map may have, its own and those who come
         /// along (hldata::kMaxMapActors: the converter refuses a map with
         /// more): what each was drawn at, and whether it is behind a wall.

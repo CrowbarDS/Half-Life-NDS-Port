@@ -925,8 +925,8 @@ namespace hlrt
     void EffectDraw::drawPiece(int n)
     {
         const Piece &piece = game.actors.pieces[n];
-        if (piece.kind == 0 || modelDraw.pieceModelled(n))
-            return;
+        if (piece.kind == 0 || piece.kind == kPieceShell || piece.kind == kPieceShotShell)
+            return; // (a casing is its model, or nothing: ModelDraw)
         // (In its last third of a second it thins away.)
         int alpha = piece.alpha;
         if (piece.leftMs < 320)
@@ -971,8 +971,9 @@ namespace hlrt
         for (int n = 0; n < kMaxPieces; ++n)
         {
             const Piece &piece = a.pieces[n];
-            // (A casing drawn as its model is not drawn again.)
-            if (piece.kind == 0 || piece.alpha < 31 || !pieceSeen(piece) || modelDraw.pieceModelled(n))
+            // (A casing is its model, or nothing: ModelDraw.)
+            if (piece.kind == 0 || piece.kind == kPieceShell || piece.kind == kPieceShotShell || piece.alpha < 31 ||
+                !pieceSeen(piece))
                 continue;
             if (piece.kind == kPieceShard && piece.texture != 0xFFFF && textureCache.present(piece.texture))
                 continue;
