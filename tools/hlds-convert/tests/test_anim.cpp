@@ -543,6 +543,64 @@ static void testClipTime()
     check(truncated < at, "(and without the remainder it falls behind)");
 }
 
+namespace
+{
+    /// A talking model's mouth (its controller 4): cooked, the kind the game
+    /// has, and posed open by how far it is set -- 64 its whole travel
+    /// (`degrees`), 32 half of it, 0 shut (its rest).
+    void checkMouth(const char *dir, const char *file, const char *clip, std::uint8_t kind, double degrees)
+    {
+        MdlFile mdl;
+        std::string error;
+        CookedModel cooked;
+        ModelCookReport report;
+        std::vector<std::uint8_t> bytes;
+        const bool ok = mdl.load(std::string(dir) + "/models/" + file, error) &&
+                        cookModel(mdl, {clip}, cooked, report, error) && writeModel(cooked, bytes, error);
+        check(ok, (std::string(file) + " cooks with its mouth").c_str());
+        if (!ok)
+            return;
+        std::vector<std::uint32_t> aligned((bytes.size() + 3) / 4);
+        std::memcpy(aligned.data(), bytes.data(), bytes.size());
+        ModelView view;
+        if (!view.open(reinterpret_cast<const std::uint8_t *>(aligned.data()), static_cast<std::uint32_t>(bytes.size())))
+        {
+            check(false, (std::string(file) + " opens").c_str());
+            return;
+        }
+        int mouth = -1;
+        for (int n = 0; n < view.header->controllerCount; ++n)
+            mouth = view.controllers[n].index == kControlMouth ? n : mouth;
+        check(mouth >= 0 && view.controllers[mouth].kind == kind,
+              (std::string(file) + ": its mouth is kept, of the game's kind").c_str());
+        if (mouth < 0)
+            return;
+        const int bone = view.controllers[mouth].bone;
+        std::vector<BoneMatrix> shut(mdl.bones.size()), half(mdl.bones.size()), open(mdl.bones.size());
+        std::int32_t controls[kModelControls] = {};
+        poseModel(view, 0, 0, shut.data(), controls);
+        controls[kControlMouth] = 32;
+        poseModel(view, 0, 0, half.data(), controls);
+        controls[kControlMouth] = 64;
+        poseModel(view, 0, 0, open.data(), controls);
+        // How far the mouth's bone has turned from shut: the angle of the
+        // turn between the two (R0^T R).
+        auto turned = [&](const BoneMatrix &a, const BoneMatrix &b)
+        {
+            double trace = 0;
+            for (int i = 0; i < 3; ++i)
+                for (int k = 0; k < 3; ++k)
+                    trace += (a.r[k * 3 + i] / 16384.0) * (b.r[k * 3 + i] / 16384.0);
+            return std::acos(std::clamp((trace - 1) / 2, -1.0, 1.0)) * 180.0 / M_PI;
+        };
+        const double byHalf = turned(shut[bone], half[bone]), byOpen = turned(shut[bone], open[bone]);
+        std::printf("test_anim: %s's mouth (bone %d) half open turns %.1f degrees, open %.1f (the game's %.0f)\n", file,
+                    bone, byHalf, byOpen, degrees);
+        check(std::fabs(byOpen - degrees) < 1 && std::fabs(byHalf - degrees / 2) < 1,
+              (std::string(file) + ": open, its mouth turns its whole travel; half open, half").c_str());
+    }
+} // namespace
+
 int main()
 {
     testHues();
@@ -573,6 +631,12 @@ int main()
     checkModel(dir, "zombie.mdl", {"idle1", "walk"});
     checkAimBlend(dir);
     checkModel(dir, "forklift.mdl", {"idle2", "drive"});
+    // The mouths of those who talk (the game's controller 4): a turn about
+    // the parent's z for the scientist and the guard, about the bone's own x
+    // for the man in the suit.
+    checkMouth(dir, "scientist.mdl", "idle1", kControlTurn, 20);
+    checkMouth(dir, "barney.mdl", "idle1", kControlTurn, 45);
+    checkMouth(dir, "gman.mdl", "idle01", kControlTwist, 30);
 
     // A body falling (the game's 2001 and 2002): somewhere in a scientist's
     // and a soldier's dying, light or heavy.

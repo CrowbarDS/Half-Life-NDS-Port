@@ -299,6 +299,16 @@ namespace hldata
         return value < low ? low : (value > high ? high : value);
     }
 
+    /// What the mouth (kControlMouth) set to `open` comes to: how far open,
+    /// 0 shut .. 64 as far as it goes (more is as far), between the
+    /// controller's start and end -- the game's mouthopen / 64, as its
+    /// StudioModelRenderer has it.
+    inline std::int32_t mouthValue(const ModelController &control, std::int32_t open)
+    {
+        open = open < 0 ? 0 : (open > 64 ? 64 : open);
+        return control.start + (((control.end - control.start) * open) >> 6);
+    }
+
     namespace detail
     {
         /// The matrix (Q14) of a turn of `angle` (65536 to the circle) about
@@ -442,7 +452,9 @@ namespace hldata
                 const ModelController &control = model.controllers[n];
                 if (control.bone != b)
                     continue;
-                const std::int32_t value = controlValue(control, controls[control.index]);
+                const std::int32_t value = control.index == kControlMouth
+                                               ? mouthValue(control, controls[control.index])
+                                               : controlValue(control, controls[control.index]);
                 const std::int16_t *axis = model.controlAxes[clip * controllers + n].v;
                 if (control.kind == kControlSlide)
                 {

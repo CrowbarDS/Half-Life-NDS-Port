@@ -1163,8 +1163,10 @@ namespace hlds
         std::vector<int> controlTypes;
         for (const MdlController &c : mdl.controllers)
         {
+            // (The game's five: four set by number, and the mouth, set by
+            // how loud what the model says is: kControlMouth.)
             if (c.index < 0 || c.index >= kModelControls)
-                continue; // (the mouth: nothing here speaks with one)
+                continue;
             ModelController control{};
             control.bone = static_cast<std::uint8_t>(c.bone);
             control.index = static_cast<std::uint8_t>(c.index);

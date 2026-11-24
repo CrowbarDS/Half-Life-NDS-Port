@@ -37,7 +37,10 @@
 namespace hldata
 {
     inline constexpr char kModelMagic[4] = {'H', 'L', 'M', 'D'};
-    inline constexpr std::uint16_t kModelVersion = 7;
+    /// 8: a talking model's mouth (its controller 4, kControlMouth) is kept.
+    /// A model of 7 is read as well: it has none, and its mouth stays shut.
+    inline constexpr std::uint16_t kModelVersion = 8;
+    inline constexpr std::uint16_t kModelMinVersion = 7;
     /// A model comes at up to this many levels of detail: 0 the finest the
     /// file has, each after it of fewer triangles. A level's error is how
     /// far it is from the model as the game has it, in sixteenths of a
@@ -273,7 +276,11 @@ namespace hldata
     inline constexpr std::uint8_t kControlTurn = 1;
     inline constexpr std::uint8_t kControlTwist = 2;
     inline constexpr std::uint8_t kControlLoops = 1;
-    inline constexpr int kModelControls = 4; ///< how many the game sets by number
+    inline constexpr int kModelControls = 5; ///< how many the game sets by number
+    /// The game's controller 4: the mouth, set not to an angle but to how far
+    /// open it is, 0 shut .. 64 as far as it goes (the game's mouthopen / 64,
+    /// between the controller's start and end: poseModel).
+    inline constexpr int kControlMouth = 4;
 
     /// A box round part of a bone, in the bone's own space, that a shot is
     /// tried against; `group` is the part of the body it stands for.
@@ -344,7 +351,8 @@ namespace hldata
             if (size < sizeof(ModelHeader) || (reinterpret_cast<std::uintptr_t>(data) & 3) != 0)
                 return false;
             const auto *h = reinterpret_cast<const ModelHeader *>(data);
-            if (std::memcmp(h->magic, kModelMagic, 4) != 0 || h->version != kModelVersion ||
+            if (std::memcmp(h->magic, kModelMagic, 4) != 0 || h->version > kModelVersion ||
+                h->version < kModelMinVersion ||
                 h->fileSize != size || h->boneCount == 0 || h->boneCount > kModelMaxBones ||
                 crc32(data + sizeof(ModelHeader), size - sizeof(ModelHeader)) != h->crc32)
                 return false;

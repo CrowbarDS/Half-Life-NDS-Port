@@ -740,7 +740,8 @@ namespace hldata
     /// and both go the other way). False if they are all at rest.
     inline bool actorControls(const ActorState &actor, std::int32_t *controls)
     {
-        controls[0] = controls[1] = controls[2] = controls[3] = 0;
+        for (int i = 0; i < kModelControls; ++i)
+            controls[i] = 0; // (the mouth too: whoever draws sets it, from what is heard)
         // One of the people's head, turned to whom he talks to (HlAiTalk.hpp).
         if (actor.kind == static_cast<std::uint8_t>(ActorKind::Scientist) ||
             actor.kind == static_cast<std::uint8_t>(ActorKind::Guard) ||
