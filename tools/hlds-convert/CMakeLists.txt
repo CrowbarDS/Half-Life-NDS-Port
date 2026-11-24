@@ -53,6 +53,7 @@ add_library(hlds_convert_core STATIC
     core/src/LevelReport.cpp
     core/src/LevelWriter.cpp
     core/src/LightBake.cpp
+    core/src/LightFit.cpp
     core/src/Lz77.cpp
     core/src/MdlFile.cpp
     core/src/ModelCook.cpp
@@ -258,6 +259,12 @@ if(HLDS_BUILD_TESTS)
     add_executable(diag_replay tests/diag_replay.cpp)
     target_compile_options(diag_replay PRIVATE ${HLDS_TEST_OPTIMISE})
     target_link_libraries(diag_replay PRIVATE hlds_convert_core)
+
+    # Not a suite either: how well each face of a map is lit by the light
+    # its corners carry, against the map's own lightmap (light_audit.cpp).
+    add_executable(light_audit tests/light_audit.cpp)
+    target_compile_options(light_audit PRIVATE ${HLDS_TEST_OPTIMISE})
+    target_link_libraries(light_audit PRIVATE hlds_convert_core)
 
     # The DSi's DSP program (teak/, assembly) run in an emulated DSP and held
     # against its model, sample for sample (tools/dspsim). Skipped where the

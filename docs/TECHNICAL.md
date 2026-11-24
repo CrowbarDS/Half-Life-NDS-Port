@@ -27,6 +27,17 @@ Milestone 11, "levels of detail".
   the same places (`tools/ref/measure.py`), which brought the mean
   difference over 120 patches of wall on three maps from 15.6 to 5.6 of
   255 (the port now 5% under the game, where it was 18% under).
+  A corner's colour is not the lightmap read where the corner lies: it is
+  chosen, with every other corner of the faces of its model on its plane,
+  to match the lightmap over the whole of each face (`LightFit`: least
+  squares, the samples far from the fit counting less, the samples inside
+  the world's solid -- a door's edge in its frame -- left out). A door is
+  no longer darkened by the strip of it that goes into the wall, and
+  faces of one plane meet without a step: against the lightmap the mean
+  error falls by a third (c1a0 14.5 to 9.2 of 255) and the mean step where
+  faces meet from 14.9 to 1.3 (`light_audit`, which measures both on any
+  map). Faces a changing light falls on are read as before, as their
+  `LightPatch` needs.
   Neighbouring faces share vertices in
   quad strips, and faces are merged only where that provably changes nothing
   on screen (about 12% fewer vertices over the campaign).

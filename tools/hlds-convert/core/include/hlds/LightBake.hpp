@@ -62,21 +62,33 @@ namespace hlds
         LightExtents extents(const BspFace &face) const;
         /// A face's texture coordinates at vertex i, in source texels.
         void texCoords(const BspFace &face, int i, double &s, double &t) const;
-        /// The light at texture coordinate (s, t) of `face`, scaled.
-        Rgb sample(const BspFace &face, double s, double t) const;
+        /// The light at texture coordinate (s, t) of `face`, scaled. With
+        /// `origin` (where the face's model was put: the world's is 0 0 0),
+        /// the lightmap's samples that lie inside the world's solid are
+        /// left out of the read and the others weighed up -- a door's corner
+        /// in its frame, a lift's side in its shaft: samples the game never
+        /// shows, black or nearly, that the corner would spread over the
+        /// whole face.
+        Rgb sample(const BspFace &face, double s, double t, const double *origin = nullptr) const;
 
         bool styleIsOn(int style) const;
 
         /// The same, of some of the face's (up to four) layers only: bit n of
         /// `layers` is its n-th. Whether a layer's style starts on is not
         /// asked.
-        Rgb sampleLayers(const BspFace &face, double s, double t, unsigned layers) const;
+        Rgb sampleLayers(const BspFace &face, double s, double t, unsigned layers,
+                         const double *origin = nullptr) const;
         /// Which of a face's layers are of light that changes -- any style
         /// but 0 -- as bits (0: all of its light is steady).
         unsigned changingLayers(const BspFace &face) const;
         /// Where a layer of a face is brightest: the texture coordinates
         /// of its brightest sample. False if the face has no such layer.
         bool brightest(const BspFace &face, int layer, double &s, double &t) const;
+
+        /// Whether the lightmap sample (s, t) -- in texels, on a sample --
+        /// of `face`, its model put at `origin`, lies in the world's solid
+        /// (half a unit in front of the face): one never seen.
+        bool sampleInSolid(const BspFace &face, double s, double t, const double *origin) const;
 
     private:
         const BspFile &bsp_;

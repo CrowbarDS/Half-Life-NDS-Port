@@ -20,6 +20,7 @@
 #include "hlds/EntityCook.hpp"
 #include "hlds/EntityParser.hpp"
 #include "hlds/FaceBuilder.hpp"
+#include "hlds/LightFit.hpp"
 #include "hlds/MapStats.hpp"
 #include "hlds/MeshOptimize.hpp"
 #include "hlds/TextureCook.hpp"
@@ -591,6 +592,21 @@ namespace hlds
 
         const std::vector<BrushInfo> brushes = analyseBrushes(bsp, entities);
         const std::vector<const BrushInfo *> brushOwner = brushOfModel(bsp, brushes);
+        // The light of each corner, fitted to its face's lightmap
+        // (LightFit.hpp): of the world, and of each brush entity that is
+        // drawn lit, where it was put.
+        static const double kWorldOrigin[3] = {0, 0, 0};
+        std::vector<const double *> litOrigins(bsp.models.size(), nullptr);
+        for (std::size_t m = 0; m < bsp.models.size(); ++m)
+        {
+            const BrushInfo *owner = brushOwner[m];
+            if (m == 0)
+                litOrigins[m] = kWorldOrigin;
+            else if (owner != nullptr && owner->drawn() && !owner->fullBright() &&
+                     owner->renderClass != RenderClass::Colour)
+                litOrigins[m] = owner->origin;
+        }
+        const LightFit fitted(bsp, light, litOrigins);
 
         // --- Textures: only the ones a drawn face names, in the form it
         // wears them (kFormOpaque, kFormHoles, kFormLight). A '{' texture can
@@ -739,6 +755,10 @@ namespace hlds
             const bool flatColour =
                 brush != nullptr && brush->renderClass == RenderClass::Colour;
             const bool fullBright = brush != nullptr && brush->fullBright();
+            // (Where it was put, to tell which of its light lies in the
+            // world's solid: LightBake::sample.)
+            const double zero[3] = {0, 0, 0};
+            const double *placed = brush != nullptr ? brush->origin : zero;
 
             std::vector<MeshFace> meshFaces;
             std::map<std::tuple<int, int, int, int, int, int>, int> keys; // (plane, side, mapping, texture, leaf, lamp) -> key
@@ -805,7 +825,9 @@ namespace hlds
                     light.texCoords(face, i, p.s, p.t);
                     // Blended and coloured brushes are not lit: the engine
                     // draws them at full brightness, or in their own colour.
-                    const Rgb c = fullBright ? Rgb{255, 255, 255} : light.sample(face, p.s, p.t);
+                    Rgb c{255, 255, 255};
+                    if (!fullBright && !fitted.corner(f, i, c))
+                        c = light.sample(face, p.s, p.t, placed);
                     p.colour = flatColour ? brush->colour : rgb555Near(c.r, c.g, c.b);
                 }
                 const FaceCost baseline = faceCost(face.edgeCount);
@@ -950,7 +972,7 @@ namespace hlds
                                     if (best->styles[layer] == 0)
                                         steady |= 1u << layer;
                                 }
-                                const Rgb base = light.sampleLayers(*best, bestS, bestT, steady);
+                                const Rgb base = light.sampleLayers(*best, bestS, bestT, steady, placed);
                                 const std::uint16_t baseColour = rgb555Near(base.r, base.g, base.b);
                                 // (The word is filled in once the vertices
                                 // are packed: its number in order, for now.)
@@ -970,10 +992,10 @@ namespace hlds
                                     const LightExtents lx = light.extents(*best);
                                     if (lx.width * lx.height <= kLampSamples && light.brightest(*best, layer, ls, lt))
                                     {
-                                        const Rgb under = light.sampleLayers(*best, ls, lt, steady);
+                                        const Rgb under = light.sampleLayers(*best, ls, lt, steady, placed);
                                         from = rgb555Near(under.r, under.g, under.b);
                                     }
-                                    const Rgb with = light.sampleLayers(*best, ls, lt, steady | (1u << layer));
+                                    const Rgb with = light.sampleLayers(*best, ls, lt, steady | (1u << layer), placed);
                                     const std::uint16_t lit = rgb555Near(with.r, with.g, with.b);
                                     const int more[3] = {std::max(0, (lit & 31) - (from & 31)),
                                                          std::max(0, ((lit >> 5) & 31) - ((from >> 5) & 31)),

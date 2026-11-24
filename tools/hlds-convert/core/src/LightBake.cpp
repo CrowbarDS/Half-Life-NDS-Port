@@ -127,7 +127,49 @@ namespace hlds
         return true;
     }
 
-    Rgb LightBake::sample(const BspFace &face, double s, double t) const
+    bool LightBake::sampleInSolid(const BspFace &face, double s, double t, const double *origin) const
+    {
+        if (bsp_.models.empty() || bsp_.nodes.empty())
+            return false;
+        // The point of the face's plane at (s, t): the two texture axes and
+        // the plane, three equations.
+        const BspTexInfo &ti = bsp_.texInfos[face.texInfo];
+        const BspPlane &plane = bsp_.planes[face.plane];
+        const double m[3][3] = {{ti.vecs[0][0], ti.vecs[0][1], ti.vecs[0][2]},
+                                {ti.vecs[1][0], ti.vecs[1][1], ti.vecs[1][2]},
+                                {plane.normal[0], plane.normal[1], plane.normal[2]}};
+        const double r[3] = {s - ti.vecs[0][3], t - ti.vecs[1][3], plane.dist};
+        auto det3 = [](const double (&a)[3][3])
+        {
+            return a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1]) - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0]) +
+                   a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0]);
+        };
+        const double det = det3(m);
+        if (std::fabs(det) < 1e-9)
+            return false;
+        const double side = face.side != 0 ? -1 : 1;
+        double p[3];
+        for (int c = 0; c < 3; ++c)
+        {
+            double k[3][3];
+            for (int i = 0; i < 3; ++i)
+                for (int j = 0; j < 3; ++j)
+                    k[i][j] = j == c ? r[i] : m[i][j];
+            p[c] = det3(k) / det + origin[c] + plane.normal[c] * side * 0.5;
+        }
+        int n = bsp_.models[0].headNode[0];
+        while (n >= 0)
+        {
+            const BspNode &node = bsp_.nodes[static_cast<std::size_t>(n)];
+            const BspPlane &cut = bsp_.planes[static_cast<std::size_t>(node.plane)];
+            const double d = cut.normal[0] * p[0] + cut.normal[1] * p[1] + cut.normal[2] * p[2] - cut.dist;
+            n = node.children[d >= 0 ? 0 : 1];
+        }
+        const std::size_t leaf = static_cast<std::size_t>(-n - 1);
+        return leaf < bsp_.leaves.size() && bsp_.leaves[leaf].contents == kContentsSolid;
+    }
+
+    Rgb LightBake::sample(const BspFace &face, double s, double t, const double *origin) const
     {
         // (As the map starts: every layer whose style is on.)
         unsigned layers = 0;
@@ -136,10 +178,10 @@ namespace hlds
             if (styleIsOn(face.styles[layer]))
                 layers |= 1u << layer;
         }
-        return sampleLayers(face, s, t, layers);
+        return sampleLayers(face, s, t, layers, origin);
     }
 
-    Rgb LightBake::sampleLayers(const BspFace &face, double s, double t, unsigned layers) const
+    Rgb LightBake::sampleLayers(const BspFace &face, double s, double t, unsigned layers, const double *origin) const
     {
         const bool special = (bsp_.texInfos[face.texInfo].flags & kTexSpecial) != 0;
         if (special || bsp_.lighting.empty())
@@ -159,6 +201,25 @@ namespace hlds
         const int t1 = std::min(t0 + 1, e.height - 1);
         const double ws = fs - s0;
         const double wt = ft - t0;
+        // The four samples' weights; with `origin`, none for one in solid,
+        // and the rest made up to the whole (all four in solid: as they are).
+        double w[4] = {(1 - ws) * (1 - wt), ws * (1 - wt), (1 - ws) * wt, ws * wt};
+        if (origin != nullptr)
+        {
+            const int ss[4] = {s0, s1, s0, s1}, tt[4] = {t0, t0, t1, t1};
+            double kept[4], total = 0;
+            for (int q = 0; q < 4; ++q)
+            {
+                kept[q] = w[q] > 0 && sampleInSolid(face, (e.minS + ss[q]) * static_cast<double>(kSampleSpacing),
+                                                    (e.minT + tt[q]) * static_cast<double>(kSampleSpacing), origin)
+                              ? 0.0
+                              : w[q];
+                total += kept[q];
+            }
+            if (total > 1e-6)
+                for (int q = 0; q < 4; ++q)
+                    w[q] = kept[q] / total;
+        }
 
         double sum[3] = {0, 0, 0};
         for (int layer = 0; layer < 4; ++layer)
@@ -173,13 +234,8 @@ namespace hlds
                 continue;
             const std::uint8_t *px = bsp_.lighting.data() + base;
             for (int c = 0; c < 3; ++c)
-            {
-                const double top = px[(t0 * e.width + s0) * 3 + c] * (1 - ws) +
-                                   px[(t0 * e.width + s1) * 3 + c] * ws;
-                const double bottom = px[(t1 * e.width + s0) * 3 + c] * (1 - ws) +
-                                      px[(t1 * e.width + s1) * 3 + c] * ws;
-                sum[c] += top * (1 - wt) + bottom * wt;
-            }
+                sum[c] += px[(t0 * e.width + s0) * 3 + c] * w[0] + px[(t0 * e.width + s1) * 3 + c] * w[1] +
+                          px[(t1 * e.width + s0) * 3 + c] * w[2] + px[(t1 * e.width + s1) * 3 + c] * w[3];
         }
         Rgb out;
         out.r = gammaTable_[std::min(255L, std::lround(sum[0]))];
