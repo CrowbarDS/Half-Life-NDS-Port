@@ -13,6 +13,7 @@
 #include "HlLamp.hpp"
 #include "HlPolygonIds.hpp"
 #include "Settings.hpp"
+#include "audio/Sound.hpp"
 #include "data/ModelCache.hpp"
 #include "net/NetGame.hpp"
 #include "game/Game.hpp"
@@ -156,7 +157,7 @@ namespace hlrt
             unsigned model = 0;
             int clip = 0;
             std::uint32_t frame = 0;
-            std::int32_t controls[2] = {0, 0}; ///< what its bone controllers are set to
+            std::int32_t controls[3] = {0, 0, 0}; ///< what its bone controllers are set to (the third: its mouth)
             int blend = 0;                     ///< where between a blending clip's poses
             int aim = -1;                      ///< (a player) the pose of holding what they hold; and how far up
             std::uint32_t used = 0;
@@ -215,14 +216,24 @@ namespace hlrt
         // What the game sets by hand on top of the clip: a barnacle's tongue
         // let out, a turret's gun turned (HlActors.hpp).
         std::int32_t controls[kModelControls];
-        const bool controlled = actorControls(actor, controls);
+        bool controlled = actorControls(actor, controls);
+        // Its mouth, as loud as what it is saying (HlMouth.hpp): in sixteen
+        // steps, so that a jaw that moves is posed again only as often as
+        // it moves by one. (Only a model that has a mouth.)
+        if (id >= 0 && model.header->controllerCount != 0)
+        {
+            const int open = sound.mouthOf(id);
+            controls[kControlMouth] = (open > 64 ? 64 : open) & ~3;
+            controlled = controlled || controls[kControlMouth] != 0;
+        }
         const int aim = playerAim(actor, model, id);
         Posed *oldest = &posedSlots[0];
         for (Posed &slot : posedSlots)
         {
             if (slot.id == id && slot.model == modelIndex && slot.clip == actor.clip &&
                 slot.frame == frame && slot.controls[0] == controls[0] &&
-                slot.controls[1] == controls[1] && slot.blend == actor.blend.value && slot.aim == aim)
+                slot.controls[1] == controls[1] && slot.controls[2] == controls[kControlMouth] &&
+                slot.blend == actor.blend.value && slot.aim == aim)
             {
                 slot.used = ++posedClock;
                 return slot.bones;
@@ -238,6 +249,7 @@ namespace hlrt
         slot.frame = frame;
         slot.controls[0] = controls[0];
         slot.controls[1] = controls[1];
+        slot.controls[2] = controls[kControlMouth];
         slot.blend = actor.blend.value;
         slot.aim = aim;
         slot.used = ++posedClock;

@@ -1093,6 +1093,9 @@ namespace hlrt
         for (int k = 0; k < 3; ++k)
             speech->pos[k] = event.pos[k];
         speech->born = ++speechClock_;
+        // (Whose line it is, if anybody's: their mouth moves as it is said.)
+        speech->actor = (event.tag & kSoundTagActor) ? static_cast<std::int16_t>(event.tag & 0x7FFF) : std::int16_t(-1);
+        speech->mouth.stop();
         speech->leftMs = 1; // (the word in the air is cut short at the next tick)
         speech->cutMs = 0;
         // (Nor is the old line's next word, queued behind it, begun.)
@@ -1169,6 +1172,9 @@ namespace hlrt
         speech.chainMs = static_cast<std::int32_t>(clip.ms * 100 / (pitch > 0 ? pitch : 100));
         speech.chainLoud = loud;
         speech.chainRate = static_cast<std::uint16_t>(rate);
+        speech.chainData = clip.data;
+        speech.chainBytes = clip.bytes;
+        speech.chainHz = clip.rate;
         if (!borrowed)
             speech.ahead = -1; // (its buffer is the queued word's now)
         ++speech.at;
@@ -1203,6 +1209,7 @@ namespace hlrt
                 voice.volume = static_cast<std::uint8_t>(speech.chainLoud);
                 speech.leftMs = speech.chainMs * 2 + 500; // (only if its end is never heard)
                 mixer_.voices[speech.voice].leftMs = speech.leftMs;
+                mouthBegin(speech, speech.chainData, speech.chainBytes, speech.chainHz, speech.chainRate);
                 speech.cutMs = 0;
                 speech.chained = 0;
                 speech.chainBuffer = -1;
@@ -1258,6 +1265,7 @@ namespace hlrt
             }
             speech.voice = -1;
             speech.cutMs = 0;
+            speech.mouth.stop();
             releaseWord(speech, speech.cur);
             bool said = false;
             while (speech.at < speech.count && !said)
@@ -1276,10 +1284,12 @@ namespace hlrt
                 const bool borrowed = index < count_ && clips_[index].data != nullptr;
                 int v = -1;
                 std::uint32_t lasts = 0;
+                const Clip *spoken = nullptr; // (for the mouth)
                 if (borrowed)
                 {
                     lasts = clips_[index].ms;
                     v = start(SoundLayer::Voice, clips_[index], volume, pan, false, s, pitch);
+                    spoken = &clips_[index];
                 }
                 else
                 {
@@ -1293,6 +1303,7 @@ namespace hlrt
                     Clip &clip = speech.clip[speech.cur];
                     lasts = clip.ms;
                     v = start(SoundLayer::Voice, clip, volume, pan, false, s, pitch);
+                    spoken = &clip;
                 }
                 if (v >= 0 && speech.placed)
                 {
@@ -1304,6 +1315,12 @@ namespace hlrt
                         voice.pos[k] = speech.pos[k];
                 }
                 speech.voice = v;
+                if (v >= 0 && spoken != nullptr)
+                {
+                    int rate = (1024 * pitch) / 100;
+                    rate = rate < 64 ? 64 : (rate > 4095 ? 4095 : rate);
+                    mouthBegin(speech, spoken->data, spoken->bytes, spoken->rate, rate);
+                }
                 // (Said faster it is over sooner; and a word may be cut off
                 // before its end, which is how the game clips its speech.)
                 const std::int32_t whole = static_cast<std::int32_t>(lasts * 100 / (pitch > 0 ? pitch : 100));
@@ -1335,6 +1352,39 @@ namespace hlrt
             if (speech.at < speech.count)
                 readAhead(speech, level.view.sentenceWords[speech.words[speech.at]].sound);
         }
+        // The mouths of those speaking: their words read as far as they have
+        // been played (HlMouth.hpp).
+        for (Speech &speech : speech_)
+        {
+            if (speech.voice < 0 || speech.mouth.data == nullptr)
+            {
+                speech.mouth.open = 0;
+                continue;
+            }
+            speech.played += speech.speed * static_cast<std::uint32_t>(ms);
+            speech.mouth.feed(speech.played / 1000);
+        }
+    }
+
+    void Sound::mouthBegin(Speech &speech, const std::uint8_t *data, std::uint32_t bytes, std::uint16_t hz, int rate)
+    {
+        speech.mouth.start(data, bytes);
+        speech.played = 0;
+        // (Thousandths of a sample a millisecond: hz samples a second, at
+        // rate / 1024 of the speed it was made at.)
+        speech.speed = (static_cast<std::uint32_t>(hz) * static_cast<std::uint32_t>(rate)) >> 10;
+    }
+
+    int Sound::mouthOf(int actor) const
+    {
+        if (actor < 0)
+            return 0;
+        for (const Speech &speech : speech_)
+        {
+            if (speech.actor == actor && speech.voice >= 0)
+                return speech.mouth.open;
+        }
+        return 0;
     }
 
     namespace

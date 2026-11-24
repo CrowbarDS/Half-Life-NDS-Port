@@ -13,6 +13,7 @@
 #include <fstream>
 
 #include "HlDspRoom.hpp"
+#include "HlMouth.hpp"
 #include "HlSound.hpp"
 #include "HlStereoMusic.hpp"
 #include "TestBspBuilder.hpp"
@@ -495,6 +496,55 @@ namespace
               "a loop's stop gives up a start before a spoken line");
         check(q.dropped == 2, "... the start that found no room and the one given up, both counted");
     }
+
+    /// A talker's mouth (HlMouth.hpp), from the very ADPCM the hardware
+    /// plays, read as the game reads its sample (SND_MoveMouth): open by the
+    /// mean size of the sample, on the game's 8-bit scale, and shut when the
+    /// word is silent or over. A tone at 12000 is a mean of 12000 * 2 / pi
+    /// (>> 8: 29.8); at 4000, 9.9.
+    void testMouth()
+    {
+        WavData wav;
+        wav.rate = 11025;
+        wav.samples = tone(11025, 300, 0.4, 12000);
+        wav.samples.resize(wav.samples.size() + 11025 * 3 / 10, 0);
+        const std::vector<std::int16_t> quiet = tone(11025, 300, 0.3, 4000);
+        wav.samples.insert(wav.samples.end(), quiet.begin(), quiet.end());
+        const CookedSound sound = encodeSound(wav, 11025, false);
+        MouthMeter meter;
+        meter.start(sound.data.data(), static_cast<std::uint32_t>(sound.data.size()));
+        // Played at 11025 a second, a sixtieth of a second at a time: the
+        // mouth, frame by frame, through the loud word (0.15..0.4 s), the
+        // silence (0.55..0.7 s) and the quiet word (0.85..1 s). (Ten samples
+        // a reading, as the game takes them: one reading may be well off,
+        // the run of them is not.)
+        double loud = 0, soft = 0;
+        int loudFrames = 0, softFrames = 0, silent = 0;
+        for (int frame = 1; frame <= 70; ++frame)
+        {
+            meter.feed(static_cast<std::uint32_t>(frame * 11025 / 60));
+            if (frame >= 9 && frame <= 24)
+                loud += meter.open, ++loudFrames;
+            if (frame >= 33 && frame <= 42)
+                silent = std::max(silent, static_cast<int>(meter.open));
+            if (frame >= 51 && frame <= 60)
+                soft += meter.open, ++softFrames;
+        }
+        loud /= loudFrames;
+        soft /= softFrames;
+        std::printf("test_sound: a mouth on a loud word %.1f, in a silence %d, on a quiet word %.1f, after it %d\n", loud,
+                    silent, soft, meter.open);
+        check(std::fabs(loud - 29.8) <= 3, "a mouth opens as far as its word is loud, the game's way");
+        check(silent <= 1, "... is shut in a silence");
+        // (A quiet word reads a little low: the next sample read is 80 on and
+        // a bit more by the sample's own low bits, as the game's is -- and on
+        // a quiet one those lean the one way. Its share, not its figure.)
+        check(soft >= loud * 0.2 && soft <= loud * 0.45, "... and about a third as far for a word a third as loud");
+        check(meter.open == 0, "... and shuts when the word is over");
+        meter.stop();
+        meter.feed(1000);
+        check(meter.open == 0 && meter.data == nullptr, "nothing said: shut");
+    }
 } // namespace
 
 /// A sound's better copy for a DSi is the same name at another rate.
@@ -527,6 +577,7 @@ int main()
     testEcho();
     testMusicBlocks();
     testFullQueue();
+    testMouth();
     const char *dir = std::getenv("HLDS_VALVE_DIR");
     if (dir != nullptr && dir[0] != '\0')
         testRealSounds(dir);

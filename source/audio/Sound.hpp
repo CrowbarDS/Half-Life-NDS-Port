@@ -31,6 +31,7 @@
 
 #include "HlFrameClock.hpp"
 #include "HlMixer.hpp"
+#include "HlMouth.hpp"
 #include "HlUi.hpp"
 
 namespace hlrt
@@ -125,6 +126,11 @@ namespace hlrt
         /// Pairs of the track played since it started (or was taken up).
         std::uint32_t musicPlayed() const;
 
+        /// How far open the mouth of actor `actor` is (the game's mouthopen:
+        /// 0 shut, 64 and over as far as it goes) -- as loud as the word it
+        /// is saying is now. 0 for one saying nothing.
+        int mouthOf(int actor) const;
+
     private:
         struct Clip
         {
@@ -184,6 +190,18 @@ namespace hlrt
             std::int32_t chainMs = 0;
             int chainLoud = 0;
             std::uint16_t chainRate = 1024;
+            const std::uint8_t *chainData = nullptr; ///< its ADPCM (for the mouth, as it begins)
+            std::uint32_t chainBytes = 0;
+            std::uint16_t chainHz = 0;
+            /// Who says it (an actor's number; -1 nobody's: the suit, the
+            /// announcements), and how far open their mouth is as it is said
+            /// (HlMouth.hpp): the word in the air read up to where its
+            /// playing has got, `played` thousandths of a sample at `speed`
+            /// of them a millisecond.
+            std::int16_t actor = -1;
+            hldata::MouthMeter mouth;
+            std::uint32_t played = 0;
+            std::uint32_t speed = 0;
             bool busy() const { return leftMs > 0 || at < count; }
         };
         static constexpr int kSpeakers = 2;
@@ -227,6 +245,8 @@ namespace hlrt
         void playOnce(const hldata::SoundEvent &event, int tag = -1);
         void say(const hldata::SoundEvent &event);
         void speechTick(int ms);
+        /// A word begins to be said: its mouth read from its start.
+        static void mouthBegin(Speech &speech, const std::uint8_t *data, std::uint32_t bytes, std::uint16_t hz, int rate);
         void loopsTick();
         void follow();
         /// Track `track` begun, `skip` stereo pairs in (only music taken up
