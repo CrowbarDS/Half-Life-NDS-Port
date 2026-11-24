@@ -755,7 +755,11 @@ namespace hlds
             ModelCookReport modelReport;
             out = ModelOut();
             out.name = need.name;
-            const bool cookedOk = cookModel(mdl, clips, cooked, modelReport, why, skinTexels, false, lean);
+            // (A casing, a pickup: with a coarse level too, to be drawn however
+            // tight the frame.)
+            ModelLean howLean = lean;
+            howLean.coarse = alwaysDrawnModel(need.name);
+            const bool cookedOk = cookModel(mdl, clips, cooked, modelReport, why, skinTexels, false, howLean);
             out.eventSounds = cooked.eventSounds;
             if (!cookedOk ||
                 !writeModel(cooked, out.bytes, why))
@@ -792,7 +796,9 @@ namespace hlds
                 CookedModel whole;
                 ModelCookReport wholeReport;
                 std::string ignored;
-                if (!cookModel(mdl, clipsDsi, whole, wholeReport, ignored, skinTexels, true) ||
+                ModelLean wholeLean;
+                wholeLean.coarse = howLean.coarse;
+                if (!cookModel(mdl, clipsDsi, whole, wholeReport, ignored, skinTexels, true, wholeLean) ||
                     !writeModel(whole, out.bytesDsi, ignored))
                     out.bytesDsi.clear();
                 // (The sounds of the clips a DS has not are not in the level:

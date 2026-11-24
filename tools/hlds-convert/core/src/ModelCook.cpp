@@ -702,6 +702,13 @@ namespace hlds
             levelTargets.push_back(std::max(kModelLevelLeast, allowed / 2));
             levelTargets.push_back(std::max(kModelLevelLeast, allowed * 35 / 100));
         }
+        // (A model always drawn: one level coarser still, below the rest.)
+        if (lean.coarse && !lean.oneLevel)
+        {
+            const int coarse = std::max(kCoarseLeast, sourceTriangles * kCoarseShare / 100);
+            if (coarse < levelTargets.back())
+                levelTargets.push_back(coarse);
+        }
         const bool withFull = full && allowed < sourceTriangles;
 
         // Every sub-model at every level, each in the same proportion.

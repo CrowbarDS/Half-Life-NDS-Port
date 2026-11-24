@@ -43,6 +43,16 @@ namespace hlds
     /// outline: measured) -- but none of fewer triangles than this, and none
     /// at all for a model of not twice as many.
     inline constexpr int kModelLevelLeast = 60;
+    /// The coarse level of a model always drawn (ModelLean::coarse): this
+    /// share of its triangles, in hundredths, and no fewer than this many.
+    inline constexpr int kCoarseShare = 35;
+    inline constexpr int kCoarseLeast = 8;
+    /// Whether the model called `name` is always to be drawn, coarser if need
+    /// be: a casing out of a gun, or something lying about to pick up.
+    inline bool alwaysDrawnModel(const std::string &name)
+    {
+        return name == "shell" || name == "shotgunshell" || name.rfind("w_", 0) == 0;
+    }
 
     /// The first-person model every map is given.
     inline constexpr const char *kViewModelName = "v_crowbar";
@@ -131,6 +141,10 @@ namespace hlds
         bool oneLevel = false;   ///< only the finest level of detail
         double turnOff = 0.75;   ///< how far a key may turn a bone off a frame, degrees
         double placeOff = 0.25;  ///< ... and move it, units
+        /// And one level coarser than the rest: kCoarseShare of its triangles,
+        /// kCoarseLeast at fewest -- for what is always to be drawn, however
+        /// tight the frame (a casing, a pickup): at worst, coarser.
+        bool coarse = false;
     };
     /// A guest's weapons.
     inline constexpr ModelLean kGuestLean = {true, 1.5, 0.5};

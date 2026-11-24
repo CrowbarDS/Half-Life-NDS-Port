@@ -297,6 +297,47 @@ namespace
     }
 } // namespace
 
+namespace
+{
+    /// What is always drawn -- a casing, a pickup -- has a level coarser
+    /// than the rest: 35% of its triangles, 8 at fewest, so that a tight
+    /// frame draws it coarser rather than not at all.
+    void testCoarse(const char *dir, const char *name)
+    {
+        MdlFile mdl;
+        std::string error;
+        if (!mdl.load(std::string(dir) + "/models/" + name + ".mdl", error))
+        {
+            check(false, (std::string(dir) + "/models/" + name + ".mdl loads").c_str());
+            return;
+        }
+        const std::vector<std::string> clips = {mdl.sequences.empty() ? std::string() : mdl.sequences[0].label};
+        CookedModel plain, coarse;
+        ModelCookReport plainReport, coarseReport;
+        ModelLean lean;
+        lean.coarse = alwaysDrawnModel(name);
+        const bool made = cookModel(mdl, clips, plain, plainReport, error, kModelSkinTexels, false) &&
+                          cookModel(mdl, clips, coarse, coarseReport, error, kModelSkinTexels, false, lean);
+        char text[160];
+        std::snprintf(text, sizeof(text), "%s cooks with and without its coarse level", name);
+        check(made && lean.coarse, text);
+        if (!made)
+            return;
+        const int source = coarseReport.sourceTriangles;
+        const int wanted = std::max(kCoarseLeast, source * kCoarseShare / 100);
+        const int coarsest = coarseReport.levels.back().triangles;
+        std::printf("test_lod: %s: %d triangles, levels %zu -> %zu, coarsest %d\n", name, source,
+                    plainReport.levels.size(), coarseReport.levels.size(), coarsest);
+        std::snprintf(text, sizeof(text), "%s: a coarser level, of about %d triangles (has %d)", name, wanted,
+                      coarsest);
+        // (The thinning stops where a mesh can lose no more without breaking:
+        // within a quarter of what was asked.)
+        check(coarseReport.levels.size() == plainReport.levels.size() + 1 && coarsest <= wanted * 5 / 4 + 2 &&
+                  coarsest < plainReport.levels.back().triangles && coarsest >= kCoarseLeast - 2,
+              text);
+    }
+} // namespace
+
 int main()
 {
     const char *dir = std::getenv("HLDS_VALVE_DIR");
@@ -312,6 +353,8 @@ int main()
         testCooked(dir, "houndeye", 3, false);
         testCooked(dir, "hgibs", 1, false);
         testCooked(dir, "w_9mmar", 3, false);
+        for (const char *name : {"shell", "shotgunshell", "w_9mmclip", "w_medkit", "w_battery"})
+            testCoarse(dir, name);
     }
     else
     {
