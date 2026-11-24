@@ -287,9 +287,32 @@ namespace hldata
             const MoverHull &mover = world.movers[m];
             if (mover.contents == 0 || !mover.present)
                 continue;
-            if (p[0] >= mover.mins[0] && p[0] <= mover.maxs[0] && p[1] >= mover.mins[1] &&
-                p[1] <= mover.maxs[1] && p[2] >= mover.mins[2] && p[2] <= mover.maxs[2])
-                contents = mover.contents;
+            if (!(p[0] >= mover.mins[0] && p[0] <= mover.maxs[0] && p[1] >= mover.mins[1] &&
+                  p[1] <= mover.maxs[1] && p[2] >= mover.mins[2] && p[2] <= mover.maxs[2]))
+                continue;
+            // Inside its box; in it, if it is its own shape that holds the
+            // point, as the game asks its point hull (PM_PointContents): a
+            // sheet of water whose box is a whole room -- ba_tram1's, across
+            // the tram's way -- is not water to the height of the room. (A
+            // brush with no tree of its own, or one turned: its box.)
+            if (world.brushes != nullptr && world.models != nullptr && world.nodes != nullptr && !mover.turned)
+            {
+                std::int32_t index = world.models[world.brushes[m].model].headNode;
+                if (index >= 0)
+                {
+                    const fx local[3] = {p[0] - mover.origin[0], p[1] - mover.origin[1], p[2] - mover.origin[2]};
+                    while (index >= 0)
+                    {
+                        const Node &node = world.nodes[index];
+                        const fx d = planeDistance(world.standing.planes[node.plane],
+                                                   world.standing.planeTypes[node.plane], local);
+                        index = node.children[d >= 0 ? 0 : 1];
+                    }
+                    if (world.leaves[-1 - index].contents == kContentsEmpty)
+                        continue;
+                }
+            }
+            contents = mover.contents;
         }
         return contents;
     }

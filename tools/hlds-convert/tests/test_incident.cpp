@@ -1248,6 +1248,32 @@ namespace
         }
         activeGame = was;
     }
+
+    /// Blue Shift's ba_tram1: a func_water (*90) whose box takes in a whole
+    /// stretch of the tram's way, though its water is elsewhere in it. The
+    /// game asks the brush's own shape, and nobody in the tram is ever in
+    /// water; asked of its box, the player drowned on the ride.
+    void testBlueShiftTramWater(const std::string &bshift)
+    {
+        const GameId was = activeGame;
+        activeGame = kGameBlueShift;
+        if (const std::unique_ptr<Game> game = load(bshift.c_str(), "ba_tram1"))
+        {
+            Game &g = *game;
+            g.frame();
+            // Above the track at its corners work38 and work39, in that box;
+            // and a point the map's own tree has in its water.
+            const fx ride1[3] = {fxFromInt(-2808), fxFromInt(72), fxFromInt(96)};
+            const fx ride2[3] = {fxFromInt(-2624), fxFromInt(32), fxFromInt(126)};
+            const fx water[3] = {fxFromInt(-3340), fxFromInt(4), fxFromInt(1218)};
+            std::printf("test_incident: ba_tram1's water: on the ride %d, %d; in it %d\n", pointContents(g.move, ride1),
+                        pointContents(g.move, ride2), pointContents(g.move, water));
+            check(pointContents(g.move, ride1) == kContentsEmpty && pointContents(g.move, ride2) == kContentsEmpty,
+                  "ba_tram1: the tram's way through a func_water's box is not in its water");
+            check(pointContents(g.move, water) == kContentsWater, "... and its water is water");
+        }
+        activeGame = was;
+    }
 } // namespace
 
 int main()
@@ -1276,6 +1302,7 @@ int main()
         if (std::filesystem::exists(bshift / "maps" / "ba_tram1.bsp"))
         {
             testBlueShiftStart(bshift.string());
+            testBlueShiftTramWater(bshift.string());
             testBlueShiftUniform(bshift.string());
             testBlueShiftRender(bshift.string());
             testBlueShiftLift(bshift.string());
