@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstring>
 #include <fstream>
 #include <mutex>
 #include <map>
+#include <string>
 
 namespace hlds
 {
@@ -64,8 +66,16 @@ namespace hlds
         static std::mutex sharedMutex;
         static std::map<std::string, std::weak_ptr<const std::vector<std::uint8_t>>> shared;
         std::error_code ec;
-        const std::string key = path.string() + "|" + std::to_string(std::filesystem::file_size(path, ec)) + "|" +
-                                std::to_string(std::filesystem::last_write_time(path, ec).time_since_epoch().count());
+        // (The time as a long long: a file time's own count is 128 bits in
+        // some libraries -- macOS's, clang's on Windows -- and to_string has
+        // no such overload.)
+        const long long time =
+            std::chrono::duration_cast<std::chrono::duration<long long, std::nano>>(
+                std::filesystem::last_write_time(path, ec).time_since_epoch())
+                .count();
+        const std::string key = path.string() + "|" +
+                                std::to_string(static_cast<unsigned long long>(std::filesystem::file_size(path, ec))) +
+                                "|" + std::to_string(time);
         {
             const std::lock_guard<std::mutex> lock(sharedMutex);
             bytes_ = shared[key].lock();
