@@ -1149,6 +1149,11 @@ namespace hldata
         actor.nameHash = a.nameHashes != nullptr ? a.nameHashes[record.name] : 0;
         actor.yaw = record.yaw;
         actor.body = record.body;
+        // (A tripmine lying about is v_tripmine's mine alone, without the
+        // hands: CTripmine::Spawn's body 3. A crate's did not say so.)
+        if (record.kind == static_cast<std::uint8_t>(ActorKind::Item) &&
+            (record.item & 0xFFu) == static_cast<std::uint32_t>(ItemKind::Tripmine))
+            actor.body = 3;
         // (An osprey's `item`, and an apache's, is where it flies: it has
         // the one skin.)
         const bool flies = record.kind == static_cast<std::uint8_t>(ActorKind::Osprey) ||

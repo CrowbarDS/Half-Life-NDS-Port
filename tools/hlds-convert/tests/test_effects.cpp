@@ -805,6 +805,34 @@ namespace
         check(crates == 2 && spilled == 2, "c1a2a's two crates with something in them give it when they break");
         check(onFloor == 2, "... where the crate was, on the floor");
     }
+    /// A tripmine out of a crate is v_tripmine's mine alone (body 3), as a
+    /// placed one is: c1a4j's crates showed the hands floating by it (#15).
+    void testCrateTripmines(const char *dir)
+    {
+        auto game = load(dir, "c1a4j");
+        if (!game)
+            return;
+        Game &g = *game;
+        const auto mine = static_cast<std::uint32_t>(ItemKind::Tripmine);
+        for (std::uint32_t i = 0; i < g.view.logicCount; ++i)
+        {
+            const LogicRecord &r = g.view.logic[i];
+            if (r.kind == static_cast<std::uint8_t>(LogicKind::Breakable) && r.pad == mine && r.brush != kNoBrush)
+                logicStrike(g.logic, g.player, static_cast<int>(i), 100000);
+        }
+        int mines = 0, alone = 0;
+        for (int k = 0; k < g.actors.count && k < g.actors.recordCount; ++k)
+        {
+            const ActorState &item = g.actors.states[k];
+            if (!item.active || g.actors.records[k].kind != static_cast<std::uint8_t>(ActorKind::Item) ||
+                (g.actors.records[k].item & 0xFFu) != mine)
+                continue;
+            ++mines;
+            alone += item.body == 3;
+        }
+        std::printf("test_effects: c1a4j: %d tripmines lying about, %d of them the mine alone\n", mines, alone);
+        check(mines >= 5 && alone == mines, "c1a4j's tripmines out of crates show the mine without the hands");
+    }
     /// c1a1c's wooden boxes, at the crowbar's pace (crowbar.cpp: its full
     /// 10 after a second's rest, then half while it swings on): breakables
     /// take twice a crowbar's blow, so 45 is four blows, 60 five, 125 twelve.
@@ -1027,6 +1055,7 @@ int main()
     testCrushAndBlast(dir);
     testCampaign(dir);
     testCrateDrops(dir);
+    testCrateTripmines(dir);
     testCrateHits(dir);
     testLightPatterns(dir);
     testStartDark(dir);

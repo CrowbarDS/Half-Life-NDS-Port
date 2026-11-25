@@ -4394,6 +4394,8 @@ namespace hlds
                 item.origin[a] = fxFromDouble(origin[a] + (double(model.mins[a]) + model.maxs[a]) / 2);
             item.kind = static_cast<std::uint8_t>(ActorKind::Item);
             item.clip = nameHash(what->kind == ItemKind::Tripmine ? "ground" : "idle");
+            if (what->kind == ItemKind::Tripmine)
+                item.body = 3; // (the mine alone, as a placed one)
             item.flags = kActorDormant;
             item.light = 24;
             item.item = static_cast<std::uint32_t>(what->kind);
