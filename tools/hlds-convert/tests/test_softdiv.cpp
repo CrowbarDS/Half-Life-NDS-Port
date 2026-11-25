@@ -1,8 +1,9 @@
 // The divide without the divider (HlSoftDiv.hpp, Kuratius's method): every
 // quotient and remainder it gives is the host's own, bit for bit; it answers
 // every divide it should (the quotient within 32 bits, the divisor within 32
-// and not 0) and none it should not; and it is put right from its estimate
-// by a few steps at most.
+// and not 0) and none it should not; its estimate is never above the
+// quotient (source/HwMath.s's step down never runs) and a few steps below at
+// most; and a reciprocal kept for several divides (divideBy) gives `/`'s.
 //
 // Integers only: the host's own 64-bit divide is the reference.
 
@@ -20,6 +21,8 @@ namespace
     long g_checked = 0, g_answered = 0;
     int g_worstSteps = 0;
     long g_steps[8] = {};
+    bool g_shapes = false; // counting the game's shapes apart
+    long g_shapeSteps[8] = {};
 
     void check(bool ok, const char *what)
     {
@@ -68,12 +71,28 @@ namespace
                             static_cast<long long>(d), static_cast<long long>(q), static_cast<long long>(r),
                             static_cast<long long>(n / d), static_cast<long long>(n % d));
         }
-        std::uint32_t rem;
-        int steps = 0;
-        softdiv::divmod64by32(un, static_cast<std::uint32_t>(ud), rem, &steps);
+        const softdiv::Reciprocal rec = softdiv::reciprocalOf(static_cast<std::uint32_t>(ud));
+        const std::uint64_t want = un / ud, guess = softdiv::estimate(un, rec);
+        if (guess > want)
+        {
+            ++g_failures;
+            if (told++ < 10)
+                std::printf("FAIL: %lld / %lld estimated above the quotient\n", static_cast<long long>(n),
+                            static_cast<long long>(d));
+            return;
+        }
+        const int steps = static_cast<int>(want - guess);
         if (steps > g_worstSteps)
             g_worstSteps = steps;
         ++g_steps[steps < 7 ? steps : 7];
+        if (g_shapes)
+            ++g_shapeSteps[steps < 7 ? steps : 7];
+        if (d > 0 && softdiv::divideBy(n, rec) != n / d)
+        {
+            ++g_failures;
+            if (told++ < 10)
+                std::printf("FAIL: divideBy %lld / %lld\n", static_cast<long long>(n), static_cast<long long>(d));
+        }
     }
 
     /// Unsigned, likewise.
@@ -165,6 +184,7 @@ namespace
     /// unit ((v << 12) / length), a clip's place in its span.
     void testShapes()
     {
+        g_shapes = true;
         for (long k = 0; k < 4000000; ++k)
         {
             const std::int64_t t = ofBits(20), d = ofBits(22) | 1;
@@ -175,6 +195,7 @@ namespace
             const std::uint64_t span = (next() & 0xFFFFFF) | 1, done = next() % (span + 1);
             oneUnsigned(done << 12, span);
         }
+        g_shapes = false;
     }
 } // namespace
 
@@ -187,6 +208,8 @@ int main()
                 g_answered, g_worstSteps);
     std::printf("test_softdiv: steps 0..5: %ld %ld %ld %ld %ld %ld\n", g_steps[0], g_steps[1], g_steps[2], g_steps[3],
                 g_steps[4], g_steps[5]);
+    std::printf("test_softdiv: the game's shapes, steps 0..2: %ld %ld %ld\n", g_shapeSteps[0], g_shapeSteps[1],
+                g_shapeSteps[2]);
     // (The reciprocal is good to about 2^-30: a quotient near 2^32 is about
     // four steps off from it, and one more from the truncation.)
     check(g_worstSteps <= 6, "the estimate is never more than 6 steps off");

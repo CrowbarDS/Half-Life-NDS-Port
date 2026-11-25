@@ -1,108 +1,149 @@
 #pragma once
 
-// A 64-bit divide without the divider: by multiplies and shifts alone, so it
-// may run anywhere -- in an interrupt handler, in a thread switched away from
+// A 64-bit divide without the divider, by multiplies alone: it may run
+// anywhere -- in an interrupt handler, in a thread switched away from
 // mid-divide -- with nothing shared to save or hold off.
 //
-// The method and its reciprocal are Kuratius's (udivf32), used here with his
-// agreement under this project's licence:
+// Kuratius's method (udivf32), used with his agreement under this project's
+// licence. The console runs it as source/HwMath.s; this is the same steps,
+// word for word, so that test_softdiv's divides on the host hold the
+// console's arithmetic, truncations included.
 //
-//   - the divisor d is brought to [2^30, 2^31) and multiplied by factors
-//     (1 + 2^-i), i = 1..8, each taken while the product stays under 2^31;
-//     the same factors multiplied together from 2^31 make an estimate of its
-//     reciprocal, good to about 2^-8;
-//   - one Newton step is hidden in the last multiply (2^32 - d', with d' the
-//     product, is 2^31 times one plus the estimate's error), and one more is
-//     made: about 30 bits;
-//   - the quotient is the numerator times the reciprocal, shifted, and put
-//     right from its remainder: never more than a few steps off.
+// It answers a numerator of up to 64 bits by a divisor of up to 32 bits, not
+// 0, where the quotient fits 32 bits. The quotient and remainder are
+// __aeabi_ldivmod's exactly: the quotient rounded toward 0, the remainder
+// with the numerator's sign.
 //
-// What it answers: a numerator of up to 64 bits by a divisor of up to 32,
-// where the quotient fits 32 bits -- the game's divides (a trace's fraction,
-// (t << 30) / d; a vector made unit, (v << 12) / length; a clip's place in
-// its span). Anything else -- a divisor of more than 32 bits, a quotient of
-// more, a divisor of 0 -- it does not answer, and says so: the caller divides
-// the other way (source/HwMath.s).
-//
-// The quotient and remainder are __aeabi_ldivmod's exactly: the quotient
-// rounded toward 0, the remainder with the numerator's sign. The host's
-// tests check them against the host's own divide (test_softdiv), and
-// tools/hwtest/softdiv times them on the console against the hardware.
+// It comes in two halves, the divisor's reciprocal (reciprocalOf) and the
+// divide by it (divideBy), so that one divisor's can be kept for several
+// numbers. For two numbers that gains little over two divides by hand
+// (tools/hwtest/softdiv, its walk step page): the game does not use it yet.
 //
 // std-only: the converter's tests run the same code the console does.
 
 #include <cstdint>
 
+// On the console the reciprocal and the divide by it are ARM code whoever
+// calls them (Thumb has no long multiply, and GCC would make them Thumb in a
+// Thumb caller), one copy each for the whole program.
+#if defined(__arm__) && defined(HL_HW_MATH)
+#define HL_SOFTDIV_ONCE __attribute__((noinline, target("arm")))
+#else
+#define HL_SOFTDIV_ONCE
+#endif
+
 namespace hldata
 {
     namespace softdiv
     {
-        /// An estimate of 2^62 / (d << clz(d)), never above it, within about
-        /// 2^-30; `clz` is d's count of leading zeros. d must not be 0.
-        inline std::uint32_t reciprocal(std::uint32_t d, int &clz)
+        /// The high word of a * b (UMULL's).
+        inline std::uint32_t mulHigh(std::uint32_t a, std::uint32_t b)
         {
-            const int c = __builtin_clz(d);
-            const std::uint32_t b0 = d << c; // its top bit set
-            // In [2^30, 2^31): the factors are taken while it stays below.
-            std::uint32_t b = c == 0 ? d >> 1 : d << (c - 1);
-            std::uint32_t r2 = 1u << 31;
-#pragma GCC unroll 8
-            for (int i = 1; i < 9; ++i)
-            {
-                const std::uint32_t t = b + (b >> i);
-                if (t < (1u << 31))
-                {
-                    b = t;
-                    r2 += r2 >> i;
-                }
-            }
-            // The hidden Newton step: 2^32 - b is 2^31 times (1 + e), and r2
-            // is 2^62 / d' times (1 - e).
-            std::uint32_t r = static_cast<std::uint32_t>((static_cast<std::uint64_t>(0u - b) * r2) >> 32);
-            // And one more: r (2 - r b0), in 2^62 / b0's scale.
-            r <<= 1;
-            const std::uint64_t t = 0 - static_cast<std::uint64_t>(r) * b0;
-            const std::uint64_t hi = static_cast<std::uint64_t>(r) * static_cast<std::uint32_t>(t >> 32);
-            const std::uint64_t lo = static_cast<std::uint64_t>(r) * static_cast<std::uint32_t>(t);
-            clz = c;
-            return static_cast<std::uint32_t>((hi + (lo >> 32)) >> 32);
+            return static_cast<std::uint32_t>((static_cast<std::uint64_t>(a) * b) >> 32);
         }
 
-        /// n / d and n % d, for d not 0 and n < d * 2^32 (the quotient fits
-        /// 32 bits). (`steps`, for the tests: how many the estimate was put
-        /// right by.)
-        inline std::uint32_t divmod64by32(std::uint64_t n, std::uint32_t d, std::uint32_t &rem, int *steps = nullptr)
+        /// What dividing by d takes: an estimate of 2^62 / (d << clz(d)),
+        /// never above it, and the shift that brings n times it to n / d.
+        struct Reciprocal
         {
-            int c;
-            const std::uint32_t r = reciprocal(d, c);
-            // n * r, 96 bits: hi, and the low word of lo.
-            const std::uint64_t lo = static_cast<std::uint64_t>(static_cast<std::uint32_t>(n)) * r;
-            const std::uint64_t hi = static_cast<std::uint64_t>(static_cast<std::uint32_t>(n >> 32)) * r + (lo >> 32);
-            // ... shifted down by 62 - c, which is 31 to 62.
-            const int s = 62 - c;
-            std::uint64_t q = s >= 32 ? hi >> (s - 32)
-                                      : (hi << 1) | (static_cast<std::uint32_t>(lo) >> 31);
-            // Put right from the remainder (the estimate is a few steps off at
-            // most: test_softdiv finds how many).
-            std::uint64_t made = q * d;
-            int put = 0;
-            while (made > n)
+            std::uint32_t d;
+            std::uint32_t r;
+            int shift; ///< 30 - clz(d): 0..30
+        };
+
+        /// d's reciprocal. d must not be 0.
+        inline HL_SOFTDIV_ONCE Reciprocal reciprocalOf(std::uint32_t d)
+        {
+            const int c = __builtin_clz(d);
+            // By 1: n (2^32 - 1) >> 32 is n - 1, put right by one step. (The
+            // divide by hand takes the numerator as it is.)
+            if (c == 31)
+                return {d, 0xFFFFFFFFu, 0};
+            const std::uint32_t b0 = d << c; // its top bit set
+            // b = b0 / 2, in [2^30, 2^31), multiplied by (1 + 2^-i) while it
+            // stays below 2^31; 2^31 by the same factors is the estimate of
+            // 2^62 / b0, good to about 2^-8.
+            std::uint32_t b = b0 >> 1;
+            std::uint32_t e = 0x80000000u;
+#if defined(__arm__) && defined(HL_HW_MATH)
+            // (By hand: GCC makes each step four instructions, not three --
+            // its bug 123604.)
+#define HL_SOFTDIV_FACTOR(i)                                                                                          \
+    do                                                                                                                \
+    {                                                                                                                 \
+        std::uint32_t grown;                                                                                          \
+        asm("adds %0, %1, %1, lsr #" #i "\n\tmovpl %1, %0\n\taddpl %2, %2, %2, lsr #" #i                              \
+            : "=&r"(grown), "+r"(b), "+r"(e)                                                                          \
+            :                                                                                                         \
+            : "cc");                                                                                                  \
+    } while (false)
+            HL_SOFTDIV_FACTOR(1);
+            HL_SOFTDIV_FACTOR(2);
+            HL_SOFTDIV_FACTOR(3);
+            HL_SOFTDIV_FACTOR(4);
+            HL_SOFTDIV_FACTOR(5);
+            HL_SOFTDIV_FACTOR(6);
+            HL_SOFTDIV_FACTOR(7);
+            HL_SOFTDIV_FACTOR(8);
+#undef HL_SOFTDIV_FACTOR
+#else
+            for (int i = 1; i <= 8; ++i)
             {
-                --q;
-                made -= d;
-                ++put;
+                const std::uint32_t t = b + (b >> i);
+                if (t < 0x80000000u)
+                {
+                    b = t;
+                    e += e >> i;
+                }
             }
-            std::uint64_t left = n - made;
-            while (left >= d)
+#endif
+            // A Newton step hidden in one multiply: 2^32 - b is 2^31 times
+            // (1 + the estimate's error).
+            std::uint32_t r = mulHigh(0u - b, e) << 1;
+            // And one more, r (2 - r b0): about 30 bits.
+            const std::uint64_t t = 0 - static_cast<std::uint64_t>(r) * b0;
+            r = static_cast<std::uint32_t>(
+                (static_cast<std::uint64_t>(r) * static_cast<std::uint32_t>(t >> 32) +
+                 mulHigh(r, static_cast<std::uint32_t>(t))) >> 32);
+            return {d, r, 30 - c};
+        }
+
+        /// n / d from the reciprocal alone: never above it, and a few below
+        /// at most. n < d * 2^32.
+        inline std::uint32_t estimate(std::uint64_t n, const Reciprocal &rec)
+        {
+            // (n >> 32 is below d: a 32-bit number, so one UMULL and one UMLAL.)
+            const std::uint64_t top = static_cast<std::uint64_t>(static_cast<std::uint32_t>(n >> 32)) * rec.r +
+                                      mulHigh(static_cast<std::uint32_t>(n), rec.r);
+            // top >> shift, in words: the shift is 30 at most.
+            const auto low = static_cast<std::uint32_t>(top), high = static_cast<std::uint32_t>(top >> 32);
+            return (low >> rec.shift) | ((high << 1) << (31 - rec.shift));
+        }
+
+        /// n / d and n % d. n < d * 2^32.
+        inline std::uint32_t divide(std::uint64_t n, const Reciprocal &rec, std::uint32_t &rem)
+        {
+            std::uint32_t q = estimate(n, rec);
+            std::uint64_t left = n - static_cast<std::uint64_t>(q) * rec.d;
+            while (left >= rec.d)
             {
                 ++q;
-                left -= d;
-                ++put;
+                left -= rec.d;
             }
-            if (steps != nullptr)
-                *steps = put;
             rem = static_cast<std::uint32_t>(left);
-            return static_cast<std::uint32_t>(q);
+            return q;
+        }
+
+        /// n / d rounded toward 0, as `/` gives it, d the reciprocal's. (A
+        /// quotient of more than 32 bits is left to `/`.)
+        inline HL_SOFTDIV_ONCE std::int64_t divideBy(std::int64_t n, const Reciprocal &rec)
+        {
+            const std::uint64_t un = n < 0 ? 0 - static_cast<std::uint64_t>(n) : static_cast<std::uint64_t>(n);
+            if ((un >> 32) >= rec.d)
+                return n / static_cast<std::int64_t>(rec.d);
+            std::uint32_t rem;
+            const std::uint32_t q = divide(un, rec, rem);
+            return n < 0 ? -static_cast<std::int64_t>(q) : static_cast<std::int64_t>(q);
         }
 
         /// __aeabi_ldivmod's quotient and remainder of n by d, where they
@@ -115,7 +156,7 @@ namespace hldata
             if (ud == 0 || (ud >> 32) != 0 || (un >> 32) >= ud)
                 return false;
             std::uint32_t rem;
-            const std::uint32_t uq = divmod64by32(un, static_cast<std::uint32_t>(ud), rem);
+            const std::uint32_t uq = divide(un, reciprocalOf(static_cast<std::uint32_t>(ud)), rem);
             q = (n < 0) != (d < 0) ? -static_cast<std::int64_t>(uq) : static_cast<std::int64_t>(uq);
             r = n < 0 ? -static_cast<std::int64_t>(rem) : static_cast<std::int64_t>(rem);
             return true;
@@ -127,7 +168,7 @@ namespace hldata
             if (d == 0 || (d >> 32) != 0 || (n >> 32) >= d)
                 return false;
             std::uint32_t rem;
-            q = divmod64by32(n, static_cast<std::uint32_t>(d), rem);
+            q = divide(n, reciprocalOf(static_cast<std::uint32_t>(d)), rem);
             r = rem;
             return true;
         }
