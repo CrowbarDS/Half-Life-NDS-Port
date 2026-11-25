@@ -37,6 +37,7 @@
 namespace hldata
 {
     inline void aiTick(LogicWorld &w, PlayerState &player, int index, int ms);
+    HL_COLD void aiRide(LogicWorld &w, PlayerState &player, int index);
     inline void aiWorldTick(LogicWorld &w, PlayerState &player, int ms);
 } // namespace hldata
 
@@ -4416,6 +4417,10 @@ namespace hldata
                 }
                 if (!actorThinks(actor.kind))
                     continue;
+                // (Only one on a brush, or yet to look: one on the world has
+                // nothing to ride.)
+                if (actor.groundMover != -1)
+                    aiRide(w, player, i);
     #ifndef HLDS_CHILD
                 const fx was[3] = {actor.pos[0], actor.pos[1], actor.pos[2]};
                 aiTick(w, player, i, ms);

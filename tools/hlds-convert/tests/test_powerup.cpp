@@ -1,6 +1,7 @@
 // Power Up's machinery, on its own maps: c2a1's gate, opened by the power
 // switched on in c2a1a, a map the player reaches through c2a1b and comes
-// back from; and c1a4j's pipe, the way down into Power Up.
+// back from; c1a4j's pipe, the way down into Power Up; and c2a1a's lift,
+// which brings soldiers down to the player.
 
 #include <cstdio>
 #include <cstdlib>
@@ -199,6 +200,85 @@ namespace
         }
     }
 
+    /// A tick with the player held where they are (far off, out of the way).
+    void tickStill(Game &g)
+    {
+        const fx at[3] = {g.player.origin[0], g.player.origin[1], g.player.origin[2]};
+        logicTick(g.logic, g.player, 33);
+        g.logic.viewTurn = 0;
+        monstersTick(g.logic, g.player, 33);
+        g.drain();
+        for (int k = 0; k < 3; ++k)
+            g.player.origin[k] = at[k];
+    }
+
+    // c2a1a, the generator's power on: a trigger_once fires liftgrunts_mm,
+    // which sends lift1 (a func_door, down 368 at 100 a second) down, and
+    // half a second on has two monstermakers make a soldier each over it.
+    // In the game they drop onto it and ride it down to the player; they
+    // hung in the air over it as it went (issue #17).
+    void testLiftGrunts(const char *dir)
+    {
+        const std::unique_ptr<Game> game = load(dir, "c2a1a");
+        check(game != nullptr, "c2a1a cooks");
+        if (game == nullptr)
+            return;
+        Game &g = *game;
+        const int lift = recordNamed(g, "lift1", LogicKind::Door);
+        const int manager = recordNamed(g, "liftgrunts_mm", LogicKind::MultiManager);
+        const std::vector<int> makers = recordsNamed(g, "lift_grunt_maker", LogicKind::Maker);
+        check(lift >= 0 && manager >= 0 && makers.size() == 2, "c2a1a has lift1, liftgrunts_mm and its two makers");
+        if (lift < 0 || manager < 0 || makers.size() != 2)
+            return;
+        g.player.origin[2] += fxFromInt(30000);
+        for (int t = 0; t < 1000; t += 33)
+            tickStill(g);
+        const int brush = g.view.logic[lift].brush;
+        int slots[2];
+        for (int n = 0; n < 2; ++n)
+            slots[n] = makerPlace(g.view.logic[makers[static_cast<std::size_t>(n)]], 0);
+        logicUse(g.logic, g.player, manager, -1, kUseToggle);
+        bool landed[2] = {false, false};
+        int worst = 0, made = 0;
+        const int liftTop0 = fxToInt(g.movers[brush].maxs[2]);
+        for (int t = 0; t < 7000; t += 33)
+        {
+            tickStill(g);
+            const MoverHull &hull = g.movers[brush];
+            const bool moving = g.logic.states[lift].move == MoveState::GoingUp ||
+                                g.logic.states[lift].move == MoveState::GoingDown;
+            for (int n = 0; n < 2; ++n)
+            {
+                const ActorState &grunt = g.actors.states[slots[n]];
+                if (!grunt.active)
+                    continue;
+                const int gap = fxToInt(grunt.pos[2] - hull.maxs[2]);
+                if (!landed[n] && grunt.groundMover == brush)
+                    landed[n] = true;
+                else if (landed[n] && moving)
+                    worst = gap > worst ? gap : (-gap > worst ? -gap : worst);
+            }
+        }
+        int onIt = 0;
+        const MoverHull &hull = g.movers[brush];
+        for (int n = 0; n < 2; ++n)
+        {
+            const ActorState &grunt = g.actors.states[slots[n]];
+            made += grunt.active;
+            const int gap = fxToInt(grunt.pos[2] - hull.maxs[2]);
+            onIt += grunt.active && gap >= -1 && gap <= 1 && grunt.pos[0] >= hull.mins[0] &&
+                    grunt.pos[0] <= hull.maxs[0] && grunt.pos[1] >= hull.mins[1] && grunt.pos[1] <= hull.maxs[1];
+            std::printf("test_powerup: c2a1a: soldier %d at %d %d %d, the lift's top at %d (from %d)\n", n,
+                        fxToInt(grunt.pos[0]), fxToInt(grunt.pos[1]), fxToInt(grunt.pos[2]), fxToInt(hull.maxs[2]),
+                        liftTop0);
+        }
+        std::printf("test_powerup: c2a1a: %d soldiers made, %d on the lift at its foot, at most %d off it as it went\n",
+                    made, onIt, worst);
+        check(made == 2 && g.logic.states[lift].move == MoveState::AtTop, "lift1 goes down, and two soldiers are made");
+        check(onIt == 2, "... who land on it and ride it down");
+        check(landed[0] && landed[1] && worst <= 2, "... standing on it all the way, once they are on it");
+    }
+
     // c1a4j, the way down into Power Up: the player walks along a pipe, and
     // its trigger_once (into rotpipemm) sets the pipe ("rotpipe", a
     // func_door_rotating about its length, dmg 5000) turning down by 75
@@ -275,6 +355,7 @@ int main()
     }
     testGate(dir);
     testPipe(dir);
+    testLiftGrunts(dir);
     if (g_failures == 0)
         std::printf("test_powerup: ok\n");
     return g_failures == 0 ? 0 : 1;

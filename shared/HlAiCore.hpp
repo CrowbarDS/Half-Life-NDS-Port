@@ -3004,6 +3004,131 @@ namespace hldata
 
     // ------------------------------------------------------------- squads (2)
 
+    /// Whether it stands on a floor the engine lets it fall from
+    /// (MOVETYPE_STEP): not what flies, swims, hangs or is fixed in place,
+    /// nor one of the people (peopleGround), nor what a barnacle holds.
+    inline bool aiStandsOnFloor(const AiCtx &c)
+    {
+        return !(c.m.capability & kCapFly) && !isPerson(c.me.kind) && !actorStaysPut(c.me.kind) &&
+               !actorCentred(c.me) && !aiHeld(c.a, c.index) && !(c.me.flags & kActorCeiling) && c.w.world != nullptr;
+    }
+
+    /// What it stands on, looked for under its feet: a brush that moves
+    /// (groundMover, and where that is now), or the world (-1). False if
+    /// there is nothing there, or only someone.
+    HL_COLD bool aiLookUnder(AiCtx &c)
+    {
+        LogicWorld &w = c.w;
+        ActorState &me = c.me;
+        me.groundMover = -1;
+        const bool small = monsterHull(me.kind) == kWalkCrouched;
+        const fx feet = small ? kCrouchedFeet : kStandingFeet;
+        const fx shift = monsterHullShift(me.kind);
+        const fx from[3] = {me.pos[0] + shift, me.pos[1] + shift, me.pos[2] + feet + fxFromInt(1)};
+        const fx to[3] = {from[0], from[1], me.pos[2] + feet - fxFromInt(2)};
+        const Trace under = traceAll(*w.world, small, from, to);
+        if (under.startSolid)
+            return true;
+        if (under.fraction >= kFractionOne || under.box >= 0)
+            return false;
+        if (under.mover >= 0 && under.mover < w.brushCount && w.brushStates != nullptr)
+        {
+            me.groundMover = under.mover;
+            for (int k = 0; k < 3; ++k)
+                me.groundAt[k] = w.brushStates[under.mover].pos[k];
+        }
+        return true;
+    }
+
+    /// Come down on its feet: what it stands on, looked for there and then
+    /// (on a lift going down, a moment later it would be gone from under
+    /// it).
+    HL_COLD void aiLanded(AiCtx &c)
+    {
+        c.me.groundMover = -2;
+        if (aiStandsOnFloor(c))
+            aiLookUnder(c);
+    }
+
+    /// On its feet on a brush that moves -- a lift, a train -- it goes where
+    /// that goes, as the engine's push takes whoever stands on what it moves
+    /// (SV_PushMove); and when that is gone from under it, it falls. What it
+    /// stands on is looked for once each time it comes to stand (groundMover
+    /// -2): c2a1a's soldiers, let down onto lift1 as it goes, ride it down
+    /// (issue #17).
+    HL_COLD void aiRideGround(AiCtx &c)
+    {
+        LogicWorld &w = c.w;
+        ActorState &me = c.me;
+        // (The G-Man and a monster_generic ride by peopleGround.)
+        if (w.brushStates == nullptr || w.movers == nullptr || !aiStandsOnFloor(c) ||
+            me.kind == static_cast<std::uint8_t>(ActorKind::Gman) ||
+            me.kind == static_cast<std::uint8_t>(ActorKind::Generic))
+            return;
+        const bool small = monsterHull(me.kind) == kWalkCrouched;
+        const fx feet = small ? kCrouchedFeet : kStandingFeet;
+        const fx shift = monsterHullShift(me.kind);
+        if (me.groundMover == -2)
+        {
+            // Nothing under it (or only someone): it falls, to land on what
+            // is there.
+            if (!aiLookUnder(c))
+            {
+                c.m.inAir = true;
+                me.velocity[0] = me.velocity[1] = me.velocity[2] = 0;
+            }
+            return;
+        }
+        if (me.groundMover < 0 || me.groundMover >= w.brushCount)
+            return;
+        const BrushState &floor = w.brushStates[me.groundMover];
+        const MoverHull &hull = w.movers[me.groundMover];
+        if (!floor.active || !hull.solid)
+        {
+            // Gone (broken, put away): it falls.
+            me.groundMover = -1;
+            c.m.inAir = true;
+            me.velocity[0] = me.velocity[1] = me.velocity[2] = 0;
+            return;
+        }
+        fx delta[3];
+        bool moved = false;
+        for (int k = 0; k < 3; ++k)
+        {
+            delta[k] = floor.pos[k] - me.groundAt[k];
+            moved = moved || delta[k] != 0;
+        }
+        if (!moved)
+            return;
+        // (Walked off it, or it was put somewhere -- more than a brush moves
+        // in a tick: it looks again for what is under it.)
+        const bool over = me.pos[0] >= hull.mins[0] - fxFromInt(16) && me.pos[0] <= hull.maxs[0] + fxFromInt(16) &&
+                          me.pos[1] >= hull.mins[1] - fxFromInt(16) && me.pos[1] <= hull.maxs[1] + fxFromInt(16);
+        bool far = false;
+        for (int k = 0; k < 3; ++k)
+            far = far || delta[k] > fxFromInt(64) || delta[k] < -fxFromInt(64);
+        if (!over || far)
+        {
+            me.groundMover = -2;
+            return;
+        }
+        // (Only where there is room for it, as the push moves no one into a
+        // wall: one it cannot take along is left, and falls if it can.)
+        const fx to[3] = {me.pos[0] + delta[0] + shift, me.pos[1] + delta[1] + shift, me.pos[2] + delta[2] + feet};
+        if (!positionFree(*w.world, small, to))
+        {
+            me.groundMover = -1;
+            c.m.inAir = true;
+            me.velocity[0] = me.velocity[1] = me.velocity[2] = 0;
+            return;
+        }
+        for (int k = 0; k < 3; ++k)
+        {
+            me.pos[k] += delta[k];
+            me.groundAt[k] = floor.pos[k];
+        }
+    }
+
     /// StartMonster: its attacks from what clips the model has; a squad if
     /// it forms them; and, named and not a script's, it waits to be
     /// triggered.
@@ -3079,9 +3204,7 @@ namespace hldata
         // over a pit, SF_MONSTER_FALL_TO_GROUND). Not what flies, swims,
         // hangs or is fixed in place, nor one of the people (peopleGround),
         // nor what a scene holds.
-        if (!(c.m.capability & kCapFly) && !isPerson(c.me.kind) && !actorStaysPut(c.me.kind) && !actorCentred(c.me) &&
-            c.me.script < 0 &&
-            !aiHeld(c.a, c.index) && !(c.me.flags & kActorCeiling) && c.w.world != nullptr)
+        if (aiStandsOnFloor(c) && c.me.script < 0)
         {
             const bool small = monsterKind(c.me.kind).small;
             const fx lift = small ? kCrouchedFeet : kStandingFeet;
@@ -3492,6 +3615,9 @@ namespace hldata
             // as the engine's step monsters do.)
             c.m.inAir = false;
             c.me.velocity[2] = 0;
+            // (What it landed on, while it is there: aiRideGround takes it
+            // along with that.)
+            aiLanded(c);
             c.m.landSlide = c.me.velocity[0] != 0 || c.me.velocity[1] != 0;
             if (c.me.ai == kAiLeap)
                 c.me.ai = kAiChase;
@@ -4072,6 +4198,21 @@ namespace hldata
     }
 
     /// One frame of a monster that thinks this way.
+    /// Before its tick, it goes where what it stands on has gone
+    /// (aiRideGround): one on its feet, its own -- not a script's, not held.
+    /// (Out of aiTick, which is in the ITCM, as is its context.)
+    HL_COLD void aiRide(LogicWorld &w, PlayerState &player, int index)
+    {
+        ActorWorld &a = *w.actors;
+        AiMonster *m = aiOf(a, index);
+        const ActorState &me = a.states[index];
+        const AiKind *kind = aiKindOf(me.kind);
+        if (m == nullptr || kind == nullptr || !m->started || m->inAir || me.script >= 0 || me.ai == kAiDead)
+            return;
+        AiCtx c = aiCtx(w, player, index, *m, *kind);
+        aiRideGround(c);
+    }
+
     HL_HOT void aiTick(LogicWorld &w, PlayerState &player, int index, int ms)
     {
         ActorWorld &a = *w.actors;
