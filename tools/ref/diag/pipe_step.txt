@@ -1,0 +1,9 @@
+# c1a4j's pipe down into Power Up (issue #16): a step into its trigger, then
+# no keys. The pipe turns down about its length and takes the player down,
+# through the ceiling tiles, onto the table.
+# map c1a4j
+# start 982 -1565 684 270
+# keep func_.*|trigger_once|multi_manager|env_spark
+30 0 0 270 0      # stand
+12 400 0 270 0    # a step on, into the trigger
+258 0 0 270 0     # down

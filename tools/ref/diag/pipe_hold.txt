@@ -1,0 +1,9 @@
+# c1a4j's pipe down into Power Up (issue #16): walk along it into its trigger
+# and keep walking. The pipe (func_door_rotating "rotpipe", about its length)
+# turns down by 75 degrees; the player goes down with it, through the
+# ceiling tiles, onto the table.
+# map c1a4j
+# start 982 -1565 684 270
+# keep func_.*|trigger_once|multi_manager|env_spark
+30 0 0 270 0      # stand
+270 400 0 270 0   # walk on, into the trigger, and down

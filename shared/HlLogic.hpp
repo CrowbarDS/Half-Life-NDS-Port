@@ -674,6 +674,26 @@ namespace hldata
             w.viewTurn += turn;
         }
 
+        /// How far a point is taken by what turns about `pivot` from the
+        /// angles `from` to the angles `to`: where it is in the brush's own
+        /// space as it stood, carried to where that is now (the engine's
+        /// SV_PushRotate).
+        inline void arcDelta(const std::uint16_t *from, const std::uint16_t *to, const fx *pivot, const fx *point,
+                             fx *delta)
+        {
+            std::int32_t a[9], b[9];
+            anglesToAxes(from, a);
+            anglesToAxes(to, b);
+            const fx d[3] = {point[0] - pivot[0], point[1] - pivot[1], point[2] - pivot[2]};
+            fx local[3];
+            for (int j = 0; j < 3; ++j)
+                local[j] = static_cast<fx>((static_cast<std::int64_t>(d[0]) * a[j] + static_cast<std::int64_t>(d[1]) * a[3 + j] +
+                                            static_cast<std::int64_t>(d[2]) * a[6 + j]) >> kNormalShift);
+            for (int i = 0; i < 3; ++i)
+                delta[i] = static_cast<fx>((static_cast<std::int64_t>(local[0]) * b[3 * i] + static_cast<std::int64_t>(local[1]) * b[3 * i + 1] +
+                                            static_cast<std::int64_t>(local[2]) * b[3 * i + 2]) >> kNormalShift) - d[i];
+        }
+
         /// Move a brush to `pos`, carrying the player if they stand on it and
         /// pushing them if it runs into them -- and likewise the boxes that
         /// can be pushed: one standing on it goes where it goes, one in its
@@ -1523,8 +1543,7 @@ namespace hldata
 
             if (record.brush != kNoBrush && rotating)
             {
-                // Turned, not moved. A door that turns into the player does
-                // not shove them: it is blocked, and turns back.
+                // Turned, not moved.
                 const int axis = static_cast<int>(record.extra[0] % 3);
                 std::uint16_t angles[3];
                 hingeRest(record, angles);
@@ -1534,26 +1553,42 @@ namespace hldata
                     angles[axis] + state.bits +
                     static_cast<std::uint32_t>(
                         (static_cast<std::int64_t>(state.travel[0]) * phase) >> kFractionShift));
-                // Whoever stands on it turns with it (SV_PushRotate): c1a4f's
-                // bucket swings the player across its shaft. About the
-                // upright only, on a hinge that is not itself tipped.
-                const bool rider = axis == kYaw && angles[0] == 0 && angles[2] == 0 && player.onGround &&
-                                   player.groundMover == static_cast<std::int16_t>(record.brush);
+                std::uint16_t was[3] = {angles[0], angles[1], angles[2]};
+                was[axis] = before;
+                // Whoever stands on it turns with it, and whoever it turns
+                // into is shoved round with it (SV_PushRotate): c1a4f's
+                // bucket swings the player across its shaft; c1a4j's pipe,
+                // turning down about its length, takes the player in it down
+                // to the table (issue #16). About the upright, on a hinge
+                // not itself tipped, their view turns too.
+                const bool rider =
+                    player.onGround && player.groundMover == static_cast<std::int16_t>(record.brush);
+                const bool upright = rider && axis == kYaw && angles[0] == 0 && angles[2] == 0;
                 const auto turn = static_cast<std::int16_t>(angles[axis] - before);
                 const fx stood[3] = {player.origin[0], player.origin[1], player.origin[2]};
                 const bool stuckBefore = rider && playerStuckBesides(w, player, record.brush);
-                if (rider)
+                if (upright)
                     turnRider(w, player, state.base, turn);
+                else if (rider)
+                {
+                    fx delta[3];
+                    arcDelta(was, angles, state.base, player.origin, delta);
+                    pushPlayer(w, player, record.brush, delta);
+                }
                 logicPlaceBrushTurned(w, record.brush, state.base, angles);
+                if (!rider && playerInsideBrush(w, player, record.brush))
+                {
+                    fx delta[3];
+                    arcDelta(was, angles, state.base, player.origin, delta);
+                    pushPlayer(w, player, record.brush, delta);
+                }
                 if (playerInsideBrush(w, player, record.brush) ||
                     (rider && !stuckBefore && playerStuckBesides(w, player, record.brush)))
                 {
-                    if (rider)
-                    {
-                        for (int a = 0; a < 3; ++a)
-                            player.origin[a] = stood[a];
+                    for (int a = 0; a < 3; ++a)
+                        player.origin[a] = stood[a];
+                    if (upright)
                         w.viewTurn -= turn;
-                    }
                     angles[axis] = before;
                     logicPlaceBrushTurned(w, record.brush, state.base, angles);
                     crushPlayer(w, player, index, ms);
@@ -5049,18 +5084,8 @@ namespace hldata
                 // space as it stood, taken to where that is now.
                 std::uint16_t was[3] = {0, 0, 0};
                 was[axis] = before;
-                std::int32_t from[9], to[9];
-                anglesToAxes(was, from);
-                anglesToAxes(angles, to);
-                const fx *pivot = w.movers[record.brush].origin;
-                const fx d[3] = {player.origin[0] - pivot[0], player.origin[1] - pivot[1], player.origin[2] - pivot[2]};
-                fx local[3], delta[3];
-                for (int j = 0; j < 3; ++j)
-                    local[j] = static_cast<fx>((static_cast<std::int64_t>(d[0]) * from[j] + static_cast<std::int64_t>(d[1]) * from[3 + j] +
-                                                static_cast<std::int64_t>(d[2]) * from[6 + j]) >> kNormalShift);
-                for (int i = 0; i < 3; ++i)
-                    delta[i] = static_cast<fx>((static_cast<std::int64_t>(local[0]) * to[3 * i] + static_cast<std::int64_t>(local[1]) * to[3 * i + 1] +
-                                                static_cast<std::int64_t>(local[2]) * to[3 * i + 2]) >> kNormalShift) - d[i];
+                fx delta[3];
+                arcDelta(was, angles, w.movers[record.brush].origin, player.origin, delta);
                 pushPlayer(w, player, record.brush, delta);
             }
             if (playerInsideBrush(w, player, record.brush))

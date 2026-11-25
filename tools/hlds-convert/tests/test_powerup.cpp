@@ -1,6 +1,6 @@
 // Power Up's machinery, on its own maps: c2a1's gate, opened by the power
 // switched on in c2a1a, a map the player reaches through c2a1b and comes
-// back from.
+// back from; and c1a4j's pipe, the way down into Power Up.
 
 #include <cstdio>
 #include <cstdlib>
@@ -198,6 +198,71 @@ namespace
             check(gone == 3, "... and all three of its gated trigger_autos have fired");
         }
     }
+
+    // c1a4j, the way down into Power Up: the player walks along a pipe, and
+    // its trigger_once (into rotpipemm) sets the pipe ("rotpipe", a
+    // func_door_rotating about its length, dmg 5000) turning down by 75
+    // degrees. In the game it takes the player in it down, through the
+    // ceiling tiles, onto the table ("table") below -- walking on, they
+    // run off its far side (tools/ref/diag/pipe_hold.txt, as the game
+    // plays it). It turned round them and crushed them, or let them fall
+    // wide of the table (issue #16).
+    void testPipe(const char *dir)
+    {
+        const std::unique_ptr<Game> game = load(dir, "c1a4j");
+        check(game != nullptr, "c1a4j cooks");
+        if (game == nullptr)
+            return;
+        Game &g = *game;
+        const int trigger = recordNamed(g, "rotpipemm", LogicKind::TriggerOnce, true);
+        const int pipe = recordNamed(g, "rotpipe", LogicKind::DoorRotating);
+        const int table = recordNamed(g, "table", LogicKind::Door);
+        check(trigger >= 0 && pipe >= 0 && table >= 0, "c1a4j has the pipe, its trigger and the table");
+        if (trigger < 0 || pipe < 0 || table < 0)
+            return;
+        const LogicRecord &zone = g.view.logic[trigger];
+        const int lo[3] = {zone.mins[0], zone.mins[1], zone.mins[2]};
+        const int hi[3] = {zone.maxs[0], zone.maxs[1], zone.maxs[2]};
+        // In the pipe, short of its trigger, on its floor (where pipe_hold
+        // starts); then walking on along it, into the trigger and on.
+        g.player.origin[0] = fxFromInt((lo[0] + hi[0]) / 2);
+        g.player.origin[1] = fxFromInt(-1565);
+        g.player.origin[2] = fxFromInt((lo[2] + hi[2]) / 2);
+        for (int t = 0; t < 1000; t += 33)
+            g.frame();
+        g.player.health = 100;
+        const bool walking = g.player.onGround;
+        // (Along the pipe, -y: the way from its hinge to its end that goes
+        // down.)
+        MoveCommand ahead;
+        ahead.forward = 1;
+        ahead.forwardXY[0] = 0;
+        ahead.forwardXY[1] = -kFxOne;
+        ahead.rightXY[0] = -kFxOne;
+        ahead.rightXY[1] = 0;
+        int least = 100, onPipe = 0, onTable = 0;
+        for (int t = 0; t < 6000; t += 33)
+        {
+            itemsTouch(g.logic, g.player);
+            logicTick(g.logic, g.player, 33);
+            g.logic.viewTurn = 0;
+            monstersTick(g.logic, g.player, 33);
+            playerMove(g.player, ahead, g.move, kPlayerTick);
+            g.drain();
+            least = g.player.health < least ? g.player.health : least;
+            onPipe += g.player.onGround && g.player.groundMover == g.view.logic[pipe].brush;
+            onTable += g.player.onGround && g.player.groundMover == g.view.logic[table].brush;
+        }
+        check(walking, "the player stands on the pipe's floor before its trigger");
+        const int at[3] = {fxToInt(g.player.origin[0]), fxToInt(g.player.origin[1]), fxToInt(g.player.origin[2])};
+        std::printf("test_powerup: c1a4j's pipe: the player %d frames on it, %d on the table, health down to %d, "
+                    "ends at %d %d %d (the game's: 1053 -2064 36), the pipe %s\n",
+                    onPipe, onTable, least, at[0], at[1], at[2],
+                    g.logic.states[pipe].move == MoveState::AtTop ? "down" : "NOT DOWN");
+        check(g.logic.states[pipe].move == MoveState::AtTop, "c1a4j's pipe turns all the way down");
+        check(least == 100, "... and does not crush the player in it");
+        check(onTable > 0 && at[2] < 40, "... who goes down with it onto the table, and on to the floor");
+    }
 } // namespace
 
 int main()
@@ -209,6 +274,7 @@ int main()
         return 77;
     }
     testGate(dir);
+    testPipe(dir);
     if (g_failures == 0)
         std::printf("test_powerup: ok\n");
     return g_failures == 0 ? 0 : 1;

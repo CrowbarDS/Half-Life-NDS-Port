@@ -1619,6 +1619,11 @@ namespace
         cmd.rightXY[0] = -kFxOne;
         g.player.origin[0] = fxFromInt(64);
         g.player.origin[1] = fxFromInt(60);
+        // (Turned round where they stand: the door reads which way they face
+        // before their next move does. It once opened the wrong way, into
+        // them, and only came round when it met them.)
+        g.player.facingXY[0] = 0;
+        g.player.facingXY[1] = -kFxOne;
         for (int i = 0; i < 60 && g.states[door].move != MoveState::AtTop; ++i)
             g.frame(cmd);
         check(g.brushStates[brushIndex].angles[1] == 49152,
