@@ -2089,7 +2089,9 @@ namespace hldata
                 const fx dir[3] = {t.center[0] - org[0], t.center[1] - org[1], t.center[2] - org[2]};
                 const fx flat[3] = {dir[0], dir[1], 0};
                 angleY = static_cast<std::int16_t>(fxAtan2Turns(dir[1], dir[0]) - c.me.yaw);
-                angleX = static_cast<std::int16_t>(fxAtan2Turns(dir[2], fxLength(flat)));
+                // (Down positive, as m_flameX: the game turns its pitch
+                // round, angles.x = -angles.x.)
+                angleX = static_cast<std::int16_t>(-fxAtan2Turns(dir[2], fxLength(flat)));
                 if (fxLength(dir) > fxFromInt(400))
                     cancel = true;
             }

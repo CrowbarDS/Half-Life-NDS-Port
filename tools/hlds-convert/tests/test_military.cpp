@@ -303,7 +303,9 @@ namespace
         const int near = takenIn(g, 15, &flame, &stomp);
         std::printf("test_military: gargantua near: the player lost %d, flames %d\n", near, flame ? 1 : 0);
         check(flame, "up close, it throws its flames");
-        check(near > 0, "... which burn the player");
+        // (Flames aimed up over the player's head burnt them for 100 in all
+        // here, the stomp's and a stray lick's: issue #18.)
+        check(near > 300, "... which burn the player");
         {
             // ... from its forearms, as its model has them posed (the
             // game's attachments 1 and 2), turned with its aim.
