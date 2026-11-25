@@ -322,6 +322,9 @@ namespace hlrt
         void resumeMusic();
         bool extended_ = false;
         int roomDue_ = 0;
+        // The logic's own timed counts last frame (frame()): one gone up is
+        // one that ran this frame.
+        std::int32_t logicMarksWas_ = 0, logicLinksWas_ = 0;
         int room_ = 0; ///< the room the ARM7 was last told
         int held_ = 0; ///< holdPipeline's count
         int dsiHz_ = 0; ///< the DSi's speakers' rate, in kHz (0: not yet set)

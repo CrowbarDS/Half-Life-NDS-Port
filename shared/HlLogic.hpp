@@ -5977,6 +5977,12 @@ namespace hldata
         }
     } // namespace detail
 
+    /// How often the map's own marks (detail::marksNear) and the ways between
+    /// the nodes (detail::linksTick) are looked at. (A frame that looks at
+    /// either puts its count back up: the sound, seeing that, waits a frame
+    /// with its own timed work -- Sound::frame.)
+    inline constexpr std::int32_t kMarksEveryMs = 500, kLinksEveryMs = 250;
+
     /// Advance everything by `ms` milliseconds.
     inline void logicTick(LogicWorld &w, PlayerState &player, int ms)
     {
@@ -5998,17 +6004,20 @@ namespace hldata
         }
         {
             // The map's own marks and the ways between the nodes, looked at
-            // every so often.
-            if ((w.marksDueMs -= ms) <= 0)
+            // every so often -- one of the two a frame at most: the other,
+            // due as well, waits for the next.
+            w.marksDueMs -= ms;
+            w.linksDueMs -= ms;
+            if (w.marksDueMs <= 0)
             {
                 HL_LOGIC_PART(Marks);
-                w.marksDueMs = 500;
+                w.marksDueMs = kMarksEveryMs;
                 detail::marksNear(w, player);
             }
-            if ((w.linksDueMs -= ms) <= 0)
+            else if (w.linksDueMs <= 0)
             {
                 HL_LOGIC_PART(Links);
-                w.linksDueMs = 250;
+                w.linksDueMs = kLinksEveryMs;
                 detail::linksTick(w, player);
             }
         }

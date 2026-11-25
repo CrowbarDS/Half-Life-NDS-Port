@@ -1942,13 +1942,22 @@ namespace hlrt
             queue.count = 0;
             return;
         }
+        // Of the four looked at every so often -- the logic's marks and
+        // ways, and below, the room and the loops -- one a frame at most: the
+        // others, due as well, wait for the next. (The logic's put their
+        // count back up in the frame they run: hldata::kMarksEveryMs.)
+        const hldata::LogicWorld &logic = game.logic;
+        bool timedFree = logic.marksDueMs <= logicMarksWas_ && logic.linksDueMs <= logicLinksWas_;
+        logicMarksWas_ = logic.marksDueMs;
+        logicLinksWas_ = logic.linksDueMs;
         // The room the player is in, looked at four times a second, as the
         // game does: for the DSP's echo, or the ARM7's rooms.
         roomDue_ -= ms;
-        if (roomDue_ <= 0)
+        if (roomDue_ <= 0 && timedFree)
         {
             const DebugLog::Perf::Timed timed(DebugLog::Section::SndRoom);
             roomDue_ = 250;
+            timedFree = false;
             roomTick();
         }
         {
@@ -1976,7 +1985,7 @@ namespace hlrt
         // The loops, and whatever has a place, are looked at a few times a
         // second: each change is a message to the other processor.
         loopsDue_ -= ms;
-        if (loopsDue_ <= 0)
+        if (loopsDue_ <= 0 && timedFree)
         {
             const DebugLog::Perf::Timed timed(DebugLog::Section::SndLoops);
             loopsDue_ = 100;

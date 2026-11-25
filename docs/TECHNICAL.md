@@ -2283,6 +2283,15 @@ longest. The worker's answers are given by kind of question too (`plan`,
 `detour`, `look`, `cover`, `route`): how many were taken up, their mean and
 longest wait, and the oldest still waiting, in passes.
 
+**Timed jobs, one a pass.** Four things are looked at every so often
+rather than every pass: the map's own marks (every 500 ms) and the ways
+between the nodes (250 ms) in the logic, the room the player is in
+(250 ms) and the loops and placed sounds (100 ms) in the sound. Their
+periods divide each other, so they used to land on the same pass. Now one
+runs a pass at most and any other due waits for the next: the logic looks
+at marks before links, and the sound waits a pass when the logic ran one
+(a count put back up to its full period since the last pass).
+
 **The box test** (an experiment: `HLDS_BOX_TEST=1 ./make.sh`). The geometry
 engine can say whether a box is inside the view as it clips (`BOX_TEST`),
 which for a flat surface is much tighter than its ball against five planes.
