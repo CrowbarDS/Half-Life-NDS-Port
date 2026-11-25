@@ -328,6 +328,13 @@ namespace
         const int coarsest = coarseReport.levels.back().triangles;
         std::printf("test_lod: %s: %d triangles, levels %zu -> %zu, coarsest %d\n", name, source,
                     plainReport.levels.size(), coarseReport.levels.size(), coarsest);
+        if (source <= kCoarseLeast)
+        {
+            // (Already as few as a coarse level would have: none added.)
+            std::snprintf(text, sizeof(text), "%s: %d triangles, no coarser level needed", name, source);
+            check(coarseReport.levels.size() == plainReport.levels.size(), text);
+            return;
+        }
         std::snprintf(text, sizeof(text), "%s: a coarser level, of about %d triangles (has %d)", name, wanted,
                       coarsest);
         // (The thinning stops where a mesh can lose no more without breaking:
@@ -353,7 +360,7 @@ int main()
         testCooked(dir, "houndeye", 3, false);
         testCooked(dir, "hgibs", 1, false);
         testCooked(dir, "w_9mmar", 3, false);
-        for (const char *name : {"shell", "shotgunshell", "w_9mmclip", "w_medkit", "w_battery"})
+        for (const char *name : {"shell", "shotgunshell", "w_9mmclip", "w_medkit", "w_battery", "woodgibs"})
             testCoarse(dir, name);
     }
     else

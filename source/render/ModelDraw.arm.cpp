@@ -840,15 +840,14 @@ namespace hlrt
         }
         found = kept;
 
-        // The pieces of what has come apart: those in view, for as long as
-        // there is room in the models' share (they are the first thing to
-        // go when there is not: nothing under pressure, and never more than
-        // a third of the share).
-        // (... and nothing when an enemy has had to be made room for.)
+        // The pieces of what has come apart, each its model at its coarsest:
+        // always, under pressure too, in an allowance of their own over the
+        // share (counted apart and added at the end, as the casings' are) --
+        // a crate broken must always be seen to break.
         gibFound_ = 0;
-        if (worldDraw.pressure() < 2 && !strained_)
+        int gibPolygons = 0, gibVertices = 0;
         {
-            int gibPolygons = 0;
+            const int room = isDSiMode() ? kGibPolygonsDsi : kGibPolygonsDs;
             for (int i = 0; i < kMaxGibs; ++i)
             {
                 const Gib &gib = actors.gibs[i];
@@ -869,12 +868,10 @@ namespace hlrt
                     p += model.batches[b].polygons;
                     v += model.batches[b].vertices;
                 }
-                if (polygons + p > kMaxPolygons || vertices + v > kMaxVertices ||
-                    gibPolygons + p > kMaxPolygons / 3)
+                if (gibPolygons + p > room || gibVertices + v > room * 3)
                     continue;
-                polygons += p;
-                vertices += v;
                 gibPolygons += p;
+                gibVertices += v;
                 gibOrder_[gibFound_++] = static_cast<std::uint8_t>(i);
             }
         }
@@ -996,9 +993,9 @@ namespace hlrt
             vertices += v;
             shotOrder_[shotFound_++] = static_cast<std::uint8_t>(i);
         }
-        // (The casings' own allowance, last: see above.)
-        polygons += casingPolygons;
-        vertices += casingVertices;
+        // (The pieces' and the casings' own allowances, last: see above.)
+        polygons += gibPolygons + casingPolygons;
+        vertices += gibVertices + casingVertices;
     }
 
     void ModelDraw::prepare()

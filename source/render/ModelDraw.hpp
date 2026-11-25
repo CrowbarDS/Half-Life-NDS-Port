@@ -50,6 +50,10 @@ namespace hlrt
         /// about 8: a DS's pool of pieces is 24, a DSi's 64).
         static constexpr int kCasingPolygonsDs = 160;
         static constexpr int kCasingPolygonsDsi = 320;
+        /// ... and the pieces of what has come apart (each at its coarsest:
+        /// a DS keeps 16 at once, a DSi 32).
+        static constexpr int kGibPolygonsDs = 200;
+        static constexpr int kGibPolygonsDsi = 400;
         /// One for every actor a map may have, its own and those who come
         /// along (hldata::kMaxMapActors: the converter refuses a map with
         /// more): what each was drawn at, and whether it is behind a wall.

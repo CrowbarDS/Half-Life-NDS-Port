@@ -48,10 +48,12 @@ namespace hlds
     inline constexpr int kCoarseShare = 35;
     inline constexpr int kCoarseLeast = 8;
     /// Whether the model called `name` is always to be drawn, coarser if need
-    /// be: a casing out of a gun, or something lying about to pick up.
+    /// be: a casing out of a gun, something lying about to pick up, or the
+    /// pieces something breaks into ("woodgibs", "hgibs").
     inline bool alwaysDrawnModel(const std::string &name)
     {
-        return name == "shell" || name == "shotgunshell" || name.rfind("w_", 0) == 0;
+        return name == "shell" || name == "shotgunshell" || name.rfind("w_", 0) == 0 ||
+               (name.size() > 4 && name.compare(name.size() - 4, 4, "gibs") == 0);
     }
 
     /// The first-person model every map is given.

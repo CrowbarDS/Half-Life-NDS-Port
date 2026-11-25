@@ -208,6 +208,11 @@ namespace hlrt
         /// The one block the arrays above (and linkShut_, aiSlots_, aiHeld_)
         /// are laid out in (reserve), and how big it is.
         std::uint8_t *arrays_ = nullptr;
+        /// A bit for each logic record whose pieces have been thrown (it
+        /// broke); `piecesStale_`, to be noted again from what is broken now
+        /// (a map begun, a save laid) before the next break is looked at.
+        std::uint8_t *piecesOut_ = nullptr;
+        bool piecesStale_ = true;
         std::uint32_t arraysBytes_ = 0;
         /// Put in hand the model of the weapon the player has out.
         void takeInHand();

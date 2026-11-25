@@ -49,7 +49,7 @@ namespace hlrt
         struct ArrayPlan
         {
             std::uint32_t brushStates, movers, reach, moverOrder, moverSlot, groupReach, states, ladders, ladderModels, corners, actorStates, actorBoxes,
-                linkShut, aiSlots, aiHeld, boxPlanes, total;
+                linkShut, aiSlots, aiHeld, boxPlanes, thrown, total;
             int ladderCount, actorCount;
         };
 
@@ -83,6 +83,7 @@ namespace hlrt
             take(plan.linkShut, view.pathLinkCount + 1);
             take(plan.aiSlots, actors * sizeof(std::int16_t));
             take(plan.aiHeld, actors);
+            take(plan.thrown, (view.logicCount + 8) / 8); // (a bit a record: Game::frame's breaks)
             // (Its boxes' hulls: the planes of each size of box.)
             static_assert(kDsBoxSizeBytes == kBoxPlanes * sizeof(Plane), "HlDsRoom.hpp counts them so");
             take(plan.boxPlanes,
@@ -187,6 +188,8 @@ namespace hlrt
         linkShut_ = arrays_ + plan.linkShut;
         aiSlots_ = reinterpret_cast<std::int16_t *>(arrays_ + plan.aiSlots);
         aiHeld_ = arrays_ + plan.aiHeld;
+        piecesOut_ = arrays_ + plan.thrown;
+        piecesStale_ = true;
         const int ladderCount = plan.ladderCount;
         const int actorCount = plan.actorCount;
         for (std::uint32_t i = 0; i < view.brushCount; ++i)
@@ -465,6 +468,7 @@ namespace hlrt
             if (map.map == mapHash)
                 mapRestore(map, logic, actors);
         }
+        piecesStale_ = true;
     }
 
     SaveData Game::snapshot(const std::string &map)
@@ -677,6 +681,7 @@ namespace hlrt
         // or shown now: what was going on when it was left is.
         heard.count = 0;
         logic.shownCount = 0;
+        piecesStale_ = true; // (what was broken before is not thrown again)
         logic.saveRequested = false;
         logic.pendingChange = -1;
         logic.musicRequest = -1;
@@ -1151,12 +1156,13 @@ namespace hlrt
             // What has broken: its pieces, each a patch of the thing's
             // own texture, thrown from where it was -- along the blow that
             // broke it, at 200, for one that flies that way.
-            for (int n = 0; n < logic.brokeCount; ++n)
+            auto throwPieces = [&](int index)
             {
                 const LevelView &view = level.view;
-                const LogicRecord &record = view.logic[logic.broke[n]];
+                piecesOut_[index >> 3] = static_cast<std::uint8_t>(piecesOut_[index >> 3] | (1u << (index & 7)));
+                const LogicRecord &record = view.logic[index];
                 if (record.brush == kNoBrush || record.brush >= view.brushCount)
-                    continue;
+                    return;
                 const Brush &brush = view.brushes[record.brush];
                 const Model &model = view.models[brush.model];
                 const fx *pos = brushStates_[record.brush].pos;
@@ -1190,6 +1196,32 @@ namespace hlrt
                 {
                     if (decal.active && decal.brush == static_cast<std::int16_t>(record.brush))
                         decal.active = false;
+                }
+            };
+            // (What was broken when the map began, or a save was laid, has
+            // had its pieces: noted, not thrown.)
+            if (piecesStale_)
+            {
+                for (int i = 0; i < logic.recordCount; ++i)
+                {
+                    if (states_[i].dead && detail::isBreakable(level.view.logic[i]))
+                        piecesOut_[i >> 3] = static_cast<std::uint8_t>(piecesOut_[i >> 3] | (1u << (i & 7)));
+                }
+                piecesStale_ = false;
+            }
+            for (int n = 0; n < logic.brokeCount; ++n)
+                throwPieces(logic.broke[n]);
+            // The list holds four (LogicWorld, whose shape a save keeps): more
+            // broken in one go -- a chain of crates blown up together, a
+            // scripted collapse -- are found among those broken and not yet
+            // thrown.
+            if (logic.brokeCount == 4)
+            {
+                for (int i = 0; i < logic.recordCount; ++i)
+                {
+                    if (states_[i].dead && (piecesOut_[i >> 3] & (1u << (i & 7))) == 0 &&
+                        detail::isBreakable(level.view.logic[i]))
+                        throwPieces(i);
                 }
             }
             logic.brokeCount = 0;
