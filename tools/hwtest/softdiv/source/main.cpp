@@ -12,7 +12,11 @@
 // "bad" is how many answers were wrong: it must be 0. "other" is how many the
 // soft divide left to the library (a quotient of more than 32 bits).
 //
-// A goes round the pages again.
+// The second page is a walk's step, (d << 16) / distance for two d by one
+// distance (shared/HlWalk.hpp): "2 divides" as the game had it, "reciprocal"
+// as it has it now (one reciprocal, then a multiply each).
+//
+// A turns the page.
 
 #include <cstdint>
 #include <cstdio>
@@ -31,6 +35,8 @@ extern "C"
     void __real___aeabi_ldivmod();
     void __real___aeabi_uldivmod();
     extern volatile std::uint32_t softOther;
+    void pairDivide();
+    void pairReciprocal();
 }
 
 namespace
@@ -130,6 +136,36 @@ namespace
         }
     }
 
+    /// A walk's step: two numbers, each at most the distance, by it (a
+    /// distance of 16 units and up). The answers in the first two words.
+    void fillPair()
+    {
+        for (Case &c : cases)
+        {
+            const std::int32_t distance = static_cast<std::int32_t>((next() & 0x7FFFFF) | 0x10000);
+            std::int32_t d[2];
+            for (std::int32_t &v : d)
+            {
+                v = static_cast<std::int32_t>(ofBits(23));
+                while ((v < 0 ? -v : v) > distance)
+                    v /= 2;
+            }
+            c.in[0] = static_cast<std::uint32_t>(d[0]);
+            c.in[1] = static_cast<std::uint32_t>(d[1]);
+            c.in[2] = static_cast<std::uint32_t>(distance);
+            c.in[3] = 0;
+            for (int k = 0; k < 2; ++k)
+            {
+                const std::uint32_t in[4] = {static_cast<std::uint32_t>(d[k]) << 16,
+                                             static_cast<std::uint32_t>(static_cast<std::int64_t>(d[k]) >> 16),
+                                             static_cast<std::uint32_t>(distance), 0};
+                std::uint32_t out[4];
+                probeTime(reinterpret_cast<const void *>(__real___aeabi_ldivmod), in, out);
+                c.want[k] = out[0];
+            }
+        }
+    }
+
     struct Result
     {
         int warmTenths;
@@ -154,14 +190,14 @@ namespace
         return static_cast<int>(total * 10 / kCases);
     }
 
-    Result measure(const void *routine)
+    Result measure(const void *routine, int words = 4)
     {
         Result r = {0, 0, 0};
         const int saved = REG_IME;
         REG_IME = 0;
         runOnce(routine, 0, false, r.bad); // into the cache
-        r.warmTenths = runOnce(routine, 4, false, r.bad) - nullTenths;
-        r.coldTenths = runOnce(routine, 4, true, r.bad) - nullTenths;
+        r.warmTenths = runOnce(routine, words, false, r.bad) - nullTenths;
+        r.coldTenths = runOnce(routine, words, true, r.bad) - nullTenths;
         REG_IME = saved;
         return r;
     }
@@ -230,6 +266,15 @@ int main()
         block("unit (v<<12)/len", fillUnit, false);
         block("anim (n<<12)/span", fillAnim, true);
         block("mix 46/22 bits", fillMix, false);
+        waitForA();
+
+        consoleClear();
+        printf("Walk step (%s)\n", isDSiMode() ? "DSi" : "DS");
+        printf("%-12s  warm   cold  bad\n", "");
+        fillPair();
+        printf("two by one distance\n");
+        show(" 2 divides", measure(reinterpret_cast<const void *>(pairDivide), 2));
+        show(" reciprocal", measure(reinterpret_cast<const void *>(pairReciprocal), 2));
         waitForA();
     }
 }

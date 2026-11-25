@@ -43,7 +43,7 @@ NITROFSDIR	:=
 # Defines passed to all files
 # ---------------------------
 
-DEFINES		:=
+DEFINES		:= -DHL_HW_MATH
 
 # Libraries
 # ---------
