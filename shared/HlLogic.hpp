@@ -2913,6 +2913,11 @@ namespace hldata
             }
         }
 
+        /// A box at rest is looked at again every half second; the first
+        /// time, after a part of it of its own (its record's), from 1 to 466
+        /// ms, so that a map's boxes do not all look on one frame.
+        constexpr std::int32_t boxLookOffset(int index) { return 1 + ((index * 7) & 15) * 31; }
+
         inline void pushableTick(LogicWorld &w, PlayerState &player, int index, int ms)
         {
             const LogicRecord &record = w.records[index];
@@ -2921,9 +2926,12 @@ namespace hldata
                 return;
             const int brush = record.brush;
             fx *v = state.travel;
-            // (Only one that floats is looked at for water: `speed`.)
+            // (Only one that floats is looked at for water: `speed`. And only
+            // once it is known to be more than at rest -- below -- unless the
+            // player is on it or at it now, for whom the water counts first.)
             fx depth = 0;
-            const int wet = record.speed > 0 ? boxInWater(w, brush, &depth) : 0;
+            const bool atIt = player.groundMover == brush || player.touchedMover == brush;
+            int wet = record.speed > 0 && atIt ? boxInWater(w, brush, &depth) : 0;
 
             // The shove: the player's own speed along the floor, added to the
             // box's, up to the fastest it can go. Only from someone with
@@ -2953,14 +2961,38 @@ namespace hldata
             // out: the floor is looked at again only twice a second (it may
             // be something that breaks). state.speed counts down to that.
             // The same for one wedged where it is (3, below).
+            // (A map's boxes all come to rest on its first frame: each first
+            // waits a part of the half second of its own, so that they do not
+            // all look on the same frame from then on -- a dozen looks at
+            // once, every half second, on ba_canal1.)
             if ((state.bits == 1 || state.bits == 3) && v[0] == 0 && v[1] == 0 && v[2] == 0 &&
                 player.touchedMover != brush)
             {
+                if (state.speed == 0)
+                {
+                    state.speed = boxLookOffset(index);
+                    return;
+                }
                 state.speed -= ms;
                 if (state.speed > 0)
                     return;
                 state.speed = 500;
+                // Wedged, and still in the world's solid where it is: only a
+                // touch or a shove can move it (the world does not), so that
+                // is all there is to know -- not its floor and its move
+                // traced again, a box's corners each, for the same answer.
+                // (Wedged against something that moves, it fits the world:
+                // looked at in full.)
+                if (state.bits == 3)
+                {
+                    fx middle[3];
+                    boxMiddle(w, brush, record.extra[3] != 0, middle);
+                    if (!boxFits(w, brush, record.extra[3] != 0, middle))
+                        return;
+                }
             }
+            if (record.speed > 0 && !atIt)
+                wet = boxInWater(w, brush, &depth);
 
             const bool crouched = record.extra[3] != 0;
             const Brush &built = w.brushes[brush];
@@ -3125,7 +3157,9 @@ namespace hldata
                     if (!resting && v[0] == 0 && v[1] == 0 && bump == 0)
                     {
                         state.bits = 3;
-                        state.speed = 500;
+                        // (Its next look 500 ms on -- or, the first time, in
+                        // its own part of the half second.)
+                        state.speed = state.speed > 0 ? 500 : boxLookOffset(index);
                     }
                     v[0] = v[1] = v[2] = 0;
                     break;
