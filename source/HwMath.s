@@ -19,9 +19,8 @@
 @ divider, so a divide may be made anywhere: in an interrupt handler, in a
 @ thread switched away from in the middle of it, with nothing to hold off
 @ and nothing shared to save (tools/irq-divider.py now looks for the root
-@ alone). On a DSi it is also faster than the divider was, 40-45 bus ticks to
-@ 54; on a DS slower, 80-90 to 62 (tools/hwtest/softdiv).
-@ tools/hwtest/divcontract/ holds these routines against the library, on the
+@ alone). tools/hwtest/softdiv times it against the divider and the library,
+@ and tools/hwtest/divcontract holds it to the library's answers, on the
 @ console.
 @
 @ The root is still the square-root unit's, interrupts held off from its
@@ -64,48 +63,17 @@ __wrap___aeabi_ldivmod:
     subs    r12, r12, r5
     sbc     lr, lr, r5
     @ This way if |d| fits 32 bits and the quotient does: |n| < |d| << 32
-    @ (which a |d| of 0 never passes).
+    @ (which a |d| of 0 never passes). Straight on into it if so.
     cmp     lr, #0
-    bne     .Lsigned_library
-    cmp     r7, r12
+    cmpeq   r7, r12
     bhs     .Lsigned_library
-    b       .Lsoft
-.Lsigned_library:
-#ifdef HLDS_PROFILE
-    bl      .Lcount_library
-#endif
-    pop     {r4-r7, lr}
-    ldr     r12, =__real___aeabi_ldivmod
-    bx      r12
-    .size   __wrap___aeabi_ldivmod, . - __wrap___aeabi_ldivmod
-
-@ The same, unsigned.
-    .global __wrap___aeabi_uldivmod
-    .type   __wrap___aeabi_uldivmod, %function
-__wrap___aeabi_uldivmod:
-    push    {r4-r7, lr}
-#ifdef HLDS_PROFILE
-    bl      .Lcount
-#endif
-    mov     r4, #0
-    mov     r5, #0
-    mov     r6, r0
-    mov     r7, r1
-    mov     r12, r2
-    cmp     r3, #0
-    bne     .Lunsigned_library
-    cmp     r7, r12
-    blo     .Lsoft
-.Lunsigned_library:
-#ifdef HLDS_PROFILE
-    bl      .Lcount_library
-#endif
-    pop     {r4-r7, lr}
-    ldr     r12, =__real___aeabi_uldivmod
-    bx      r12
 
 @ |n| (r7:r6) by |d| (r12), the quotient within 32 bits; the signs in r4
 @ (the numerator's) and r5 (the divisor's). r4-r7 and lr are on the stack.
+@ shared/HlSoftDiv.hpp is these steps in C++, word for word: test_softdiv
+@ holds it to the host's divide. (An instruction put between a multiply and
+@ the one that takes its result costs nothing: the result would make it wait
+@ a cycle otherwise.)
 .Lsoft:
     @ A reciprocal of d, of 2^62 / b0 with b0 = d << c its top bit set
     @ (c = d's leading zeros): b0 >> 1 in [2^30, 2^31) multiplied by
@@ -143,26 +111,28 @@ __wrap___aeabi_uldivmod:
     addpl   r3, r3, r3, lsr #8
     @ The hidden Newton step: (2^32 - b) is 2^31 (1 + e).
     rsb     r2, r2, #0
-    umull   lr, r2, r2, r3              @ r2: the reciprocal, 2^61 / b0's scale
-    @ One more: r (2 - r b0), in 2^62 / b0's.
-    mov     r2, r2, lsl #1
+    umull   lr, r2, r2, r3
+    rsb     r0, r0, #30                 @ (the quotient's shift, 30 - c: 0..30)
+    mov     r2, r2, lsl #1              @ r, in 2^62 / b0's scale
+    @ One more: r (2 - r b0).
     umull   r3, lr, r2, r1              @ r b0
+    eor     r5, r5, r4                  @ (the quotient's sign)
     rsbs    r3, r3, #0
     rsc     lr, lr, #0                  @ t = -(r b0), lr:r3
     umull   r1, r3, r2, r3              @ (r * t's low word) >> 32
     mov     r1, #0
     umlal   r3, r1, r2, lr              @ r1: (r t) >> 64, the reciprocal
-    @ The quotient: n r >> (62 - c), never above the true one.
-    umull   r3, lr, r6, r1
     mov     r2, #0
+    @ The quotient: n r >> (62 - c), never above the true one.
+    umull   r3, lr, r6, r1              @ (r3: not wanted)
+    rsb     r3, r0, #32                 @ (a shift by 32 makes 0)
     umlal   lr, r2, r7, r1              @ r2:lr = n r >> 32
-    rsb     r0, r0, #30                 @ 30 - c: 0..30
     mov     lr, lr, lsr r0
-    rsb     r3, r0, #32
-    orr     lr, lr, r2, lsl r3          @ (a shift by 32 makes 0)
+    orr     lr, lr, r2, lsl r3
     @ Put right from the remainder: n - q d, then up a step at a time while
-    @ it is d or more (or down while it is below 0, which test_softdiv has
-    @ never seen).
+    @ it is d or more. (The estimate is never above, so the remainder is
+    @ never below 0: test_softdiv checks that, and the step down is there
+    @ for safety only.)
     umull   r3, r2, lr, r12
     subs    r6, r6, r3
     sbcs    r7, r7, r2
@@ -172,11 +142,10 @@ __wrap___aeabi_uldivmod:
     bhs     .Lup
 .Ldone:
     @ The remainder (r6) with the numerator's sign, the quotient (lr) with
-    @ both's, each made 64 bits.
+    @ both's (r5), each made 64 bits.
     eor     r2, r6, r4
     subs    r2, r2, r4
     sbc     r3, r4, r4
-    eor     r5, r5, r4
     eor     r0, lr, r5
     subs    r0, r0, r5
     sbc     r1, r5, r5
@@ -197,9 +166,42 @@ __wrap___aeabi_uldivmod:
     b       .Ldone
 .Lby_one:
     @ By 1: the numerator itself (it fits 32 bits), nothing left.
+    eor     r5, r5, r4
     mov     lr, r6
     mov     r6, #0
     b       .Ldone
+
+.Lsigned_library:
+#ifdef HLDS_PROFILE
+    bl      .Lcount_library
+#endif
+    pop     {r4-r7, lr}
+    ldr     r12, =__real___aeabi_ldivmod
+    bx      r12
+    .size   __wrap___aeabi_ldivmod, . - __wrap___aeabi_ldivmod
+
+@ The same, unsigned: the soft divide above, both signs 0.
+    .global __wrap___aeabi_uldivmod
+    .type   __wrap___aeabi_uldivmod, %function
+__wrap___aeabi_uldivmod:
+    push    {r4-r7, lr}
+#ifdef HLDS_PROFILE
+    bl      .Lcount
+#endif
+    mov     r4, #0
+    mov     r5, #0
+    mov     r6, r0
+    mov     r7, r1
+    mov     r12, r2
+    cmp     r3, #0
+    cmpeq   r7, r12
+    blo     .Lsoft
+#ifdef HLDS_PROFILE
+    bl      .Lcount_library
+#endif
+    pop     {r4-r7, lr}
+    ldr     r12, =__real___aeabi_uldivmod
+    bx      r12
     .size   __wrap___aeabi_uldivmod, . - __wrap___aeabi_uldivmod
 
 #ifdef HLDS_PROFILE
