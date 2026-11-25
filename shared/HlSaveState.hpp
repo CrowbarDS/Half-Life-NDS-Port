@@ -528,6 +528,7 @@ namespace hldata
             // where they are.)
             if (w.world != nullptr)
                 moverReachAll(*w.world);
+            autoRearm(w);
         }
     } // namespace detail
 
@@ -640,6 +641,9 @@ namespace hldata
             if (logic.records[i].brush != kNoBrush)
                 logicSetBrushActive(logic, logic.records[i].brush, false);
         }
+        // (The map is begun afresh: its multisources are off, and what fired
+        // into one fires again.)
+        detail::autoRearm(logic);
         for (int i = 0; i < actors.recordCount && (i >> 3) < static_cast<int>(map.gone.size()); ++i)
         {
             // Only what can be killed or picked up, whatever the file says.

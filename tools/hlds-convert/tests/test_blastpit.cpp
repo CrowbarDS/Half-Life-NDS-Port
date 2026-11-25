@@ -1,12 +1,14 @@
 // The Blast Pit's machinery, on its own maps (c1a4f): the lift whose button is
 // inside its car, and the bucket that swings across the shaft with the player
-// standing on it.
+// standing on it; and c1a4i's rocket button, unlocked by what is switched on
+// in other maps.
 
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
 #include <string>
 
+#include "HlSaveState.hpp"
 #include "TestGame.hpp"
 
 using namespace hlds;
@@ -15,7 +17,7 @@ using namespace hldstest;
 
 namespace
 {
-    std::unique_ptr<Game> load(const char *dir, const char *map)
+    std::unique_ptr<Game> load(const char *dir, const char *map, Globals *globals = nullptr)
     {
         auto game = std::make_unique<Game>();
         std::string error;
@@ -24,7 +26,7 @@ namespace
             check(false, (std::string(dir) + "/maps/" + map + ".bsp loads").c_str());
             return nullptr;
         }
-        finish(*game, nullptr, dir);
+        finish(*game, globals, dir);
         return game->ok ? std::move(game) : nullptr;
     }
 
@@ -228,6 +230,145 @@ namespace
         std::printf("test_blastpit: c1a4d has %d cyclers, %d turned over\n", cyclers, over);
         check(cyclers == 2 && over == 2, "c1a4d's two bubble pipes are drawn turned over");
     }
+    /// The first record called `name`, of `kind`, brush or not.
+    int anyNamed(const Game &g, const char *name, LogicKind kind)
+    {
+        const int id = nameOf(g, name);
+        for (std::uint32_t i = 0; i < g.view.logicCount && id != 0; ++i)
+        {
+            if (g.view.logic[i].kind == static_cast<std::uint8_t>(kind) && g.view.logic[i].name == id)
+                return static_cast<int>(i);
+        }
+        return -1;
+    }
+
+    void switchOn(Globals &globals)
+    {
+        globals.set(nameHash("c1a4fpower"), kGlobalOn);
+        globals.set(nameHash("c1a4doxy"), kGlobalOn);
+        globals.set(nameHash("c1a4dfuel"), kGlobalOn);
+    }
+
+    /// Whether c1a4i's rocket button lets itself be pressed, and, pressed,
+    /// sets the test fire going.
+    bool rocketFires(Game &g, const char *what)
+    {
+        const int button = recordNamed(g, "init_rocket_fire", LogicKind::Button, true);
+        const int manager = anyNamed(g, "init_rocket_fire", LogicKind::MultiManager);
+        const int master = anyNamed(g, "testfire_ms", LogicKind::MultiSource);
+        check(button >= 0 && manager >= 0 && master >= 0, "c1a4i has its rocket button, manager and master");
+        if (button < 0 || manager < 0 || master < 0)
+            return false;
+        const bool allows = logicMasterAllows(g.logic, button);
+        logicUse(g.logic, g.player, button, -1, kUseSet);
+        run(g, 200);
+        const bool going = g.logic.states[manager].running;
+        std::printf("test_blastpit: %s: testfire_ms bits %x of %d, the button %s, the fire %s\n", what,
+                    static_cast<unsigned>(g.logic.states[master].bits), g.view.logic[master].auxCount,
+                    allows ? "unlocked" : "LOCKED", going ? "going" : "NOT GOING");
+        return allows && going;
+    }
+
+    /// c1a4i's gated trigger_autos (the three into testfire_ms, and those
+    /// that light its dials).
+    template <class F> void eachGatedAuto(Game &g, F f)
+    {
+        for (std::uint32_t i = 0; i < g.view.logicCount; ++i)
+        {
+            if (g.view.logic[i].kind == static_cast<std::uint8_t>(LogicKind::TriggerAuto) &&
+                g.view.logic[i].globalState != 0)
+                f(static_cast<int>(i));
+        }
+    }
+
+    // c1a4i's rocket button has master testfire_ms, whose three inputs are
+    // trigger_autos that fire once, each held back by a global switched on
+    // in another map (c1a4f's power, c1a4d's oxygen and fuel). The player is
+    // in c1a4i before any is on, and comes back after: the trigger_autos
+    // must wait, and fire as the map is come back to (issue #13).
+    void testRocketMaster(const char *dir)
+    {
+        // 1. First visit, nothing on; the state kept as the map is left.
+        std::vector<std::uint8_t> kept, keptOld;
+        {
+            Globals globals;
+            const std::unique_ptr<Game> game = load(dir, "c1a4i", &globals);
+            check(game != nullptr, "c1a4i cooks");
+            if (game == nullptr)
+                return;
+            Game &g = *game;
+            run(g, 1000);
+            int gated = 0, gone = 0;
+            eachGatedAuto(g, [&](int i) {
+                ++gated;
+                gone += g.logic.states[i].dead;
+            });
+            std::printf("test_blastpit: c1a4i, nothing on: %d gated trigger_autos, %d gone\n", gated, gone);
+            check(gated >= 3 && gone == 0, "nothing on: c1a4i's gated trigger_autos wait, unfired");
+            check(!logicMasterAllows(g.logic, recordNamed(g, "init_rocket_fire", LogicKind::Button, true)),
+                  "nothing on: the rocket button is locked");
+            kept = takeMapState(g.logic, g.player, g.view.header->crc32);
+            // (As v0.4.2 left them: gone, unfired.)
+            eachGatedAuto(g, [&](int i) { g.logic.states[i].dead = true; });
+            keptOld = takeMapState(g.logic, g.player, g.view.header->crc32);
+        }
+        // 2. Come back with all three on.
+        for (int old = 0; old < 2; ++old)
+        {
+            Globals globals;
+            switchOn(globals);
+            const std::unique_ptr<Game> game = load(dir, "c1a4i", &globals);
+            if (game == nullptr)
+                return;
+            Game &g = *game;
+            const std::vector<std::uint8_t> &bytes = old ? keptOld : kept;
+            const bool laid = layMapState(bytes.data(), bytes.size(), g.logic, g.player, g.view.header->crc32);
+            check(laid, "c1a4i's state lays back");
+            run(g, 1000);
+            check(rocketFires(g, old ? "come back, an old save" : "come back"),
+                  old ? "come back to with all on, a save from before unlocks the rocket button too"
+                      : "come back to with all on, the rocket button is unlocked and fires");
+        }
+        // 3. All on at the first visit: fired then, laid back, not fired
+        //    again (a multisource's input flips at each use).
+        {
+            Globals globals;
+            switchOn(globals);
+            std::vector<std::uint8_t> fired;
+            SaveMapState slot;
+            {
+                const std::unique_ptr<Game> game = load(dir, "c1a4i", &globals);
+                if (game == nullptr)
+                    return;
+                Game &g = *game;
+                run(g, 1000);
+                fired = takeMapState(g.logic, g.player, g.view.header->crc32);
+                mapRemember(slot, g.logic, g.actors);
+            }
+            {
+                const std::unique_ptr<Game> game = load(dir, "c1a4i", &globals);
+                if (game == nullptr)
+                    return;
+                Game &g = *game;
+                layMapState(fired.data(), fired.size(), g.logic, g.player, g.view.header->crc32);
+                run(g, 1000);
+                check(rocketFires(g, "fired at the first visit, laid back"),
+                      "fired at the first visit and laid back, the rocket button stays unlocked");
+            }
+            // ... and with no state kept, only what was used up (the map
+            // begun afresh, its multisources all off).
+            {
+                const std::unique_ptr<Game> game = load(dir, "c1a4i", &globals);
+                if (game == nullptr)
+                    return;
+                Game &g = *game;
+                mapRestore(slot, g.logic, g.actors);
+                run(g, 1000);
+                check(rocketFires(g, "begun afresh over what was used up"),
+                      "begun afresh over what was used up, the rocket button is unlocked");
+            }
+        }
+    }
 } // namespace
 
 int main()
@@ -241,6 +382,7 @@ int main()
     testLift(dir);
     testBucket(dir);
     testActors(dir);
+    testRocketMaster(dir);
     if (g_failures == 0)
         std::printf("test_blastpit: ok\n");
     return g_failures == 0 ? 0 : 1;

@@ -2029,12 +2029,67 @@ namespace hldata
             case LogicKind::Sentence:
                 return true;
             default:
-                // (A trigger_auto marked so in a map cooked since: one
-                // that is not fires again on every visit, as in the game.)
+                // (A trigger_auto marked so in a map cooked since, once it
+                // has fired: one that is not fires again on every visit, as
+                // in the game, and so does one whose global was not on.)
                 return (record.flags & kLogicFireOnce) != 0 &&
                        (record.kind == static_cast<std::uint8_t>(LogicKind::TriggerRelay) ||
                         record.kind == static_cast<std::uint8_t>(LogicKind::TriggerAuto) ||
                         record.kind == static_cast<std::uint8_t>(LogicKind::Message));
+            }
+        }
+
+        /// A trigger_auto gone that never fired: one that fires once, held
+        /// back by a global, every multisource it is aimed at still without
+        /// its input. (Builds before let such a one die unfired, and their
+        /// saves keep it so -- c1a4i's rocket button locked for good; and a
+        /// map begun afresh, come back to, has its multisources all off.)
+        inline bool autoUnfired(const LogicWorld &w, int index)
+        {
+            const LogicRecord &record = w.records[index];
+            if (record.kind != static_cast<std::uint8_t>(LogicKind::TriggerAuto) || !w.states[index].dead ||
+                !(record.flags & kLogicFireOnce) || record.globalState == 0 || record.killTarget != 0)
+                return false;
+            const std::uint16_t name = logicTargetOf(w, index);
+            if (name == 0)
+                return false;
+            bool any = false;
+            for (int m = 0; m < w.recordCount; ++m)
+            {
+                const LogicRecord &target = w.records[m];
+                if (target.name != name)
+                    continue;
+                if (target.kind != static_cast<std::uint8_t>(LogicKind::MultiSource))
+                    return false;
+                int input = -1;
+                for (int a = 0; a < target.auxCount && a < 32; ++a)
+                {
+                    if (w.aux[target.firstAux + a].target == index)
+                        input = a;
+                }
+                if (input < 0 || (w.states[m].bits & (1u << input)) != 0)
+                    return false;
+                any = true;
+            }
+            return any;
+        }
+
+        /// The trigger_autos held back by a global, of a map come back to
+        /// (or of a save laid back), look again a tenth of a second in, as
+        /// the game's do each time a map is restored; those gone unfired
+        /// come back first. (Those held back by nothing fired as the map
+        /// first began, and are left as they are.)
+        inline void autoRearm(LogicWorld &w)
+        {
+            for (int i = 0; i < w.recordCount; ++i)
+            {
+                if (w.records[i].kind != static_cast<std::uint8_t>(LogicKind::TriggerAuto) ||
+                    w.records[i].globalState == 0)
+                    continue;
+                if (autoUnfired(w, i))
+                    w.states[i].dead = false;
+                if (!w.states[i].dead && w.states[i].timer < 0)
+                    w.states[i].timer = 100;
             }
         }
     } // namespace detail
@@ -6016,9 +6071,17 @@ namespace hldata
                             detail::moverStart(w, i, MoveState::GoingDown);
                         break;
                     case LogicKind::TriggerAuto:
+                        // One held back by a global is gone only once it has
+                        // fired, and only if it fires once: while its global
+                        // is not on it waits for the next time the map is
+                        // come into (c1a4i's rocket button, unlocked by what
+                        // is switched on elsewhere).
                         if (logicGlobalAllows(w, record))
+                        {
                             logicUseTargets(w, player, i, record.useType, 0);
-                        state.dead = true;
+                            if ((record.flags & kLogicFireOnce) || record.globalState == 0)
+                                state.dead = true;
+                        }
                         break;
                     case LogicKind::MultiManager:
                         state.running = false;
