@@ -4,6 +4,7 @@
 #include "Global.hpp"
 #include "Guard.hpp"
 #include "HlFog.hpp"
+#include "HlView.hpp"
 #include "Settings.hpp"
 
 
@@ -143,7 +144,8 @@ namespace hlrt
 
     void Camera::setFov(int across)
     {
-        across = across < 60 ? 60 : (across > 110 ? 110 : across);
+        across = across < hldata::kViewFovLeast ? hldata::kViewFovLeast
+                                                : (across > hldata::kViewFovMost ? hldata::kViewFovMost : across);
         fovAcross = across;
         // The height of it on a 4:3 screen (which a wide one keeps), what is
         // seen across at the screen's shape; and the planes, two degrees

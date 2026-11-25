@@ -39,7 +39,9 @@ namespace hldata
     inline constexpr char kModelMagic[4] = {'H', 'L', 'M', 'D'};
     /// 8: a talking model's mouth (its controller 4, kControlMouth) is kept.
     /// A model of 7 is read as well: it has none, and its mouth stays shut.
-    inline constexpr std::uint16_t kModelVersion = 8;
+    /// 9: a first-person model may say how many of its polygons each clip
+    /// can show at once (kModelScreenCounts); one of 7 or 8 says nothing.
+    inline constexpr std::uint16_t kModelVersion = 9;
     inline constexpr std::uint16_t kModelMinVersion = 7;
     /// A model comes at up to this many levels of detail: 0 the finest the
     /// file has, each after it of fewer triangles. A level's error is how
@@ -108,6 +110,17 @@ namespace hldata
     /// clip's keys from there as it is played (source/data/KeyCache.hpp).
     /// The file is otherwise the same, and its checksum is of what it holds.
     inline constexpr std::uint16_t kModelKeysApart = 1;
+    /// A first-person model (v_*) has what is never on the screen left out
+    /// (the converter's ViewModelTrim), and says, in one more section after
+    /// the rest -- two 32-bit words for each clip -- the most polygons of it
+    /// the hardware can keep at once while the clip plays, at any of its
+    /// levels; and in the second, on the clip's last frame alone, where one
+    /// that does not loop stays once it is done (the crowbar's draw: the
+    /// game gives it no idle). Each in the low half at the usual view
+    /// (kViewFovNarrow or less, on 4:3), in the high half at the widest.
+    /// What the pass's budget counts for it (ModelDraw::plan), and what a
+    /// profiling build holds the hardware's count to (perf.txt).
+    inline constexpr std::uint16_t kModelScreenCounts = 2;
     inline constexpr char kModelKeysFile[] = ".hmk";
 
     /// One body part: how an entity's "body" number picks a sub-model of it,
@@ -342,6 +355,18 @@ namespace hldata
         const ModelControlAxis *controlAxes = nullptr; ///< [clip * controllerCount + controller]
         const ModelHitbox *hitboxes = nullptr;
         const ModelAttachment *attachments = nullptr;
+        const std::uint32_t *screenCounts = nullptr; ///< two per clip (kModelScreenCounts); none: not said
+
+        /// What of the model clip `clip` can show at once, at the usual view
+        /// or the widest -- on its last frame alone, `ended`; 0 when the
+        /// model does not say.
+        int screenPolygons(int clip, bool wide, bool ended = false) const
+        {
+            if (screenCounts == nullptr || clip < 0 || clip >= header->clipCount)
+                return 0;
+            const std::uint32_t counts = screenCounts[clip * 2 + (ended ? 1 : 0)];
+            return static_cast<int>(wide ? counts >> 16 : counts & 0xFFFF);
+        }
 
         /// False for anything that is not a whole, consistent model of this
         /// version.
@@ -386,7 +411,10 @@ namespace hldata
                 take(h->hitboxCount * sizeof(ModelHitbox)));
             const auto *att = reinterpret_cast<const ModelAttachment *>(
                 take(h->attachmentCount * sizeof(ModelAttachment)));
-            if (at != size || (h->flags & ~kModelKeysApart) != 0)
+            const auto *screen = (h->flags & kModelScreenCounts) != 0
+                                     ? reinterpret_cast<const std::uint32_t *>(take(h->clipCount * 8ull))
+                                     : nullptr;
+            if (at != size || (h->flags & ~(kModelKeysApart | kModelScreenCounts)) != 0)
                 return false;
             for (int i = 0; i < h->attachmentCount; ++i)
             {
@@ -457,6 +485,7 @@ namespace hldata
             controlAxes = ca;
             hitboxes = hb;
             attachments = att;
+            screenCounts = screen;
             return true;
         }
 

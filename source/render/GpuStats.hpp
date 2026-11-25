@@ -123,6 +123,23 @@ namespace hlrt
                 map_.fullVerticesMost = hwVertices > map_.fullVerticesMost ? hwVertices : map_.fullVerticesMost;
             }
         }
+        /// What is in hand: as counted, and as the hardware kept it (-1: not
+        /// known). Kept more than counted is a count too low -- or a
+        /// triangle the converter left out that is seen (ViewModelTrim):
+        /// how many passes, and by how much at most.
+        void held(int counted, int kept)
+        {
+            if (kept < 0)
+                return;
+            ++map_.heldPasses;
+            map_.heldCountedSum += static_cast<std::uint32_t>(counted);
+            map_.heldKeptSum += static_cast<std::uint32_t>(kept);
+            if (kept > counted)
+            {
+                ++map_.heldOver;
+                map_.heldOverMost = kept - counted > map_.heldOverMost ? kept - counted : map_.heldOverMost;
+            }
+        }
         /// What the view's planes, and the box test (HLDS_BOX_TEST), left
         /// out of the world this pass (the box test's in polygons too: what
         /// a tighter test of a surface could save); and whether the box
@@ -208,6 +225,9 @@ namespace hlrt
             std::uint32_t fullPasses = 0, fullGapSum = 0, fullCutSum = 0;
             std::uint32_t worldGapSum = 0, fullWorldGapSum = 0;
             int worldGapMost = 0;
+            // (held(): over the passes it was measured.)
+            std::uint32_t heldPasses = 0, heldCountedSum = 0, heldKeptSum = 0, heldOver = 0;
+            int heldOverMost = 0;
         };
         Frame last_;
         Totals map_;

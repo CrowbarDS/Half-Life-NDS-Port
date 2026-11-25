@@ -33,6 +33,26 @@ namespace hldata
     };
 
     inline constexpr fx kViewDegree = kFxOne;
+
+    /// The bob, units (Q12): at most this far up, and this far down.
+    inline constexpr fx kViewBobMost = fxFromInt(4);
+    inline constexpr fx kViewBobLeast = -fxFromInt(7);
+    /// The field of view across, on a 4:3 screen (the fov command's), and
+    /// the widest screen it is shown on: 16:10, as high as 4:3 and wider.
+    inline constexpr int kViewFovLeast = 60, kViewFovMost = 110;
+    inline constexpr int kViewWideAcross = 8, kViewWideHigh = 5;
+    /// The usual view: a field of view of at most this across, on 4:3. A
+    /// first-person model says how much of it can be on the screen in it,
+    /// and in the widest (kModelScreenCounts).
+    inline constexpr int kViewFovNarrow = 90;
+    /// THE FIRST-PERSON MODEL is drawn at the eye, turned as the view is
+    /// (ModelDraw::drawHeld): the kick, the lean and a dead player's roll
+    /// turn it with the picture, and the bob moves the eye and it together.
+    /// The bob also pushes it forward, by four tenths of the bob: at most
+    /// this far (units). What of it the widest view never shows, in any
+    /// frame of any of its sequences, is left out when it is cooked (the
+    /// converter's ViewModelTrim).
+    inline constexpr double kViewHeldPushMost = 0.4 * static_cast<double>(kViewBobMost) / kFxOne;
     /// Degrees (Q12) as the 65536ths of a turn the camera is turned in.
     inline constexpr int viewTurns(fx degrees)
     {
@@ -171,7 +191,7 @@ namespace hldata
         const fx most = speed / 100;
         // (Each fits 32 bits before its divide, which is then a multiply.)
         fx bob = (most * 3) / 10 + static_cast<fx>((static_cast<std::int64_t>(most) * 7 * sine) >> 12) / 10;
-        bob = bob > fxFromInt(4) ? fxFromInt(4) : (bob < -fxFromInt(7) ? -fxFromInt(7) : bob);
+        bob = bob > kViewBobMost ? kViewBobMost : (bob < kViewBobLeast ? kViewBobLeast : bob);
         view.bob = onGround ? bob : view.bob - view.bob / 4;
         // The lean: two degrees at 200 units a second sideways, and no more.
         const fx fast = fxFromInt(200);

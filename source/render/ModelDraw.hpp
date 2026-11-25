@@ -86,6 +86,9 @@ namespace hlrt
         /// at rest, seen from the eye): `box` is left, top, right, bottom,
         /// in pixels. False when it is not drawn.
         bool heldBox(int *box) const;
+        /// What the pass's budget counted for what is in hand (0: nothing
+        /// drawn): what the hardware keeps of it is held to it (perf.txt).
+        int heldCounted() const { return heldCounted_; }
         /// Where the end of what is in hand is (its model's attachment
         /// `which`), in the world, as drawHeld draws it: a beam starts
         /// there. False when it is not drawn, or has no such.
@@ -182,6 +185,7 @@ namespace hlrt
         bool strained_ = false;
         bool handsCut_ = false;
         bool heldDrawn_ = false;
+        int heldCounted_ = 0;
     };
 
     extern ModelDraw modelDraw;

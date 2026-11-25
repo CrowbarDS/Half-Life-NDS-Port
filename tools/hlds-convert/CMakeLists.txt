@@ -60,6 +60,7 @@ add_library(hlds_convert_core STATIC
     core/src/MdlFile.cpp
     core/src/ModelCook.cpp
     core/src/ModelMesh.cpp
+    core/src/ViewModelTrim.cpp
     core/src/NodGraph.cpp
     core/src/NpacWriter.cpp
     core/src/Pack.cpp
@@ -223,6 +224,7 @@ if(HLDS_BUILD_TESTS)
             test_graph
             test_pack
             test_mdl
+            test_viewmodel
             test_mesh
             test_movers
             test_physics

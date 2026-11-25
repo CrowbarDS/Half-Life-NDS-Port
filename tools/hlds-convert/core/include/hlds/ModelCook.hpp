@@ -78,6 +78,11 @@ namespace hlds
         std::vector<hldata::ModelControlAxis> controlAxes;
         std::vector<hldata::ModelHitbox> hitboxes;
         std::vector<hldata::ModelAttachment> attachments;
+        /// A first-person model's most polygons on the screen at once, two
+        /// per clip (all of it, then its last frame), at the usual view (low
+        /// half) and the widest (high half): kModelScreenCounts. Empty for
+        /// any other.
+        std::vector<std::uint32_t> screenCounts;
         /// The skin, before it is encoded: empty for a model with no textures.
         RgbaImage atlas;
         /// The same skin as 256 colours, for a model a player's colours are
@@ -98,7 +103,8 @@ namespace hlds
 
     struct ModelCookReport
     {
-        int sourceTriangles = 0; ///< body 0, as the model had them
+        int sourceTriangles = 0; ///< body 0, as the model had them (a first-person one's, trimmed)
+        int untrimmedTriangles = 0; ///< ... before what is never on the screen was left out
         int triangles = 0;     ///< body 0, as cooked, at its finest level
         /// Body 0 at each level of detail the file has, finest first.
         struct Level

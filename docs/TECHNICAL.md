@@ -2192,6 +2192,41 @@ any finer test of a whole surface could save. `perf.txt`'s `time:` line
 has `tree`, the walk of the tree alone, without the planning of models,
 effects and brushes that `walk` also holds.
 
+**The weapon in hand.** Most of that gap, measured, was not the world's at
+all: in melonDS at c1a0 the world's share was 12 to 46 polygons a pass,
+and the crowbar in hand sent 329 polygons of which the hardware kept 48.
+The game's weapons are modelled with the arms that hold them, mostly
+below the picture. The converter now does two things with a first-person
+model (`ViewModelTrim`, `shared/HlView.hpp`):
+
+- It leaves out every triangle the widest view never shows (the fov
+  command's 110 on a 16:10 screen) in any frame of any sequence, with
+  4 degrees more on every edge and the bob's forward push and 2 units
+  more. The model is drawn at the eye and turned as the view is, so the
+  kick, the lean and the bob of the eye move it with the picture. What is
+  left is thinned as before. This saves little: a swing brings the whole
+  arm up (the crowbar keeps all 329), and only the 9mmAR and the hornet
+  gun lose more than a few.
+- It counts, for each clip, the most of the model on the screen in any of
+  the clip's frames, at any level, in the usual view (90 or less on 4:3)
+  and the widest (`kModelScreenCounts`, model version 9). The pass's budget
+  counts the clip in hand's at the view there is (`ModelDraw::plan`). A
+  clip that does not loop, once done, stays on its last frame: the game
+  gives the crowbar no idle, so it rests at the end of its draw. Each clip
+  therefore also says what that last frame shows, and that is what is
+  counted once the clip is over. The crowbar at rest counts 48 and not
+  329. At rest at the usual view, the gauss, the grenade, the snark and the
+  .357 count 90 to 130 fewer than before. The port never blends from one
+  clip into the next, so the one clip's count is the whole of it.
+
+A profiling build counts what the hardware keeps of the weapon in hand
+(`held-kept-mean`, beside `held-counted-mean`). `held-over` is the passes
+it kept more than was counted, and `held-over-most` the most by which it
+did: either a count too low or a triangle left out that is seen. Both
+should be 0. `test_viewmodel` holds the counts to what each clip shows
+with no margin, halfway between frames too, and prints each weapon's
+polygons before and after.
+
 **The governor's climb and the pressure's wait** were tried faster, and
 are left as they were, as named numbers to try again on a console: the
 climb towards what was counted and not used (`kBudgetClimb`, 10 polygons a

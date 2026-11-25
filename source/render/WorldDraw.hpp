@@ -70,6 +70,11 @@ namespace hlrt
         /// other).
         int worldPolygons = 0;
         int hwWorldPolygons = -1;
+        /// ... and what is in hand: as the budget counted it (its clip's
+        /// count of what it shows: kModelScreenCounts), and as the hardware
+        /// kept it (a profiling build's; -1 in any other).
+        int heldCounted = 0;
+        int hwHeldPolygons = -1;
         int brushes = 0;        ///< brush entities sent
         bool budgetHit = false; ///< the walk stopped early
         /// A brush entity had no room. (It does not bring the fog in: what is

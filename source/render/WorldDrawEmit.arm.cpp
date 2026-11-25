@@ -287,6 +287,9 @@ namespace hlrt
             stats_.polygons += modelPolygons_;
             stats_.vertices += modelVertices_;
         }
+#ifdef HLDS_PROFILE
+        int hwBeforeHeld = 0;
+#endif
         {
             const DebugLog::Perf::Scope scope(DebugLog::Section::Emit);
 #ifdef HLDS_PROFILE
@@ -314,6 +317,14 @@ namespace hlrt
             stats_.modelsCut = 0;
             modelDraw.draw(stats_.models, stats_.modelsCut);
             drawBrushes(); // (and the effects, in among the glass)
+#ifdef HLDS_PROFILE
+            // (What the hardware keeps of what is in hand: its count after
+            // it, less before.)
+            while (GFX_STATUS & BIT(27))
+            {
+            }
+            hwBeforeHeld = GFX_POLYGON_RAM_USAGE;
+#endif
             modelDraw.drawHeld();
         }
 
@@ -325,5 +336,9 @@ namespace hlrt
         }
         stats_.hwPolygons = GFX_POLYGON_RAM_USAGE;
         stats_.hwVertices = GFX_VERTEX_RAM_USAGE;
+#ifdef HLDS_PROFILE
+        stats_.hwHeldPolygons = stats_.hwPolygons - hwBeforeHeld;
+        stats_.heldCounted = modelDraw.heldCounted();
+#endif
     }
 } // namespace hlrt

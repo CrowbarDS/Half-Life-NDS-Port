@@ -110,7 +110,7 @@ namespace hlrt
     {
         if (!global.hasFat || map_.frames == 0)
             return false;
-        const std::uint32_t full = map_.fullPasses;
+        const std::uint32_t full = map_.fullPasses, held = map_.heldPasses;
         std::FILE *file = std::fopen(global.dataPath("perf.txt").c_str(), "a");
         if (file == nullptr)
             return false;
@@ -121,7 +121,8 @@ namespace hlrt
                      "brushes-dropped-most %d brushes-overflow %lu enemies-dropped %lu heap-least %luK "
                      "excess-poly-most %d excess-poly-95 %d excess-vert-most %d excess-vert-95 %d full-poly-most %d full-vert-most %d far-poly-mean %lu sphere-out-mean %lu box-out-mean %lu box-out-poly-mean %lu box-skipped %lu "
                      "gap-poly-mean %lu gap-poly-95 %d gap-poly-most %d full-passes %lu full-gap-mean %lu full-cut-poly-mean %lu "
-                     "world-gap-mean %lu world-gap-most %d full-world-gap-mean %lu\n",
+                     "world-gap-mean %lu world-gap-most %d full-world-gap-mean %lu "
+                     "held-counted-mean %lu held-kept-mean %lu held-over %lu held-over-most %d\n",
                      map, global.isDSi ? "DSi" : "DS", mode,
                      static_cast<unsigned long>(map_.frames), static_cast<unsigned long>(map_.slow),
                      map_.vblanks, map_.polygons, map_.vertices, map_.lowLines, map_.underflows,
@@ -151,7 +152,10 @@ namespace hlrt
                      static_cast<unsigned long>(full == 0 ? 0 : map_.fullGapSum / full),
                      static_cast<unsigned long>(full == 0 ? 0 : map_.fullCutSum / full),
                      static_cast<unsigned long>(map_.worldGapSum / map_.frames), map_.worldGapMost,
-                     static_cast<unsigned long>(full == 0 ? 0 : map_.fullWorldGapSum / full));
+                     static_cast<unsigned long>(full == 0 ? 0 : map_.fullWorldGapSum / full),
+                     static_cast<unsigned long>(held == 0 ? 0 : map_.heldCountedSum / held),
+                     static_cast<unsigned long>(held == 0 ? 0 : map_.heldKeptSum / held),
+                     static_cast<unsigned long>(map_.heldOver), map_.heldOverMost);
         return std::fclose(file) == 0;
     }
 } // namespace hlrt

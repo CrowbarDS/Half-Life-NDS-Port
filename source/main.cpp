@@ -3139,6 +3139,7 @@ int main(int argc, char *argv[])
                                         stats.budgetHit, stats.farPolygons, stats.cutPolygons, stats.worldPolygons,
                                         stats.hwWorldPolygons);
                 hlrt::gpuStats.culls(stats.sphereOut, stats.boxOut, stats.boxOutPolygons, stats.boxSkipped);
+                hlrt::gpuStats.held(stats.heldCounted, stats.hwHeldPolygons);
                 hlrt::gpuStats.world(stats.polygons, stats.surfacesCut, stats.dropped, stats.brushesDropped, stats.brushesOverflow,
                                      static_cast<std::uint32_t>(global.heapHeadroom()));
                 lastPass = now;

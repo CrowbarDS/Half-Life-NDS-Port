@@ -685,6 +685,23 @@ namespace hlrt
                 inHand.polygons[level] += held->batches[b].polygons;
                 inHand.vertices[level] += held->batches[b].vertices;
             }
+            // What of it the hardware can keep (kModelScreenCounts): the arm
+            // a swing brings up is below the picture at rest -- the most
+            // its clip shows at this view, at any level (one done and held
+            // on its last frame: that frame's); the vertices in the same
+            // share. (Not said: all of it.)
+            const int heldClip = game.held.clip;
+            const bool ended = heldClip >= 0 && heldClip < held->header->clipCount &&
+                               !(held->clips[heldClip].flags & kClipLoops) &&
+                               game.held.frame >= (held->clips[heldClip].frameCount - 1u) << 8;
+            const int shows = held->screenPolygons(heldClip, !camera.usualView(), ended);
+            for (int l = 0; shows > 0 && l < kDrawLevels; ++l)
+            {
+                if (inHand.polygons[l] <= shows)
+                    continue;
+                inHand.vertices[l] = static_cast<std::uint16_t>(inHand.vertices[l] * shows / inHand.polygons[l]);
+                inHand.polygons[l] = static_cast<std::uint16_t>(shows);
+            }
             // (At its finest, unless that is the game's own mesh and the
             // frame is already too full: then the level under it.)
             heldPressed_ = pressure > 0 ? (heldPressed_ < 0 ? 1 : heldPressed_ + 1) : (heldPressed_ > 0 ? -1 : heldPressed_ - 1);
@@ -792,6 +809,7 @@ namespace hlrt
                                            isDSiMode() ? kPickupPolygonsDsi : kPickupPolygonsDs);
         heldLevel_ = chosen.heldLevel;
         heldDrawn_ = held != nullptr;
+        heldCounted_ = held != nullptr && heldLevel_ < kDrawLevels ? inHand.polygons[heldLevel_] : 0;
         nearestSlot_ = chosen.nearest >= 0 && chosen.nearest < looked ? slotOf(seen[chosen.nearest]) : -1;
         polygons = chosen.polygons;
         vertices = chosen.vertices;

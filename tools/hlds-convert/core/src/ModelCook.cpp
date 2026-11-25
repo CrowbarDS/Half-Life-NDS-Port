@@ -2,6 +2,7 @@
 
 #include "HlRemap.hpp"
 #include "hlds/ModelMesh.hpp"
+#include "hlds/ViewModelTrim.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -635,12 +636,31 @@ namespace hlds
         return true;
     }
 
-    bool cookModel(const MdlFile &mdl, const std::vector<std::string> &clipNames, CookedModel &out,
+    bool cookModel(const MdlFile &source, const std::vector<std::string> &clipNames, CookedModel &out,
                    ModelCookReport &report, std::string &error, int skinTexels, bool full,
                    const ModelLean &lean)
     {
         out = CookedModel();
         report = ModelCookReport();
+        // A first-person model without what the screen never shows of it
+        // (ViewModelTrim.hpp); every other as it is.
+        bool viewModel = isViewModel(source.name);
+        MdlFile trimmed;
+        std::vector<std::vector<std::array<double, 12>>> viewPosesOf;
+        const ViewCone view = widestView();
+        int untrimmedTriangles = 0;
+        if (viewModel)
+        {
+            trimmed = source;
+            if (!viewPoses(trimmed, viewPosesOf, error))
+                return false;
+            int kept = 0;
+            untrimmedTriangles = trimViewModel(trimmed, viewPosesOf, view, kept);
+            // (One never on the screen at all is not held as the game's
+            // weapons are: kept whole.)
+            viewModel = kept > 0;
+        }
+        const MdlFile &mdl = viewModel ? trimmed : source;
         if (mdl.bones.empty() || mdl.bones.size() > static_cast<std::size_t>(kModelMaxBones))
         {
             error = mdl.name + " has more bones than a cooked model holds";
@@ -693,9 +713,16 @@ namespace hlds
         for (const MdlSubModel *model : mdl.selectBody(0))
             sourceTriangles += model->triangleCount();
         report.sourceTriangles = sourceTriangles;
-        const int allowed = sourceTriangles > kModelTriangleTarget
-                                ? std::max(kModelTriangleTarget, sourceTriangles / 4)
-                                : sourceTriangles;
+        // (A trimmed first-person model is thinned as it was before: what is
+        // left of it looks as it did -- the same share of it kept.)
+        const int thinnedFrom = viewModel ? untrimmedTriangles : sourceTriangles;
+        const int allowedOf = thinnedFrom > kModelTriangleTarget ? std::max(kModelTriangleTarget, thinnedFrom / 4)
+                                                                 : thinnedFrom;
+        const int allowed = viewModel && thinnedFrom > 0
+                                ? static_cast<int>((static_cast<long>(allowedOf) * sourceTriangles + thinnedFrom - 1) /
+                                                   thinnedFrom)
+                                : allowedOf;
+        report.untrimmedTriangles = viewModel ? untrimmedTriangles : sourceTriangles;
         std::vector<int> levelTargets = {allowed};
         if (sourceTriangles > kModelLevelLeast * 2 && !lean.oneLevel)
         {
@@ -776,6 +803,10 @@ namespace hlds
 
         // ---- the meshes
         int worstPolygons = 0;
+        // (Each level's meshes, by part, for a first-person model's counts
+        // of what is on the screen: below, with the clips.)
+        std::vector<std::vector<std::vector<const MdlSubModel *>>> meshesAt(
+            levelError.size(), std::vector<std::vector<const MdlSubModel *>>(mdl.bodyParts.size()));
         for (std::size_t p = 0; p < mdl.bodyParts.size(); ++p)
         {
             const MdlBodyPart &part = mdl.bodyParts[p];
@@ -819,6 +850,7 @@ namespace hlds
                         polygons += out.batches[b].polygons;
                     if (level == 0)
                         most = std::max(most, polygons);
+                    meshesAt[level][p].push_back(&cut);
                 }
             }
             worstPolygons += most;
@@ -906,6 +938,7 @@ namespace hlds
                 wanted.push_back(index);
         }
         std::vector<std::vector<double>> clipFirstZ;
+        std::vector<int> clipSequence; ///< each clip's sequence, whose frames it plays
         for (const int index : wanted)
         {
             const MdlSequence &seq = mdl.sequences[index];
@@ -1137,6 +1170,7 @@ namespace hlds
             }
             report.sourceFrames += frameCount * boneCount;
             out.clips.push_back(clip);
+            clipSequence.push_back(index);
         }
         for (const auto &[label, base] : aliases)
         {
@@ -1162,8 +1196,57 @@ namespace hlds
             clip.eventCount = 0;
             clipFirstZ.push_back(clipFirstZ[baseClip]);
             out.clips.push_back(clip);
+            clipSequence.push_back(from); // (its frames are the base's)
         }
         report.clips = static_cast<int>(out.clips.size());
+
+        // ---- a first-person model's clips: the most of it each can show at
+        // once, at any level (each part's worst choice, added up), at the
+        // usual view and the widest (kModelScreenCounts)
+        if (viewModel)
+        {
+            const ViewCone views[2] = {narrowView(), widestView()};
+            auto countOf = [&](const std::vector<std::vector<std::array<double, 12>>> &poses)
+            {
+                std::uint32_t counts = 0;
+                for (int w = 0; w < 2; ++w)
+                {
+                    int most = 0;
+                    for (const auto &parts : meshesAt)
+                    {
+                        int sum = 0;
+                        for (const auto &models : parts)
+                        {
+                            int partMost = 0;
+                            for (const MdlSubModel *model : models)
+                                partMost = std::max(partMost, screenMost(*model, poses, views[w]));
+                            sum += partMost;
+                        }
+                        most = std::max(most, sum);
+                    }
+                    // (Never nothing: 0 says "not said".)
+                    counts |= static_cast<std::uint32_t>(std::clamp(most, 1, 65535)) << (16 * w);
+                }
+                return counts;
+            };
+            std::vector<std::vector<std::array<double, 12>>> clipPoses, lastPoses;
+            for (std::size_t c = 0; c < clipSequence.size(); ++c)
+            {
+                if (!sequencePoses(mdl, clipSequence[c], clipPoses, error))
+                    return false;
+                // (Its last frame, of each blend: as many frames each as the
+                // clip has, or as the sequence has -- the poses are the
+                // sequence's.)
+                const std::size_t frames = static_cast<std::size_t>(
+                    mdl.sequences[static_cast<std::size_t>(clipSequence[c])].frameCount);
+                const std::size_t shown = std::max<std::size_t>(1, out.clips[c].frameCount);
+                lastPoses.clear();
+                for (std::size_t at = 0; frames != 0 && at + frames <= clipPoses.size(); at += frames)
+                    lastPoses.push_back(clipPoses[at + std::min(shown, frames) - 1]);
+                out.screenCounts.push_back(countOf(clipPoses));
+                out.screenCounts.push_back(lastPoses.empty() ? out.screenCounts.back() : countOf(lastPoses));
+            }
+        }
         report.keys = static_cast<int>(out.keys.size());
 
         // ---- what the game sets by hand, and what a shot is tried against
@@ -1319,8 +1402,13 @@ namespace hlds
         append(model.controlAxes.data(), model.controlAxes.size() * sizeof(ModelControlAxis));
         append(model.hitboxes.data(), model.hitboxes.size() * sizeof(ModelHitbox));
         append(model.attachments.data(), model.attachments.size() * sizeof(ModelAttachment));
-
         ModelHeader header = model.header;
+        if (!model.screenCounts.empty())
+        {
+            append(model.screenCounts.data(), model.screenCounts.size() * 4);
+            header.flags = static_cast<std::uint16_t>(header.flags | kModelScreenCounts);
+        }
+
         header.fileSize = static_cast<std::uint32_t>(out.size());
         header.crc32 = crc32(out.data() + sizeof(ModelHeader),
                              static_cast<std::uint32_t>(out.size() - sizeof(ModelHeader)));

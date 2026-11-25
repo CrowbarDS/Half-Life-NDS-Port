@@ -21,6 +21,7 @@
 
 #include "HlCull.hpp"
 #include "HlFixed.hpp"
+#include "HlView.hpp"
 
 namespace hlrt
 {
@@ -73,6 +74,10 @@ namespace hlrt
         /// the 256 by 192 pixels to 384 by 240): the picture keeps its
         /// height and sees wider, as the game does on a wide screen.
         bool wide = false;
+        /// The usual view (kViewFovNarrow or less, on 4:3), not a wider one:
+        /// what a first-person model's counts of what it shows are for
+        /// (kModelScreenCounts).
+        bool usualView() const { return fovAcross <= hldata::kViewFovNarrow && !wide; }
         /// The field of view across as the picture shows it: fovAcross on
         /// 4:3, more on 16:10.
         int fovDrawnAcross = 90;
