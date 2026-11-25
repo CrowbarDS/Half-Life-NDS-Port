@@ -59,9 +59,19 @@ namespace hlrt
         switch (row_)
         {
         case 0:
-            std::snprintf(line, sizeof(line), "%-8s %-3s fps %2d cpu %3d%%", mapName_,
+        {
+            // OLD: a model of the map's is of an older format than this
+            // program's (kModelVersion) -- a card not cooked again since: a
+            // weapon in hand is then counted whole (kModelScreenCounts), and
+            // what is measured is not today's.
+            bool old = false;
+            const hldata::ActorWorld &actors = game.actors;
+            for (int m = 0; actors.models != nullptr && m < actors.modelCount && !old; ++m)
+                old = actors.models[m].header != nullptr && actors.models[m].header->version < hldata::kModelVersion;
+            std::snprintf(line, sizeof(line), "%-8s %-3s fps %2d cpu %3d%%%s", mapName_,
                           global.isDSi ? "DSi" : "DS",
-                          static_cast<int>(NEA_GetFPS()), static_cast<int>(NEA_GetCPUPercent()));
+                          static_cast<int>(NEA_GetFPS()), static_cast<int>(NEA_GetCPUPercent()), old ? " OLD" : "");
+        }
             break;
         case 1:
             // CUT marks a frame where the walk ran out of budget and dropped

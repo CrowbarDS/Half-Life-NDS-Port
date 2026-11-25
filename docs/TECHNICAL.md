@@ -2233,7 +2233,9 @@ it kept more than was counted, and `held-over-most` the most by which it
 did: either a count too low or a triangle left out that is seen. Both
 should be 0. `test_viewmodel` holds the counts to what each clip shows
 with no margin, halfway between frames too, and prints each weapon's
-polygons before and after.
+polygons before and after. The debug readout's first row ends in `OLD`
+when any model of the map is of an older format than the program's: a
+card not cooked again since, whose weapons are still counted whole.
 
 **The governor's climb and the pressure's wait** were tried faster, and
 are left as they were, as named numbers to try again on a console: the
