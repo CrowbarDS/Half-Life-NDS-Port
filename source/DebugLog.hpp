@@ -74,6 +74,11 @@ namespace hlrt::DebugLog
         std::uint32_t micros(Section section);
         /// Latch this frame's totals for micros() and clear the accumulators.
         void endFrame();
+        /// Whether this frame (a pass) missed the game's pace (took more
+        /// than GpuStats::kTargetBlanks): its sections are summed apart,
+        /// for perf.txt's "pace:" line -- where the time of a slow pass
+        /// goes, beside a pass that is not. Before endFrame.
+        void notePace(bool slow);
         /// A line in perf.txt of what the sections took since the last one
         /// (each one's mean and its worst frame, in microseconds, and how
         /// deep the stack has been), once every so many frames. The emulator
@@ -163,6 +168,7 @@ namespace hlrt::DebugLog
     {
         inline void begin() {}
         inline void endFrame() {}
+        inline void notePace(bool) {}
         inline void logEvery(const char *, int) {}
         inline void markStack() {}
         inline void noteLibrary(const void *, std::uint32_t) {}

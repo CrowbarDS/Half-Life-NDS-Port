@@ -32,6 +32,11 @@ namespace hlrt::DebugLog::Perf
         std::uint64_t summed[kCount];
         std::uint32_t worst[kCount];
         int framesIn = 0;
+        // notePace: this frame's, and each section summed over the slow
+        // frames and over the rest, since the last line.
+        bool paceSlow = false;
+        std::uint64_t slowSum[kCount], quickSum[kCount];
+        std::uint32_t slowFrames = 0, quickFrames = 0;
         constexpr std::uint32_t kStackPaint = 0x5AC3E5A1u;
 
         constexpr const char *kNames[kCount] = {"input", "logic", "move", "walk",
@@ -340,6 +345,19 @@ namespace hlrt::DebugLog::Perf
                          static_cast<unsigned long>(think.stackPeak()),
                          static_cast<unsigned long>(keyReads), static_cast<unsigned long>(toMicros(keyLongest)),
                          static_cast<unsigned long>(toMicros(keysInWorstFrame)));
+            // Where a pass that missed the game's pace spent its time,
+            // beside one that did not (notePace): each section's mean over
+            // each, in microseconds.
+            if (slowFrames != 0)
+            {
+                std::fprintf(log, "pace: %s %s slow %lu of %d", map, global.isDSi ? "DSi" : "DS",
+                             static_cast<unsigned long>(slowFrames), framesIn);
+                for (int i = 0; i < kCount; ++i)
+                    std::fprintf(log, ", %s %lu/%lu", kNames[i],
+                                 static_cast<unsigned long>(toMicros(slowSum[i] / slowFrames)),
+                                 static_cast<unsigned long>(quickFrames != 0 ? toMicros(quickSum[i] / quickFrames) : 0));
+                std::fprintf(log, "\n");
+            }
             if (lampPasses != 0)
             {
                 static const char *const kLampNames[kLampCounts] = {"polygons", "vertices", "surfaces",
@@ -385,7 +403,9 @@ namespace hlrt::DebugLog::Perf
         {
             summed[i] = 0;
             worst[i] = 0;
+            slowSum[i] = quickSum[i] = 0;
         }
+        slowFrames = quickFrames = 0;
         framesIn = 0;
         hlHwCount[0] = hlHwCount[1] = hlHwCount[2] = 0;
         // (The frame the writing is in is not one of the game's.)
@@ -469,6 +489,8 @@ namespace hlrt::DebugLog::Perf
             keyLongest = ticks;
     }
 
+    void notePace(bool slow) { paceSlow = slow; }
+
     void endFrame()
     {
         // (A section the profiler took its own time out of (Perf::Aside) but
@@ -497,10 +519,14 @@ namespace hlrt::DebugLog::Perf
         // (The worst frame yet: what of it was reading keys.)
         if (running[static_cast<int>(Section::Frame)] > worst[static_cast<int>(Section::Frame)])
             keysInWorstFrame = running[static_cast<int>(Section::Keys)];
+        std::uint64_t *pace = paceSlow ? slowSum : quickSum;
+        ++(paceSlow ? slowFrames : quickFrames);
+        paceSlow = false;
         for (int i = 0; i < kCount; ++i)
         {
             latched[i] = running[i];
             summed[i] += running[i];
+            pace[i] += running[i];
             if (running[i] > worst[i])
                 worst[i] = running[i];
             running[i] = 0;

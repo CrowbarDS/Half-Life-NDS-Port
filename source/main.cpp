@@ -2634,6 +2634,9 @@ int main(int argc, char *argv[])
 #endif
     std::uint32_t lastVblank = Global::vblanks();
     std::uint32_t lastPass = lastVblank;
+    // (Whether the pass just made missed the game's pace: the profiler
+    // sums its sections apart, DebugLog::Perf::notePace.)
+    bool passSlow = false;
     bool paused = false;
 #ifndef HLDS_CHILD
     // (CHAT: what was said before this map is not said again on it.)
@@ -3131,6 +3134,7 @@ int main(int argc, char *argv[])
                 const std::uint32_t now = Global::vblanks();
                 const hlrt::WorldStats &stats = hlrt::worldDraw.stats();
                 const int took = static_cast<int>(now - lastPass);
+                passSlow = took > hlrt::GpuStats::kTargetBlanks && took < 60;
                 hlrt::gpuStats.frame(stats.hwPolygons, stats.hwVertices, took);
                 hlrt::gpuStats.view(stats.budgetHit, stats.brushCut, hlrt::worldDraw.pressure() != 0);
                 hlrt::gpuStats.losses(hlrt::modelDraw.cutOf(0), hlrt::effectDraw.refused(), hlrt::modelDraw.seenEnemiesCut(),
@@ -3158,6 +3162,8 @@ int main(int argc, char *argv[])
                 hlrt::gpuStats.spare(-hlrt::worldDraw.heldBack());
             }
         }
+        hlrt::DebugLog::Perf::notePace(passSlow);
+        passSlow = false;
         hlrt::DebugLog::Perf::endFrame();
         // (A debug build spoils the frame's UI text: none is kept past it.)
         hlrt::ui::textFrameEnd();
