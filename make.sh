@@ -34,8 +34,8 @@ if pinned="$(python "${SCRIPT_DIR}/tools/blocksds_pin.py" --pick "${BLOCKSDS_CAN
 elif [ -z "${HLDS_BLOCKSDS_ANY:-}" ]; then
     echo "ERROR: no BlocksDS $(python "${SCRIPT_DIR}/tools/blocksds_pin.py") found (looked in:" \
          "${BLOCKSDS_CANDIDATES[*]})." >&2
-    echo "Build it from docker/versions.env's BLOCKSDS_COMMIT, with docker/blocksds-libnds-latest.patch" \
-         "(LIBNDS_COMMIT), and set HLDS_BLOCKSDS, or HLDS_BLOCKSDS_ANY=1." >&2
+    echo "Build it from docker/versions.env's BLOCKSDS_COMMIT and set HLDS_BLOCKSDS," \
+         "or HLDS_BLOCKSDS_ANY=1." >&2
     exit 1
 else
     export BLOCKSDS="${HLDS_BLOCKSDS:-${BLOCKSDS:-${WONDERFUL_TOOLCHAIN}/thirdparty/blocksds/core}}"

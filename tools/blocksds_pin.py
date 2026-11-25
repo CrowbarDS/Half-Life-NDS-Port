@@ -47,8 +47,7 @@ def check(path):
     if not is_pinned(path):
         raise SystemExit(
             f'BlocksDS at {path} is {version_of(path) or "missing"}, the game is built with {wanted()}.\n'
-            f'Install that one (docker/versions.env: BLOCKSDS_COMMIT, its libnds moved to LIBNDS_COMMIT by '
-            f'docker/blocksds-libnds-latest.patch) and set HLDS_BLOCKSDS to it, '
+            f'Install that one (docker/versions.env: BLOCKSDS_COMMIT) and set HLDS_BLOCKSDS to it, '
             f'or HLDS_BLOCKSDS_ANY=1 to try another.')
 
 

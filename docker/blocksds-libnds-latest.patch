@@ -1,7 +1,0 @@
-diff --git a/libs/libnds b/libs/libnds
-index a0687cd9e64064b9082c1ff3d6a3669668a12571..9137f1fe4cb427b17cd369cefa4e5df015fe9c6e 160000
---- a/libs/libnds
-+++ b/libs/libnds
-@@ -1 +1 @@
--Subproject commit a0687cd9e64064b9082c1ff3d6a3669668a12571
-+Subproject commit 9137f1fe4cb427b17cd369cefa4e5df015fe9c6e
