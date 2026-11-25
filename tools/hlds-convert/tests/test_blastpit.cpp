@@ -1,7 +1,7 @@
 // The Blast Pit's machinery, on its own maps (c1a4f): the lift whose button is
 // inside its car, and the bucket that swings across the shaft with the player
-// standing on it; and c1a4i's rocket button, unlocked by what is switched on
-// in other maps.
+// standing on it; c1a4i's rocket button, unlocked by what is switched on in
+// other maps; c1a4g's pit of water, which stays where it is.
 
 #include <cstdio>
 #include <cstdlib>
@@ -369,6 +369,49 @@ namespace
             }
         }
     }
+
+    // c1a4g's pit, after the tentacles: the player drops into func_water
+    // *58 and swims through *28, nameless bodies of water. Touched, they
+    // once opened like doors and slid away from under the swimmer, who
+    // fell (issue #14).
+    void testPitWater(const char *dir)
+    {
+        const std::unique_ptr<Game> game = load(dir, "c1a4g");
+        check(game != nullptr, "c1a4g cooks");
+        if (game == nullptr)
+            return;
+        Game &g = *game;
+        std::vector<int> water;
+        for (int b = 0; b < static_cast<int>(g.movers.size()); ++b)
+        {
+            if (g.movers[b].present && g.movers[b].contents == -3)
+                water.push_back(b);
+        }
+        std::vector<fx> was;
+        for (const int b : water)
+            was.insert(was.end(), g.movers[b].origin, g.movers[b].origin + 3);
+        // Dropped in, under the way in from c1a4i, and left to sink.
+        g.player.origin[0] = fxFromInt(-624);
+        g.player.origin[1] = fxFromInt(-1248);
+        g.player.origin[2] = fxFromInt(-2300);
+        int dry = 0, moved = 0;
+        for (int t = 0; t < 30000; t += 33)
+        {
+            g.frame();
+            dry += g.player.waterLevel == 0;
+            for (std::size_t k = 0; k < water.size(); ++k)
+            {
+                for (int a = 0; a < 3; ++a)
+                    moved += g.movers[water[k]].origin[a] != was[k * 3 + a];
+            }
+        }
+        std::printf("test_blastpit: c1a4g has %d bodies of water; 30 s in the pit, at %d %d %d: %d frames out of the "
+                    "water, %d moves of it\n",
+                    static_cast<int>(water.size()), fxToInt(g.player.origin[0]), fxToInt(g.player.origin[1]),
+                    fxToInt(g.player.origin[2]), dry, moved);
+        check(water.size() >= 2, "c1a4g's two func_waters are water");
+        check(dry == 0 && moved == 0, "in c1a4g's pit, the water stays where it is and the swimmer in it");
+    }
 } // namespace
 
 int main()
@@ -383,6 +426,7 @@ int main()
     testBucket(dir);
     testActors(dir);
     testRocketMaster(dir);
+    testPitWater(dir);
     if (g_failures == 0)
         std::printf("test_blastpit: ok\n");
     return g_failures == 0 ? 0 : 1;
