@@ -3149,9 +3149,13 @@ int main(int argc, char *argv[])
                 hlrt::screenFade.setFade(hlrt::game.logic.fadeLevel, hlrt::game.logic.fadeColour.value);
                 hlrt::screenFade.tick();
                 const hlrt::GpuStats::Frame &seen = hlrt::gpuStats.last();
-                // (More than a second is a load, not a slow pass.)
+                // (Slow: past the game's pace, two blanks a pass -- 30 a
+                // second -- not past one: on a DSi in Blue Shift nearly
+                // every pass takes two, and the spare was never added.
+                // More than a second is a load, not a slow pass.)
                 hlrt::worldDraw.govern(seen.overflow, seen.underflow, seen.lines,
-                                       took > 1 && took < 60);
+                                       took > hlrt::GpuStats::kTargetBlanks && took < 60);
+                hlrt::gpuStats.spare(-hlrt::worldDraw.heldBack());
             }
         }
         hlrt::DebugLog::Perf::endFrame();

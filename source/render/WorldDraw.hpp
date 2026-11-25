@@ -203,7 +203,8 @@ namespace hlrt
         /// for, takes some away -- the far end of the view goes -- which
         /// comes back slowly while the hardware has room to spare.
         ///
-        /// `slow`: the pass took longer than a frame to make. What is added
+        /// `slow`: the pass took longer than the game's pace (GpuStats::
+        /// kTargetBlanks: 30 a second). What is added
         /// is for a console with time to draw it: a slow pass takes a
         /// quarter of it away, and a second of passes that are not slow
         /// gives a quarter back.

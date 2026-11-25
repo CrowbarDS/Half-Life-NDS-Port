@@ -26,6 +26,11 @@ namespace hlrt
     class GpuStats
     {
     public:
+        /// The game's pace: a pass every two blanks, 30 a second. A pass
+        /// that takes longer is slow (WorldDraw::govern), and counted
+        /// (perf.txt's over-target).
+        static constexpr int kTargetBlanks = 2;
+
         /// What the hardware reported since the last call of frame().
         struct Frame
         {
@@ -123,6 +128,13 @@ namespace hlrt
                 map_.fullVerticesMost = hwVertices > map_.fullVerticesMost ? hwVertices : map_.fullVerticesMost;
             }
         }
+        /// What the governor added to the pass's budget for what is thrown
+        /// away off the screen (less than 0: held back), as it left it.
+        void spare(int extra)
+        {
+            map_.spareSum += extra;
+            ++map_.sparePasses;
+        }
         /// What is in hand: as counted, and as the hardware kept it (-1: not
         /// known). Kept more than counted is a count too low -- or a
         /// triangle the converter left out that is seen (ViewModelTrim):
@@ -208,6 +220,9 @@ namespace hlrt
             int vertices = 0;
             int vblanks = 0;  ///< the longest pass
             std::uint32_t slow = 0; ///< passes that took more than one blank
+            std::uint32_t overTarget = 0; ///< ... more than kTargetBlanks: under 30 a second
+            std::int32_t spareSum = 0; ///< spare(): over the passes
+            std::uint32_t sparePasses = 0;
             std::uint32_t cut = 0;     ///< passes cut off at a distance
             std::uint32_t brushCut = 0; ///< passes with a brush entity left out for room
             std::uint32_t pressed = 0; ///< passes with the small and far left out

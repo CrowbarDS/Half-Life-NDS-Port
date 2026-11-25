@@ -2248,6 +2248,18 @@ sooner. And at c1a2 the pressure stays because what is counted, with what
 it leaves out, never fits in fifteen sixteenths of the budget: the wait
 never starts.
 
+**A slow pass** takes a quarter of the spare away, and 60 passes that are
+not slow give one back (`WorldDraw::govern`). A pass is slow when it takes
+longer than the game's pace, two blanks (30 a second:
+`GpuStats::kTargetBlanks`), not longer than one. On a DSi in Blue Shift
+nearly every pass took two blanks, so the spare was never added and those
+views were cut by a few polygons and kept under pressure. Measured on a
+DSi after the change: in ba_elevator the spare came back (up to 359
+polygons a pass) and the cuts and the pressure went. ba_canal1 still
+misses 30 a second on 20 to 58% of its passes, so it still cuts there.
+`perf.txt` gives `over-target`, the passes under 30 a second, and
+`spare-mean`.
+
 **The box test** (an experiment: `HLDS_BOX_TEST=1 ./make.sh`). The geometry
 engine can say whether a box is inside the view as it clips (`BOX_TEST`),
 which for a flat surface is much tighter than its ball against five planes.
