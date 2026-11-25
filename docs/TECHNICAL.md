@@ -2262,6 +2262,21 @@ misses 30 a second on 20 to 58% of its passes, so it still cuts there.
 `perf.txt` gives `over-target`, the passes under 30 a second, and
 `spare-mean`.
 
+**Where a slow pass goes** (a profiling build). The game simulates as much
+time as the last pass took, up to four blanks, so a pass after a slow one
+has more to do: more thinks come due, more is said, moves go further. That
+can feed itself. So `perf.txt` sums each section by the blanks a pass was
+given (`pace in 2`, `in 3`, `in 4+`), and within each by whether the pass
+was slow itself (`slow/quick`). At the same time given, what a slow pass
+spends more on is a cause; what only grows with the time given is a
+consequence. `onset:` is each section's mean over the first slow pass
+after at least eight quick ones given no more than the pace. Logic is
+split into its parts (`fires`, `clips`, `movers`, `lights`, `hazards`,
+`aiworld`, `pieces`, `makers`, `actors`, `shots`: `HlProfileParts.hpp`;
+and `weapons`). Sound is split into `sndstart`, the sounds started, and
+`speech`. `speech:` is the samples the mouths' meter decodes a pass, and
+what a thousand of them cost.
+
 **The box test** (an experiment: `HLDS_BOX_TEST=1 ./make.sh`). The geometry
 engine can say whether a box is inside the view as it clips (`BOX_TEST`),
 which for a flat surface is much tighter than its ball against five planes.

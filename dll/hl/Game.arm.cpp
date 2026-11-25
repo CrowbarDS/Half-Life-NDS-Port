@@ -918,6 +918,11 @@ namespace hlrt
         // keeps the same time as the player's movement (HlFrameClock.hpp).
         const int ms = clock_.ms(vblanks);
         playMs_ += static_cast<std::uint64_t>(ms);
+#ifdef HLDS_PROFILE
+        // (The logic's parts, timed as the monsters' thinking is: added to
+        // the profiler's sections once the frame's logic is done, below.)
+        hldata::partClock = DebugLog::Perf::now;
+#endif
         // A view from a camera that takes the controls (trigger_camera's
         // flag 4): the player can do nothing meanwhile.
         // (Or one that only takes them: trigger_playerfreeze.)
@@ -1118,6 +1123,7 @@ namespace hlrt
         if (!player.noclip)
         {
             const DebugLog::Perf::Scope scope(DebugLog::Section::Logic);
+            const DebugLog::Perf::Scope weapons(DebugLog::Section::Weapons);
             const fx eye[3] = {player.state.origin[0], player.state.origin[1],
                                player.state.origin[2] + player.state.viewHeight};
             const bool alive = player.state.health > 0;
@@ -1312,6 +1318,15 @@ namespace hlrt
                 hldata::aiSpent[0] = hldata::aiSpent[1] = hldata::aiSpent[2] = 0;
 #endif
             }
+#ifdef HLDS_PROFILE
+            // (The sections are in LogicPart's order, from Fires.)
+            for (int p = 0; p < hldata::kLogicParts; ++p)
+            {
+                DebugLog::Perf::add(static_cast<DebugLog::Section>(static_cast<int>(DebugLog::Section::Fires) + p),
+                                    hldata::partSpent[p]);
+                hldata::partSpent[p] = 0;
+            }
+#endif
             // A monster's blow to the player's view (its punchangle: the
             // game's pitch is down, the view's up).
             if (ai_.punch[0] != 0 || ai_.punch[1] != 0 || ai_.punch[2] != 0)

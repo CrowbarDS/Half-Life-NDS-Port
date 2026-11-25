@@ -4257,163 +4257,182 @@ namespace hldata
         // (The worker's questions' clock: how long their answers take.)
         if (a.think != nullptr)
             ++a.think->frame;
-        detail::suitTick(w, player, ms);
-        if (player.gib.value != 0)
-            detail::playerGibs(w, player);
-        if (w.records != nullptr && w.states != nullptr)
-            detail::monsterPushes(w, ms);
-        // (Looked at eight times a second: nothing stays in such a place
-        // for less.)
-        a.hurtLookMs -= ms;
-        if (a.hurtLookMs <= 0 && w.records != nullptr && w.states != nullptr)
         {
-            a.hurtLookMs = 125;
-            detail::hurtPlaces(w);
-            detail::monsterJumps(w);
-        }
-        // (Each frame: a door can be through someone in less than an
-        // eighth of a second.)
-        if (w.records != nullptr && w.states != nullptr)
-            detail::crushPlaces(w);
-        xenTick(w, player, ms);
-        for (int k = 0; k < 3; ++k)
-            a.foe[k] = player.origin[k];
-        // The bodies that fade: on towards nothing, and gone at the end.
-        for (int i = 0; i < a.count; ++i)
-        {
-            ActorState &body = a.states[i];
-            const int left = body.active ? corpseFadeLeft(body) : -1;
-            if (left < 0)
-                continue;
-            if (left <= ms)
+            // (Each part timed in a build that measures it: HlProfileParts.hpp.)
+            HL_LOGIC_PART(Hazards);
+            detail::suitTick(w, player, ms);
+            if (player.gib.value != 0)
+                detail::playerGibs(w, player);
+            if (w.records != nullptr && w.states != nullptr)
+                detail::monsterPushes(w, ms);
+            // (Looked at eight times a second: nothing stays in such a place
+            // for less.)
+            a.hurtLookMs -= ms;
+            if (a.hurtLookMs <= 0 && w.records != nullptr && w.states != nullptr)
             {
-                body.active = false;
-                body.flags &= static_cast<std::uint8_t>(~kActorSolid);
-                actorPlaceBox(a, i);
+                a.hurtLookMs = 125;
+                detail::hurtPlaces(w);
+                detail::monsterJumps(w);
             }
-            else
+            // (Each frame: a door can be through someone in less than an
+            // eighth of a second.)
+            if (w.records != nullptr && w.states != nullptr)
+                detail::crushPlaces(w);
+            xenTick(w, player, ms);
+            for (int k = 0; k < 3; ++k)
+                a.foe[k] = player.origin[k];
+            // The bodies that fade: on towards nothing, and gone at the end.
+            for (int i = 0; i < a.count; ++i)
             {
-                body.cooldownMs += ms;
-            }
-        }
-        aiWorldTick(w, player, ms);
-        if (a.noiseMs > 0)
-            a.noiseMs -= ms;
-        if (a.speakMs > 0)
-            a.speakMs -= ms;
-        // The small things in flight; a casing rings as it lands (brass, or
-        // a shotgun's shell: TE_BOUNCE_SHELL and TE_BOUNCE_SHOTSHELL).
-        int shard = -1;
-        fx shardSpeed = 0;
-        const int rang = piecesTick(a, *w.world, ms, &shard, &shardSpeed);
-        if ((rang & 1) && w.heard != nullptr)
-            w.heard->add(CommonSound::Shell, nullptr, 70, kRadiusSmall);
-        if ((rang & 2) && w.heard != nullptr)
-            w.heard->add(CommonSound::ShotShell, nullptr, 70, kRadiusSmall);
-        // ... and a shard of something broken, one landing in six.
-        if (shard >= 0)
-            detail::shardHeard(w, pieceMaterial(a.pieces[shard]), a.pieces[shard].pos, shardSpeed, a.pieces[shard].spin);
-        decalsTick(a, ms);
-        for (int i = 0; i < w.recordCount; ++i)
-        {
-            const auto kind = static_cast<LogicKind>(w.records[i].kind);
-            if (kind == LogicKind::Maker)
-                detail::makerTick(w, player, i, ms);
-            else if (kind == LogicKind::HealthCharger || kind == LogicKind::SuitCharger)
-                detail::chargerTick(w, player, i, ms);
-            else if (kind == LogicKind::Tank)
-                detail::tankTick(w, player, i, ms);
-            else if (kind == LogicKind::MortarField)
-                detail::mortarTick(w, player, i, ms);
-            else if (kind == LogicKind::Repel)
-            {
-                // (The soldiers' family's: without it, a map has none to send.)
-                aiFamiliesReady();
-                if (familyHooks.repelTick != nullptr)
-                    familyHooks.repelTick(w, player, i, ms);
-            }
-        }
-        // (The triggers the monsters set off, as they are this frame. Not on
-        // a console sent the game: a match has no monsters, and it has no
-        // room to spare.)
-#ifndef HLDS_CHILD
-        std::int16_t volumes[detail::kMonsterVolumes];
-        const int volumeCount = w.records != nullptr && w.states != nullptr ? detail::monsterVolumesOf(w, volumes) : 0;
-#endif
-        for (int i = 0; i < a.count; ++i)
-        {
-            ActorState &actor = a.states[i];
-            if (!actor.active)
-                continue;
-            // (The places that hurt and the movers that crush wait this
-            // long before they hurt them again: whoever they are.)
-            if (actor.hurtMs > 0)
-                actor.hurtMs -= ms;
-            if (actor.kind == static_cast<std::uint8_t>(ActorKind::Item))
-            {
-                if (w.brushStates != nullptr && w.movers != nullptr)
-                    detail::itemGround(w, actor);
-                itemTouch(w, player, i);
-                continue;
-            }
-            if (isTurret(actor.kind))
-            {
-                detail::turretTick(w, player, i, ms);
-                actor.lastFrame = actor.frame;
-                actorPlaceBox(a, i);
-                continue;
-            }
-            if (isMine(actor.kind))
-            {
-                detail::mineTick(w, player, i, ms);
-                continue;
-            }
-            // (Whoever a barnacle has hold of is where it has them.)
-            if (aiHeld(a, i) && !actorThinks(actor.kind))
-            {
-                actor.lastFrame = actor.frame;
-                actorPlaceBox(a, i);
-                continue;
-            }
-            // (A monster_generic too, as the game's MOVETYPE_STEP: ba_elevator's
-            // two scientists ride the lift down -- left behind, they were hurt,
-            // and that loses the game; ba_security2's cart worker, of the
-            // hologram's shape, rides the platform that walks her beside it.)
-            if (isPerson(actor.kind) || actor.kind == static_cast<std::uint8_t>(ActorKind::Gman) ||
-                actor.kind == static_cast<std::uint8_t>(ActorKind::Generic))
-            {
-                // (They stand on what is under them -- a lift, a train -- and
-                // go where it goes, or fall: in a scene too, as the game's push
-                // takes whoever stands on it, unless the scene is walking them
-                // to its mark -- ba_elevator's scientists play theirs in the
-                // lift as it goes down.)
-                if ((actor.script < 0 || actor.scriptPhase != kActorMoving) &&
-                    actor.kind != static_cast<std::uint8_t>(ActorKind::Sitter) &&
-                    w.brushStates != nullptr && w.movers != nullptr && !aiHeld(a, i))
+                ActorState &body = a.states[i];
+                const int left = body.active ? corpseFadeLeft(body) : -1;
+                if (left < 0)
+                    continue;
+                if (left <= ms)
                 {
-                    detail::peopleGround(w, actor, ms);
-                    if (actor.airborne)
-                    {
-                        actorPlaceBox(a, i);
-                        continue;
-                    }
+                    body.active = false;
+                    body.flags &= static_cast<std::uint8_t>(~kActorSolid);
+                    actorPlaceBox(a, i);
+                }
+                else
+                {
+                    body.cooldownMs += ms;
                 }
             }
-            if (!actorThinks(actor.kind))
-                continue;
-#ifndef HLDS_CHILD
-            const fx was[3] = {actor.pos[0], actor.pos[1], actor.pos[2]};
-            aiTick(w, player, i, ms);
-            if (volumeCount > 0)
-                detail::monsterVolumes(w, player, volumes, volumeCount, i, was);
-#else
-            aiTick(w, player, i, ms);
-#endif
-            actor.lastFrame = actor.frame;
-            actorPlaceBox(a, i);
         }
-        detail::projectilesTick(w, player, ms);
-        effectsTick(w, player, ms);
+        {
+            HL_LOGIC_PART(AiWorld);
+            aiWorldTick(w, player, ms);
+            if (a.noiseMs > 0)
+                a.noiseMs -= ms;
+            if (a.speakMs > 0)
+                a.speakMs -= ms;
+        }
+        {
+            HL_LOGIC_PART(Pieces);
+            // The small things in flight; a casing rings as it lands (brass, or
+            // a shotgun's shell: TE_BOUNCE_SHELL and TE_BOUNCE_SHOTSHELL).
+            int shard = -1;
+            fx shardSpeed = 0;
+            const int rang = piecesTick(a, *w.world, ms, &shard, &shardSpeed);
+            if ((rang & 1) && w.heard != nullptr)
+                w.heard->add(CommonSound::Shell, nullptr, 70, kRadiusSmall);
+            if ((rang & 2) && w.heard != nullptr)
+                w.heard->add(CommonSound::ShotShell, nullptr, 70, kRadiusSmall);
+            // ... and a shard of something broken, one landing in six.
+            if (shard >= 0)
+                detail::shardHeard(w, pieceMaterial(a.pieces[shard]), a.pieces[shard].pos, shardSpeed, a.pieces[shard].spin);
+            decalsTick(a, ms);
+        }
+        {
+            HL_LOGIC_PART(Makers);
+            for (int i = 0; i < w.recordCount; ++i)
+            {
+                const auto kind = static_cast<LogicKind>(w.records[i].kind);
+                if (kind == LogicKind::Maker)
+                    detail::makerTick(w, player, i, ms);
+                else if (kind == LogicKind::HealthCharger || kind == LogicKind::SuitCharger)
+                    detail::chargerTick(w, player, i, ms);
+                else if (kind == LogicKind::Tank)
+                    detail::tankTick(w, player, i, ms);
+                else if (kind == LogicKind::MortarField)
+                    detail::mortarTick(w, player, i, ms);
+                else if (kind == LogicKind::Repel)
+                {
+                    // (The soldiers' family's: without it, a map has none to send.)
+                    aiFamiliesReady();
+                    if (familyHooks.repelTick != nullptr)
+                        familyHooks.repelTick(w, player, i, ms);
+                }
+            }
+        }
+        {
+            HL_LOGIC_PART(Actors);
+            // (The triggers the monsters set off, as they are this frame. Not on
+            // a console sent the game: a match has no monsters, and it has no
+            // room to spare.)
+    #ifndef HLDS_CHILD
+            std::int16_t volumes[detail::kMonsterVolumes];
+            const int volumeCount = w.records != nullptr && w.states != nullptr ? detail::monsterVolumesOf(w, volumes) : 0;
+    #endif
+            for (int i = 0; i < a.count; ++i)
+            {
+                ActorState &actor = a.states[i];
+                if (!actor.active)
+                    continue;
+                // (The places that hurt and the movers that crush wait this
+                // long before they hurt them again: whoever they are.)
+                if (actor.hurtMs > 0)
+                    actor.hurtMs -= ms;
+                if (actor.kind == static_cast<std::uint8_t>(ActorKind::Item))
+                {
+                    if (w.brushStates != nullptr && w.movers != nullptr)
+                        detail::itemGround(w, actor);
+                    itemTouch(w, player, i);
+                    continue;
+                }
+                if (isTurret(actor.kind))
+                {
+                    detail::turretTick(w, player, i, ms);
+                    actor.lastFrame = actor.frame;
+                    actorPlaceBox(a, i);
+                    continue;
+                }
+                if (isMine(actor.kind))
+                {
+                    detail::mineTick(w, player, i, ms);
+                    continue;
+                }
+                // (Whoever a barnacle has hold of is where it has them.)
+                if (aiHeld(a, i) && !actorThinks(actor.kind))
+                {
+                    actor.lastFrame = actor.frame;
+                    actorPlaceBox(a, i);
+                    continue;
+                }
+                // (A monster_generic too, as the game's MOVETYPE_STEP: ba_elevator's
+                // two scientists ride the lift down -- left behind, they were hurt,
+                // and that loses the game; ba_security2's cart worker, of the
+                // hologram's shape, rides the platform that walks her beside it.)
+                if (isPerson(actor.kind) || actor.kind == static_cast<std::uint8_t>(ActorKind::Gman) ||
+                    actor.kind == static_cast<std::uint8_t>(ActorKind::Generic))
+                {
+                    // (They stand on what is under them -- a lift, a train -- and
+                    // go where it goes, or fall: in a scene too, as the game's push
+                    // takes whoever stands on it, unless the scene is walking them
+                    // to its mark -- ba_elevator's scientists play theirs in the
+                    // lift as it goes down.)
+                    if ((actor.script < 0 || actor.scriptPhase != kActorMoving) &&
+                        actor.kind != static_cast<std::uint8_t>(ActorKind::Sitter) &&
+                        w.brushStates != nullptr && w.movers != nullptr && !aiHeld(a, i))
+                    {
+                        detail::peopleGround(w, actor, ms);
+                        if (actor.airborne)
+                        {
+                            actorPlaceBox(a, i);
+                            continue;
+                        }
+                    }
+                }
+                if (!actorThinks(actor.kind))
+                    continue;
+    #ifndef HLDS_CHILD
+                const fx was[3] = {actor.pos[0], actor.pos[1], actor.pos[2]};
+                aiTick(w, player, i, ms);
+                if (volumeCount > 0)
+                    detail::monsterVolumes(w, player, volumes, volumeCount, i, was);
+    #else
+                aiTick(w, player, i, ms);
+    #endif
+                actor.lastFrame = actor.frame;
+                actorPlaceBox(a, i);
+            }
+        }
+        {
+            HL_LOGIC_PART(Shots);
+            detail::projectilesTick(w, player, ms);
+            effectsTick(w, player, ms);
+        }
     }
 
     // ------------------------------------------------------------- weapons

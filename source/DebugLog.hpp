@@ -40,6 +40,11 @@ namespace hlrt::DebugLog
         Card,   ///< reads off the card (data/CardRead.hpp), wherever they are made
         Lamp,   ///< the lamp's light on the walls (WorldDraw::lampPass: inside Emit)
         Tree,   ///< WorldDraw::walk alone: the tree and its culling (inside Walk)
+        // Logic's parts (hldata::LogicPart, HlProfileParts.hpp), in its order:
+        Fires, Clips, Movers, Lights, Hazards, AiWorld, Pieces, Makers, Actors, Shots,
+        Weapons,  ///< the weapon in hand (inside Logic)
+        SndStart, ///< the pass's sounds started (inside Sound)
+        Speech,   ///< what is said, and the mouth's meter decoding it (inside Sound)
         Count
     };
 
@@ -74,11 +79,18 @@ namespace hlrt::DebugLog
         std::uint32_t micros(Section section);
         /// Latch this frame's totals for micros() and clear the accumulators.
         void endFrame();
-        /// Whether this frame (a pass) missed the game's pace (took more
-        /// than GpuStats::kTargetBlanks): its sections are summed apart,
-        /// for perf.txt's "pace:" line -- where the time of a slow pass
-        /// goes, beside a pass that is not. Before endFrame.
-        void notePace(bool slow);
+        /// How many blanks this frame (a pass) was given to simulate
+        /// (`incoming`: the last pass's length), and whether it missed the
+        /// game's pace itself (took more than GpuStats::kTargetBlanks): its
+        /// sections are summed by the two, for perf.txt's "pace in" lines --
+        /// at the same time simulated, what a slow pass spends more on is a
+        /// cause, not what a slow pass before it brought -- and its "onset"
+        /// line: the first slow pass after a run of quick ones given no
+        /// more than the pace. Before endFrame.
+        void notePace(int incoming, bool slow);
+        /// Samples the mouth's meter decoded this frame (inside Speech): what
+        /// the speech costs a sample, in perf.txt.
+        void noteSpeechSamples(std::uint32_t samples);
         /// A line in perf.txt of what the sections took since the last one
         /// (each one's mean and its worst frame, in microseconds, and how
         /// deep the stack has been), once every so many frames. The emulator
@@ -168,7 +180,8 @@ namespace hlrt::DebugLog
     {
         inline void begin() {}
         inline void endFrame() {}
-        inline void notePace(bool) {}
+        inline void notePace(int, bool) {}
+        inline void noteSpeechSamples(std::uint32_t) {}
         inline void logEvery(const char *, int) {}
         inline void markStack() {}
         inline void noteLibrary(const void *, std::uint32_t) {}

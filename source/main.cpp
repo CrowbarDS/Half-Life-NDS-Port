@@ -2634,8 +2634,10 @@ int main(int argc, char *argv[])
 #endif
     std::uint32_t lastVblank = Global::vblanks();
     std::uint32_t lastPass = lastVblank;
-    // (Whether the pass just made missed the game's pace: the profiler
-    // sums its sections apart, DebugLog::Perf::notePace.)
+    // (The blanks the pass was given to simulate, and whether it missed
+    // the game's pace itself: the profiler sums its sections by the two,
+    // DebugLog::Perf::notePace.)
+    int passIncoming = 0;
     bool passSlow = false;
     bool paused = false;
 #ifndef HLDS_CHILD
@@ -2754,6 +2756,7 @@ int main(int argc, char *argv[])
                 }
                 const std::uint32_t now = Global::vblanks();
                 const int elapsed = static_cast<int>(now - lastVblank);
+                passIncoming = elapsed;
                 lastVblank = now;
 
                 // A game between consoles: what has come over the air; and
@@ -3162,8 +3165,9 @@ int main(int argc, char *argv[])
                 hlrt::gpuStats.spare(-hlrt::worldDraw.heldBack());
             }
         }
-        hlrt::DebugLog::Perf::notePace(passSlow);
+        hlrt::DebugLog::Perf::notePace(passIncoming, passSlow);
         passSlow = false;
+        passIncoming = 0;
         hlrt::DebugLog::Perf::endFrame();
         // (A debug build spoils the frame's UI text: none is kept past it.)
         hlrt::ui::textFrameEnd();

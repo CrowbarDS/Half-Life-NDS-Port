@@ -32,16 +32,25 @@ namespace hlrt::DebugLog::Perf
         std::uint64_t summed[kCount];
         std::uint32_t worst[kCount];
         int framesIn = 0;
-        // notePace: this frame's, and each section summed over the slow
-        // frames and over the rest, since the last line.
+        // notePace: this frame's; each section summed by the blanks it was
+        // given (up to 2, 3, 4 or more) and whether it was slow, since the
+        // last line; and over the onsets: a slow frame after at least
+        // kOnsetRun quick ones, all given no more than the pace.
+        constexpr int kPaceBuckets = 3, kOnsetRun = 8;
         bool paceSlow = false;
-        std::uint64_t slowSum[kCount], quickSum[kCount];
-        std::uint32_t slowFrames = 0, quickFrames = 0;
+        int paceIn = 0;
+        std::uint64_t paceSum[kPaceBuckets][2][kCount];
+        std::uint32_t paceFrames[kPaceBuckets][2];
+        std::uint64_t onsetSum[kCount];
+        std::uint32_t onsets = 0, quickRun = 0;
+        std::uint64_t speechSamples = 0; // noteSpeechSamples, since the last line
         constexpr std::uint32_t kStackPaint = 0x5AC3E5A1u;
 
         constexpr const char *kNames[kCount] = {"input", "logic", "move", "walk",
                                                 "emit",  "pose",  "models", "frame", "monsters", "look", "hear", "going",
-                                                "keys", "sound", "stream", "vblank", "hblank", "radio", "card", "lamp", "tree"};
+                                                "keys", "sound", "stream", "vblank", "hblank", "radio", "card", "lamp", "tree",
+                                                "fires", "clips", "movers", "lights", "hazards", "aiworld", "pieces",
+                                                "makers", "actors", "shots", "weapons", "sndstart", "speech"};
         // Key reads since the last line: how many, the longest one, and what
         // of the worst frame was reading keys (does a read make that frame?).
         std::uint32_t keyReads = 0, keyLongest = 0, keysInWorstFrame = 0;
@@ -345,19 +354,38 @@ namespace hlrt::DebugLog::Perf
                          static_cast<unsigned long>(think.stackPeak()),
                          static_cast<unsigned long>(keyReads), static_cast<unsigned long>(toMicros(keyLongest)),
                          static_cast<unsigned long>(toMicros(keysInWorstFrame)));
-            // Where a pass that missed the game's pace spent its time,
-            // beside one that did not (notePace): each section's mean over
-            // each, in microseconds.
-            if (slowFrames != 0)
+            // Where a pass that missed the game's pace spent its time, beside
+            // one that did not, at the same time given to simulate (notePace):
+            // each section's mean over each, in microseconds.
+            static const char *const kBuckets[kPaceBuckets] = {"2", "3", "4+"};
+            for (int b = 0; b < kPaceBuckets; ++b)
             {
-                std::fprintf(log, "pace: %s %s slow %lu of %d", map, global.isDSi ? "DSi" : "DS",
-                             static_cast<unsigned long>(slowFrames), framesIn);
+                const std::uint32_t slow = paceFrames[b][1], quick = paceFrames[b][0];
+                if (slow + quick == 0)
+                    continue;
+                std::fprintf(log, "pace in %s: %s %s slow %lu quick %lu", kBuckets[b], map,
+                             global.isDSi ? "DSi" : "DS", static_cast<unsigned long>(slow),
+                             static_cast<unsigned long>(quick));
                 for (int i = 0; i < kCount; ++i)
                     std::fprintf(log, ", %s %lu/%lu", kNames[i],
-                                 static_cast<unsigned long>(toMicros(slowSum[i] / slowFrames)),
-                                 static_cast<unsigned long>(quickFrames != 0 ? toMicros(quickSum[i] / quickFrames) : 0));
+                                 static_cast<unsigned long>(slow != 0 ? toMicros(paceSum[b][1][i] / slow) : 0),
+                                 static_cast<unsigned long>(quick != 0 ? toMicros(paceSum[b][0][i] / quick) : 0));
                 std::fprintf(log, "\n");
             }
+            // ... and where the first slow pass after quick ones spent it
+            // (beside "pace in 2"'s quick ones), and what speech costs.
+            if (onsets != 0)
+            {
+                std::fprintf(log, "onset: %s %s %lu", map, global.isDSi ? "DSi" : "DS", static_cast<unsigned long>(onsets));
+                for (int i = 0; i < kCount; ++i)
+                    std::fprintf(log, ", %s %lu", kNames[i], static_cast<unsigned long>(toMicros(onsetSum[i] / onsets)));
+                std::fprintf(log, "\n");
+            }
+            if (speechSamples != 0)
+                std::fprintf(log, "speech: %s %s %lu samples a pass, %lu us a thousand\n", map,
+                             global.isDSi ? "DSi" : "DS", static_cast<unsigned long>(speechSamples / framesIn),
+                             static_cast<unsigned long>(toMicros(summed[static_cast<int>(Section::Speech)] * 1000 /
+                                                                 speechSamples)));
             if (lampPasses != 0)
             {
                 static const char *const kLampNames[kLampCounts] = {"polygons", "vertices", "surfaces",
@@ -403,9 +431,14 @@ namespace hlrt::DebugLog::Perf
         {
             summed[i] = 0;
             worst[i] = 0;
-            slowSum[i] = quickSum[i] = 0;
+            onsetSum[i] = 0;
+            for (int b = 0; b < kPaceBuckets; ++b)
+                paceSum[b][0][i] = paceSum[b][1][i] = 0;
         }
-        slowFrames = quickFrames = 0;
+        for (int b = 0; b < kPaceBuckets; ++b)
+            paceFrames[b][0] = paceFrames[b][1] = 0;
+        onsets = 0;
+        speechSamples = 0;
         framesIn = 0;
         hlHwCount[0] = hlHwCount[1] = hlHwCount[2] = 0;
         // (The frame the writing is in is not one of the game's.)
@@ -489,7 +522,13 @@ namespace hlrt::DebugLog::Perf
             keyLongest = ticks;
     }
 
-    void notePace(bool slow) { paceSlow = slow; }
+    void notePace(int incoming, bool slow)
+    {
+        paceIn = incoming;
+        paceSlow = slow;
+    }
+
+    void noteSpeechSamples(std::uint32_t samples) { speechSamples += samples; }
 
     void endFrame()
     {
@@ -519,14 +558,21 @@ namespace hlrt::DebugLog::Perf
         // (The worst frame yet: what of it was reading keys.)
         if (running[static_cast<int>(Section::Frame)] > worst[static_cast<int>(Section::Frame)])
             keysInWorstFrame = running[static_cast<int>(Section::Keys)];
-        std::uint64_t *pace = paceSlow ? slowSum : quickSum;
-        ++(paceSlow ? slowFrames : quickFrames);
+        const int bucket = paceIn <= 2 ? 0 : (paceIn == 3 ? 1 : 2);
+        std::uint64_t *pace = paceSum[bucket][paceSlow ? 1 : 0];
+        ++paceFrames[bucket][paceSlow ? 1 : 0];
+        const bool onset = paceSlow && paceIn <= 2 && quickRun >= kOnsetRun;
+        onsets += onset;
+        quickRun = !paceSlow && paceIn <= 2 ? quickRun + 1 : 0;
         paceSlow = false;
+        paceIn = 0;
         for (int i = 0; i < kCount; ++i)
         {
             latched[i] = running[i];
             summed[i] += running[i];
             pace[i] += running[i];
+            if (onset)
+                onsetSum[i] += running[i];
             if (running[i] > worst[i])
                 worst[i] = running[i];
             running[i] = 0;

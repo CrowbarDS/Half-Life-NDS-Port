@@ -34,6 +34,7 @@
 #include "HlLevelReader.hpp"
 #include "HlLightStyle.hpp"
 #include "HlPlayerMove.hpp"
+#include "HlProfileParts.hpp"
 #include "HlSound.hpp"
 #include "HlSkill.hpp"
 #include "HlSprite.hpp"
@@ -5979,367 +5980,379 @@ namespace hldata
     /// Advance everything by `ms` milliseconds.
     inline void logicTick(LogicWorld &w, PlayerState &player, int ms)
     {
-        w.lockSaidMs = w.lockSaidMs > ms ? w.lockSaidMs - ms : 0;
-        // What the push fields push them by is said again each frame; and
-        // how hard they are pulled is what the switches say (a map come into,
-        // a save loaded).
-        player.push.value = BaseVelocity();
-        player.slip.value = 0;
-        if (w.globals != nullptr)
         {
-            const int gravity = w.globals->get(kGlobalPlayerGravity);
-            if (gravity >= 0)
-                player.gravityPercent.value = static_cast<std::uint8_t>(gravity == 100 ? 0 : gravity);
-        }
-        if ((w.marksDueMs -= ms) <= 0)
-        {
-            w.marksDueMs = 500;
-            detail::marksNear(w, player);
-        }
-        if ((w.linksDueMs -= ms) <= 0)
-        {
-            w.linksDueMs = 250;
-            detail::linksTick(w, player);
-        }
-        // A view from elsewhere, for as long as it lasts; and the count down
-        // to loading the last save (the caller's at 0).
-        if (w.camera >= 0)
-            cameraTurn(w, player, ms);
-        if (w.camera >= 0 && (w.cameraLeftMs -= ms) <= 0)
-            detail::cameraEnd(w, player);
-        if (w.reloadMs > 0)
-            w.reloadMs = w.reloadMs > ms ? w.reloadMs - ms : 0;
-        // 1. Fires that have come due. A fire can queue more with no delay, so
-        //    go round until nothing is due. (A multisource's latch is for
-        //    the tick it was on in: logicUse.)
-        for (int i = 0; i < w.recordCount; ++i)
-        {
-            if (w.records[i].kind == static_cast<std::uint8_t>(LogicKind::MultiSource))
-                w.states[i].hurt = 0;
-        }
-        for (LogicEvent &event : w.events)
-        {
-            if (event.active)
-                event.ms -= ms;
-        }
-        for (int guard = 0; guard < kMaxLogicEvents; ++guard)
-        {
-            bool fired = false;
+            // (Timed as one part in a build that measures it: HlProfileParts.hpp.)
+            HL_LOGIC_PART(Fires);
+            w.lockSaidMs = w.lockSaidMs > ms ? w.lockSaidMs - ms : 0;
+            // What the push fields push them by is said again each frame; and
+            // how hard they are pulled is what the switches say (a map come into,
+            // a save loaded).
+            player.push.value = BaseVelocity();
+            player.slip.value = 0;
+            if (w.globals != nullptr)
+            {
+                const int gravity = w.globals->get(kGlobalPlayerGravity);
+                if (gravity >= 0)
+                    player.gravityPercent.value = static_cast<std::uint8_t>(gravity == 100 ? 0 : gravity);
+            }
+            if ((w.marksDueMs -= ms) <= 0)
+            {
+                w.marksDueMs = 500;
+                detail::marksNear(w, player);
+            }
+            if ((w.linksDueMs -= ms) <= 0)
+            {
+                w.linksDueMs = 250;
+                detail::linksTick(w, player);
+            }
+            // A view from elsewhere, for as long as it lasts; and the count down
+            // to loading the last save (the caller's at 0).
+            if (w.camera >= 0)
+                cameraTurn(w, player, ms);
+            if (w.camera >= 0 && (w.cameraLeftMs -= ms) <= 0)
+                detail::cameraEnd(w, player);
+            if (w.reloadMs > 0)
+                w.reloadMs = w.reloadMs > ms ? w.reloadMs - ms : 0;
+            // 1. Fires that have come due. A fire can queue more with no delay, so
+            //    go round until nothing is due. (A multisource's latch is for
+            //    the tick it was on in: logicUse.)
+            for (int i = 0; i < w.recordCount; ++i)
+            {
+                if (w.records[i].kind == static_cast<std::uint8_t>(LogicKind::MultiSource))
+                    w.states[i].hurt = 0;
+            }
             for (LogicEvent &event : w.events)
             {
-                if (!event.active || event.ms > 0)
-                    continue;
-                const LogicEvent due = event;
-                event.active = false;
-                logicKill(w, due.killTarget);
-                logicFire(w, player, due.target, due.caller, due.useType, 0);
-                fired = true;
+                if (event.active)
+                    event.ms -= ms;
             }
-            if (!fired)
-                break;
+            for (int guard = 0; guard < kMaxLogicEvents; ++guard)
+            {
+                bool fired = false;
+                for (LogicEvent &event : w.events)
+                {
+                    if (!event.active || event.ms > 0)
+                        continue;
+                    const LogicEvent due = event;
+                    event.active = false;
+                    logicKill(w, due.killTarget);
+                    logicFire(w, player, due.target, due.caller, due.useType, 0);
+                    fired = true;
+                }
+                if (!fired)
+                    break;
+            }
+        }
+        {
+            HL_LOGIC_PART(Clips);
+            // The actors' clips, before the scripts look at where they have got to.
+            detail::actorsTick(w, player, ms);
         }
 
-        // The actors' clips, before the scripts look at where they have got to.
-        detail::actorsTick(w, player, ms);
-
-        for (int i = 0; i < w.recordCount; ++i)
         {
-            const LogicRecord &record = w.records[i];
-            LogicState &state = w.states[i];
-            if (state.dead)
-                continue;
-            const auto kind = static_cast<LogicKind>(record.kind);
-
-            // 2. Whatever it was waiting to do. (A box's timer is not one: it
-            //    is the damage it has taken; nor a gun's, its rounds' time,
-            //    a mortar field's, its shells', nor a wheel's door's, where it
-            //    is to go, nor a speaker's, its next line.)
-            if (state.timer >= 0 && kind != LogicKind::Pushable && kind != LogicKind::Script &&
-                kind != LogicKind::Tank && kind != LogicKind::MortarField && kind != LogicKind::MomentaryDoor &&
-                kind != LogicKind::Speaker)
+            HL_LOGIC_PART(Movers);
+            for (int i = 0; i < w.recordCount; ++i)
             {
-                state.timer -= ms;
-                if (state.timer < 0)
+                const LogicRecord &record = w.records[i];
+                LogicState &state = w.states[i];
+                if (state.dead)
+                    continue;
+                const auto kind = static_cast<LogicKind>(record.kind);
+
+                // 2. Whatever it was waiting to do. (A box's timer is not one: it
+                //    is the damage it has taken; nor a gun's, its rounds' time,
+                //    a mortar field's, its shells', nor a wheel's door's, where it
+                //    is to go, nor a speaker's, its next line.)
+                if (state.timer >= 0 && kind != LogicKind::Pushable && kind != LogicKind::Script &&
+                    kind != LogicKind::Tank && kind != LogicKind::MortarField && kind != LogicKind::MomentaryDoor &&
+                    kind != LogicKind::Speaker)
                 {
-                    state.timer = -1;
-                    switch (kind)
+                    state.timer -= ms;
+                    if (state.timer < 0)
                     {
-                    case LogicKind::Door:
-                    case LogicKind::DoorRotating:
-                    case LogicKind::Button:
-                        if (state.move == MoveState::AtTop)
-                            detail::moverStart(w, i, MoveState::GoingDown);
-                        break;
-                    case LogicKind::TriggerAuto:
-                        // One held back by a global is gone only once it has
-                        // fired, and only if it fires once: while its global
-                        // is not on it waits for the next time the map is
-                        // come into (c1a4i's rocket button, unlocked by what
-                        // is switched on elsewhere).
-                        if (logicGlobalAllows(w, record))
+                        state.timer = -1;
+                        switch (kind)
                         {
-                            logicUseTargets(w, player, i, record.useType, 0);
-                            if ((record.flags & kLogicFireOnce) || record.globalState == 0)
-                                state.dead = true;
-                        }
-                        break;
-                    case LogicKind::MultiManager:
-                        state.running = false;
-                        break;
-                    case LogicKind::Rotating:
-                        logicUse(w, player, i, -1, kUseToggle);
-                        break;
-                    case LogicKind::PlatRot:
-                        if (state.move == MoveState::AtTop)
-                            detail::moverStart(w, i, MoveState::GoingDown);
-                        break;
-                    case LogicKind::Breakable:
-                        detail::breakIt(w, player, i, 0); // stood on, and its delay is up
-                        break;
-                    case LogicKind::Train:
-                    case LogicKind::GunTarget:
-                        if (state.running)
-                            detail::trainNext(w, player, i);
-                        break;
-                    default:
-                        break; // a trigger_multiple: simply armed again
-                    }
-                }
-            }
-
-            // 3. Movement.
-            if (kind == LogicKind::Door || kind == LogicKind::Button ||
-                kind == LogicKind::DoorRotating)
-                detail::moverTick(w, player, i, ms);
-            else if (kind == LogicKind::Train || kind == LogicKind::GunTarget)
-                detail::trainTick(w, player, i, ms);
-            else if (kind == LogicKind::Speaker)
-                detail::speakerTick(w, i, ms);
-            else if (kind == LogicKind::Rotating)
-                detail::rotatingTick(w, player, i, ms);
-            else if (kind == LogicKind::PlatRot)
-                detail::platTick(w, player, i, ms);
-            else if (kind == LogicKind::Pendulum)
-                detail::pendulumTick(w, player, i, ms);
-            else if (kind == LogicKind::Pushable)
-                detail::pushableTick(w, player, i, ms);
-            else if (kind == LogicKind::Script)
-                detail::scriptTick(w, player, i, ms);
-            else if (kind == LogicKind::Sentence)
-                detail::sentenceTick(w, player, i, ms);
-            else if (kind == LogicKind::TrackTrain)
-                detail::trackTrainTick(w, player, i, ms);
-            else if (kind == LogicKind::TrackChange)
-                detail::trackChangeTick(w, player, i, ms);
-            else if (kind == LogicKind::MomentaryButton)
-                detail::momentaryTick(w, player, i, ms);
-            else if (kind == LogicKind::MomentaryDoor)
-                detail::momentaryDoorTick(w, player, i, ms);
-
-            // 4. The player walking into things.
-            if (kind == LogicKind::Breakable && record.brush != kNoBrush && !state.dead)
-            {
-                const bool on = player.onGround && player.groundMover == static_cast<int>(record.brush);
-                // Stood on, it gives way after its delay (a tenth of a second
-                // if it has none).
-                if ((record.flags & kLogicPressure) && on && state.timer < 0)
-                    state.timer = record.delayMs > 0 ? static_cast<std::int32_t>(record.delayMs) : 100;
-                // Run into hard enough, it breaks, and that hurts.
-                if ((record.flags & kLogicTouch) && !(record.flags & kLogicTriggerOnly) &&
-                    player.touchedMover == static_cast<int>(record.brush))
-                {
-                    const std::int32_t blow = fxToInt(fxLength(player.velocity)) / 100;
-                    if (blow >= static_cast<std::int32_t>(record.extra[0]) - state.phase)
-                    {
-                        logicHurt(player, blow / 4, 0, kDmgSlash);
-                        detail::breakIt(w, player, i, 0, static_cast<std::int32_t>(record.extra[0]) - state.phase - blow);
-                    }
-                }
-            }
-            else if (kind == LogicKind::EndSection && (record.flags & kLogicTouch) && !state.dead)
-            {
-                const fx mins[3] = {fxFromInt(record.mins[0]), fxFromInt(record.mins[1]),
-                                    fxFromInt(record.mins[2])};
-                const fx maxs[3] = {fxFromInt(record.maxs[0]), fxFromInt(record.maxs[1]),
-                                    fxFromInt(record.maxs[2])};
-                if (detail::playerTouchesBox(player, mins, maxs, 0))
-                    logicUse(w, player, i, -1, kUseOn);
-            }
-            else if (kind == LogicKind::Music && (record.flags & kLogicTouch) && !state.dead)
-            {
-                const fx mins[3] = {fxFromInt(record.mins[0]), fxFromInt(record.mins[1]),
-                                    fxFromInt(record.mins[2])};
-                const fx maxs[3] = {fxFromInt(record.maxs[0]), fxFromInt(record.maxs[1]),
-                                    fxFromInt(record.maxs[2])};
-                if (detail::playerTouchesBox(player, mins, maxs, 0))
-                    logicUse(w, player, i, -1, kUseOn);
-            }
-            else if (kind == LogicKind::TriggerHurt || kind == LogicKind::TriggerPush ||
-                     kind == LogicKind::TriggerTeleport || kind == LogicKind::TriggerGravity ||
-                     kind == LogicKind::Friction)
-            {
-                const bool inside = detail::playerInVolume(w, player, record) && logicMasterAllows(w, i);
-                if (kind == LogicKind::TriggerHurt)
-                {
-                    // Half a second's worth every half second. state.phase
-                    // counts the milliseconds to the next.
-                    state.phase -= ms;
-                    if (inside && !state.running && state.phase <= 0)
-                    {
-                        logicHurt(player, static_cast<std::int32_t>(record.extra[0]) / 2, hurtKindsOf(record.extra[1]),
-                                  record.extra[1]);
-                        state.phase = 500;
-                        if (record.target != 0 && !(state.bits & 1))
-                        {
-                            state.bits |= 1;
-                            logicUseTargets(w, player, i, kUseToggle, 0);
+                        case LogicKind::Door:
+                        case LogicKind::DoorRotating:
+                        case LogicKind::Button:
+                            if (state.move == MoveState::AtTop)
+                                detail::moverStart(w, i, MoveState::GoingDown);
+                            break;
+                        case LogicKind::TriggerAuto:
+                            // One held back by a global is gone only once it has
+                            // fired, and only if it fires once: while its global
+                            // is not on it waits for the next time the map is
+                            // come into (c1a4i's rocket button, unlocked by what
+                            // is switched on elsewhere).
+                            if (logicGlobalAllows(w, record))
+                            {
+                                logicUseTargets(w, player, i, record.useType, 0);
+                                if ((record.flags & kLogicFireOnce) || record.globalState == 0)
+                                    state.dead = true;
+                            }
+                            break;
+                        case LogicKind::MultiManager:
+                            state.running = false;
+                            break;
+                        case LogicKind::Rotating:
+                            logicUse(w, player, i, -1, kUseToggle);
+                            break;
+                        case LogicKind::PlatRot:
+                            if (state.move == MoveState::AtTop)
+                                detail::moverStart(w, i, MoveState::GoingDown);
+                            break;
+                        case LogicKind::Breakable:
+                            detail::breakIt(w, player, i, 0); // stood on, and its delay is up
+                            break;
+                        case LogicKind::Train:
+                        case LogicKind::GunTarget:
+                            if (state.running)
+                                detail::trainNext(w, player, i);
+                            break;
+                        default:
+                            break; // a trigger_multiple: simply armed again
                         }
                     }
-                    if (state.phase < 0)
-                        state.phase = 0;
                 }
-                else if (kind == LogicKind::TriggerPush && inside && !state.running && !state.dead)
+
+                // 3. Movement.
+                if (kind == LogicKind::Door || kind == LogicKind::Button ||
+                    kind == LogicKind::DoorRotating)
+                    detail::moverTick(w, player, i, ms);
+                else if (kind == LogicKind::Train || kind == LogicKind::GunTarget)
+                    detail::trainTick(w, player, i, ms);
+                else if (kind == LogicKind::Speaker)
+                    detail::speakerTick(w, i, ms);
+                else if (kind == LogicKind::Rotating)
+                    detail::rotatingTick(w, player, i, ms);
+                else if (kind == LogicKind::PlatRot)
+                    detail::platTick(w, player, i, ms);
+                else if (kind == LogicKind::Pendulum)
+                    detail::pendulumTick(w, player, i, ms);
+                else if (kind == LogicKind::Pushable)
+                    detail::pushableTick(w, player, i, ms);
+                else if (kind == LogicKind::Script)
+                    detail::scriptTick(w, player, i, ms);
+                else if (kind == LogicKind::Sentence)
+                    detail::sentenceTick(w, player, i, ms);
+                else if (kind == LogicKind::TrackTrain)
+                    detail::trackTrainTick(w, player, i, ms);
+                else if (kind == LogicKind::TrackChange)
+                    detail::trackChangeTick(w, player, i, ms);
+                else if (kind == LogicKind::MomentaryButton)
+                    detail::momentaryTick(w, player, i, ms);
+                else if (kind == LogicKind::MomentaryDoor)
+                    detail::momentaryDoorTick(w, player, i, ms);
+
+                // 4. The player walking into things.
+                if (kind == LogicKind::Breakable && record.brush != kNoBrush && !state.dead)
                 {
-                    // CTriggerPush::Touch. Once: its speed added to theirs, and
-                    // it is gone. Otherwise their base velocity for as long
-                    // as they are in it (the player's move makes of it a push
-                    // up and a carry along: HlPlayerMove.hpp), what more than
-                    // one push them by added together.
-                    if (record.flags & kLogicFireOnce)
+                    const bool on = player.onGround && player.groundMover == static_cast<int>(record.brush);
+                    // Stood on, it gives way after its delay (a tenth of a second
+                    // if it has none).
+                    if ((record.flags & kLogicPressure) && on && state.timer < 0)
+                        state.timer = record.delayMs > 0 ? static_cast<std::int32_t>(record.delayMs) : 100;
+                    // Run into hard enough, it breaks, and that hurts.
+                    if ((record.flags & kLogicTouch) && !(record.flags & kLogicTriggerOnly) &&
+                        player.touchedMover == static_cast<int>(record.brush))
+                    {
+                        const std::int32_t blow = fxToInt(fxLength(player.velocity)) / 100;
+                        if (blow >= static_cast<std::int32_t>(record.extra[0]) - state.phase)
+                        {
+                            logicHurt(player, blow / 4, 0, kDmgSlash);
+                            detail::breakIt(w, player, i, 0, static_cast<std::int32_t>(record.extra[0]) - state.phase - blow);
+                        }
+                    }
+                }
+                else if (kind == LogicKind::EndSection && (record.flags & kLogicTouch) && !state.dead)
+                {
+                    const fx mins[3] = {fxFromInt(record.mins[0]), fxFromInt(record.mins[1]),
+                                        fxFromInt(record.mins[2])};
+                    const fx maxs[3] = {fxFromInt(record.maxs[0]), fxFromInt(record.maxs[1]),
+                                        fxFromInt(record.maxs[2])};
+                    if (detail::playerTouchesBox(player, mins, maxs, 0))
+                        logicUse(w, player, i, -1, kUseOn);
+                }
+                else if (kind == LogicKind::Music && (record.flags & kLogicTouch) && !state.dead)
+                {
+                    const fx mins[3] = {fxFromInt(record.mins[0]), fxFromInt(record.mins[1]),
+                                        fxFromInt(record.mins[2])};
+                    const fx maxs[3] = {fxFromInt(record.maxs[0]), fxFromInt(record.maxs[1]),
+                                        fxFromInt(record.maxs[2])};
+                    if (detail::playerTouchesBox(player, mins, maxs, 0))
+                        logicUse(w, player, i, -1, kUseOn);
+                }
+                else if (kind == LogicKind::TriggerHurt || kind == LogicKind::TriggerPush ||
+                         kind == LogicKind::TriggerTeleport || kind == LogicKind::TriggerGravity ||
+                         kind == LogicKind::Friction)
+                {
+                    const bool inside = detail::playerInVolume(w, player, record) && logicMasterAllows(w, i);
+                    if (kind == LogicKind::TriggerHurt)
+                    {
+                        // Half a second's worth every half second. state.phase
+                        // counts the milliseconds to the next.
+                        state.phase -= ms;
+                        if (inside && !state.running && state.phase <= 0)
+                        {
+                            logicHurt(player, static_cast<std::int32_t>(record.extra[0]) / 2, hurtKindsOf(record.extra[1]),
+                                      record.extra[1]);
+                            state.phase = 500;
+                            if (record.target != 0 && !(state.bits & 1))
+                            {
+                                state.bits |= 1;
+                                logicUseTargets(w, player, i, kUseToggle, 0);
+                            }
+                        }
+                        if (state.phase < 0)
+                            state.phase = 0;
+                    }
+                    else if (kind == LogicKind::TriggerPush && inside && !state.running && !state.dead)
+                    {
+                        // CTriggerPush::Touch. Once: its speed added to theirs, and
+                        // it is gone. Otherwise their base velocity for as long
+                        // as they are in it (the player's move makes of it a push
+                        // up and a carry along: HlPlayerMove.hpp), what more than
+                        // one push them by added together.
+                        if (record.flags & kLogicFireOnce)
+                        {
+                            for (int a = 0; a < 3; ++a)
+                                player.velocity[a] += record.move[a];
+                            if (player.velocity[2] > 0)
+                            {
+                                player.onGround = false;
+                                player.groundMover = -1;
+                            }
+                            state.dead = true;
+                        }
+                        else
+                        {
+                            for (int a = 0; a < 3; ++a)
+                                player.push.value.v[a] += record.move[a];
+                        }
+                    }
+                    else if (kind == LogicKind::Friction && inside)
+                    {
+                        // CFrictionModifier::ChangeFriction, for this frame (the
+                        // game's move puts it back after each).
+                        const int hold = record.extra[0] > 100 ? 100 : static_cast<int>(record.extra[0]);
+                        player.slip.value = static_cast<std::uint8_t>(100 - hold);
+                    }
+                    else if (kind == LogicKind::TriggerGravity && inside)
+                    {
+                        // CTriggerGravity::GravityTouch: from now on, until
+                        // another says otherwise.
+                        const auto percent = static_cast<std::uint8_t>(record.extra[0] == 0 ? 100 : record.extra[0]);
+                        player.gravityPercent.value = static_cast<std::uint8_t>(percent == 100 ? 0 : percent);
+                        if (w.globals != nullptr)
+                            w.globals->set(kGlobalPlayerGravity, percent);
+                    }
+                    else if (kind == LogicKind::TriggerTeleport && inside && !(record.flags & kLogicNoPlayer))
                     {
                         for (int a = 0; a < 3; ++a)
-                            player.velocity[a] += record.move[a];
-                        if (player.velocity[2] > 0)
                         {
-                            player.onGround = false;
-                            player.groundMover = -1;
+                            player.origin[a] = record.move[a];
+                            player.velocity[a] = 0;
                         }
+                        player.onGround = false;
+                        player.groundMover = -1;
+                        w.faceSet = true;
+                        w.faceYaw = static_cast<std::uint16_t>(record.extra[0]);
+                    }
+                }
+                else if (kind == LogicKind::AutoSave)
+                {
+                    const fx mins[3] = {fxFromInt(record.mins[0]), fxFromInt(record.mins[1]),
+                                        fxFromInt(record.mins[2])};
+                    const fx maxs[3] = {fxFromInt(record.maxs[0]), fxFromInt(record.maxs[1]),
+                                        fxFromInt(record.maxs[2])};
+                    if (detail::playerTouchesBox(player, mins, maxs, 0) && logicMasterAllows(w, i))
+                    {
+                        w.saveRequested = true;
                         state.dead = true;
                     }
-                    else
-                    {
-                        for (int a = 0; a < 3; ++a)
-                            player.push.value.v[a] += record.move[a];
-                    }
                 }
-                else if (kind == LogicKind::Friction && inside)
+                else if (kind == LogicKind::ChangeLevel)
                 {
-                    // CFrictionModifier::ChangeFriction, for this frame (the
-                    // game's move puts it back after each).
-                    const int hold = record.extra[0] > 100 ? 100 : static_cast<int>(record.extra[0]);
-                    player.slip.value = static_cast<std::uint8_t>(100 - hold);
+                    const fx mins[3] = {fxFromInt(record.mins[0]), fxFromInt(record.mins[1]),
+                                        fxFromInt(record.mins[2])};
+                    const fx maxs[3] = {fxFromInt(record.maxs[0]), fxFromInt(record.maxs[1]),
+                                        fxFromInt(record.maxs[2])};
+                    if ((record.flags & kLogicTouch) && w.pendingChange < 0 &&
+                        detail::playerTouchesBox(player, mins, maxs, 0))
+                        logicUse(w, player, i, -1, kUseToggle);
                 }
-                else if (kind == LogicKind::TriggerGravity && inside)
-                {
-                    // CTriggerGravity::GravityTouch: from now on, until
-                    // another says otherwise.
-                    const auto percent = static_cast<std::uint8_t>(record.extra[0] == 0 ? 100 : record.extra[0]);
-                    player.gravityPercent.value = static_cast<std::uint8_t>(percent == 100 ? 0 : percent);
-                    if (w.globals != nullptr)
-                        w.globals->set(kGlobalPlayerGravity, percent);
-                }
-                else if (kind == LogicKind::TriggerTeleport && inside && !(record.flags & kLogicNoPlayer))
-                {
-                    for (int a = 0; a < 3; ++a)
-                    {
-                        player.origin[a] = record.move[a];
-                        player.velocity[a] = 0;
-                    }
-                    player.onGround = false;
-                    player.groundMover = -1;
-                    w.faceSet = true;
-                    w.faceYaw = static_cast<std::uint16_t>(record.extra[0]);
-                }
+                else
+                    detail::touchedBy(w, player, i);
             }
-            else if (kind == LogicKind::AutoSave)
-            {
-                const fx mins[3] = {fxFromInt(record.mins[0]), fxFromInt(record.mins[1]),
-                                    fxFromInt(record.mins[2])};
-                const fx maxs[3] = {fxFromInt(record.maxs[0]), fxFromInt(record.maxs[1]),
-                                    fxFromInt(record.maxs[2])};
-                if (detail::playerTouchesBox(player, mins, maxs, 0) && logicMasterAllows(w, i))
-                {
-                    w.saveRequested = true;
-                    state.dead = true;
-                }
-            }
-            else if (kind == LogicKind::ChangeLevel)
-            {
-                const fx mins[3] = {fxFromInt(record.mins[0]), fxFromInt(record.mins[1]),
-                                    fxFromInt(record.mins[2])};
-                const fx maxs[3] = {fxFromInt(record.maxs[0]), fxFromInt(record.maxs[1]),
-                                    fxFromInt(record.maxs[2])};
-                if ((record.flags & kLogicTouch) && w.pendingChange < 0 &&
-                    detail::playerTouchesBox(player, mins, maxs, 0))
-                    logicUse(w, player, i, -1, kUseToggle);
-            }
-            else
-                detail::touchedBy(w, player, i);
         }
 
-        // 4. The switched lights: each style is as the last light of it
-        //    says.
-        w.stylesOff = 0;
-        for (int i = 0; i < w.recordCount; ++i)
         {
-            const LogicRecord &record = w.records[i];
-            if (record.kind != static_cast<std::uint8_t>(LogicKind::Light) || record.extra[0] >= kLightStyles ||
-                record.extra[0] < 32)
-                continue;
-            const std::uint64_t bit = std::uint64_t(1) << record.extra[0];
-            const bool off = (w.states[i].bits & 1) != 0;
-            w.stylesOff = off ? (w.stylesOff | bit) : (w.stylesOff & ~bit);
-            // (On, it shines by its pattern, if it has one: CLight::Use.)
-            w.stylePattern.value[record.extra[0] - 32] =
-                !off && record.extra[1] != 0 && w.strings.value != nullptr ? w.strings.value + record.extra[1] : nullptr;
-        }
+            HL_LOGIC_PART(Lights);
+            // 4. The switched lights: each style is as the last light of it
+            //    says.
+            w.stylesOff = 0;
+            for (int i = 0; i < w.recordCount; ++i)
+            {
+                const LogicRecord &record = w.records[i];
+                if (record.kind != static_cast<std::uint8_t>(LogicKind::Light) || record.extra[0] >= kLightStyles ||
+                    record.extra[0] < 32)
+                    continue;
+                const std::uint64_t bit = std::uint64_t(1) << record.extra[0];
+                const bool off = (w.states[i].bits & 1) != 0;
+                w.stylesOff = off ? (w.stylesOff | bit) : (w.stylesOff & ~bit);
+                // (On, it shines by its pattern, if it has one: CLight::Use.)
+                w.stylePattern.value[record.extra[0] - 32] =
+                    !off && record.extra[1] != 0 && w.strings.value != nullptr ? w.strings.value + record.extra[1] : nullptr;
+            }
 
-        // 5. What each brush shows of its textures, and the conveyors.
-        for (int i = 0; i < w.recordCount; ++i)
-        {
-            const LogicRecord &record = w.records[i];
-            const LogicState &state = w.states[i];
-            if (record.brush == kNoBrush || record.brush >= w.brushCount)
-                continue;
-            BrushState &brush = w.brushStates[record.brush];
-            switch (static_cast<LogicKind>(record.kind))
+            // 5. What each brush shows of its textures, and the conveyors.
+            for (int i = 0; i < w.recordCount; ++i)
             {
-            case LogicKind::Button:
-                brush.frame = state.move != MoveState::AtBottom;
-                break;
-            case LogicKind::Static:
-            case LogicKind::ButtonTarget:
-                brush.frame = state.bits & 1;
-                break;
-            case LogicKind::HealthCharger:
-            case LogicKind::SuitCharger:
-                brush.frame = static_cast<int>(state.bits) >= chargerCapacity(w, record); // nothing left in it
-                break;
-            case LogicKind::Conveyor:
-            {
-                if (state.dead || !brush.active)
+                const LogicRecord &record = w.records[i];
+                const LogicState &state = w.states[i];
+                if (record.brush == kNoBrush || record.brush >= w.brushCount)
+                    continue;
+                BrushState &brush = w.brushStates[record.brush];
+                switch (static_cast<LogicKind>(record.kind))
+                {
+                case LogicKind::Button:
+                    brush.frame = state.move != MoveState::AtBottom;
                     break;
-                const int way = (state.bits & 1) ? -1 : 1;
-                brush.scroll = (brush.scroll + static_cast<fx>((static_cast<std::int64_t>(record.speed) * way * ms) / 1000)) &
-                               (fxFromInt(1024) - 1);
-                // Whoever stands on it goes with it, as far as the world
-                // lets them.
-                if (!(record.extra[0] & 1) && player.onGround && player.groundMover == static_cast<int>(record.brush) &&
-                    w.world != nullptr)
+                case LogicKind::Static:
+                case LogicKind::ButtonTarget:
+                    brush.frame = state.bits & 1;
+                    break;
+                case LogicKind::HealthCharger:
+                case LogicKind::SuitCharger:
+                    brush.frame = static_cast<int>(state.bits) >= chargerCapacity(w, record); // nothing left in it
+                    break;
+                case LogicKind::Conveyor:
                 {
-                    fx to[3];
-                    for (int a = 0; a < 3; ++a)
-                        to[a] = player.origin[a] + static_cast<fx>((static_cast<std::int64_t>(record.move[a]) * way * ms) / 1000);
-                    if (positionFree(*w.world, player.ducked, to))
+                    if (state.dead || !brush.active)
+                        break;
+                    const int way = (state.bits & 1) ? -1 : 1;
+                    brush.scroll = (brush.scroll + static_cast<fx>((static_cast<std::int64_t>(record.speed) * way * ms) / 1000)) &
+                                   (fxFromInt(1024) - 1);
+                    // Whoever stands on it goes with it, as far as the world
+                    // lets them.
+                    if (!(record.extra[0] & 1) && player.onGround && player.groundMover == static_cast<int>(record.brush) &&
+                        w.world != nullptr)
                     {
+                        fx to[3];
                         for (int a = 0; a < 3; ++a)
-                            player.origin[a] = to[a];
+                            to[a] = player.origin[a] + static_cast<fx>((static_cast<std::int64_t>(record.move[a]) * way * ms) / 1000);
+                        if (positionFree(*w.world, player.ducked, to))
+                        {
+                            for (int a = 0; a < 3; ++a)
+                                player.origin[a] = to[a];
+                        }
                     }
+                    break;
                 }
-                break;
-            }
-            default:
-                break;
+                default:
+                    break;
+                }
             }
         }
         // (The USE the next tick's shoves are of: see useHeldAtTouch.)

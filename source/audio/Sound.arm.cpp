@@ -1,4 +1,5 @@
 #include "audio/Sound.hpp"
+#include "DebugLog.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -1362,7 +1363,9 @@ namespace hlrt
                 continue;
             }
             speech.played += speech.speed * static_cast<std::uint32_t>(ms);
+            const std::uint32_t before = speech.mouth.at;
             speech.mouth.feed(speech.played / 1000);
+            DebugLog::Perf::noteSpeechSamples(speech.mouth.at - before);
         }
     }
 
@@ -1947,20 +1950,27 @@ namespace hlrt
             roomDue_ = 250;
             roomTick();
         }
-        for (int i = 0; i < queue.count; ++i)
         {
-            const SoundEvent &event = queue.events[i];
-            if (event.flags & kSoundSentence)
-                say(event);
-            else if (event.flags & kSoundLoopOff)
-                stopLoop(event.tag);
-            else if (event.flags & kSoundLoopOn)
-                playLoop(event);
-            else
-                playOnce(event);
+            // (Timed apart, in a build that measures it: the sounds started.)
+            const DebugLog::Perf::Timed started(DebugLog::Section::SndStart);
+            for (int i = 0; i < queue.count; ++i)
+            {
+                const SoundEvent &event = queue.events[i];
+                if (event.flags & kSoundSentence)
+                    say(event);
+                else if (event.flags & kSoundLoopOff)
+                    stopLoop(event.tag);
+                else if (event.flags & kSoundLoopOn)
+                    playLoop(event);
+                else
+                    playOnce(event);
+            }
+            queue.count = 0;
         }
-        queue.count = 0;
-        speechTick(ms);
+        {
+            const DebugLog::Perf::Timed speaking(DebugLog::Section::Speech);
+            speechTick(ms);
+        }
         focusTick(ms);
         // The loops, and whatever has a place, are looked at a few times a
         // second: each change is a message to the other processor.
