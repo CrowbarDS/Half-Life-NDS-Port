@@ -1200,9 +1200,15 @@ namespace hldata
                     planned = true;
                 }
             }
-            else if (slot->state == kThinkFree || (slot->kind != kThinkPlan && slot->state == kThinkDone))
+            else if (slot->state == kThinkFree || (slot->kind != kThinkPlan && slot->state == kThinkDone) ||
+                     (slot->kind == kThinkLook && !actor.hasGoal))
             {
-                // Asked; meanwhile on as it was going.
+                // Asked; meanwhile on as it was going. (A look along its
+                // way, still waiting or being worked out, gives way to the
+                // plan of a walker that has none: without one it goes
+                // nowhere, and its task fails while the look waits for a
+                // slow worker. The worker gives no answer to a question
+                // taken over: thinkRunOne.)
                 slot->kind = kThinkPlan;
                 slot->state = kThinkAsked;
                 thinkAsked(*a.think, *slot);

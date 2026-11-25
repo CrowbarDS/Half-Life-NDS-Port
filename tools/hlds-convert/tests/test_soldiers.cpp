@@ -549,12 +549,15 @@ namespace
     /// `deferred`: their long thinking (ways somewhere) asked for and
     /// worked out between ticks, as the console's worker does it (HlThink.hpp)
     /// -- the same fight, by the same rules. `dsi`: answers taken up the
-    /// moment they are in, as a DSi takes them (answersAtOnce).
-    void testSquads(const char *dir, bool deferred = false, bool dsi = false)
+    /// moment they are in, as a DSi takes them (answersAtOnce). `slowEvery`:
+    /// a worker given little time, as a console's on a heavy pass -- one
+    /// question answered every that many ticks.
+    /// The runs for cover given up (or -1 without the game's files).
+    int testSquads(const char *dir, bool deferred = false, bool dsi = false, int slowEvery = 0)
     {
         auto game = load(dir, "c1a3a");
         if (!game)
-            return;
+            return -1;
         Game &g = *game;
         std::vector<ThinkSlot> slots(static_cast<std::size_t>(g.actors.count));
         ThinkQueue queue;
@@ -606,7 +609,7 @@ namespace
         }
         check(leader >= 0, "somewhere to stand in front of a squad's leader");
         if (leader < 0)
-            return;
+            return -1;
         only(g, -1, ActorKind::Grunt);
         for (int i = 0; i < g.actors.count; ++i)
         {
@@ -627,15 +630,24 @@ namespace
         std::vector<std::string> was(g.actors.count);
         std::vector<int> lastToss(g.actors.count, -100000);
         std::vector<std::uint8_t> first(g.actors.count, 0);
-        int mostFiring = 0, covers = 0, badCover = 0, tosses = 0, badToss = 0, signals = 0, woke = 0;
+        int mostFiring = 0, covers = 0, badCover = 0, tosses = 0, badToss = 0, signals = 0, woke = 0, failed = 0;
+        int tick = 0;
         bool leaderFirst = false, othersHid = false;
         for (int ms = 0; ms < 30000; ms += 33)
         {
             g.frame();
             // (The worker's turn: what was asked this tick, worked out
             // before the next.)
-            while (deferred && thinkRunOne(g.logic))
-                ++answered;
+            if (slowEvery > 0)
+            {
+                if (++tick % slowEvery == 0 && thinkRunOne(g.logic))
+                    ++answered;
+            }
+            else
+            {
+                while (deferred && thinkRunOne(g.logic))
+                    ++answered;
+            }
             g.player.health = 100;
             for (int k = 0; k < 3; ++k)
                 g.player.origin[k] = stand[k];
@@ -665,6 +677,10 @@ namespace
                     else
                         othersHid = othersHid || now == "TakeCover";
                 }
+                // (Run for cover, and given up on before he is there: his
+                // way not worked out in time.)
+                if (changed && now == "Grunt Combat Fail" && was[i] == "TakeCover")
+                    ++failed;
                 if (changed && now == "SignalSuppress")
                     ++signals;
                 if (changed && now == "TakeCover")
@@ -693,12 +709,13 @@ namespace
         }
         std::printf("test_soldiers: c1a3a, thirty seconds with a squad%s: %d woke; at most %d firing at once; "
                     "%d runs for cover (%d ticks headed somewhere in sight); %d grenades thrown (%d against the rules); "
-                    "%d lines spoken; %d questions answered outside the frame\n",
-                    dsi ? " (thinking outside the frame, answers taken at once, as a DSi)"
-                    : deferred ? " (thinking outside the frame)"
-                               : "",
+                    "%d lines spoken; %d questions answered outside the frame; %d runs for cover given up\n",
+                    slowEvery > 0 ? " (thinking outside the frame by a slow worker, answers taken at once, as a DSi)"
+                    : dsi        ? " (thinking outside the frame, answers taken at once, as a DSi)"
+                    : deferred   ? " (thinking outside the frame)"
+                                 : "",
                     woke, mostFiring, covers, badCover, tosses,
-                    badToss, g.sentencesHeard, answered);
+                    badToss, g.sentencesHeard, answered, failed);
         if (deferred)
             check(answered > 0, "their thinking is done outside the frame");
         check(woke == 3 && leaderFirst, "the whole squad learns of the player at once, and its leader opens fire");
@@ -722,6 +739,7 @@ namespace
             fair = fair && (m->talk.voicePitch == 100 || (m->talk.voicePitch >= 109 && m->talk.voicePitch <= 116));
         }
         check(voices > 0 && fair, "... each in his own voice: 100, or 109 to 116");
+        return failed;
     }
 
     /// A hand grenade, by the game's rules (CheckRangeAttack2): thrown in an
@@ -1239,7 +1257,13 @@ int main()
         testSoldier(dir);
         testSquads(dir);
         testSquads(dir, true);
-        testSquads(dir, true, true);
+        const int quick = testSquads(dir, true, true);
+        // A worker given little time gives up no more runs for cover than a
+        // quick one: a walker's plan is not held up by a look along its way
+        // still waiting for it (HlWalk.hpp's walkThink).
+        const int slow = testSquads(dir, true, true, 15);
+        if (quick >= 0 && slow >= 0)
+            check(slow <= quick, "a slow worker gives up no more runs for cover than a quick one");
         testGrenades(dir);
         testOddments(dir);
         testLauncher(dir);

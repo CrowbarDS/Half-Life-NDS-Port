@@ -527,6 +527,11 @@ int main(int argc, char **argv)
     // up the moment they are in (ThinkQueue::answersAtOnce), as a DSi does.
     const char *deferredMode = std::getenv("DIAG_DEFERRED");
     const bool deferred = deferredMode != nullptr && deferredMode[0] != '\0' && std::strcmp(deferredMode, "0") != 0;
+    // DIAG_DEFER_EVERY=N, DIAG_DEFER_MOST=M: a slow worker, as a console's
+    // can be on a heavy pass -- questions answered only every Nth frame, and
+    // no more than M of them then.
+    const int deferEvery = std::getenv("DIAG_DEFER_EVERY") != nullptr ? std::max(1, std::atoi(std::getenv("DIAG_DEFER_EVERY"))) : 1;
+    const int deferMost = std::getenv("DIAG_DEFER_MOST") != nullptr ? std::max(1, std::atoi(std::getenv("DIAG_DEFER_MOST"))) : 1 << 30;
     std::vector<ThinkSlot> thinkSlots(static_cast<std::size_t>(g.actors.count));
     ThinkQueue thinkQueue;
     if (deferred)
@@ -1007,9 +1012,9 @@ int main(int argc, char **argv)
         // and weapons (Game::frame's order, the game's: each command, then
         // the entities' thinks).
         monstersTick(g.logic, g.player, ms);
-        if (deferred)
+        if (deferred && f % deferEvery == 0)
         {
-            while (thinkRunOne(g.logic))
+            for (int n = 0; n < deferMost && thinkRunOne(g.logic); ++n)
             {
             }
         }
