@@ -969,8 +969,15 @@ namespace hlrt
             }
             const bool switched = brushState_ != nullptr && brushState_[index].frame != 0;
             const Surface *surface = view.surfaces + model.firstSurface;
+            // (Each of its surfaces within the light's reach, as the world's
+            // are: its ball is in the brush's own space, as `at` is. Not
+            // the brush's alone -- inside the tram, the whole of it is.)
             for (int k = model.surfaceCount; k > 0 && room; --k, ++surface)
-                lightSurface(*surface, at, eye, switched);
+            {
+                const std::int32_t middle[3] = {surface->center[0], surface->center[1], surface->center[2]};
+                if (near(middle, surface->radius, at))
+                    lightSurface(*surface, at, eye, switched);
+            }
             if (moved)
                 glPopMatrix(1);
         }
