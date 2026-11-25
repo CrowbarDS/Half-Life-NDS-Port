@@ -65,6 +65,11 @@ namespace hlrt
         /// were clipped at the screen's edge.
         int hwPolygons = 0;
         int hwVertices = 0;
+        /// Of those, the world's surfaces alone: as the walk counted them,
+        /// and as the hardware held them (a profiling build's; -1 in any
+        /// other).
+        int worldPolygons = 0;
+        int hwWorldPolygons = -1;
         int brushes = 0;        ///< brush entities sent
         bool budgetHit = false; ///< the walk stopped early
         /// A brush entity had no room. (It does not bring the fog in: what is
@@ -83,6 +88,8 @@ namespace hlrt
         /// Surfaces in view that the walk had no room for (each time one did
         /// not fit; what was still to come when it gave up is not counted).
         int surfacesCut = 0;
+        /// ... and what they would have cost (counted as often).
+        int cutPolygons = 0;
         /// What of `polygons` was the world's far half, sent last (the
         /// part a full hardware drops).
         int farPolygons = 0;
@@ -92,6 +99,7 @@ namespace hlrt
         /// pass (the DSi's DMA was still feeding the geometry engine).
         int sphereOut = 0;
         int boxOut = 0;
+        int boxOutPolygons = 0; ///< what the box test's would have cost
         bool boxSkipped = false;
         /// Brush entities in view not drawn: no room in the pass for them, or
         /// (`brushesOverflow`, counted in both) more of them than the lists

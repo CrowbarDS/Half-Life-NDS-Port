@@ -47,9 +47,10 @@ namespace hlrt
         std::memset(far_, 0, chosenWords_ * 4);
         stats_.sphereOut = 0;
         stats_.boxOut = 0;
+        stats_.boxOutPolygons = 0;
         stats_.boxSkipped = false;
 #ifdef HLDS_BOX_TEST
-        int sphereOut = 0, boxOut = 0;
+        int sphereOut = 0, boxOut = 0, boxOutPolygons = 0;
         std::memset(out_, 0, chosenWords_ * 4);
         // (Not while the DSi's DMA may still be feeding the geometry engine:
         // THE BOX TEST, WorldDraw.hpp.)
@@ -141,6 +142,7 @@ namespace hlrt
                 {
                     outWord |= bit;
                     ++boxOut;
+                    boxOutPolygons += surface.polygons;
                     return true;
                 }
             }
@@ -191,6 +193,7 @@ namespace hlrt
                     stats_.cutDistance = depthOf(surface) - surface.radius;
                 }
                 ++stats_.surfacesCut;
+                stats_.cutPolygons += surface.polygons;
                 if (++misses >= kMissesMost || polygonBudget - polygons < kRoomLeast ||
                     vertexBudget - vertices < kRoomLeast * 3)
                 {
@@ -275,6 +278,7 @@ namespace hlrt
 #ifdef HLDS_BOX_TEST
         stats_.sphereOut = sphereOut;
         stats_.boxOut = boxOut;
+        stats_.boxOutPolygons = boxOutPolygons;
         if (boxes)
             boxTestFormat(false);
 #endif

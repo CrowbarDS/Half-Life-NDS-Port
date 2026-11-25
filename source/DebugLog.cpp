@@ -36,7 +36,7 @@ namespace hlrt::DebugLog::Perf
 
         constexpr const char *kNames[kCount] = {"input", "logic", "move", "walk",
                                                 "emit",  "pose",  "models", "frame", "monsters", "look", "hear", "going",
-                                                "keys", "sound", "stream", "vblank", "hblank", "radio", "card", "lamp"};
+                                                "keys", "sound", "stream", "vblank", "hblank", "radio", "card", "lamp", "tree"};
         // Key reads since the last line: how many, the longest one, and what
         // of the worst frame was reading keys (does a read make that frame?).
         std::uint32_t keyReads = 0, keyLongest = 0, keysInWorstFrame = 0;

@@ -2182,6 +2182,16 @@ a map heavy by, and changing it would change which maps have the fog on
 always. These are emulator figures: a console's own may differ, and are
 what to set the headroom by.
 
+The other way round, `gap-poly-*` is what the walk counted and the
+hardware clipped away: room a tighter cull could give back. Only the
+passes the walk filled are short of room, so `full-gap-mean` is the gap
+over those alone, beside `full-cut-poly-mean`, what they left out for
+room (counted each time a surface did not fit). `box-out-poly-mean`, in a
+box-test build, is what the box test took out after the balls: about what
+any finer test of a whole surface could save. `perf.txt`'s `time:` line
+has `tree`, the walk of the tree alone, without the planning of models,
+effects and brushes that `walk` also holds.
+
 **The governor's climb and the pressure's wait** were tried faster, and
 are left as they were, as named numbers to try again on a console: the
 climb towards what was counted and not used (`kBudgetClimb`, 10 polygons a

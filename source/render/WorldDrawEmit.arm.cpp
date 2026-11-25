@@ -236,6 +236,7 @@ namespace hlrt
         stats_.budgetHit = false;
         stats_.brushCut = false;
         stats_.surfacesCut = 0;
+        stats_.cutPolygons = 0;
         stats_.brushesDropped = 0;
         stats_.brushesOverflow = 0;
         const int leaf = findLeaf(level.view, camera.pos);
@@ -274,7 +275,13 @@ namespace hlrt
             // none.)
             effectDraw.reserve(modelPolygons_, modelVertices_);
             planBrushes();
-            walk();
+            {
+                // (The tree alone, without the planning above: what
+                // culling changes.)
+                const DebugLog::Perf::Scope tree(DebugLog::Section::Tree);
+                walk();
+            }
+            stats_.worldPolygons = stats_.polygons;
             // ... and the models' share is counted with the world's from here
             // on, so that the brushes are held to what is really left.
             stats_.polygons += modelPolygons_;
@@ -282,11 +289,25 @@ namespace hlrt
         }
         {
             const DebugLog::Perf::Scope scope(DebugLog::Section::Emit);
+#ifdef HLDS_PROFILE
+            // (What the hardware held of the world alone: its count after
+            // the world, less what was there before -- the sky's.)
+            while (GFX_STATUS & BIT(27))
+            {
+            }
+            const int hwBefore = GFX_POLYGON_RAM_USAGE;
+#endif
             emit();
             // While a display list is on its way, what does not need the
             // geometry engine: where the models' bones are.
             modelDraw.prepare();
             finishList();
+#ifdef HLDS_PROFILE
+            while (GFX_STATUS & BIT(27))
+            {
+            }
+            stats_.hwWorldPolygons = GFX_POLYGON_RAM_USAGE - hwBefore;
+#endif
             // The actors, between the world and its see-through brushes: they
             // are opaque, and glass is drawn over them.
             stats_.models = 0;

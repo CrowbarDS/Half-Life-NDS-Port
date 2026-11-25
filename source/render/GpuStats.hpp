@@ -82,9 +82,36 @@ namespace hlrt
         /// budget can be, under the hardware's 2048 and 6144.)
         /// (`farPolygons`: what of `polygons` was the world's far half, sent
         /// last.)
-        void clipping(int polygons, int vertices, int hwPolygons, int hwVertices, bool full, int farPolygons)
+        /// The other way round, the gap: what was counted and clipped away
+        /// -- room a tighter cull could give back -- its mean, most and
+        /// nineteen passes in twenty, and its mean over the passes the walk
+        /// filled, beside what those passes left out (`cutPolygons`): there,
+        /// a polygon saved is one more drawn.
+        /// (`worldPolygons`, `hwWorldPolygons`: the same for the world's
+        /// surfaces alone, the hardware's -1 when not known: what of the gap
+        /// is the world's, which a cull of the world can give back.)
+        void clipping(int polygons, int vertices, int hwPolygons, int hwVertices, bool full, int farPolygons,
+                      int cutPolygons, int worldPolygons, int hwWorldPolygons)
         {
+            if (hwWorldPolygons >= 0)
+            {
+                const int worldGap = worldPolygons > hwWorldPolygons ? worldPolygons - hwWorldPolygons : 0;
+                map_.worldGapSum += static_cast<std::uint32_t>(worldGap);
+                map_.worldGapMost = worldGap > map_.worldGapMost ? worldGap : map_.worldGapMost;
+                if (full)
+                    map_.fullWorldGapSum += static_cast<std::uint32_t>(worldGap);
+            }
             map_.farPolygonsSum += static_cast<std::uint32_t>(farPolygons);
+            const int gap = polygons > hwPolygons ? polygons - hwPolygons : 0;
+            map_.gapSum += static_cast<std::uint32_t>(gap);
+            map_.gapMost = gap > map_.gapMost ? gap : map_.gapMost;
+            ++map_.gaps[gap >= kBuckets * kGapStep ? kBuckets - 1 : gap >> kGapShift];
+            if (full)
+            {
+                ++map_.fullPasses;
+                map_.fullGapSum += static_cast<std::uint32_t>(gap);
+                map_.fullCutSum += static_cast<std::uint32_t>(cutPolygons);
+            }
             const int p = hwPolygons - polygons, v = hwVertices - vertices;
             map_.excessPolygonsMost = p > map_.excessPolygonsMost ? p : map_.excessPolygonsMost;
             map_.excessVerticesMost = v > map_.excessVerticesMost ? v : map_.excessVerticesMost;
@@ -97,12 +124,14 @@ namespace hlrt
             }
         }
         /// What the view's planes, and the box test (HLDS_BOX_TEST), left
-        /// out of the world this pass; and whether the box test was not
-        /// done.
-        void culls(int sphereOut, int boxOut, bool boxSkipped)
+        /// out of the world this pass (the box test's in polygons too: what
+        /// a tighter test of a surface could save); and whether the box
+        /// test was not done.
+        void culls(int sphereOut, int boxOut, int boxOutPolygons, bool boxSkipped)
         {
             map_.sphereOutSum += static_cast<std::uint32_t>(sphereOut);
             map_.boxOutSum += static_cast<std::uint32_t>(boxOut);
+            map_.boxOutPolygonsSum += static_cast<std::uint32_t>(boxOutPolygons);
             map_.boxSkipped += boxSkipped;
         }
         const Frame &last() const { return last_; }
@@ -123,6 +152,12 @@ namespace hlrt
         /// hardware's count is mostly well under the walk's).
         static constexpr int kBuckets = 32;
         static constexpr int kPolygonStep = 16, kVertexStep = 64;
+        /// clipping()'s gap, by steps of this from 0 (the last bucket: all
+        /// of 31 steps or more).
+        static constexpr int kGapShift = 5, kGapStep = 1 << kGapShift;
+        /// The gap nineteen passes in twenty stay at or under (the top of
+        /// their bucket).
+        static int gap95(const std::uint32_t *counts, std::uint32_t passes);
         static int bucket(int excess, int step)
         {
             // (Shifted up first: a division rounds towards 0, and a pass a
@@ -166,7 +201,13 @@ namespace hlrt
             std::uint32_t excessPolygons[kBuckets] = {}, excessVertices[kBuckets] = {};
             int fullPolygonsMost = 0, fullVerticesMost = 0;
             std::uint32_t farPolygonsSum = 0;
-            std::uint32_t sphereOutSum = 0, boxOutSum = 0, boxSkipped = 0;
+            std::uint32_t sphereOutSum = 0, boxOutSum = 0, boxOutPolygonsSum = 0, boxSkipped = 0;
+            // (clipping(): the walk's count less the hardware's.)
+            std::uint32_t gapSum = 0, gaps[kBuckets] = {};
+            int gapMost = 0;
+            std::uint32_t fullPasses = 0, fullGapSum = 0, fullCutSum = 0;
+            std::uint32_t worldGapSum = 0, fullWorldGapSum = 0;
+            int worldGapMost = 0;
         };
         Frame last_;
         Totals map_;

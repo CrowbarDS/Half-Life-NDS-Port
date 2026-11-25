@@ -94,10 +94,23 @@ namespace hlrt
         return (kBuckets - 16) * step;
     }
 
+    int GpuStats::gap95(const std::uint32_t *counts, std::uint32_t passes)
+    {
+        std::uint32_t seen = 0;
+        for (int b = 0; b < kBuckets; ++b)
+        {
+            seen += counts[b];
+            if (seen * 20 >= passes * 19)
+                return (b + 1) * kGapStep;
+        }
+        return kBuckets * kGapStep;
+    }
+
     bool GpuStats::writeLog(const char *map, const char *mode) const
     {
         if (!global.hasFat || map_.frames == 0)
             return false;
+        const std::uint32_t full = map_.fullPasses;
         std::FILE *file = std::fopen(global.dataPath("perf.txt").c_str(), "a");
         if (file == nullptr)
             return false;
@@ -106,7 +119,9 @@ namespace hlrt
                      "underflow %d overflow %d cut-world %lu cut-brush %lu pressed %lu enemies-cut %lu enemies-seen-cut %lu effects-refused %lu models-hidden %lu "
                      "poly-mean %lu surfaces-cut-mean %lu.%02lu surfaces-cut-most %d detail-cut-mean %lu brushes-dropped-mean %lu.%02lu "
                      "brushes-dropped-most %d brushes-overflow %lu enemies-dropped %lu heap-least %luK "
-                     "excess-poly-most %d excess-poly-95 %d excess-vert-most %d excess-vert-95 %d full-poly-most %d full-vert-most %d far-poly-mean %lu sphere-out-mean %lu box-out-mean %lu box-skipped %lu\n",
+                     "excess-poly-most %d excess-poly-95 %d excess-vert-most %d excess-vert-95 %d full-poly-most %d full-vert-most %d far-poly-mean %lu sphere-out-mean %lu box-out-mean %lu box-out-poly-mean %lu box-skipped %lu "
+                     "gap-poly-mean %lu gap-poly-95 %d gap-poly-most %d full-passes %lu full-gap-mean %lu full-cut-poly-mean %lu "
+                     "world-gap-mean %lu world-gap-most %d full-world-gap-mean %lu\n",
                      map, global.isDSi ? "DSi" : "DS", mode,
                      static_cast<unsigned long>(map_.frames), static_cast<unsigned long>(map_.slow),
                      map_.vblanks, map_.polygons, map_.vertices, map_.lowLines, map_.underflows,
@@ -128,7 +143,15 @@ namespace hlrt
                      map_.fullPolygonsMost, map_.fullVerticesMost,
                      static_cast<unsigned long>(map_.farPolygonsSum / map_.frames),
                      static_cast<unsigned long>(map_.sphereOutSum / map_.frames),
-                     static_cast<unsigned long>(map_.boxOutSum / map_.frames), static_cast<unsigned long>(map_.boxSkipped));
+                     static_cast<unsigned long>(map_.boxOutSum / map_.frames),
+                     static_cast<unsigned long>(map_.boxOutPolygonsSum / map_.frames),
+                     static_cast<unsigned long>(map_.boxSkipped),
+                     static_cast<unsigned long>(map_.gapSum / map_.frames), gap95(map_.gaps, map_.frames), map_.gapMost,
+                     static_cast<unsigned long>(map_.fullPasses),
+                     static_cast<unsigned long>(full == 0 ? 0 : map_.fullGapSum / full),
+                     static_cast<unsigned long>(full == 0 ? 0 : map_.fullCutSum / full),
+                     static_cast<unsigned long>(map_.worldGapSum / map_.frames), map_.worldGapMost,
+                     static_cast<unsigned long>(full == 0 ? 0 : map_.fullWorldGapSum / full));
         return std::fclose(file) == 0;
     }
 } // namespace hlrt

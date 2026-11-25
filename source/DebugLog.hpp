@@ -39,6 +39,7 @@ namespace hlrt::DebugLog
         Radio,  ///< the wireless's word from the ARM7, in the FIFO interrupt (local play)
         Card,   ///< reads off the card (data/CardRead.hpp), wherever they are made
         Lamp,   ///< the lamp's light on the walls (WorldDraw::lampPass: inside Emit)
+        Tree,   ///< WorldDraw::walk alone: the tree and its culling (inside Walk)
         Count
     };
 
