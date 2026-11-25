@@ -2071,10 +2071,13 @@ namespace hldata
         }
 
         /// A trigger_auto gone that never fired: one that fires once, held
-        /// back by a global, every multisource it is aimed at still without
-        /// its input. (Builds before let such a one die unfired, and their
-        /// saves keep it so -- c1a4i's rocket button locked for good; and a
-        /// map begun afresh, come back to, has its multisources all off.)
+        /// back by a global, everything it is aimed at untouched since the
+        /// map began -- a multisource still without its input, a relay that
+        /// removes itself still there, a monstermaker never set going, a
+        /// door that stays where it is sent still shut. (Builds before let
+        /// such a one die unfired, and their saves keep it so -- c1a4i's
+        /// rocket button locked for good, c2a1's gate shut; and a map begun
+        /// afresh, come back to, has its multisources all off.)
         inline bool autoUnfired(const LogicWorld &w, int index)
         {
             const LogicRecord &record = w.records[index];
@@ -2090,8 +2093,30 @@ namespace hldata
                 const LogicRecord &target = w.records[m];
                 if (target.name != name)
                     continue;
-                if (target.kind != static_cast<std::uint8_t>(LogicKind::MultiSource))
+                const LogicState &was = w.states[m];
+                switch (static_cast<LogicKind>(target.kind))
+                {
+                case LogicKind::MultiSource:
+                    break;
+                case LogicKind::TriggerRelay:
+                    if (!(target.flags & kLogicFireOnce) || was.dead)
+                        return false;
+                    any = true;
+                    continue;
+                case LogicKind::Maker:
+                    if (was.dead || was.running || was.phase != 0)
+                        return false;
+                    any = true;
+                    continue;
+                case LogicKind::Door:
+                case LogicKind::DoorRotating:
+                    if (!(target.flags & kLogicToggle) || was.move != MoveState::AtBottom || was.phase != 0)
+                        return false;
+                    any = true;
+                    continue;
+                default:
                     return false;
+                }
                 int input = -1;
                 for (int a = 0; a < target.auxCount && a < 32; ++a)
                 {
