@@ -254,6 +254,7 @@ namespace hlrt
         {
             const DebugLog::Perf::Scope scope(DebugLog::Section::Walk);
             modelDraw.plan(modelPolygons_, modelVertices_);
+            const int planned = modelPolygons_;
             // (What is only seen -- sprites, beams, bursts -- is costed
             // with the models: the world has what both leave.)
             effectDraw.gather(modelPolygons_, modelVertices_);
@@ -274,6 +275,10 @@ namespace hlrt
             // (... and the marks and small things there are: nothing, with
             // none.)
             effectDraw.reserve(modelPolygons_, modelVertices_);
+            // (What of the models' share is the models' and what the
+            // effects': a profiling build's split of what was counted.)
+            stats_.modelsCounted = planned - modelDraw.heldCounted();
+            stats_.restCounted = modelPolygons_ - planned;
             planBrushes();
             {
                 // (The tree alone, without the planning above: what
@@ -310,20 +315,33 @@ namespace hlrt
             {
             }
             stats_.hwWorldPolygons = GFX_POLYGON_RAM_USAGE - hwBefore;
+            const int hwAfterWorld = hwBefore + stats_.hwWorldPolygons;
 #endif
             // The actors, between the world and its see-through brushes: they
             // are opaque, and glass is drawn over them.
             stats_.models = 0;
             stats_.modelsCut = 0;
             modelDraw.draw(stats_.models, stats_.modelsCut);
+#ifdef HLDS_PROFILE
+            while (GFX_STATUS & BIT(27))
+            {
+            }
+            const int hwAfterModels = GFX_POLYGON_RAM_USAGE;
+            stats_.hwModelsPolygons = hwAfterModels - hwAfterWorld;
+            const int countedBefore = stats_.polygons;
+#endif
             drawBrushes(); // (and the effects, in among the glass)
 #ifdef HLDS_PROFILE
+            // (... the brushes, the lamp's light and the effects: what
+            // drawBrushes counted beside the effects' share set aside.)
+            stats_.restCounted += stats_.polygons - countedBefore;
             // (What the hardware keeps of what is in hand: its count after
             // it, less before.)
             while (GFX_STATUS & BIT(27))
             {
             }
             hwBeforeHeld = GFX_POLYGON_RAM_USAGE;
+            stats_.hwRestPolygons = hwBeforeHeld - hwAfterModels;
 #endif
             modelDraw.drawHeld();
         }

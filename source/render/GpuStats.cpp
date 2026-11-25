@@ -110,7 +110,7 @@ namespace hlrt
     {
         if (!global.hasFat || map_.frames == 0)
             return false;
-        const std::uint32_t full = map_.fullPasses, held = map_.heldPasses;
+        const std::uint32_t full = map_.fullPasses, held = map_.heldPasses, part = map_.partPasses;
         std::FILE *file = std::fopen(global.dataPath("perf.txt").c_str(), "a");
         if (file == nullptr)
             return false;
@@ -122,7 +122,8 @@ namespace hlrt
                      "excess-poly-most %d excess-poly-95 %d excess-vert-most %d excess-vert-95 %d full-poly-most %d full-vert-most %d far-poly-mean %lu sphere-out-mean %lu box-out-mean %lu box-out-poly-mean %lu box-skipped %lu "
                      "gap-poly-mean %lu gap-poly-95 %d gap-poly-most %d full-passes %lu full-gap-mean %lu full-cut-poly-mean %lu "
                      "world-gap-mean %lu world-gap-most %d full-world-gap-mean %lu "
-                     "held-counted-mean %lu held-kept-mean %lu held-over %lu held-over-most %d\n",
+                     "held-counted-mean %lu held-kept-mean %lu held-over %lu held-over-most %d "
+                     "models-counted-mean %lu models-kept-mean %lu rest-counted-mean %lu rest-kept-mean %lu\n",
                      map, global.isDSi ? "DSi" : "DS", mode,
                      static_cast<unsigned long>(map_.frames), static_cast<unsigned long>(map_.slow),
                      map_.vblanks, map_.polygons, map_.vertices, map_.lowLines, map_.underflows,
@@ -155,7 +156,11 @@ namespace hlrt
                      static_cast<unsigned long>(full == 0 ? 0 : map_.fullWorldGapSum / full),
                      static_cast<unsigned long>(held == 0 ? 0 : map_.heldCountedSum / held),
                      static_cast<unsigned long>(held == 0 ? 0 : map_.heldKeptSum / held),
-                     static_cast<unsigned long>(map_.heldOver), map_.heldOverMost);
+                     static_cast<unsigned long>(map_.heldOver), map_.heldOverMost,
+                     static_cast<unsigned long>(part == 0 ? 0 : map_.modelsCountedSum / part),
+                     static_cast<unsigned long>(part == 0 ? 0 : map_.modelsKeptSum / part),
+                     static_cast<unsigned long>(part == 0 ? 0 : map_.restCountedSum / part),
+                     static_cast<unsigned long>(part == 0 ? 0 : map_.restKeptSum / part));
         return std::fclose(file) == 0;
     }
 } // namespace hlrt

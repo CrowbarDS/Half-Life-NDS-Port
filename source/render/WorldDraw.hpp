@@ -75,6 +75,10 @@ namespace hlrt
         /// kept it (a profiling build's; -1 in any other).
         int heldCounted = 0;
         int hwHeldPolygons = -1;
+        /// ... the other models, and the rest (brushes, the lamp's light,
+        /// effects): as counted and as kept (a profiling build's).
+        int modelsCounted = 0, hwModelsPolygons = -1;
+        int restCounted = 0, hwRestPolygons = -1;
         int brushes = 0;        ///< brush entities sent
         bool budgetHit = false; ///< the walk stopped early
         /// A brush entity had no room. (It does not bring the fog in: what is

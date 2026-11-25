@@ -140,6 +140,18 @@ namespace hlrt
                 map_.heldOverMost = kept - counted > map_.heldOverMost ? kept - counted : map_.heldOverMost;
             }
         }
+        /// The other models, and the rest (brushes, the lamp's light,
+        /// effects): as counted, and as kept (-1: not known).
+        void parts(int models, int modelsKept, int rest, int restKept)
+        {
+            if (modelsKept < 0 || restKept < 0)
+                return;
+            ++map_.partPasses;
+            map_.modelsCountedSum += static_cast<std::uint32_t>(models);
+            map_.modelsKeptSum += static_cast<std::uint32_t>(modelsKept);
+            map_.restCountedSum += static_cast<std::uint32_t>(rest);
+            map_.restKeptSum += static_cast<std::uint32_t>(restKept);
+        }
         /// What the view's planes, and the box test (HLDS_BOX_TEST), left
         /// out of the world this pass (the box test's in polygons too: what
         /// a tighter test of a surface could save); and whether the box
@@ -228,6 +240,8 @@ namespace hlrt
             // (held(): over the passes it was measured.)
             std::uint32_t heldPasses = 0, heldCountedSum = 0, heldKeptSum = 0, heldOver = 0;
             int heldOverMost = 0;
+            // (parts().)
+            std::uint32_t partPasses = 0, modelsCountedSum = 0, modelsKeptSum = 0, restCountedSum = 0, restKeptSum = 0;
         };
         Frame last_;
         Totals map_;
