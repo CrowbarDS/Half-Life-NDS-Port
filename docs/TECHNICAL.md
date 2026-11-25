@@ -2271,11 +2271,17 @@ was slow itself (`slow/quick`). At the same time given, what a slow pass
 spends more on is a cause; what only grows with the time given is a
 consequence. `onset:` is each section's mean over the first slow pass
 after at least eight quick ones given no more than the pace. Logic is
-split into its parts (`fires`, `clips`, `movers`, `lights`, `hazards`,
-`aiworld`, `pieces`, `makers`, `actors`, `shots`: `HlProfileParts.hpp`;
-and `weapons`). Sound is split into `sndstart`, the sounds started, and
-`speech`. `speech:` is the samples the mouths' meter decodes a pass, and
-what a thousand of them cost.
+split into its parts (`fires`, `marks`, `links`, `clips`, `movers`,
+`lights`, `hazards`, `aiworld`, `pieces`, `makers`, `actors`, `shots`:
+`HlProfileParts.hpp`; and `weapons`). Sound is split into `sndstart`, the
+sounds started, `speech`, `sndroom` and `sndloops`. `speech:` is the
+samples the mouths' meter decodes a pass, and what a thousand of them
+cost. `movers by kind:` splits the movers' part by the kind of record,
+the costliest ten: each one's mean over every pass, then over the slow and
+the quick given no more than the pace; and the one record that took
+longest. The worker's answers are given by kind of question too (`plan`,
+`detour`, `look`, `cover`, `route`): how many were taken up, their mean and
+longest wait, and the oldest still waiting, in passes.
 
 **The box test** (an experiment: `HLDS_BOX_TEST=1 ./make.sh`). The geometry
 engine can say whether a box is inside the view as it clips (`BOX_TEST`),

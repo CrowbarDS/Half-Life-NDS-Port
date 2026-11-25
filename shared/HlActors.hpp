@@ -480,6 +480,7 @@ namespace hldata
     /// `at`, eyes out[0] above) from its own eyes (out[1]), `least`..`reach`
     /// from it. Answered as kThinkCover is.
     inline constexpr std::uint8_t kThinkNearRoute = 5;
+    inline constexpr int kThinkKinds = 6; ///< (0, no question, and the five)
 
     /// How soon a question is worked out, of those waiting (ThinkSlot::band):
     /// a fight's first, then a walk's, then a walk to a mark.
@@ -549,6 +550,10 @@ namespace hldata
         std::uint32_t taken = 0;       ///< answers taken up
         std::uint32_t takenFrames = 0; ///< ... the frames they took, in all
         std::uint32_t longest = 0;     ///< ... the longest
+        /// ... and the same by kind (kThink*): answers, frames, longest.
+        std::uint32_t takenOf[kThinkKinds] = {};
+        std::uint32_t framesOf[kThinkKinds] = {};
+        std::uint32_t longestOf[kThinkKinds] = {};
         std::uint32_t dropped = 0;     ///< answers to a walk's plan from where it no longer was
         std::uint32_t gaveUp = 0;      ///< questions not taken up in time: the asker worked them out
         /// Told of each question asked (the engine's: it wakes the worker,
@@ -571,6 +576,11 @@ namespace hldata
         q.takenFrames += wait;
         if (wait > q.longest)
             q.longest = wait;
+        const int kind = slot.kind < kThinkKinds ? slot.kind : 0;
+        ++q.takenOf[kind];
+        q.framesOf[kind] += wait;
+        if (wait > q.longestOf[kind])
+            q.longestOf[kind] = wait;
     }
 
     /// Where long work stops a moment for the frame (the console's worker

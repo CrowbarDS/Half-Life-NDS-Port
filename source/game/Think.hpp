@@ -51,6 +51,11 @@ namespace hlrt
         struct Waits
         {
             std::uint32_t taken = 0, frames = 0, longest = 0, dropped = 0, gaveUp = 0;
+            /// By kind of question (hldata::kThink*): answers taken up, the
+            /// frames they took in all, the longest; and the oldest still
+            /// waiting to be taken up, in frames, as the line is written.
+            std::uint32_t takenOf[hldata::kThinkKinds] = {}, framesOf[hldata::kThinkKinds] = {};
+            std::uint32_t longestOf[hldata::kThinkKinds] = {}, waitingOf[hldata::kThinkKinds] = {};
         };
         Waits takeWaits();
         /// The deepest the worker's stack has been (perf.txt; 0 unless

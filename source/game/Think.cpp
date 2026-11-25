@@ -255,6 +255,27 @@ namespace hlrt
         w.dropped = queue.dropped;
         w.gaveUp = queue.gaveUp;
         queue.taken = queue.takenFrames = queue.longest = queue.dropped = queue.gaveUp = 0;
+        for (int k = 0; k < hldata::kThinkKinds; ++k)
+        {
+            w.takenOf[k] = queue.takenOf[k];
+            w.framesOf[k] = queue.framesOf[k];
+            w.longestOf[k] = queue.longestOf[k];
+            queue.takenOf[k] = queue.framesOf[k] = queue.longestOf[k] = 0;
+        }
+        // (What is still asked or worked out, or answered and not yet taken
+        // up: how long it has been waiting.)
+        if (queue.slots != nullptr)
+        {
+            for (int i = 0; i < queue.count; ++i)
+            {
+                const hldata::ThinkSlot &slot = queue.slots[i];
+                if (slot.state == hldata::kThinkFree || slot.kind >= hldata::kThinkKinds)
+                    continue;
+                const std::uint32_t age = queue.frame - slot.askedFrame;
+                if (age > w.waitingOf[slot.kind])
+                    w.waitingOf[slot.kind] = age;
+            }
+        }
         return w;
     }
 

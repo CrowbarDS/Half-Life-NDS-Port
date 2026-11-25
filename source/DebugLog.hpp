@@ -41,10 +41,12 @@ namespace hlrt::DebugLog
         Lamp,   ///< the lamp's light on the walls (WorldDraw::lampPass: inside Emit)
         Tree,   ///< WorldDraw::walk alone: the tree and its culling (inside Walk)
         // Logic's parts (hldata::LogicPart, HlProfileParts.hpp), in its order:
-        Fires, Clips, Movers, Lights, Hazards, AiWorld, Pieces, Makers, Actors, Shots,
+        Fires, Marks, Links, Clips, Movers, Lights, Hazards, AiWorld, Pieces, Makers, Actors, Shots,
         Weapons,  ///< the weapon in hand (inside Logic)
         SndStart, ///< the pass's sounds started (inside Sound)
         Speech,   ///< what is said, and the mouth's meter decoding it (inside Sound)
+        SndRoom,  ///< the room the player is in, four times a second (inside Sound)
+        SndLoops, ///< the loops and what has a place, ten times a second (inside Sound)
         Count
     };
 
@@ -91,6 +93,10 @@ namespace hlrt::DebugLog
         /// Samples the mouth's meter decoded this frame (inside Speech): what
         /// the speech costs a sample, in perf.txt.
         void noteSpeechSamples(std::uint32_t samples);
+        /// What the movers' part took this frame by the kind of each record
+        /// (hldata::LogicKind, `kinds` of them), and its longest record:
+        /// perf.txt's "movers by kind". Before endFrame.
+        void noteKinds(const std::uint32_t *spent, int kinds, int worstRecord, int worstKind, std::uint32_t worstTicks);
         /// A line in perf.txt of what the sections took since the last one
         /// (each one's mean and its worst frame, in microseconds, and how
         /// deep the stack has been), once every so many frames. The emulator
@@ -182,6 +188,7 @@ namespace hlrt::DebugLog
         inline void endFrame() {}
         inline void notePace(int, bool) {}
         inline void noteSpeechSamples(std::uint32_t) {}
+        inline void noteKinds(const std::uint32_t *, int, int, int, std::uint32_t) {}
         inline void logEvery(const char *, int) {}
         inline void markStack() {}
         inline void noteLibrary(const void *, std::uint32_t) {}

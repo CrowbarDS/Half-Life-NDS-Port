@@ -1947,6 +1947,7 @@ namespace hlrt
         roomDue_ -= ms;
         if (roomDue_ <= 0)
         {
+            const DebugLog::Perf::Timed timed(DebugLog::Section::SndRoom);
             roomDue_ = 250;
             roomTick();
         }
@@ -1977,6 +1978,7 @@ namespace hlrt
         loopsDue_ -= ms;
         if (loopsDue_ <= 0)
         {
+            const DebugLog::Perf::Timed timed(DebugLog::Section::SndLoops);
             loopsDue_ = 100;
             loopsTick();
             follow();

@@ -5995,16 +5995,25 @@ namespace hldata
                 if (gravity >= 0)
                     player.gravityPercent.value = static_cast<std::uint8_t>(gravity == 100 ? 0 : gravity);
             }
+        }
+        {
+            // The map's own marks and the ways between the nodes, looked at
+            // every so often.
             if ((w.marksDueMs -= ms) <= 0)
             {
+                HL_LOGIC_PART(Marks);
                 w.marksDueMs = 500;
                 detail::marksNear(w, player);
             }
             if ((w.linksDueMs -= ms) <= 0)
             {
+                HL_LOGIC_PART(Links);
                 w.linksDueMs = 250;
                 detail::linksTick(w, player);
             }
+        }
+        {
+            HL_LOGIC_PART(Fires);
             // A view from elsewhere, for as long as it lasts; and the count down
             // to loading the last save (the caller's at 0).
             if (w.camera >= 0)
@@ -6058,6 +6067,7 @@ namespace hldata
                 if (state.dead)
                     continue;
                 const auto kind = static_cast<LogicKind>(record.kind);
+                HL_LOGIC_RECORD(i, record.kind);
 
                 // 2. Whatever it was waiting to do. (A box's timer is not one: it
                 //    is the damage it has taken; nor a gun's, its rounds' time,

@@ -1326,6 +1326,12 @@ namespace hlrt
                                     hldata::partSpent[p]);
                 hldata::partSpent[p] = 0;
             }
+            DebugLog::Perf::noteKinds(hldata::kindSpent, hldata::kRecordKinds, hldata::recordWorstIndex,
+                                      hldata::recordWorstKind, hldata::recordWorst);
+            for (std::uint32_t &spent : hldata::kindSpent)
+                spent = 0;
+            hldata::recordWorst = 0;
+            hldata::recordWorstIndex = -1;
 #endif
             // A monster's blow to the player's view (its punchangle: the
             // game's pitch is down, the view's up).
