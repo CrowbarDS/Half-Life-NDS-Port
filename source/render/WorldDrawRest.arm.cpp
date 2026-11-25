@@ -270,13 +270,47 @@ namespace hlrt
         return turned;
     }
 
+    bool WorldDraw::brushPlanes(std::uint32_t index, bool turned, const std::int32_t *axes, CullPlane *out) const
+    {
+        const Brush &brush = level.view.brushes[index];
+        const fx *pos = brushState_ != nullptr ? brushState_[index].pos : brush.origin;
+        // A point c of the brush is at pos + R c in the world: a plane
+        // n.x >= d is (R^T n).c >= d - n.pos there. (n.pos: Q12 by Q12.)
+        for (int p = 0; p < Camera::kPlaneCount; ++p)
+        {
+            const CullPlane &plane = camera.planes[p];
+            const std::int64_t along = static_cast<std::int64_t>(plane.normal[0]) * pos[0] +
+                                       static_cast<std::int64_t>(plane.normal[1]) * pos[1] +
+                                       static_cast<std::int64_t>(plane.normal[2]) * pos[2];
+            out[p].dist = plane.dist - static_cast<std::int32_t>(along >> kFxShift);
+            for (int j = 0; j < 3; ++j)
+            {
+                std::int32_t n = plane.normal[j];
+                if (turned)
+                {
+                    n = static_cast<std::int32_t>((static_cast<std::int64_t>(plane.normal[0]) * axes[j] +
+                                                   static_cast<std::int64_t>(plane.normal[1]) * axes[3 + j] +
+                                                   static_cast<std::int64_t>(plane.normal[2]) * axes[6 + j]) >>
+                                                  kNormalShift);
+                    if (n > kCullNormalMost || n < -kCullNormalMost)
+                        return false;
+                }
+                out[p].normal[j] = n;
+            }
+        }
+        return true;
+    }
+
     void WorldDraw::brushCost(std::uint32_t index, int &polygons, int &vertices) const
     {
         const LevelView &view = level.view;
         const Model &model = view.models[view.brushes[index].model];
         fx eye[3];
         std::int32_t axes[9];
-        brushEye(index, eye, axes);
+        const bool turned = brushEye(index, eye, axes);
+        // (Its surfaces out of view are neither counted nor sent: drawBrush.)
+        CullPlane planes[Camera::kPlaneCount];
+        const bool cull = brushPlanes(index, turned, axes, planes);
         polygons = vertices = 0;
         const Surface *surface = view.surfaces + model.firstSurface;
         for (int n = model.surfaceCount; n > 0; --n, ++surface)
@@ -284,6 +318,8 @@ namespace hlrt
             const std::uint32_t planeIndex = surface->planeRef & kSurfacePlaneMask;
             const fx side = planeDistance(view.planes[planeIndex], view.planeTypes[planeIndex], eye);
             if ((surface->planeRef & kSurfacePlaneBack) ? side >= 0 : side <= 0)
+                continue;
+            if (cull && cullSphereOutside(planes, Camera::kPlaneCount, surface->center, surface->radius))
                 continue;
             polygons += surface->polygons;
             vertices += surface->vertices;
@@ -301,6 +337,11 @@ namespace hlrt
         fx eye[3];
         std::int32_t axes[9]; // Q30
         const bool turned = brushEye(index, eye, axes);
+        // A surface out of view is not sent, as the world's is not: the
+        // view's planes in the brush's own space, where its surfaces' balls
+        // are (brushPlanes).
+        CullPlane planes[Camera::kPlaneCount];
+        const bool cull = brushPlanes(index, turned, axes, planes);
 
         switch (static_cast<RenderClass>(brush.renderClass))
         {
@@ -364,6 +405,8 @@ namespace hlrt
             const std::uint32_t planeIndex = surface->planeRef & kSurfacePlaneMask;
             const fx side = planeDistance(view.planes[planeIndex], view.planeTypes[planeIndex], eye);
             if ((surface->planeRef & kSurfacePlaneBack) ? side >= 0 : side <= 0)
+                continue;
+            if (cull && cullSphereOutside(planes, Camera::kPlaneCount, surface->center, surface->radius))
                 continue;
             if (stats_.polygons + surface->polygons > polygonBudget() ||
                 stats_.vertices + surface->vertices > vertexBudget())

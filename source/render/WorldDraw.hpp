@@ -49,6 +49,7 @@
 
 #include "HlLogic.hpp"
 
+#include "HlCull.hpp"
 #include "HlFog.hpp"
 #include "Settings.hpp"
 
@@ -281,6 +282,12 @@ namespace hlrt
         /// What brush `index` costs to draw from where the eye is: the
         /// surfaces that face it.
         void brushCost(std::uint32_t index, int &polygons, int &vertices) const;
+        /// The view's planes in brush `index`'s own space (where its
+        /// surfaces' balls are), as brushEye left it moved and `turned` by
+        /// `axes`: each surface of it then has the world's test. False when
+        /// a turn takes a plane past what the test multiplies
+        /// (kCullNormalMost): then all of it is kept.
+        bool brushPlanes(std::uint32_t index, bool turned, const std::int32_t *axes, hldata::CullPlane *out) const;
         int brushPolygons_ = 0; ///< what the world leaves for the brushes this pass
         int brushVertices_ = 0;
         /// What the world leaves for the lamp's light this pass: what it

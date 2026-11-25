@@ -120,7 +120,15 @@ Milestone 11, "levels of detail".
   becomes how solid it is, so its black shows nothing (it was a dark sheet,
   or at full amount an opaque one), and faces whose texture is dark all over
   are not drawn at all (`kTextureLight`, `lightToAlpha`); A3I5 or A5I3, as
-  the sprites below.
+  the sprites below. Each surface of one is tested as a world surface is:
+  facing the eye, and its ball against the view's planes, which are moved
+  into the brush's own space, where it is wherever it has been moved or
+  turned to (`WorldDraw::brushPlanes`). What is out of view is neither
+  counted nor sent: a lift or a train mostly off the screen counted all its
+  faces before, and on a DSi in Blue Shift the brushes, the lamp's light and
+  the effects together counted up to 350 polygons a pass more than the
+  hardware kept. (A turn that would take a plane past what the test
+  multiplies leaves that brush's surfaces all in, as before.)
 - Doors (sliding and hinged), buttons, lifts and trains on path corners,
   ladders, walls that switch on and off, and the wiring between them:
   triggers, relays, multi_managers, multisources, delays and killtargets.
