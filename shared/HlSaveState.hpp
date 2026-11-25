@@ -57,7 +57,7 @@ namespace hldata
     HL_FIELDS(Gib, 10);
     HL_FIELDS(Decal, 9);
     HL_FIELDS(Piece, 14);
-    HL_FIELDS(ActorWorld, 43);
+    HL_FIELDS(ActorWorld, 44);
     HL_FIELDS(Inventory, 12);
     HL_FIELDS(PlayerState, 42);
     HL_FIELDS(ViewState, 8);

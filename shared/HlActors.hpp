@@ -15,6 +15,7 @@
 //
 // std-only and inline: the host tests run it.
 
+#include <array>
 #include <cstring>
 
 #include "HlAnim.hpp"
@@ -681,6 +682,10 @@ namespace hldata
         Effect effects[kMaxEffects];
         Gib gibs[kMaxGibs];
         Decal decals[kMaxDecals];
+        /// Which of the map's marks each is (its record, plus 1; 0: none):
+        /// a mark still on its wall is not looked for again (marksNear).
+        /// Not saved: after a load each is looked for once more.
+        Unsaved<std::array<std::int16_t, kMaxDecals>> decalRecord;
         int decalLimit = 24;
         int decalNext = 0; ///< (no longer used: marks give way by worth, decalAdd; kept for saves)
         Piece pieces[kMaxPieces];

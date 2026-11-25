@@ -1166,6 +1166,36 @@ namespace hldata
             // (A sign whose wall the converter found: towards that wall
             // first, so that one near a corner is on the floor it was put
             // on and not the wall beside it. Then every way, as before.)
+            // Still on its wall from an earlier look -- in the store yet,
+            // and still this mark: its time begun again, and not looked for
+            // again (up to seven traces each, every half second).
+            ActorWorld &a = *w.actors;
+            const int index = static_cast<int>(&record - w.records);
+            const auto picture = static_cast<std::uint8_t>(record.extra[0]);
+            const int limit = a.decalLimit < 1 ? 1 : (a.decalLimit > kMaxDecals ? kMaxDecals : a.decalLimit);
+            for (int i = 0; i < limit; ++i)
+            {
+                Decal &decal = a.decals[i];
+                if (a.decalRecord.value[i] != index + 1 || !decal.active || !(decal.turn & kDecalTheMaps) ||
+                    decal.picture != picture)
+                    continue;
+                bool near = true;
+                for (int k = 0; k < 3; ++k)
+                {
+                    const fx gap = decal.at[k] - record.move[k];
+                    near = near && gap <= fxFromInt(8) && gap >= -fxFromInt(8);
+                }
+                if (!near)
+                    continue;
+                decal.leftMs = decalLife(picture) / 100 * a.markLifePercent;
+                return;
+            }
+            // (Which of the store's it is, once it is put there.)
+            auto placed = [&](const Decal &decal) {
+                const int slot = static_cast<int>(&decal - a.decals);
+                if (slot >= 0 && slot < kMaxDecals)
+                    a.decalRecord.value[slot] = static_cast<std::int16_t>(index + 1);
+            };
             const bool known = (record.extra[3] & 1u) != 0;
             static constexpr std::int8_t kWays[7][3] = {{0, 0, 0},  {1, 0, 0},  {-1, 0, 0}, {0, 1, 0},
                                                         {0, -1, 0}, {0, 0, 1},  {0, 0, -1}};
@@ -1181,7 +1211,6 @@ namespace hldata
                 fx at[3], normal[3];
                 if (!traceShotWall(*w.world, from, to, at, normal))
                     continue;
-                const auto picture = static_cast<std::uint8_t>(record.extra[0]);
                 if (picture == kDecalSign)
                 {
                     // A sign: one of the map's sprites, as large as its
@@ -1196,15 +1225,16 @@ namespace hldata
                         decalAdd(*w.actors, picture, at, normal, half, static_cast<std::uint16_t>(sprite), -1, true);
                     decal.turn = static_cast<std::uint8_t>(
                         kDecalTheMaps | (k == 0 ? (record.extra[3] >> 1) & (kSignTurnMask | kSignMirror) : 0));
+                    placed(decal);
                     return;
                 }
                 const int family = decalFamily(picture);
-                decalAdd(*w.actors, picture, at, normal, static_cast<int>(record.extra[1]),
+                placed(decalAdd(*w.actors, picture, at, normal, static_cast<int>(record.extra[1]),
                          family == 8 ? kMarkAlien
                                      : (family == 5 ? kMarkBlood
                                                     : (family == 10 ? kMarkSoot
                                                                     : (picture >= kDecalWallCrack ? kMarkWall : kMarkShot))),
-                         -1, true);
+                                -1, true));
                 return;
             }
         }

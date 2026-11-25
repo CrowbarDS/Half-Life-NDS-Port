@@ -502,6 +502,31 @@ namespace
         }
         check(placed > 0, "... and those near the player are on their walls");
         check(onTheirWall == placed && lying == placed, "... the walls the converter found, lying as their textures do");
+        // One still on its wall is not looked for again at the next look
+        // (marksNear, every half second): moved a little along its wall, it
+        // is left there, and no other is put where it was found.
+        int moved = -1;
+        for (int i = 0; i < kMaxDecals && moved < 0; ++i)
+            moved = g.actors.decals[i].active && g.actors.decals[i].picture == kDecalSign ? i : -1;
+        if (moved >= 0)
+        {
+            Decal &d = g.actors.decals[moved];
+            int along = 0;
+            for (int k = 1; k < 3; ++k)
+                along = std::abs(d.normal[k]) < std::abs(d.normal[along]) ? k : along;
+            d.at[along] += fxFromInt(4);
+            const fx nudged = d.at[along];
+            auto signsUp = [&]() {
+                int n = 0;
+                for (const Decal &one : g.actors.decals)
+                    n += one.active && one.picture == kDecalSign;
+                return n;
+            };
+            const int had = signsUp();
+            hldata::detail::marksNear(g.logic, g.player);
+            check(signsUp() == had && d.active && d.at[along] == nudged,
+                  "... and one still on its wall is not looked for again");
+        }
     }
 
     /// c1a0d's suit, taken: it says its whole logon (!HEV_AAx), at once and
