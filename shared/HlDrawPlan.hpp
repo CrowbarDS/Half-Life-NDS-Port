@@ -180,6 +180,11 @@ namespace hldata
 
     /// Looks in a row that find a model behind a wall before it is hidden.
     inline constexpr std::uint8_t kHiddenLooks = 3;
+    /// Frames a "hidden" stands without a look to say so again: past that it
+    /// is drawn (a wall that hid it may be gone, and the frame's lines may
+    /// all have gone to others -- what is drawn behind a wall is hidden by
+    /// it anyway).
+    inline constexpr std::uint16_t kHiddenStale = 16;
     /// Whether a model in view is behind a wall (ModelDraw), kept per
     /// actor: `run`, how many looks in a row found it so (kHiddenLooks:
     /// hidden); `lookedAt`, the frame of the last. Looked at again this frame
@@ -197,7 +202,7 @@ namespace hldata
             lookedAt = frame;
             run = clear() ? 0 : static_cast<std::uint8_t>(run < kHiddenLooks ? run + 1 : kHiddenLooks);
         }
-        return run >= kHiddenLooks;
+        return run >= kHiddenLooks && static_cast<std::uint16_t>(frame - lookedAt) < kHiddenStale;
     }
 
     struct DrawHeld
@@ -231,10 +236,15 @@ namespace hldata
     /// kept for the nearest in a frame with room. The share may grow by up
     /// to `growPolygons` / `growVertices` out of the world's for the enemies
     /// and the people; past that the people give way, and an enemy only
-    /// when the enemies alone cannot be had.
+    /// when the enemies alone cannot be had. What there is to pick up, given
+    /// `pickupPolygons` (0: none), is drawn always: outside `limit`, and in
+    /// that many polygons of its own (three vertices each) when the share
+    /// has no room for it -- at the coarsest level that fits, rather than
+    /// not at all.
     inline DrawPlan planModels(const DrawCandidate *all, int count, int limit, const DrawHeld &held, int pressure,
                                int sharePolygons, int shareVertices, int whole, int enemyMost = 12,
-                               int growPolygons = kDrawGrowPolygons, int growVertices = kDrawGrowVertices)
+                               int growPolygons = kDrawGrowPolygons, int growVertices = kDrawGrowVertices,
+                               int pickupPolygons = 0)
     {
         DrawPlan plan;
         if (count > kDrawMost * 2)
@@ -299,8 +309,11 @@ namespace hldata
             const DrawCandidate &one = all[i];
             const bool fresh = (one.kind == kDrawPickup || one.kind == kDrawBody) && !one.shown;
             bodiesWaiting -= keptBody(i) ? 1 : 0;
-            const bool place = fresh ? kept + bodiesWaiting < limit
-                                     : kept < limit || (one.kind == kDrawEnemy && kept < enemyMost);
+            // (What there is to pick up, with room of its own, is no part of
+            // the limit.)
+            const bool always = one.kind == kDrawPickup && pickupPolygons > 0;
+            const bool place = always || (fresh ? kept + bodiesWaiting < limit
+                                                : kept < limit || (one.kind == kDrawEnemy && kept < enemyMost));
             if (!place)
             {
                 ++plan.cut[one.kind];
@@ -317,7 +330,8 @@ namespace hldata
             if (i != nearest && !one.close)
                 level = level + pressure < one.levels ? level + pressure : one.levels - 1;
             plan.level[i] = static_cast<std::uint8_t>(level);
-            ++kept;
+            if (!always)
+                ++kept;
         }
 
         // The enemies and the people first: all of them fit, whatever it
@@ -450,6 +464,7 @@ namespace hldata
         // what is left of it -- which under pressure is less.
         const int share = 4 - (pressure > 2 ? 2 : pressure);
         int polygons = sum(false, kDrawPerson), vertices = sum(true, kDrawPerson);
+        int pickupUsed = 0, pickupVertices = 0; // (of their own room)
         bool any = held.active;
         for (int i = 0; i < count; ++i)
             any = any || (plan.drawn[i] && all[i].kind <= kDrawPerson);
@@ -473,6 +488,24 @@ namespace hldata
                     if (fits)
                         break;
                 }
+                if (!fits && one.kind == kDrawPickup && pickupPolygons > 0)
+                {
+                    // (Not in the share: in its own room, at the coarsest
+                    // level that fits there.)
+                    for (level = plan.level[i]; level < one.levels; ++level)
+                    {
+                        if (pickupUsed + one.polygons[level] <= pickupPolygons &&
+                            pickupVertices + one.vertices[level] <= pickupPolygons * 3)
+                            break;
+                    }
+                    if (level < one.levels)
+                    {
+                        plan.level[i] = static_cast<std::uint8_t>(level);
+                        pickupUsed += one.polygons[level];
+                        pickupVertices += one.vertices[level];
+                        continue;
+                    }
+                }
                 if (!fits)
                 {
                     plan.drawn[i] = false;
@@ -485,8 +518,8 @@ namespace hldata
                 any = true;
             }
         }
-        plan.polygons = polygons;
-        plan.vertices = vertices;
+        plan.polygons = polygons + pickupUsed;
+        plan.vertices = vertices + pickupVertices;
         return plan;
     }
 } // namespace hldata

@@ -28,7 +28,7 @@ namespace hlrt
         /// The most actors that can be drawn in one pass, nearest first; and
         /// how many may be on this machine (setLimit): what there is time to
         /// pose, not what there is room to draw.
-        static constexpr int kMaxDrawn = 16;
+        static constexpr int kMaxDrawn = 24; ///< the limit's 16 at most, and what there is to pick up
         int cutOf(int kind) const { return kind >= 0 && kind < 5 ? cutClass_[kind] : 0; }
         /// The enemies left out that could have been seen (not behind a wall).
         int seenEnemiesCut() const { return seenCut_; }
@@ -54,6 +54,10 @@ namespace hlrt
         /// a DS keeps 16 at once, a DSi 32).
         static constexpr int kGibPolygonsDs = 200;
         static constexpr int kGibPolygonsDsi = 400;
+        /// ... and what there is to pick up, when the share has no room for
+        /// it (HlDrawPlan's planModels: drawn always, coarser if need be).
+        static constexpr int kPickupPolygonsDs = 160;
+        static constexpr int kPickupPolygonsDsi = 320;
         /// One for every actor a map may have, its own and those who come
         /// along (hldata::kMaxMapActors: the converter refuses a map with
         /// more): what each was drawn at, and whether it is behind a wall.

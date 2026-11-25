@@ -234,6 +234,50 @@ namespace
 
     /// Behind a wall: hidden after three looks in a row, seen again at the
     /// first clear one; at most so many looks a frame.
+    /// What there is to pick up is drawn always: outside the limit, and in
+    /// room of its own when the enemies have taken the share -- coarser,
+    /// rather than not at all.
+    void testPickupsAlways()
+    {
+        // Twelve enemies, and a room's worth of things to pick up (an
+        // armoury: a dozen boxes, 30 polygons each, 20 at their coarse level).
+        std::array<DrawCandidate, 24> all{};
+        for (int i = 0; i < 12; ++i)
+        {
+            all[i] = model(kDrawEnemy, 300, 3);
+            all[i].far = 200 + i * 10;
+        }
+        for (int i = 12; i < 24; ++i)
+        {
+            all[i] = model(kDrawPickup, 30, 2);
+            all[i].far = 100 + i * 10;
+        }
+        // The share no more than the enemies need, at their coarsest.
+        const DrawPlan without = planModels(all.data(), 24, 12, DrawHeld(), 1, 1600, 4800, kWhole, 16, 0, 0);
+        const DrawPlan with = planModels(all.data(), 24, 12, DrawHeld(), 1, 1600, 4800, kWhole, 16, 0, 0, 320);
+        std::printf("test_drawplan: of 12 things to pick up beside 12 enemies, %d drawn before, %d now\n",
+                    drawnOf(without, all.data(), 24, kDrawPickup), drawnOf(with, all.data(), 24, kDrawPickup));
+        check(drawnOf(without, all.data(), 24, kDrawPickup) < 12, "(before: a crowded frame left things to pick up out)");
+        check(drawnOf(with, all.data(), 24, kDrawEnemy) == 12 && drawnOf(with, all.data(), 24, kDrawPickup) == 12,
+              "with room of their own, every enemy and every thing to pick up is drawn");
+        check(with.polygons <= without.polygons + 320, "... in no more than its own room over what was drawn before");
+        // More than the room holds: as many as fit, never past it.
+        std::array<DrawCandidate, 32> many{};
+        for (int i = 0; i < 12; ++i)
+            many[i] = all[i];
+        for (int i = 12; i < 32; ++i)
+        {
+            many[i] = model(kDrawPickup, 60, 2);
+            many[i].far = 100 + i * 10;
+        }
+        const DrawPlan full = planModels(many.data(), 32, 12, DrawHeld(), 1, 1600, 4800, kWhole, 16, 0, 0, 320);
+        int room = 0;
+        for (int i = 12; i < 32; ++i)
+            room += full.drawn[i] ? many[i].polygons[full.level[i]] : 0;
+        check(room <= 320 + 1600 && drawnOf(full, many.data(), 32, kDrawPickup) > 0,
+              "... and twenty large ones: as many as the room holds, at their coarsest");
+    }
+
     void testHiddenCache()
     {
         std::uint8_t run = 0;
@@ -254,6 +298,14 @@ namespace
         // No looks left this frame: it keeps what it was.
         lines = 0;
         check(!drawHidden(run, lookedAt, 20, lines, clear) && run == 1, "no looks left: as it was");
+        // Hidden, and then no look for a long while (the frame's lines gone to
+        // others): it is drawn again, a wall that hid it being maybe gone.
+        run = kHiddenLooks;
+        lookedAt = 100;
+        lines = 0;
+        check(drawHidden(run, lookedAt, 100 + kHiddenStale - 1, lines, clear), "hidden, and not looked at since: still hidden");
+        check(!drawHidden(run, lookedAt, 100 + kHiddenStale, lines, clear),
+              "... but not once it has gone unlooked-at too long");
     }
 
     /// Steady choices: the one given the game's own mesh keeps it while the
@@ -491,6 +543,7 @@ namespace
 
 int main()
 {
+    testPickupsAlways();
     testPistolAndPlayers();
     testClasses();
     testPoints();

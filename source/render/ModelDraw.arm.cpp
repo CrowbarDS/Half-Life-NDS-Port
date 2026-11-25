@@ -788,7 +788,8 @@ namespace hlrt
         const int growVertices = passVertices * 9 / 10 - shareVertices;
         const DrawPlan chosen = planModels(candidates, looked, limit, inHand, pressure, sharePolygons, shareVertices,
                                            kWholeModel, isDSiMode() ? kDrawMost : 12, growPolygons > 0 ? growPolygons : 0,
-                                           growVertices > 0 ? growVertices : 0);
+                                           growVertices > 0 ? growVertices : 0,
+                                           isDSiMode() ? kPickupPolygonsDsi : kPickupPolygonsDs);
         heldLevel_ = chosen.heldLevel;
         heldDrawn_ = held != nullptr;
         nearestSlot_ = chosen.nearest >= 0 && chosen.nearest < looked ? slotOf(seen[chosen.nearest]) : -1;
