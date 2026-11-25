@@ -314,6 +314,12 @@ namespace hlrt
         std::int16_t (*boxes_)[6] = nullptr; ///< per surface: mins, maxs; mins[0] > maxs[0]: none
         std::uint32_t *out_ = nullptr;       ///< left out this pass (tested once)
         bool boxTest_ = true;
+        /// The geometry engine's BOX_TEST: whether any of the box (mins,
+        /// maxs: vertex numbers) is in the view as the hardware clips it.
+        /// Waits for the answer (GBATEK: about a hundred of its cycles).
+        [[gnu::noinline]] static bool boxInView(const std::int16_t *box);
+        /// The polygon format the test needs (on), or the world's again.
+        [[gnu::noinline]] void boxTestFormat(bool on);
 #endif
         /// ... whether World detail kept it the last time it was asked (kept
         /// while it is out of view: turned away from and back to, it is as

@@ -35,26 +35,6 @@ namespace hlrt
     using namespace hldata;
     using namespace worldparts;
 
-#ifdef HLDS_BOX_TEST
-    namespace
-    {
-        /// The geometry engine's BOX_TEST: whether any of the box (mins,
-        /// maxs: vertex numbers) is in the view as the hardware clips it.
-        /// Waits for the answer (GBATEK: about a hundred of its cycles).
-        inline bool boxInView(const std::int16_t *box)
-        {
-            auto pair = [](int lo, int hi) -> std::int32_t
-            { return static_cast<std::int32_t>((lo & 0xFFFF) | (static_cast<std::uint32_t>(hi) << 16)); };
-            GFX_BOX_TEST = pair(box[0], box[1]);
-            GFX_BOX_TEST = pair(box[2], box[3] - box[0]);
-            GFX_BOX_TEST = pair(box[4] - box[1], box[5] - box[2]);
-            while (GFX_STATUS & GFX_STATUS_TEST_BUSY)
-            {
-            }
-            return (GFX_STATUS & BIT(1)) != 0;
-        }
-    } // namespace
-#endif
 
     void WorldDraw::walk()
     {
@@ -76,16 +56,7 @@ namespace hlrt
         const bool boxes = boxTest_ && !(list_ != nullptr && ndmaBusy(0));
         stats_.boxSkipped = boxTest_ && !boxes;
         if (boxes)
-        {
-            // What the test needs of the polygon format (GBATEK): far-plane
-            // crossing and one-dot polygons kept, set by a begin and end
-            // with nothing in them. The world's own is put back after.
-            NEA_PolyFormat(31, 0, static_cast<NEA_LightEnum>(0), kCull,
-                           static_cast<NEA_OtherFormatEnum>(polygonMode() | NEA_RENDER_FAR_CLIPPED |
-                                                            NEA_RENDER_ONEA_DOT_POLYS));
-            GFX_BEGIN = 0;
-            GFX_END = 0;
-        }
+            boxTestFormat(true);
 #endif
         int polygons = 0;
         int farPolygons = 0;
@@ -305,7 +276,7 @@ namespace hlrt
         stats_.sphereOut = sphereOut;
         stats_.boxOut = boxOut;
         if (boxes)
-            NEA_PolyFormat(31, 0, static_cast<NEA_LightEnum>(0), kCull, polygonMode());
+            boxTestFormat(false);
 #endif
     }
 } // namespace hlrt
