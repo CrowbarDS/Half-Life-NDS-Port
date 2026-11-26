@@ -32,6 +32,11 @@
 //      by "same depth" pushed 5 units away from the eye.
 //   P6 by eye: the patch in highlight shading (a grey for each index of
 //      the toon table, added) beside the ordinary one.
+//   P7 by eye, on a warm-lit wall of bricks in eight shades: the solid
+//      patch as the game draws it; in highlight shading with a table of 0
+//      up to a threshold, then rising (both set with the D-pad); and with
+//      the texture's palette doubled and the patch's colours halved, over
+//      31 kept -- to set beside the 25th anniversary's over-bright.
 //
 // Results are shown page by page (A: next) and added to lamppatch.txt at the
 // root of the card.
@@ -146,6 +151,18 @@ namespace
     // lightmaps want them no larger.)
     const LampCorner kWallA[3] = {corner(-120, -120, 8), corner(120, -120, 14), corner(120, 120, 26)};
     const LampCorner kWallB[3] = {corner(-120, -120, 8), corner(120, 120, 26), corner(-120, 120, 20)};
+    /// The same wall in a warm light (red, green 7/8 of it, blue 5/8), as
+    /// a lamp-lit room's: P7.
+    LampCorner warm(LampCorner c)
+    {
+        const int level = c.colour & 31;
+        c.colour = static_cast<std::uint16_t>(level | (level * 7 / 8) << 5 | (level * 5 / 8) << 10);
+        return c;
+    }
+    const LampCorner kWarmA[3] = {warm(kWallA[0]), warm(kWallA[1]), warm(kWallA[2])};
+    const LampCorner kWarmB[3] = {warm(kWallB[0]), warm(kWallB[1]), warm(kWallB[2])};
+    /// The wall drawn and lit: the grey one, or (P7) the warm one.
+    const LampCorner *wallA = kWallA, *wallB = kWallB;
     const fx kNormal[3] = {0, 0, kUnit};
 
     enum class Paint
@@ -154,6 +171,7 @@ namespace
         Red,   ///< solid red
         Green, ///< solid green
         Blue,  ///< solid blue
+        Half,  ///< half the colour the lamp makes there, over-bright kept (P7)
     };
     std::uint16_t paintOf(Paint paint, std::uint16_t own)
     {
@@ -166,11 +184,13 @@ namespace
         }
     }
 
+    std::uint16_t halfOver(const fx *pos);
+
     void triangle(const LampCorner *c, Paint paint, i32 pull)
     {
         for (int k = 0; k < 3; ++k)
         {
-            GFX_COLOR = paintOf(paint, c[k].colour);
+            GFX_COLOR = paint == Paint::Half ? halfOver(c[k].pos) : paintOf(paint, c[k].colour);
             GFX_TEX_COORD = c[k].texCoord;
             vertex(c[k].pos, pull);
         }
@@ -180,8 +200,8 @@ namespace
     {
         glPolyFmt(POLY_ALPHA(31) | POLY_ID(0) | POLY_CULL_NONE | POLY_RENDER_FAR_POLYS);
         glBegin(GL_TRIANGLES);
-        triangle(kWallA, paint, 0);
-        triangle(kWallB, paint, 0);
+        triangle(wallA, paint, 0);
+        triangle(wallB, paint, 0);
         glEnd();
     }
 
@@ -215,7 +235,7 @@ namespace
                   POLY_RENDER_FAR_POLYS | (way != kPull && !alone ? POLY_DEPTH_TEST_EQUAL : 0));
         glBegin(GL_TRIANGLES);
         patchTriangles = 0;
-        for (const LampCorner *tri : {kWallA, kWallB})
+        for (const LampCorner *tri : {wallA, wallB})
         {
             patchTriangles += hldata::lampPatchTriangle(tri, kNormal, light, [&](const LampCorner *c, int n) {
                 for (int i = 1; i + 1 < n; ++i)
@@ -492,7 +512,7 @@ namespace
         const LampLight light{{0, 0, 8 * kUnit}, strength > 0 ? strength : 1};
         glPolyFmt(format);
         glBegin(GL_TRIANGLES);
-        for (const LampCorner *tri : {kWallA, kWallB})
+        for (const LampCorner *tri : {wallA, wallB})
         {
             hldata::lampPatchTriangle(tri, kNormal, light, [&](const LampCorner *c, int n) {
                 for (int i = 1; i + 1 < n; ++i)
@@ -625,6 +645,159 @@ namespace
         glDisable(GL_TEXTURE_2D);
         consoleClear();
     }
+
+    // ---- P7: by eye, ways to light beyond the texture ------------------
+
+    /// The colour (0..31 a channel, NOT stopped at 31) the lamp makes at
+    /// `pos` on the wall, halved: the wall's light there run from its
+    /// corners, the lamp's added (the game's octagon, full strength), made a
+    /// colour by the converter's curve (255 * 338/256 * (light/255)^0.8).
+    /// (Floats: a probe.)
+    std::uint16_t halfOver(const fx *pos)
+    {
+        const float x = pos[0] / 4096.0f, y = pos[1] / 4096.0f;
+        const LampCorner *tri = x >= y ? wallA : wallB;
+        float w[3];
+        if (x >= y)
+        {
+            w[2] = (y + 120) / 240, w[1] = (x - y) / 240;
+        }
+        else
+        {
+            w[1] = (x + 120) / 240, w[2] = (y - x) / 240;
+        }
+        w[0] = 1 - w[1] - w[2];
+        const float ax = x < 0 ? -x : x, ay = y < 0 ? -y : y;
+        const float over = 72 - ((ax > ay ? ax : ay) + (ax > ay ? ay : ax) / 2);
+        const float add = over > 0 ? over * 255.0f / 264.0f : 0; // (8-bit light)
+        std::uint16_t out = 0;
+        for (int ch = 0; ch < 3; ++ch)
+        {
+            float level = 0;
+            for (int c = 0; c < 3; ++c)
+                level += w[c] * ((tri[c].colour >> (5 * ch)) & 31);
+            const int low = static_cast<int>(level);
+            const int high = low < 31 ? low + 1 : 31;
+            const float frac = level - low;
+            const float light = (hldata::kLampLightOf[low] * (1 - frac) + hldata::kLampLightOf[high] * frac) / 16.0f + add;
+            const float colour = 255.0f * 338.0f / 256.0f * __builtin_powf(light / 255.0f, 0.8f) / 8.0f;
+            int half = static_cast<int>(colour / 2 + 0.5f);
+            half = half > 31 ? 31 : half;
+            out |= static_cast<std::uint16_t>(half << (5 * ch));
+        }
+        return out;
+    }
+
+    void testOverBright()
+    {
+        // Bricks of eight shades (dark to light) and mortar: PAL256, as the
+        // level's textures are paletted. A second texture is the same with
+        // every colour doubled (stopped at 31): the patch's.
+        static std::uint8_t indices[32 * 32];
+        u16 palette[16] = {}, doubled[16] = {};
+        palette[0] = RGB15(10, 10, 9);
+        for (int shade = 0; shade < 8; ++shade)
+        {
+            const int k = 6 + shade * 3; // (of 32)
+            palette[1 + shade] = static_cast<u16>(RGB15(24 * k / 32 + 4, 20 * k / 32 + 3, 16 * k / 32 + 2));
+        }
+        for (int i = 0; i < 16; ++i)
+        {
+            int c[3];
+            for (int ch = 0; ch < 3; ++ch)
+            {
+                c[ch] = ((palette[i] >> (5 * ch)) & 31) * 2;
+                c[ch] = c[ch] > 31 ? 31 : c[ch];
+            }
+            doubled[i] = static_cast<u16>(RGB15(c[0], c[1], c[2]));
+        }
+        for (int y = 0; y < 32; ++y)
+            for (int x = 0; x < 32; ++x)
+            {
+                const int row = y / 8, column = (x + (row % 2) * 8) / 16;
+                const bool mortar = y % 8 == 0 || (x + (row % 2) * 8) % 16 == 0;
+                indices[y * 32 + x] = static_cast<std::uint8_t>(mortar ? 0 : 1 + (row * 3 + column * 5) % 8);
+            }
+        int textures[2] = {0, 0};
+        glGenTextures(2, textures);
+        for (int t = 0; t < 2; ++t)
+        {
+            glBindTexture(0, textures[t]);
+            glTexImage2D(0, 0, GL_RGB256, 32, 32, 0, TEXGEN_TEXCOORD | GL_TEXTURE_WRAP_S | GL_TEXTURE_WRAP_T, indices);
+            glColorTableEXT(0, 0, 16, 0, 0, t == 0 ? palette : doubled);
+        }
+        wallA = kWarmA;
+        wallB = kWarmB;
+        // The highlight's table: 0 up to `threshold`, then rising by `slope`
+        // quarters a step, grey or warm.
+        int threshold = 16, slope = 4;
+        bool warmTable = false;
+        const char *const kNames[4] = {"the wall alone", "solid patch (the game's)", "highlight patch",
+                                       "doubled palette patch"};
+        for (const int grazing : {90, 30})
+            for (int way = 0; way < 4; ++way)
+            {
+                bool redraw = true;
+                for (;;)
+                {
+                    if (redraw)
+                    {
+                        consoleClear();
+                        std::printf("P7 by eye: %d deg\n%s\n", grazing, kNames[way]);
+                        if (way == 2)
+                            std::printf("toon: 0 to %d, then +%d/4 a\nstep, %s\n(Left/Right, Up/Down,\nSelect: grey/warm)\n",
+                                        threshold, slope, warmTable ? "warm" : "grey");
+                        std::printf("A: next\n");
+                        u16 table[32];
+                        for (int i = 0; i < 32; ++i)
+                        {
+                            int v = i <= threshold ? 0 : (i - threshold) * slope / 4;
+                            v = v > 31 ? 31 : v;
+                            table[i] = warmTable ? static_cast<u16>(RGB15(v, v * 7 / 8, v * 5 / 8))
+                                                 : static_cast<u16>(RGB15(v, v, v));
+                        }
+                        glSetToonTable(table);
+                        redraw = false;
+                    }
+                    setEye(grazing);
+                    glEnable(GL_TEXTURE_2D);
+                    if (way == 2)
+                        glEnable(GL_TOON_HIGHLIGHT);
+                    else
+                        glDisable(GL_TOON_HIGHLIGHT);
+                    glBindTexture(0, textures[0]);
+                    drawWall(Paint::Own);
+                    if (way > 0)
+                    {
+                        glBindTexture(0, textures[way == 3 ? 1 : 0]);
+                        drawPatchAs(way == 3 ? Paint::Half : Paint::Own, 256, modePull(kSolid1px, grazing),
+                                    POLY_ALPHA(31) | POLY_ID(0) | POLY_CULL_NONE | POLY_RENDER_FAR_POLYS |
+                                        (way == 2 ? POLY_TOON_HIGHLIGHT : 0));
+                    }
+                    glFlush(GL_TRANS_MANUALSORT | GL_WBUFFERING);
+                    swiWaitForVBlank();
+                    scanKeys();
+                    const u32 down = keysDown();
+                    if (down & KEY_A)
+                        break;
+                    if (way == 2 && (down & (KEY_LEFT | KEY_RIGHT | KEY_UP | KEY_DOWN | KEY_SELECT)))
+                    {
+                        threshold += (down & KEY_RIGHT) ? 1 : (down & KEY_LEFT) ? -1 : 0;
+                        threshold = threshold < 0 ? 0 : (threshold > 31 ? 31 : threshold);
+                        slope += (down & KEY_UP) ? 1 : (down & KEY_DOWN) ? -1 : 0;
+                        slope = slope < 1 ? 1 : (slope > 32 ? 32 : slope);
+                        warmTable = (down & KEY_SELECT) ? !warmTable : warmTable;
+                        redraw = true;
+                    }
+                }
+            }
+        wallA = kWallA;
+        wallB = kWallB;
+        glDeleteTextures(2, textures);
+        glDisable(GL_TOON_HIGHLIGHT);
+        glDisable(GL_TEXTURE_2D);
+        consoleClear();
+    }
 } // namespace
 
 int main()
@@ -636,6 +809,7 @@ int main()
     videoSetMode(MODE_0_3D);
     vramSetBankA(VRAM_A_TEXTURE);
     vramSetBankD(VRAM_D_LCD);
+    vramSetBankE(VRAM_E_TEX_PALETTE); // (P7's paletted bricks)
     glInit();
     glEnable(GL_BLEND);
     glDisable(GL_ANTIALIAS | GL_FOG | GL_OUTLINE | GL_ALPHA_TEST | GL_TEXTURE_2D);
@@ -662,6 +836,7 @@ int main()
         testUnseen();
         testByEye();
         testHighlight();
+        testOverBright();
         say("== end\n");
         waitForA();
     }

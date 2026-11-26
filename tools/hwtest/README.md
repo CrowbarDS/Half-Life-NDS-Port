@@ -563,6 +563,23 @@ melonDS to the figure. By Z: nothing off at 64 units, half a unit behind at
 256, 8.5 units behind at 1024 (melonDS: 16 behind to 4 in front). So the
 game draws the patch s1px (`lampPull`), except over a DSi's own light over a
 surface, which is see-through and drawn after it. DS mode not yet run.
+
+- P7 by eye, after the question whether highlight shading could give the
+  25th anniversary's over-bright: a warm-lit wall of bricks in eight shades
+  with the patch drawn solid as the game does, in highlight shading with a
+  table of 0 up to a threshold and rising after (D-pad sets both, Select
+  grey or warm), and with the texture's palette doubled and the patch's
+  colours halved (over 31 kept).
+
+Highlight's colour is ((Rt+1)(Rs+1)-1)/64 + Rs (6-bit), Rs the table's entry
+at the vertex's red: the one entry both multiplies the texture and is added,
+and the vertex's green and blue are not used. So a 0 entry draws the texture
+black (it is not "no light added"), a patch can't meet its wall without a
+step, and above the threshold the texels are crushed together (an entry of
+8 turns texels 4..31 into 19..34) and take the table's hue. melonDS: a grey,
+washed octagon. The doubled palette keeps the multiply, but doubling stops
+the brightest channel first: on warm bricks the patch turns greenish and
+dimmer. Neither is used.
 Results go to lamppatch.txt at the root of the card.
 
 ## slot3/ — a texture in Bank D while Bank D is lent out
