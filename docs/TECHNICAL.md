@@ -755,11 +755,10 @@ Milestone 11, "levels of detail".
   (460 bytes): of what is in ITCM it was the least missed for its size by
   the first round's count (375 misses a byte, about 11 us a frame), to make
   room before the next hot code, not in the middle of it. `tools/arm9-report.sh` keeps a list of what must be in
-  ITCM (the traces, the hull check, the posing, a walk's step and tick, the
-  world's walk, the models' draw): those were chosen by frame time on the
-  console, and what of them a misses count would put out (ModelDraw::draw,
-  walkTick, the least missed for their size) waits for that console's
-  frame times. The library's 32-bit divide goes in only if room is left:
+  ITCM (the traces, the hull check, the posing, a walk's step, the world's
+  walk, a model's draw): those were chosen by frame time on the console.
+  The models' draw and a walk's tick left it in round three (below), on the
+  console's frame times. The library's 32-bit divide goes in only if room is left:
   in the cache it is 2 to 4 times quicker than the divider (`tools/hwtest/
   divmath/`), so it is never to be moved to the hardware, and it is under 1%
   of the misses.
@@ -780,6 +779,27 @@ Milestone 11, "levels of detail".
   0.35 ms a frame on c1a3a's DS, 0.24 on c2a5f, 0.21 on c1a0, 0.16 on c3a1's
   DSi (a DS's miss taken to cost the same time as the DSi's). A third round
   of the fixed set, not a swapped region, is where the room is.
+  Round three (2026-11-26) counted again without the profiler: those counts
+  had come from a measuring build that also profiled, whose timers, sampler
+  and bookkeeping ran every frame and pushed the game's code out of the
+  cache. A measuring build without `HLDS_PROFILE` has none of it: it only
+  marks each frame for the count (one write to the profiling melonDS's
+  register), and a debug start leaves the readout off in it. On those clean
+  counts the layout of before kept 19.9% of the four scenes' misses. Filled
+  with the required list as it was, the budget kept 21.3% -- about even, and
+  512 bytes kept free for the next hot code; with the models' draw and a
+  walk's tick out as well, 27.1%, 0.10 to 0.21 ms a frame by the profiler's
+  model with each scene held out. The models' draw runs while NDMA feeds the
+  geometry FIFO from main memory on a DSi, which the profiling melonDS does
+  not model, so the console decided: of two measuring ROMs, the one without
+  them was clearly the better on the owner's consoles, and is the layout
+  since. What came in: the camera's
+  update, its planes and its matrix, the movers near a trace, the monsters'
+  thinking and their looking (`aiMonsterThink`, `aiLook`,
+  `aiAnimEventsAhead`), a target's box, the textures' and sprites' look-ups,
+  the screen's fade, the clocks the frame reads, and the work of the
+  vertical blank's interrupt; what went out: the models' draw, a walk's tick,
+  the box traces and `aiTargetOf`.
   `HL_HOT` (shared code) and `HL_ITCM` put a function there; a file named
   `.itcm` is there whole. `HL_ARM` builds one function of a Thumb file as ARM
   (the effects, the head-up display and the other things drawn every frame
