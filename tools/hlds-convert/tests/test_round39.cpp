@@ -263,6 +263,45 @@ namespace
         check(atSecond > 0 && atSecond < 30, "... and the camera turns after it");
     }
 
+    void testCameraOnMonster(const char *valve)
+    {
+        // c5a1's ending: the camera just before the G-Man's face, at its
+        // height, looks where the game has him -- his origin, his feet --
+        // and so comes to look steeply down on him.
+        BoxRoom room;
+        room.extraEntities =
+            entity("\"classname\" \"monster_gman\"\n\"targetname\" \"man\"\n\"origin\" \"0 100 0\"\n"
+                   "\"angle\" \"270\"\n") +
+            entity("\"classname\" \"trigger_camera\"\n\"targetname\" \"cam\"\n\"target\" \"man\"\n"
+                   "\"origin\" \"0 73 80\"\n\"wait\" \"60\"\n\"spawnflags\" \"4\"\n");
+        // (The G-Man is there only with his model: the game's.)
+        auto game = cook(room, valve);
+        check(game->ok, "the room of the camera and the G-Man cooks");
+        if (!game->ok)
+            return;
+        Game &g = *game;
+        const int cam = named(g, "cam", LogicKind::Camera);
+        int man = -1;
+        for (int i = 0; i < g.actors.count; ++i)
+        {
+            if (g.actors.states[i].active && g.actors.states[i].kind == static_cast<std::uint8_t>(ActorKind::Gman))
+                man = i;
+        }
+        check(cam >= 0 && man >= 0, "a camera and the G-Man it looks at");
+        if (cam < 0 || man < 0)
+            return;
+        standAt(g, 0, -200);
+        use(g, cam);
+        for (int i = 0; i < 30 * 20; ++i)
+            ticks(g, 1);
+        const ActorState &him = g.actors.states[man];
+        const double down = std::atan2((g.logic.states[cam].base[2] - him.pos[2]) / 4096.0,
+                                       (him.pos[1] - g.logic.states[cam].base[1]) / 4096.0) * 180 / M_PI;
+        const double pitch = static_cast<std::int16_t>(g.logic.states[cam].travel[1] >> 16) * 360.0 / 65536;
+        std::printf("test_round39: the camera over the G-Man looks %.1f degrees down (his feet: %.1f)\n", -pitch, down);
+        check(down > 65 && std::fabs(-pitch - down) < 1.5, "... and comes to look down at his feet, as the game's");
+    }
+
     void testGunAndButtonTargets()
     {
         BoxRoom room;
@@ -709,7 +748,10 @@ int main()
     testSpeaker();
     const char *valve = std::getenv("HLDS_VALVE_DIR");
     if (valve != nullptr && *valve != '\0')
+    {
+        testCameraOnMonster(valve);
         testWithTheGame(valve);
+    }
     else
         std::printf("test_round39: HLDS_VALVE_DIR not set, the game's maps were not read\n");
     if (g_failures == 0)

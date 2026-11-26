@@ -855,18 +855,7 @@ namespace hlrt
         // At the player's eye, or at what it names (wherever that has got
         // to); with neither, straight on as the map turned it.
         fx at[3];
-        bool aimed = false;
-        if (record.extra[0] & 2)
-        {
-            for (int a = 0; a < 3; ++a)
-                at[a] = player.state.origin[a];
-            at[2] += player.state.viewHeight;
-            aimed = true;
-        }
-        else
-        {
-            aimed = placeOfName(logic, record.target, at);
-        }
+        const bool aimed = cameraLookAt(logic, record, player.state, at);
         if (record.extra[2] & 1)
         {
             // (Turned as the game's turns, by the logic: cameraTurn.)

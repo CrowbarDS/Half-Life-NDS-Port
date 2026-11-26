@@ -178,6 +178,38 @@ namespace hldata
         return false;
     }
 
+    /// Where a Camera record looks: the player's eye (its flag 2), the
+    /// place the converter found (an info_target), or what it names,
+    /// wherever that has got to. A monster is looked at where the game has
+    /// its origin -- its feet (c5a1's ending looks down on the G-Man); a
+    /// brush at its middle. False if there is nothing to look at.
+    inline bool cameraLookAt(const LogicWorld &w, const LogicRecord &record, const PlayerState &player, fx *at)
+    {
+        if (record.extra[0] & 2)
+        {
+            for (int a = 0; a < 3; ++a)
+                at[a] = player.origin[a];
+            at[2] += player.viewHeight;
+            return true;
+        }
+        if (record.extra[2] & 2)
+        {
+            for (int a = 0; a < 3; ++a)
+                at[a] = fxFromInt(record.mins[a]);
+            return true;
+        }
+        for (int i = 0; record.target != 0 && w.actors != nullptr && i < w.actors->count; ++i)
+        {
+            const ActorState &actor = w.actors->states[i];
+            if (!actor.active || actor.name != record.target)
+                continue;
+            for (int a = 0; a < 3; ++a)
+                at[a] = actor.pos[a];
+            return true;
+        }
+        return placeOfName(w, record.target, at);
+    }
+
     inline void cameraTurn(LogicWorld &w, const PlayerState &player, int ms)
     {
         const int index = w.camera;
@@ -189,19 +221,7 @@ namespace hldata
         if (!(record.extra[2] & 1))
             return;
         fx at[3];
-        if (record.extra[0] & 2)
-        {
-            for (int a = 0; a < 3; ++a)
-                at[a] = player.origin[a];
-            at[2] += player.viewHeight;
-        }
-        else if (record.extra[2] & 2)
-        {
-            // (A place the converter found it: an info_target.)
-            for (int a = 0; a < 3; ++a)
-                at[a] = fxFromInt(record.mins[a]);
-        }
-        else if (!placeOfName(w, record.target, at))
+        if (!cameraLookAt(w, record, player, at))
             return;
         // The game's CTriggerCamera::FollowTarget: each way turned at 0.4
         // of what is left of it a second, so it closes on what it looks at

@@ -1,0 +1,10 @@
+# Half-Life's c5a1, the hired ending: the player taken to the black room and
+# win_cam (trigger_camera, flag 4) looking at the G-Man (end_gman) from just
+# before his face, turning from the map's angle towards where he is.
+# map c5a1
+# start -917 367 -2943 90
+# keep .*
+# unarmed
+30 0 0 90 0
+cmd diag_fire end_mm
+600 0 0 90 0
