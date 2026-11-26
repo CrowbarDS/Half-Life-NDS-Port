@@ -521,13 +521,14 @@ namespace hldata
         }
     }
 
-    /// What a save's card work is done in, a step at a time.
-    inline constexpr std::size_t kSaveStepBytes = 4096;
+    /// What a save's card work is done in, a step at a time: small, as a
+    /// step is done in the frame, the game waiting on the card meanwhile.
+    inline constexpr std::size_t kSaveStepBytes = 1024;
 
     /// A save written into a slot: beside the old one first, which goes
     /// only when the new one is whole on the card (and read back to be the
     /// same). The heading is given its kind and its number here. One step()
-    /// does one piece of the card's work -- a few kilobytes written or read,
+    /// does one piece of the card's work -- a kilobyte written or read,
     /// a file removed or renamed -- so a game can write a save over a few
     /// frames and go on being played. Cut off anywhere, it leaves what
     /// saveRecover puts right; failed, the old save is still there.

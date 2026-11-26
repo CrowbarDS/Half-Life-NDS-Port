@@ -231,7 +231,10 @@ namespace
         check(same && saveMostRecent(rebuilt) == kSlotCount - 1, "... and made again from the files, listed");
 
         // A save cut off half-way in a high place: put right at the next start.
+        // (Over a whole one: a half-written save beside none is kept.)
         SaveIndex during = index;
+        check(saveSlotWrite(card, during, kSlotManual + 40, game("early", 10), heading("early", "CHAPTER", 9998)),
+              "a save written in a high place");
         card.budget = 1;
         saveSlotWrite(card, during, kSlotManual + 40, game("late", 20), heading("late", "CHAPTER", 9999));
         card.budget = -1;
