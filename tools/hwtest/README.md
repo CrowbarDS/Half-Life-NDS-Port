@@ -189,6 +189,38 @@ a DSi and 45-49 on a DS, where melonDS gives the hardware 50 and 52. **Its
 console figures are still to come.** `divcontract/` passes it in melonDS on
 both (every answer, every register kept, the interrupt bit left alone).
 
+## divtricks/ — Kuratius's tricks for the divider and the root
+
+Ideas from Kuratius (2026-11-25), each timed on the game's shapes, in bus
+ticks per call, with a count of wrong answers that must be 0:
+
+- **a dirty count**: a word in DTCM that a user of a unit adds 1 to before it
+  writes the unit and reads again after; if it moved, someone used the unit
+  in between, and the sum is done again. The mode is always written, so that
+  a sum's time never hangs on what the last user left;
+- **a timed read**: the answer taken after a set wait instead of polling the
+  busy bit. At start, with interrupts off, the probe finds the shortest wait
+  after which every answer is right (as the game's boot test would), and the
+  pages use it;
+- **two divides at once**: a walk's step (two numbers by one distance) with
+  the divider doing one while the soft divide does the other;
+- **a bit at a time**: three instructions a bit, entered by a jump the
+  numbers' sizes make (`shared/HlSoftDiv.hpp`'s `shiftDivide`), against the
+  soft divide by the quotient's size; "smart" takes it up to the size where
+  it stops being quicker;
+- **roots without the unit**: `shared/HlSoftRoot.hpp` (`test_softroot` holds
+  it to every 32-bit value), against the unit as the game drives it, polled
+  with the count, and timed.
+
+Page 1 is the single divides, 2 the curve by quotient size, 3 the pairs and
+the roots, 4 what the wait sweep found ("a turn" is 2 instructions).
+
+In melonDS (2026-11-26, not the reference), DS / DSi: the pair 85 / 36
+against 111 / 56 for two soft divides; the soft root 49 / 25 for lengths and
+29 / 15 for 32 bits, against the game's 38 / 34; the timed root 31 / 27. The
+lone divider loses to the soft divide (DSi 50 against 24), and "smart" loses
+on the game's shapes. **The console's figures are still to come.**
+
 ## dspmath/ — the ARM9's 16-bit multiplies
 
 `shared/HlDsp.hpp`'s SMULxy, SMULWy, SMLAxy and SMLAWy, as ARM code, against
