@@ -580,6 +580,32 @@ step, and above the threshold the texels are crushed together (an entry of
 washed octagon. The doubled palette keeps the multiply, but doubling stops
 the brightest channel first: on warm bricks the patch turns greenish and
 dimmer. Neither is used.
+
+- P8, far and side-on, and at an edge: the light by a wall's edge from 64
+  to 3000 units and 90 to 5 degrees, pulled a pixel's depth vertex by
+  vertex or by scaling the view before the projection: how much of the
+  wall it covers, the pixels of a panel it lands on, and pixels off the
+  wall (in the air), beside those of the patch drawn alone, not pulled.
+  Then a floor 64 below the eye to 1600 ahead, a box on it 168 ahead, and
+  a DSi's light over the floor drawn four ways.
+
+melonDS and the owner's DSi (DSi mode, 2026-11-26, the same to the
+pixel): both pulls cover the wall whole and land on the panel
+by 5 pixels at most, except one: vertex by vertex, at 64 units square on,
+half the wall is lost (a pull that small is undone by rounding to quarter
+units). Off the wall: 19 pixels at 1024 units and 5 degrees, 7 at 3000 --
+the same as the patch drawn alone, not pulled: the edge's own rasterizing,
+not the pull. The floor's light, of the floor seen / pixels on the box:
+
+| way | cover | box |
+|---|---|---|
+| alpha 30, same depth | 91% | 48 |
+| solid, pulled as its far end wants | 99% | 216 |
+| solid, pulled as its near end wants | 76% | 0 |
+| solid; the floor under it pushed 1/8 away | 99% | 0 |
+
+So the game pulls the lamp by the projection, and draws a DSi's light solid
+over its surface pushed away under it.
 Results go to lamppatch.txt at the root of the card.
 
 ## slot3/ — a texture in Bank D while Bank D is lent out

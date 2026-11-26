@@ -32,6 +32,12 @@
 //      by "same depth" pushed 5 units away from the eye.
 //   P6 by eye: the patch in highlight shading (a grey for each index of
 //      the toon table, added) beside the ordinary one.
+//   P8 far, edge on, at an edge: the light by a wall's edge, from 64 to
+//      3000 units and 90 to 5 degrees, pulled a pixel's depth vertex by
+//      vertex or by scaling the view before the projection: the wall it
+//      covers, a panel's pixels it lands on, and pixels off the wall (in
+//      the air). Then a floor 64 below the eye to 1600 ahead with a box on
+//      it, and a DSi's light over the floor drawn four ways.
 //   P7 by eye, on a warm-lit wall of bricks in eight shades: the solid
 //      patch as the game draws it; in highlight shading with a table of 0
 //      up to a threshold, then rising (both set with the D-pad); and with
@@ -49,6 +55,7 @@
 #include <fat.h>
 #include <nds.h>
 
+#include "HlLampGrid.hpp"
 #include "HlLampPatch.hpp"
 
 namespace
@@ -507,9 +514,12 @@ namespace
     }
 
     /// The patch in a way of its own (pull and format given).
+    /// Where on the wall (x, units) drawPatchAs's light falls: P8 moves it
+    /// to the wall's edge.
+    i32 lightX = 0;
     void drawPatchAs(Paint paint, int strength, i32 pull, std::uint32_t format)
     {
-        const LampLight light{{0, 0, 8 * kUnit}, strength > 0 ? strength : 1};
+        const LampLight light{{lightX * kUnit, 0, 8 * kUnit}, strength > 0 ? strength : 1};
         glPolyFmt(format);
         glBegin(GL_TRIANGLES);
         for (const LampCorner *tri : {wallA, wallB})
@@ -798,6 +808,194 @@ namespace
         glDisable(GL_TEXTURE_2D);
         consoleClear();
     }
+
+    // ---- P8: far, edge on, at a wall's edge; a floor's overlay ---------
+
+    /// What follows is drawn `pull` 4096ths of the way nearer the eye
+    /// (negative: farther), by scaling the view's space before the
+    /// projection: every vertex along its own line of sight, nothing on
+    /// the screen moved, no vertex rounded. Until projectionBack.
+    void projectionPull(i32 pull)
+    {
+        glMatrixMode(GL_PROJECTION);
+        glPushMatrix();
+        const i32 scale = kUnit - pull;
+        glScalef32(scale, scale, scale);
+        glMatrixMode(GL_MODELVIEW);
+    }
+    void projectionBack()
+    {
+        glMatrixMode(GL_PROJECTION);
+        glPopMatrix(1);
+        glMatrixMode(GL_MODELVIEW);
+    }
+
+    const std::uint32_t kSolid = POLY_ALPHA(31) | POLY_ID(0) | POLY_CULL_NONE | POLY_RENDER_FAR_POLYS;
+    std::uint8_t wallMask[kWidth * kHeight];
+
+    void testEdge()
+    {
+        say("P8a light at a wall's edge:\nwall%%/panel px/air px\n   d  g  own   cpu        proj\n");
+        lightX = 100;
+        for (const int away : {64, 256, 1024, 3000})
+            for (const int grazing : {90, 45, 20, 10, 5})
+            {
+                setEye(grazing, away);
+                drawPatchAs(Paint::Red, 256, 0, kSolid);
+                const u16 *pic = grab();
+                for (int i = 0; i < kWidth * kHeight; ++i)
+                    mask[i] = (pic[i] & 31) >= 24 ? 1 : 0;
+                setEye(grazing, away);
+                drawWall(Paint::Blue);
+                pic = grab();
+                for (int i = 0; i < kWidth * kHeight; ++i)
+                    wallMask[i] = ((pic[i] >> 10) & 31) >= 24 ? 1 : 0;
+                setEye(grazing, away);
+                drawWall(Paint::Blue);
+                drawPanel(RGB15(31, 0, 0));
+                pic = grab();
+                int ref = 0;
+                for (int i = 0; i < kWidth * kHeight; ++i)
+                {
+                    panelMask[i] = (pic[i] & 31) >= 24 ? 1 : 0;
+                    ref += mask[i] && !panelMask[i];
+                }
+                const float dx = eye[0] / 4096.0f, dz = eye[2] / 4096.0f;
+                const int cosine = static_cast<int>(dz / __builtin_sqrtf(dx * dx + dz * dz) * 4096.0f);
+                const i32 pull = hldata::lampPull(cosine);
+                // (Air of the patch drawn alone, not pulled: the edge's own.)
+                int own = 0;
+                for (int i = 0; i < kWidth * kHeight; ++i)
+                    own += mask[i] && !wallMask[i];
+                say("%4d %2d %3d", away, grazing, own);
+                for (const bool projected : {false, true})
+                {
+                    setEye(grazing, away);
+                    drawWall(Paint::Blue);
+                    drawPanel(RGB15(31, 0, 0));
+                    if (projected)
+                    {
+                        projectionPull(pull);
+                        drawPatchAs(Paint::Green, 256, 0, kSolid);
+                        projectionBack();
+                    }
+                    else
+                        drawPatchAs(Paint::Green, 256, pull, kSolid);
+                    pic = grab();
+                    int wall = 0, panel = 0, air = 0;
+                    for (int i = 0; i < kWidth * kHeight; ++i)
+                    {
+                        if (((pic[i] >> 5) & 31) < 24)
+                            continue;
+                        wall += mask[i] && !panelMask[i];
+                        panel += panelMask[i];
+                        air += !wallMask[i];
+                    }
+                    if (ref < 12)
+                        say("     .  %3d %3d", panel, air);
+                    else
+                        say("  %3d %3d %3d", wall * 100 / ref, panel, air);
+                }
+                say("\n");
+            }
+        lightX = 0;
+        say("(panel, air: pixels; 0 right)\n");
+        waitForA();
+    }
+
+    /// A quad of four corners (whole units), in one colour.
+    void quad(const i32 (*corner)[3], u16 colour)
+    {
+        GFX_COLOR = colour;
+        for (int k = 0; k < 4; ++k)
+            glVertex3v16(static_cast<v16>(corner[k][0] * 4), static_cast<v16>(corner[k][1] * 4),
+                         static_cast<v16>(corner[k][2] * 4));
+    }
+    /// The floor: 64 below the eye, 400 across, from 16 to 1600 ahead, as
+    /// one quad (the surface), or as squares of 80 by 64 (a DSi's light
+    /// over it).
+    void drawFloor(bool squares, u16 colour)
+    {
+        glBegin(GL_QUADS);
+        if (!squares)
+        {
+            const i32 c[4][3] = {{-200, -64, -16}, {200, -64, -16}, {200, -64, -1600}, {-200, -64, -1600}};
+            quad(c, colour);
+        }
+        else
+            for (int z = -16; z > -1600; z -= 64)
+                for (int x = -200; x < 200; x += 80)
+                {
+                    const int z2 = z - 64 < -1600 ? -1600 : z - 64;
+                    const i32 c[4][3] = {{x, -64, z}, {x + 80, -64, z}, {x + 80, -64, z2}, {x, -64, z2}};
+                    quad(c, colour);
+                }
+        glEnd();
+    }
+    /// A box's face standing on the floor 168 ahead: 32 wide, 48 high.
+    void drawBox()
+    {
+        glPolyFmt(POLY_ALPHA(31) | POLY_ID(1) | POLY_CULL_NONE | POLY_RENDER_FAR_POLYS);
+        glBegin(GL_QUADS);
+        const i32 c[4][3] = {{-16, -64, -168}, {16, -64, -168}, {16, -16, -168}, {-16, -16, -168}};
+        quad(c, RGB15(31, 0, 0));
+        glEnd();
+    }
+
+    void testFloor()
+    {
+        say("P8b a floor's overlay, 64\nbelow the eye to 1600 ahead,\na box on it 168 ahead\n");
+        // (setEye at no distance: the eye at the middle, looking ahead.)
+        setEye(90, 0);
+        glPolyFmt(kSolid);
+        drawFloor(false, RGB15(0, 0, 31));
+        drawBox();
+        const u16 *pic = grab();
+        int floor = 0;
+        for (int i = 0; i < kWidth * kHeight; ++i)
+        {
+            mask[i] = ((pic[i] >> 10) & 31) >= 24 ? 1 : 0;
+            panelMask[i] = (pic[i] & 31) >= 24 ? 1 : 0;
+            floor += mask[i];
+        }
+        // The pull a surface's far end wants (1584 ahead, 64 below), and
+        // its near end's (16 ahead).
+        const int farCosine = 64 * 4096 / 1585, nearCosine = 64 * 4096 / 66;
+        const char *const kNames[4] = {"alpha 30, same depth", "solid, its far end's pull",
+                                       "solid, its near end's pull", "solid; the floor pushed 1/8"};
+        say(" way                   cover  box\n");
+        for (int way = 0; way < 4; ++way)
+        {
+            setEye(90, 0);
+            if (way == 3)
+                projectionPull(-512);
+            glPolyFmt(kSolid);
+            drawFloor(false, RGB15(0, 0, 31));
+            if (way == 3)
+                projectionBack();
+            drawBox();
+            if (way == 1 || way == 2)
+                projectionPull(hldata::lampPull(way == 1 ? farCosine : nearCosine));
+            glPolyFmt(way == 0 ? POLY_ALPHA(30) | POLY_ID(62) | POLY_CULL_NONE | POLY_RENDER_FAR_POLYS |
+                                     POLY_DEPTH_TEST_EQUAL
+                               : kSolid);
+            drawFloor(true, RGB15(0, 31, 0));
+            if (way == 1 || way == 2)
+                projectionBack();
+            pic = grab();
+            int cover = 0, box = 0;
+            for (int i = 0; i < kWidth * kHeight; ++i)
+            {
+                if (((pic[i] >> 5) & 31) < 24)
+                    continue;
+                cover += mask[i];
+                box += panelMask[i];
+            }
+            say(" %-22s %3d%% %4d\n", kNames[way], floor > 0 ? cover * 100 / floor : 0, box);
+        }
+        say("(cover: of the floor seen;\nbox: its pixels the floor's\nlight is drawn on, 0 right)\n");
+        waitForA();
+    }
 } // namespace
 
 int main()
@@ -832,6 +1030,8 @@ int main()
     {
         testEqualWindow();
         testPanel();
+        testEdge();
+        testFloor();
         testCoverage();
         testUnseen();
         testByEye();
