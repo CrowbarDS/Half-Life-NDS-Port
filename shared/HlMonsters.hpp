@@ -2109,7 +2109,8 @@ namespace hldata
                     {
                         const fx d[3] = {player.origin[0] - shot.pos[0], player.origin[1] - shot.pos[1],
                                          player.origin[2] - shot.pos[2]};
-                        if (static_cast<std::int64_t>(fxLength(d)) * fxLength(d) < best &&
+                        const fx length = fxLength(d); // (one root, not two)
+                        if (static_cast<std::int64_t>(length) * length < best &&
                             traceShot(*w.world, shot.pos, player.origin).fraction >= kFractionOne)
                         {
                             atPlayer = true;

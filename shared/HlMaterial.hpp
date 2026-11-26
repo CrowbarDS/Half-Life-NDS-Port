@@ -68,9 +68,10 @@ namespace hldata
                 if (off > fxFromInt(24))
                     continue;
                 const fx d[3] = {fxFromInt(surface.center[0]) - feet[0], fxFromInt(surface.center[1]) - feet[1], 0};
-                const fx distance = fxLength(d) + off * 8;
+                const fx across = fxLength(d); // (one root, not two)
+                const fx distance = across + off * 8;
                 // (Not one whose whole extent is somewhere else.)
-                if (fxLength(d) > fxFromInt(surface.radius) + fxFromInt(16))
+                if (across > fxFromInt(surface.radius) + fxFromInt(16))
                     continue;
                 if (best < 0 || distance < bestDistance)
                 {
