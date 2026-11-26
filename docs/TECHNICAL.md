@@ -1593,6 +1593,20 @@ What it calls may divide as it likes (the game's divide uses no unit) and
 take roots only through `source/HwMath.s`, which holds the interrupts off
 while it does: a switch of threads does not save the square-root unit
 (`tools/irq-divider.py` checks it).
+Who may use the divider and the square-root unit, then: libnds switches
+threads only at an interrupt, so a sum with the interrupts held off cannot
+be cut into (`hlHwSqrt64`), and what does not hold them off -- Nitro
+Engine's divides (`NEA_Viewport`, `NEA_SetAspect`), libnds's
+`glFrustumf32`, any inline `divf32`, `div32`, `sqrtf32` -- runs on the
+frame's thread only. Nothing that can cut into the frame's thread (an
+interrupt handler, the wireless library's thread, the think worker) may
+touch a unit but through `source/HwMath.s`; `tools/irq-divider.py` walks
+all three and fails the build otherwise (`--uses` lists every user). A new
+use of a unit off the frame's thread -- the walk's two divides done by the
+divider and the soft divide at once, say -- needs the engine's own uses
+held with the interrupts off first. Of the ways measured for libnds issue
+#413 (`tools/hwtest/divsafe/`), that one costs least: 2 to 6 bus ticks a
+sum, the interrupts off 107 ticks at most (a divide of 64 bits).
 libnds's comutex and cosema are not used with the interrupts held off, nor
 from an interrupt, where only `cothread_send_signal` is. The frame's wait
 is for the next VBlank, as ever: libnds remembers a VBlank no thread waited
