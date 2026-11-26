@@ -1152,6 +1152,14 @@ namespace hlrt
             std::fclose(file);
             return false;
         }
+        // (After CHANGE GAME the title's last picture is still held on the
+        // screen, and would hide the intro: black, then the live picture,
+        // raised again with the intro's first, as at the start.)
+        if (frameFreeze.frozen())
+        {
+            screenFade.curtainDown();
+            frameFreeze.thaw();
+        }
         introX = header.pictureX;
         introY = header.pictureY;
         introW = header.pictureWidth;

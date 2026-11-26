@@ -2513,6 +2513,17 @@ int main(int argc, char *argv[])
                 hlrt::choice::change(startMap, multiplayerMaps, haltWith);
                 back();
                 hlrt::menu.openTitle();
+                // (An intro that let the curtain down and could not play
+                // leaves it down: up again on the title, as it first came.)
+                if (hlrt::screenFade.curtained())
+                {
+                    if (moving)
+                    {
+                        NEA_WaitForVBL(static_cast<NEA_UpdateFlags>(0));
+                        hlrt::hudDraw.menuFrame();
+                    }
+                    hlrt::screenFade.curtainUp();
+                }
             }
 #endif
             else if (item == Menu::Action::Quit)
