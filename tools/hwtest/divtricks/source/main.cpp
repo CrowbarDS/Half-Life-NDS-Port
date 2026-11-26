@@ -43,6 +43,9 @@ extern "C"
     void rootPollCount();
     void rootTimedCount();
     void rootGame();
+    void rootValueMode();
+    void rootModeValue();
+    void rootValueCond();
     void pairHwSoft();
     void pairDivide();
     void pairReciprocal();
@@ -50,7 +53,7 @@ extern "C"
     std::uint32_t rootSoft64(std::uint64_t v);
     void __wrap___aeabi_ldivmod();
     void __real___aeabi_ldivmod();
-    extern std::uint32_t divCount, sqrtCount, divDelay, sqrtDelay;
+    extern std::uint32_t divCount, sqrtCount, divDelay, sqrtDelay, rootWait;
     extern std::uint32_t smartSteps;
 }
 
@@ -228,6 +231,9 @@ namespace
     };
 
     int nullTenths = 0;
+    /// The mode the root unit is left in before each call: 32 bits (another
+    /// user's) or 64 (the game's, where nothing else takes roots).
+    bool sqrtLeft64 = false;
 
     int runOnce(const void *routine, int words, bool cold, int &bad)
     {
@@ -235,7 +241,7 @@ namespace
         for (const Case &c : cases)
         {
             REG_DIVCNT = DIV_64_64; // (as another user might leave it)
-            REG_SQRTCNT = SQRT_32;
+            REG_SQRTCNT = sqrtLeft64 ? SQRT_64 : SQRT_32;
             if (cold)
                 IC_InvalidateAll();
             total += probeTime(routine, c.in, out);
@@ -279,6 +285,8 @@ namespace
         int timedTenths;  ///< at that wait
     };
     Sweep divSweep, rootSweep;
+    /// The root's three orders of writing, left in 32 bits then in 64.
+    Sweep orderSweep[3][2];
     int shiftTenths[33], softTenths[33];
 
     /// The shortest wait (turns of the loop) after which every answer of
@@ -324,6 +332,15 @@ namespace
         // The root's, on lengths.
         fillLength();
         rootSweep = sweep(fn(rootTimedCount), fn(rootPollCount), sqrtDelay, 1);
+        // The orders, each its own shortest wait.
+        const void *const orders[3] = {fn(rootValueMode), fn(rootModeValue), fn(rootValueCond)};
+        for (int o = 0; o < 3; ++o)
+            for (int left = 0; left < 2; ++left)
+            {
+                sqrtLeft64 = left != 0;
+                orderSweep[o][left] = sweep(orders[o], fn(rootPollCount), rootWait, 1);
+            }
+        sqrtLeft64 = false;
         // A bit at a time against the soft divide, by the quotient's size; the
         // smart divide takes the first for as long as it is no slower.
         smartSteps = 0;
@@ -408,6 +425,29 @@ namespace
         printf(" (wrong at %d: %d of %d)\n", s.delay - 1, s.badBefore, kCases);
     }
 
+    void pageOrder()
+    {
+        printf("Root, order of writes (%s)\n", isDSiMode() ? "DSi" : "DS");
+        printf("IRQs off, as the game\n");
+        printf("left in:      32 bits   64 bits\n");
+        printf("%-11s%3s%6s %3s%6s\n", "", "wt", "ticks", "wt", "ticks");
+        const char *const names[3] = {"value,mode", "mode,value", "value,mode?"};
+        for (int o = 0; o < 3; ++o)
+        {
+            printf("%-11s", names[o]);
+            for (int left = 0; left < 2; ++left)
+            {
+                const Sweep &w = orderSweep[o][left];
+                if (w.delay < 0)
+                    printf("%3s%6s%s", "-", "-", left == 0 ? " " : "");
+                else
+                    printf("%3d%4d.%d%s", w.delay, w.timedTenths / 10, w.timedTenths % 10, left == 0 ? " " : "");
+            }
+            printf("\n");
+        }
+        printf("\nvalue,mode: the game's now\nmode?: only if not in it\n(a turn: 2 instructions)\n");
+    }
+
     void pageTimed()
     {
         printf("Timed read (%s)\n", isDSiMode() ? "DSi" : "DS");
@@ -455,7 +495,7 @@ int main()
 
     for (;;)
     {
-        void (*const pages[])() = {pageDivide, pageBits, pagePairsRoots, pageTimed};
+        void (*const pages[])() = {pageDivide, pageBits, pagePairsRoots, pageTimed, pageOrder};
         for (void (*page)() : pages)
         {
             consoleClear();

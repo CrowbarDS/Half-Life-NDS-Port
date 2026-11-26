@@ -21,11 +21,12 @@
 
     .section .sbss.divtricks, "aw", %nobits
     .align  2
-    .global divCount, sqrtCount, divDelay, sqrtDelay
+    .global divCount, sqrtCount, divDelay, sqrtDelay, rootWait
 divCount:   .space 4
 sqrtCount:  .space 4
 divDelay:   .space 4
 sqrtDelay:  .space 4
+rootWait:   .space 4
 
     .section .itcm.text.divtricks, "ax", %progbits
     .align  2
@@ -220,6 +221,75 @@ rootTimedCount:
     bne     1b
     mov     r0, r2
     pop     {r4, r5, pc}
+
+@ The root's writes in three orders (Kuratius, 2026-11-26), each as the
+@ game takes it: interrupts held off by the CPU's own bit, the answer read
+@ after rootWait turns of a two-instruction loop. Which starts the unit
+@ last decides when the wait has to run from.
+
+@ The value, then the mode always (the game's since 25dff0a).
+    .global rootValueMode
+    .type   rootValueMode, %function
+rootValueMode:
+    mrs     r3, cpsr
+    orr     r2, r3, #0x80
+    msr     cpsr_c, r2
+    ldr     r12, =rootWait
+    ldr     r12, [r12]
+    mov     r2, #0x04000000
+    add     r2, r2, #0x2B8
+    stm     r2, {r0, r1}
+    mov     r0, #1
+    strh    r0, [r2, #-8]
+1:  subs    r12, r12, #1
+    bpl     1b
+    ldr     r0, [r2, #-4]
+    msr     cpsr_c, r3
+    bx      lr
+
+@ The mode first, then the value.
+    .global rootModeValue
+    .type   rootModeValue, %function
+rootModeValue:
+    mrs     r3, cpsr
+    orr     r2, r3, #0x80
+    msr     cpsr_c, r2
+    mov     r2, #0x04000000
+    add     r2, r2, #0x2B8
+    mov     r12, #1
+    strh    r12, [r2, #-8]
+    ldr     r12, =rootWait
+    ldr     r12, [r12]
+    stm     r2, {r0, r1}
+1:  subs    r12, r12, #1
+    bpl     1b
+    ldr     r0, [r2, #-4]
+    msr     cpsr_c, r3
+    bx      lr
+
+@ The value, then the mode only if the unit is not in it already: in the
+@ game nothing else uses the root, so it stays in 64 bits and the write is
+@ left out (the value alone starts the unit).
+    .global rootValueCond
+    .type   rootValueCond, %function
+rootValueCond:
+    mrs     r3, cpsr
+    orr     r2, r3, #0x80
+    msr     cpsr_c, r2
+    ldr     r12, =rootWait
+    ldr     r12, [r12]
+    mov     r2, #0x04000000
+    add     r2, r2, #0x2B8
+    stm     r2, {r0, r1}
+    ldrh    r0, [r2, #-8]
+    tst     r0, #1
+    moveq   r0, #1
+    strheq  r0, [r2, #-8]
+1:  subs    r12, r12, #1
+    bpl     1b
+    ldr     r0, [r2, #-4]
+    msr     cpsr_c, r3
+    bx      lr
 
 @ The game's root (source/HwMath.s), with r1:r0 as probeTime gives it.
     .global rootGame

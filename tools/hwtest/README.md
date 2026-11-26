@@ -221,6 +221,21 @@ against 111 / 56 for two soft divides; the soft root 49 / 25 for lengths and
 lone divider loses to the soft divide (DSi 50 against 24), and "smart" loses
 on the game's shapes. **The console's figures are still to come.**
 
+Page 5 (2026-11-26, Kuratius's idea) writes the root's value and mode in
+three orders, interrupts off as in the game, each with its own wait: the
+value then the mode always, the mode then the value, and the value then the
+mode only if the unit is not in it. On the owner's consoles, turns of the
+wait / bus ticks a root:
+
+| | DS, left in 32 bits | DS, in 64 | DSi, in 32 | DSi, in 64 |
+|---|---|---|---|---|
+| value, mode | 5 / 31 | 5 / 31 | 10 / 25 | 10 / 25 |
+| mode, value | 5 / 32 | 5 / 32 | 10 / 25 | 10 / 25 |
+| value, mode if not in it | 5 / 37 | 2 / 27 | 10 / 29 | 6 / 22 |
+
+The game's unit stays in 64 bits (nothing else takes roots): the last way,
+13% quicker on a DS and 12% on a DSi, is the game's since.
+
 ## divsafe/ — keeping the divider and the root unit safe (libnds #413)
 
 Five ways of keeping the units safe from whoever else uses them, for every

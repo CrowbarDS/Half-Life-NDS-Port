@@ -10,6 +10,10 @@
 
 extern "C"
 {
+    // (What the game's root, linked here, calls on a DSi for 32 bits:
+    // source/HwMathTune.arm.cpp's, the same root.)
+    std::uint32_t hlSoftRoot32(std::uint32_t v) { return hldata::softroot::root32(v); }
+
     [[gnu::section(".itcm.text.soft"), gnu::noinline]] std::uint32_t rootSoft32(std::uint32_t v)
     {
         return hldata::softroot::root32(v);
