@@ -30,6 +30,11 @@ extern "C"
     extern std::uint32_t hlRootWay;
 
     std::uint32_t hlSoftRoot32(std::uint32_t value) { return hldata::softroot::root32(value); }
+
+    /// HwMath.s's root under a name not marked const: the tune takes the
+    /// same roots again on purpose, each time after another wait, which the
+    /// compiler must not take once for all.
+    std::uint32_t hlRootFresh(std::uint64_t value) __asm__("hlHwSqrt64");
 }
 
 namespace hlrt
@@ -89,7 +94,7 @@ namespace hlrt
             hlRootWay = turns;
             bool right = true;
             for (int i = 0; i < kValues && right; ++i)
-                right = hldata::isqrt64(values[i]) == roots[i];
+                right = hlRootFresh(values[i]) == roots[i];
             if (right)
             {
                 if (inRow++ == 0)
@@ -119,7 +124,7 @@ namespace hlrt
             seed ^= seed >> 7;
             seed ^= seed << 17;
             const std::uint64_t v = seed >> (i % 64);
-            if (hldata::isqrt64(v) != slowRoot(v))
+            if (hlRootFresh(v) != slowRoot(v))
                 return false;
         }
         return true;

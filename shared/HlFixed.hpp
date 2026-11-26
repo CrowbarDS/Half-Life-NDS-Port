@@ -39,7 +39,9 @@
 #include "HlDsp.hpp" // (the 16-bit multiplies, fxMulShort)
 
 #ifdef HL_HW_MATH
-extern "C" std::uint32_t hlHwSqrt64(std::uint64_t value); // source/HwMath.s
+// source/HwMath.s. (const: the same value, the same root, whatever else: the
+// compiler may take one root for several of one value.)
+extern "C" std::uint32_t hlHwSqrt64(std::uint64_t value) __attribute__((const));
 #endif
 
 // HL_HOT marks the functions that run many times a frame: the hull trace
