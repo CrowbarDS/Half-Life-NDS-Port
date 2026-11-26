@@ -531,6 +531,34 @@ come before its wall. At alpha 30 it is see-through, drawn after every solid
 polygon, and the test holds as the marks' does: whole down to 20 degrees.
 So the game draws a patch at alpha 30 by the same-depth test where the wall
 is met at 30 degrees or more, and solid and pulled below that.
+
+Added 2026-11-26, after holes on brushes and a wall's light over the panel in
+front of it (hldemo1) on a DSi:
+
+- P4 how near "same depth" is: a square on a wall moved off it a quarter
+  unit at a time, at 64, 256, 1024 and 3000 units, by W and by Z: the
+  offsets where all of it passes, and any.
+- P5 a panel 4 units in front of the wall: how much of the wall the patch
+  covers, and how much of the panel it wrongly lands on, drawn as the game
+  does today, solid and pulled one pixel's depth (s1px) or two (s2px) by the
+  ordinary test, or at alpha 30 by the same-depth test pushed 5 units back.
+- P6 by eye: the patch in highlight shading beside the ordinary one.
+
+melonDS (DSi mode): by W, "same depth" passes from 7.75 units behind to 7.75
+in front at every distance -- its ±0xFF of W, 32 to a unit here -- so the
+patch lands on anything that near its wall. By Z, nothing off at 64 units,
+16 units at 1024. P5, wall/panel %:
+
+| g | today | s1px | s2px | back |
+|---|---|---|---|---|
+| 90 | 100/100 | 100/0 | 100/0 | 100/0 |
+| 60 | 100/100 | 98/0 | 99/0 | 99/0 |
+| 45 | 100/100 | 99/0 | 98/3 | 99/0 |
+| 30 | 99/79 | 97/0 | 99/35 | 99/0 |
+| 20 | 99/82 | 99/0 | 99/51 | 95/0 |
+| 10 | 99/100 | 99/4 | 99/93 | 72/0 |
+
+The console's figures are still to come.
 Results go to lamppatch.txt at the root of the card.
 
 ## slot3/ — a texture in Bank D while Bank D is lent out

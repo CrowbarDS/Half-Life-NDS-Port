@@ -22,6 +22,16 @@
 //      nothing would show its edge as a seam).
 //   P3 by eye: a textured wall with the lamp on it, at four angles, by both
 //      tests (A: next).
+//   P4 how near "same depth" is: a square on a wall, square on, moved off
+//      it a quarter unit at a time: the offsets where it all passes, and
+//      where any of it does, by W and by Z, at 64 to 3000 units.
+//   P5 a panel: the patch over its wall and over a panel 4 units in front
+//      of it (as a button's on its wall), drawn as the game does today
+//      (alpha 30: "same depth" from 30 degrees, pulled below), solid and
+//      pulled one or two pixels' depth by the ordinary test, or at alpha 30
+//      by "same depth" pushed 5 units away from the eye.
+//   P6 by eye: the patch in highlight shading (a grey for each index of
+//      the toon table, added) beside the ordinary one.
 //
 // Results are shown page by page (A: next) and added to lamppatch.txt at the
 // root of the card.
@@ -82,15 +92,15 @@ namespace
         consoleClear();
     }
 
-    /// The eye: `grazing` degrees to the wall (z = 0, facing +z), 256 units
-    /// from its middle, level with it.
+    /// The eye: `grazing` degrees to the wall (z = 0, facing +z), `away`
+    /// units from its middle, level with it.
     i32 eye[3];
-    void setEye(int grazing)
+    void setEye(int grazing, int away = 256)
     {
         const int yaw = degreesToAngle(90 - grazing);
-        eye[0] = static_cast<i32>((static_cast<i64>(sinLerp(yaw)) * 256 * kUnit) >> 12);
+        eye[0] = static_cast<i32>((static_cast<i64>(sinLerp(yaw)) * away * kUnit) >> 12);
         eye[1] = 0;
-        eye[2] = static_cast<i32>((static_cast<i64>(cosLerp(yaw)) * 256 * kUnit) >> 12);
+        eye[2] = static_cast<i32>((static_cast<i64>(cosLerp(yaw)) * away * kUnit) >> 12);
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
         gluPerspectivef32(degreesToAngle(74), inttof32(256) / 192, kGameNear, 128 << 12);
@@ -220,9 +230,9 @@ namespace
         glEnd();
     }
 
-    const u16 *grab()
+    const u16 *grab(bool wBuffer = true)
     {
-        glFlush(GL_TRANS_MANUALSORT | GL_WBUFFERING);
+        glFlush(GL_TRANS_MANUALSORT | (wBuffer ? GL_WBUFFERING : 0));
         swiWaitForVBlank();
         REG_DISPCAPCNT = DCAP_ENABLE | DCAP_MODE(DCAP_MODE_A) | DCAP_SRC_A(DCAP_SRC_A_3DONLY) |
                          DCAP_SIZE(DCAP_SIZE_256x192) | DCAP_BANK(DCAP_BANK_VRAM_D);
@@ -364,6 +374,257 @@ namespace
         glDisable(GL_TEXTURE_2D);
         consoleClear();
     }
+
+    // ---- P4: how near "same depth" is, by W and by Z -------------------
+
+    /// A square `half` units from its middle to its sides, facing the eye,
+    /// `at` quarter units off the wall toward it (negative: behind it).
+    void drawSquare(int at, int half, std::uint32_t format, u16 colour)
+    {
+        glPolyFmt(format);
+        glBegin(GL_QUADS);
+        GFX_COLOR = colour;
+        for (const int corner : {0, 1, 2, 3})
+        {
+            const i32 x = (corner == 1 || corner == 2) ? half * kUnit : -half * kUnit;
+            const i32 y = corner >= 2 ? half * kUnit : -half * kUnit;
+            glVertex3v16(static_cast<v16>(x >> 10), static_cast<v16>(y >> 10), static_cast<v16>(at));
+        }
+        glEnd();
+    }
+
+    void testEqualWindow()
+    {
+        say("P4 \"same depth\": offsets\n(units) where a square on its\nwall passes, all / any of it\n");
+        for (const bool wBuffer : {true, false})
+            for (const int away : {64, 256, 1024, 3000})
+            {
+                // (A square a fifth of the view across, on a wall that
+                // fills it.)
+                const int half = away / 8 < 4 ? 4 : away / 8;
+                setEye(90, away);
+                drawSquare(0, half, POLY_ALPHA(31) | POLY_ID(0) | POLY_CULL_NONE | POLY_RENDER_FAR_POLYS, RGB15(31, 0, 0));
+                const u16 *pic = grab(wBuffer);
+                int ref = 0;
+                for (int i = 0; i < kWidth * kHeight; ++i)
+                {
+                    mask[i] = (pic[i] & 31) >= 24 ? 1 : 0;
+                    ref += mask[i];
+                }
+                // Quarter units, -16 units to +16.
+                int allLo = 999, allHi = -999, anyLo = 999, anyHi = -999;
+                for (int at = -64; at <= 64; ++at)
+                {
+                    setEye(90, away);
+                    drawSquare(0, half * 6, POLY_ALPHA(31) | POLY_ID(0) | POLY_CULL_NONE | POLY_RENDER_FAR_POLYS,
+                               RGB15(0, 0, 31));
+                    drawSquare(at, half, POLY_ALPHA(30) | POLY_ID(62) | POLY_CULL_NONE | POLY_RENDER_FAR_POLYS |
+                                       POLY_DEPTH_TEST_EQUAL,
+                               RGB15(0, 31, 0));
+                    pic = grab(wBuffer);
+                    int shown = 0;
+                    for (int i = 0; i < kWidth * kHeight; ++i)
+                        shown += mask[i] && ((pic[i] >> 5) & 31) >= 24 ? 1 : 0;
+                    if (shown > 0)
+                    {
+                        anyLo = at < anyLo ? at : anyLo;
+                        anyHi = at > anyHi ? at : anyHi;
+                    }
+                    if (ref > 0 && shown == ref)
+                    {
+                        allLo = at < allLo ? at : allLo;
+                        allHi = at > allHi ? at : allHi;
+                    }
+                }
+                say("%c %4d: ", wBuffer ? 'W' : 'Z', away);
+                if (allLo > allHi)
+                    say("all none");
+                else
+                    say("all %+d..%+d", allLo * 25, allHi * 25);
+                if (anyLo > anyHi)
+                    say(", any none\n");
+                else
+                    say(", any %+d..%+d\n", anyLo * 25, anyHi * 25);
+            }
+        say("(hundredths of a unit; + is\ntoward the eye)\n");
+        waitForA();
+    }
+
+    // ---- P5: the patch's ways, over its wall and over a panel ----------
+
+    enum Mode
+    {
+        kToday,    ///< alpha 30: "same depth" at 30 degrees or more, else pulled as the marks
+        kSolid1px, ///< solid, "less", pulled one pixel's depth (and a floor)
+        kSolid2px, ///< the same, two pixels
+        kBack,     ///< alpha 30, "same depth", pushed 5 units away from the eye
+        kModes,
+    };
+    const char *const kModeNames[kModes] = {"today", "s1px", "s2px", "back"};
+
+    /// How far toward the eye (4096ths of the way, negative: away) mode
+    /// `mode` puts the patch, and how it is drawn.
+    i32 modePull(int mode, int grazing)
+    {
+        const float dx = eye[0] / 4096.0f, dz = eye[2] / 4096.0f;
+        const float away = __builtin_sqrtf(dx * dx + dz * dz);
+        const float cosine = dz / away;
+        const float tangent = __builtin_sqrtf(1.0f - cosine * cosine) / (cosine > 0.02f ? cosine : 0.02f);
+        switch (mode)
+        {
+        case kToday: return grazing >= 30 ? 0 : twoPixels();
+        case kSolid1px: return 8 + static_cast<i32>(tangent / 128.0f * 4096.0f);
+        case kSolid2px: return 8 + static_cast<i32>(2.0f * tangent / 128.0f * 4096.0f);
+        default: return -static_cast<i32>(5.0f / away * 4096.0f);
+        }
+    }
+    std::uint32_t modeFormat(int mode, int grazing)
+    {
+        const bool solid = mode == kSolid1px || mode == kSolid2px;
+        const bool equal = mode == kBack || (mode == kToday && grazing >= 30);
+        return POLY_ALPHA(solid ? 31 : 30) | POLY_ID(solid ? 0 : 62) | POLY_CULL_NONE | POLY_RENDER_FAR_POLYS |
+               (equal ? POLY_DEPTH_TEST_EQUAL : 0);
+    }
+
+    /// The patch in a way of its own (pull and format given).
+    void drawPatchAs(Paint paint, int strength, i32 pull, std::uint32_t format)
+    {
+        const LampLight light{{0, 0, 8 * kUnit}, strength > 0 ? strength : 1};
+        glPolyFmt(format);
+        glBegin(GL_TRIANGLES);
+        for (const LampCorner *tri : {kWallA, kWallB})
+        {
+            hldata::lampPatchTriangle(tri, kNormal, light, [&](const LampCorner *c, int n) {
+                for (int i = 1; i + 1 < n; ++i)
+                {
+                    const LampCorner fan[3] = {c[0], c[i], c[i + 1]};
+                    triangle(fan, paint, pull);
+                }
+            });
+        }
+        glEnd();
+    }
+
+    /// A panel 40 x 40 units, 4 in front of the wall, beside the light's
+    /// middle (as a button's panel on its wall).
+    void drawPanel(u16 colour)
+    {
+        glPolyFmt(POLY_ALPHA(31) | POLY_ID(1) | POLY_CULL_NONE | POLY_RENDER_FAR_POLYS);
+        glBegin(GL_QUADS);
+        GFX_COLOR = colour;
+        for (const int corner : {0, 1, 2, 3})
+        {
+            const i32 x = (corner == 1 || corner == 2) ? 50 * kUnit : 10 * kUnit;
+            const i32 y = corner >= 2 ? 20 * kUnit : -20 * kUnit;
+            glVertex3v16(static_cast<v16>(x >> 10), static_cast<v16>(y >> 10), static_cast<v16>(16));
+        }
+        glEnd();
+    }
+
+    std::uint8_t panelMask[kWidth * kHeight];
+
+    void testPanel()
+    {
+        say("P5 patch over its wall / on a\npanel 4 units in front (%%)\n g ");
+        for (int mode = 0; mode < kModes; ++mode)
+            say(" %7s", kModeNames[mode]);
+        say("\n");
+        for (const int grazing : {90, 60, 45, 30, 20, 10})
+        {
+            setEye(grazing);
+            drawPatchAs(Paint::Red, 256, 0, POLY_ALPHA(31) | POLY_ID(0) | POLY_CULL_NONE | POLY_RENDER_FAR_POLYS);
+            const u16 *pic = grab();
+            for (int i = 0; i < kWidth * kHeight; ++i)
+                mask[i] = (pic[i] & 31) >= 24 ? 1 : 0;
+            setEye(grazing);
+            drawWall(Paint::Blue);
+            drawPanel(RGB15(31, 0, 0));
+            pic = grab();
+            int onWall = 0, onPanel = 0;
+            for (int i = 0; i < kWidth * kHeight; ++i)
+            {
+                panelMask[i] = (pic[i] & 31) >= 24 ? 1 : 0;
+                onWall += mask[i] && !panelMask[i];
+                onPanel += mask[i] && panelMask[i];
+            }
+            say("%2d ", grazing);
+            for (int mode = 0; mode < kModes; ++mode)
+            {
+                setEye(grazing);
+                drawWall(Paint::Blue);
+                drawPanel(RGB15(31, 0, 0));
+                drawPatchAs(Paint::Green, 256, modePull(mode, grazing), modeFormat(mode, grazing));
+                pic = grab();
+                int wall = 0, panel = 0;
+                for (int i = 0; i < kWidth * kHeight; ++i)
+                {
+                    if (!mask[i] || ((pic[i] >> 5) & 31) < 24)
+                        continue;
+                    if (panelMask[i])
+                        ++panel;
+                    else
+                        ++wall;
+                }
+                say(" %3d/%3d", onWall > 0 ? wall * 100 / onWall : 0, onPanel > 0 ? panel * 100 / onPanel : 0);
+            }
+            say("\n");
+        }
+        say("(wall: 100 is whole; panel: 0\nis right)\n");
+        waitForA();
+    }
+
+    // ---- P6: by eye, highlight shading ---------------------------------
+
+    void testHighlight()
+    {
+        static u16 texels[32 * 32];
+        for (int y = 0; y < 32; ++y)
+            for (int x = 0; x < 32; ++x)
+            {
+                const bool mortar = y % 8 == 0 || (x + (y / 8 % 2) * 8) % 16 == 0;
+                texels[y * 32 + x] = static_cast<u16>((mortar ? RGB15(12, 12, 11) : RGB15(24, 20, 16)) | 0x8000);
+            }
+        int texture = 0;
+        glGenTextures(1, &texture);
+        glBindTexture(0, texture);
+        glTexImage2D(0, 0, GL_RGBA, 32, 32, 0, TEXGEN_TEXCOORD | GL_TEXTURE_WRAP_S | GL_TEXTURE_WRAP_T, texels);
+        // A grey for each index: highlight adds it, and multiplies by it.
+        u16 table[32];
+        for (int i = 0; i < 32; ++i)
+            table[i] = static_cast<u16>(RGB15(i / 2, i / 2, i / 2));
+        glSetToonTable(table);
+        const char *const kNames[3] = {"the wall alone", "modulation (today)", "highlight"};
+        for (const int grazing : {90, 30})
+            for (int way = 0; way < 3; ++way)
+            {
+                consoleClear();
+                std::printf("P6 by eye: %d deg, %s\n", grazing, kNames[way]);
+                std::printf("A: next\n");
+                for (;;)
+                {
+                    setEye(grazing);
+                    glEnable(GL_TEXTURE_2D);
+                    if (way == 2)
+                        glEnable(GL_TOON_HIGHLIGHT);
+                    else
+                        glDisable(GL_TOON_HIGHLIGHT);
+                    glBindTexture(0, texture);
+                    drawWall(Paint::Own);
+                    if (way > 0)
+                        drawPatchAs(Paint::Own, 256, 0,
+                                    POLY_ALPHA(30) | POLY_ID(62) | POLY_CULL_NONE | POLY_RENDER_FAR_POLYS |
+                                        POLY_DEPTH_TEST_EQUAL | (way == 2 ? POLY_TOON_HIGHLIGHT : 0));
+                    glFlush(GL_TRANS_MANUALSORT | GL_WBUFFERING);
+                    swiWaitForVBlank();
+                    scanKeys();
+                    if (keysDown() & KEY_A)
+                        break;
+                }
+            }
+        glDisable(GL_TOON_HIGHLIGHT);
+        glDisable(GL_TEXTURE_2D);
+        consoleClear();
+    }
 } // namespace
 
 int main()
@@ -395,9 +656,12 @@ int main()
 
     for (;;)
     {
+        testEqualWindow();
+        testPanel();
         testCoverage();
         testUnseen();
         testByEye();
+        testHighlight();
         say("== end\n");
         waitForA();
     }
