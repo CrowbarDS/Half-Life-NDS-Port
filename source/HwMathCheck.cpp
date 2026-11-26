@@ -10,6 +10,8 @@
 #include "Global.hpp"
 #include "HlFixed.hpp"
 
+extern "C" std::uint32_t hlRootWay; // HwMath.s
+
 namespace hlrt
 {
     namespace
@@ -112,6 +114,15 @@ namespace hlrt
             std::fprintf(log, "hwmath: of %d each, differ from the slow way: %d signed divides, %d unsigned, "
                               "%d unsigned with the top bit set, %d roots\n",
                          count, wrongSigned, wrongUnsigned, wrongBig, wrongRoot);
+            // (A wrong root: the unit is polled from now on, the start's
+            // choice dropped -- HwMathTune.arm.cpp.)
+            if (wrongRoot != 0)
+                hlRootWay = 0;
+            // (The root's way, HwMathTune.arm.cpp: the unit's wait, 0 if
+            // polled; and whether 32 bits go by multiplies.)
+            std::fprintf(log, "hwmath: root unit read after %lu turns%s\n",
+                         static_cast<unsigned long>(hlRootWay & 0x7FFFFFFFu),
+                         (hlRootWay >> 31) != 0 ? ", 32 bits by multiplies" : "");
             std::fclose(log);
         }
         return wrongSigned + wrongUnsigned + wrongBig + wrongRoot;

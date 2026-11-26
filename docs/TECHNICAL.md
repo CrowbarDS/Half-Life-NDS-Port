@@ -684,8 +684,14 @@ Milestone 11, "levels of detail".
   with nothing held off. Written by hand, in bus ticks a call: about 24 on a
   DSi and 47 on a DS in melonDS (the divider took 54 and 62 on the consoles,
   the C++ form of the same 40-45 and 80-91; `tools/hwtest/softdiv/`). The
-  root is still the square-root unit's, 28 ticks on a DSi, interrupts held
-  off while it works (`tools/hwtest/divmath/`). `tools/hwtest/divcontract/`
+  root is still the square-root unit's, interrupts held off while it works,
+  its answer read after a wait the start finds (Kuratius's idea:
+  `source/HwMathTune.arm.cpp` finds the shortest wait that gives every
+  root right, then holds the choice to roots of every size, and polls the
+  busy bit if one is wrong): 35 bus ticks on a DS and 27 on a DSi, where
+  polling took 46 and 37 (`tools/hwtest/divtricks/`). A DSi takes a root of
+  32 bits by multiplies instead (`shared/HlSoftRoot.hpp`, `test_softroot`
+  checks every 32-bit value): 17 ticks. `tools/hwtest/divcontract/`
   holds quotients, remainders and roots against the library's, word for
   word.
   A build with `HLDS_PROFILE` checks the hardware's sums against the slow

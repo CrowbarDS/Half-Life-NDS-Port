@@ -26,9 +26,10 @@
 @ The root is still the square-root unit's, interrupts held off from its
 @ operand to its answer (an interrupt handler that took a root in between
 @ would leave its own there). The CPU's own bit does that without a trip on
-@ the bus, which REG_IME would take three of. The mode is looked at after the
-@ operand: libnds leaves the unit in another, but the operand has started it
-@ by then, so the look costs what waiting would have.
+@ the bus, which REG_IME would take three of. Its answer is read after a wait
+@ found at start (Kuratius's idea: source/HwMathTune.arm.cpp), and a DSi takes
+@ a root of 32 bits by multiplies (shared/HlSoftRoot.hpp), quicker there than
+@ the unit.
 @
 @ In ITCM: the code that divides most (the collision trace) is there too.
 
@@ -236,6 +237,11 @@ __wrap___aeabi_uldivmod:
 #endif
 
 @ uint32_t hlHwSqrt64(uint64_t value): its square root, rounded down.
+@ hlRootWay (source/HwMathTune.arm.cpp chooses it at start) says how: on a
+@ DSi (bit 31) a value of 32 bits goes to the root by multiplies; the unit's
+@ answer is read after the wait the rest gives, in turns of a two-instruction
+@ loop, or polled if it is 0. The mode is always written, after the value: it
+@ starts the unit again, so the wait runs from a write whose time is known.
     .global hlHwSqrt64
     .type   hlHwSqrt64, %function
 hlHwSqrt64:
@@ -245,34 +251,51 @@ hlHwSqrt64:
     add     r2, r2, #1
     str     r2, [r12, #4]
 #endif
+    ldr     r12, =hlRootWay
+    ldr     r12, [r12]
+    cmp     r12, #0                     @ (C set, unless the DSi's way...)
+    cmplt   r1, #1                      @ (...and the value's high word is 0)
+    ldrcc   pc, =hlSoftRoot32
     mrs     r3, cpsr
     orr     r2, r3, #0x80
     msr     cpsr_c, r2
 #ifdef HLDS_PROFILE
-    push    {r0, r1, r3, lr}            @ (where from, as the divide's)
+    push    {r0, r1, r3, r12, lr}       @ (where from, as the divide's)
+    sub     sp, sp, #4
     mov     r0, lr
     mov     r1, #1
     mov     r2, #0
     ldr     r12, =hlProfileSite
     blx     r12
-    pop     {r0, r1, r3, lr}
+    add     sp, sp, #4
+    pop     {r0, r1, r3, r12, lr}
 #endif
-    mov     r12, #0x04000000
-    add     r12, r12, #REG_SQRT_PARAM
-    stm     r12, {r0, r1}
-    ldrh    r0, [r12, #-8]
-    tst     r0, #1                      @ of 64 bits
-    moveq   r0, #1
-    strheq  r0, [r12, #-8]
-1:  ldrh    r0, [r12, #-8]
-    tst     r0, #0x8000
+    mov     r2, #0x04000000
+    add     r2, r2, #REG_SQRT_PARAM
+    stm     r2, {r0, r1}
+    mov     r0, #1                      @ of 64 bits
+    strh    r0, [r2, #-8]
+    bics    r12, r12, #0x80000000
+    beq     2f
+1:  subs    r12, r12, #1
     bne     1b
-    ldr     r0, [r12, #-4]
+    b       3f
+2:  ldrh    r0, [r2, #-8]
+    tst     r0, #0x8000
+    bne     2b
+3:  ldr     r0, [r2, #-4]
     msr     cpsr_c, r3
     bx      lr
     .size   hlHwSqrt64, . - hlHwSqrt64
 
     .pool
+
+@ The root's way (above), in DTCM: 0, polled, until the start has chosen.
+    .section .sbss.hlRootWay, "aw", %nobits
+    .align  2
+    .global hlRootWay
+hlRootWay:
+    .space  4
 
 #ifdef HLDS_PROFILE
 @ How many divides, how many roots, and how many of the divides were left to
