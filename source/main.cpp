@@ -1991,10 +1991,10 @@ namespace
         if (file == nullptr)
             return false;
         // (The readout is on: whoever starts this way wants to see it. Not
-        // in a profiling build, which measures the game as it is played: the
-        // readout's drawing and its CPU meter's line count are not the
-        // game's -- DebugOverlay.)
-#ifndef HLDS_PROFILE
+        // in a profiling build, nor one that measures the instruction cache,
+        // which measure the game as it is played: the readout's drawing and
+        // its CPU meter's line count are not the game's -- DebugOverlay.)
+#if !defined(HLDS_PROFILE) && !defined(HLDS_ITCM_OFF)
         settings.debugReadout = true;
 #endif
         // (The sixth number, the seconds until the player dies, is read by
@@ -2754,6 +2754,16 @@ int main(int argc, char *argv[])
         stepSave();
         {
             const hlrt::DebugLog::Perf::Scope frame(hlrt::DebugLog::Section::Frame);
+#if defined(HLDS_ITCM_OFF) && !defined(HLDS_ICACHE_PHASES)
+            // (A build that measures the instruction cache without the
+            // profiler -- tools/icache/scenes.sh's clean profiles -- marks
+            // each frame for the profiling melonDS's count, and nothing else:
+            // the frame's phase, then none. On a console the register is not
+            // there: tools/icache/melonds-icache.patch.)
+            *reinterpret_cast<volatile std::uint32_t *>(0x04FFFA2C) =
+                static_cast<std::uint32_t>(hlrt::DebugLog::Section::Frame) + 1;
+            *reinterpret_cast<volatile std::uint32_t *>(0x04FFFA2C) = 0;
+#endif
 
             // One step of the game: input, the world, the menu, and whatever
             // changes the map.
