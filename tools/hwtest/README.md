@@ -221,6 +221,29 @@ against 111 / 56 for two soft divides; the soft root 49 / 25 for lengths and
 lone divider loses to the soft divide (DSi 50 against 24), and "smart" loses
 on the game's shapes. **The console's figures are still to come.**
 
+## divsafe/ — keeping the divider and the root unit safe (libnds #413)
+
+Five ways of keeping the units safe from whoever else uses them, for every
+sum (divide 32/32, 64/32, 64/64; root of 32 and of 64 bits): (a) none, the
+baseline; (b) a comutex held from operands to answer; (c) interrupts off
+(the CPU's I bit) from operands to answer; (d) the user's id stored before
+the operands and compared after the answer, done again if it changed
+(software after 8 tries); (e) the answer checked by multiplying back,
+software if it is wrong.
+
+Each is timed quiet, then contended: a timer interrupt at 4 kHz (divide
+32/32 + root of 32) and a second thread woken at 3 kHz (4 divides 64/64 + 4
+roots of 64) use the units all the time, the same way; libnds switches
+threads at every interrupt, so the thread cuts into the main one mid-sum.
+In (b) the interrupt handler cannot wait for the mutex: it tries, and
+leaves the sum if the mutex is held (counted as skips). It counts wrong
+answers (main and the others'; 0 for b-e), retries and fallbacks, the
+longest time (c) holds interrupts off, and each way with the sum started,
+other work done, then read.
+
+The tables are written to the card as `divsafe_DS.md` / `divsafe_DSi.md`,
+ready to paste into the issue; the screen shows them a sum per page.
+
 ## dspmath/ — the ARM9's 16-bit multiplies
 
 `shared/HlDsp.hpp`'s SMULxy, SMULWy, SMLAxy and SMLAWy, as ARM code, against
