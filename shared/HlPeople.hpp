@@ -44,7 +44,7 @@ namespace hldata
                 const fx p = player.origin[k];
                 nearest[k] = (p < lo[k] ? lo[k] - p : (p > hi[k] ? p - hi[k] : 0));
             }
-            if (fxLength(nearest) > fxFromInt(64))
+            if (!fxLengthAtMost(nearest, fxFromInt(64)))
                 continue;
             fx los[3];
             for (int k = 0; k < 3; ++k)

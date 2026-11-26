@@ -1146,7 +1146,7 @@ namespace hldata
                 return;
             const fx *v = c.me.velocity;
             const char *name = "up";
-            if (fxLength(v) >= fxFromInt(32))
+            if (!fxLengthBelow(v, fxFromInt(32)))
             {
                 fx forward[3], right[3];
                 aiForward(c.me.yaw, forward);
@@ -1476,7 +1476,7 @@ namespace hldata
                     atTarget = true;
                     c.m.vec1[2] = std::clamp(t.eye[2] - fxFromInt(5), c.m.vec1[1], c.m.vec1[0]);
                     const fx at[3] = {t.eye[0] - c.me.pos[0], t.eye[1] - c.me.pos[1], t.eye[2] - c.me.pos[2]};
-                    if (fxLength(at) < fxFromInt(40))
+                    if (fxLengthBelow(at, fxFromInt(40)))
                         aiSet(c, kCondCanMeleeAttack1);
                     const std::uint16_t to = fxAtan2Turns(at[1], at[0]);
                     targetYaw = static_cast<std::int16_t>(to - c.me.yaw) * 360 / 65536;
@@ -1781,7 +1781,7 @@ namespace hldata
             auto burn = [&](std::int16_t id, const fx *spot)
             {
                 const fx d[3] = {spot[0] - mid[0], spot[1] - mid[1], spot[2] - mid[2]};
-                if (fxLength(d) > radius + fxFromInt(64))
+                if (!fxLengthAtMost(d, radius + fxFromInt(64)))
                     return;
                 fx along = fxMul(aim[0], d[0]) + fxMul(aim[1], d[1]) + fxMul(aim[2], d[2]);
                 along = along > radius ? radius : (along < -radius ? radius : along); // (the game's, both ways)
@@ -1917,7 +1917,7 @@ namespace hldata
             {
                 const fx d[3] = {c.player.origin[0] - c.me.pos[0], c.player.origin[1] - c.me.pos[1],
                                  c.player.origin[2] - c.me.pos[2]};
-                if (fxLength(d) < fxFromInt(750))
+                if (fxLengthBelow(d, fxFromInt(750)))
                     shakeStart(c.w, fxFromInt(4), 1000);
                 detail::aiSay(c, CommonSound::GargStep, aiRandomLong(c.a, 90, 110));
                 break;
@@ -2092,7 +2092,7 @@ namespace hldata
                 // (Down positive, as m_flameX: the game turns its pitch
                 // round, angles.x = -angles.x.)
                 angleX = static_cast<std::int16_t>(-fxAtan2Turns(dir[2], fxLength(flat)));
-                if (fxLength(dir) > fxFromInt(400))
+                if (!fxLengthAtMost(dir, fxFromInt(400)))
                     cancel = true;
             }
             if (angleY > 60 * 65536 / 360 || angleY < -60 * 65536 / 360)
@@ -3028,7 +3028,7 @@ namespace hldata
             if (c.ai.now < c.m.waitFinished || c.player.health <= 0)
                 return;
             const fx d[3] = {c.player.origin[0] - c.me.pos[0], c.player.origin[1] - c.me.pos[1], 0};
-            if (fxLength(d) > fxFromInt(kLook) || c.player.origin[2] < c.me.pos[2] - fxFromInt(64) ||
+            if (!fxLengthAtMost(d, fxFromInt(kLook)) || c.player.origin[2] < c.me.pos[2] - fxFromInt(64) ||
                 c.player.origin[2] > c.me.pos[2] + fxFromInt(kLook + 64))
                 return;
             const ModelView *model = actorModel(c.a, c.me);
@@ -3832,7 +3832,7 @@ namespace hldata
                 }
                 const fx d[3] = {c.m.moveGoal[0] - c.me.pos[0], c.m.moveGoal[1] - c.me.pos[1], 0};
                 const fx range = at->extra[1] != 0 ? fxFromInt(static_cast<int>(at->extra[1])) : fxFromInt(100000);
-                if (fxLength(d) < range || aiMovementIsComplete(c))
+                if (fxLengthBelow(d, range) || aiMovementIsComplete(c))
                 {
                     aiTaskComplete(c);
                     aiRouteClear(c);
@@ -4080,7 +4080,7 @@ namespace hldata
                 if (shot.kind == kShotNihilZap)
                 {
                     // ZapThink: twenty times a second, 1.2 as fast, to 2000.
-                    if (fxLength(shot.velocity) < fxFromInt(2000))
+                    if (fxLengthBelow(shot.velocity, fxFromInt(2000)))
                         for (int k = 0; k < 3; ++k)
                             shot.velocity[k] += static_cast<fx>((static_cast<std::int64_t>(shot.velocity[k]) * 4 * ms) / 1000);
                     if (c.player.health > 0 && far < fxFromInt(256) && lineClear(*c.w.world, shot.pos, target))

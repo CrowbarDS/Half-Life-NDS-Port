@@ -385,7 +385,7 @@ namespace hldata
         {
             const fx d[3] = {player.origin[0] - record.move[0], player.origin[1] - record.move[1],
                              player.origin[2] - record.move[2]};
-            if (record.extra[2] == 0 || fxLength(d) < fxFromInt(static_cast<int>(record.extra[2])))
+            if (record.extra[2] == 0 || fxLengthBelow(d, fxFromInt(static_cast<int>(record.extra[2]))))
                 shakeStart(w, static_cast<fx>(record.extra[0]) << 4, static_cast<int>(record.extra[1]));
             break;
         }

@@ -1915,7 +1915,7 @@ namespace hldata
                     continue;
                 // (Its bounds are whole units, rounded out: near enough.)
                 const fx d[3] = {item.origin[0] - rest[0], item.origin[1] - rest[1], item.origin[2] - rest[2]};
-                if (fxLength(d) > fxFromInt(4))
+                if (!fxLengthAtMost(d, fxFromInt(4)))
                     continue;
                 actorSetup(a, slot, item, *w.world);
                 ActorState &spilled = a.states[slot];
@@ -3239,7 +3239,7 @@ namespace hldata
                     const fx gain[3] = {over.endPos[0] - tr.endPos[0], over.endPos[1] - tr.endPos[1], 0};
                     if (!lifted.startSolid && !over.startSolid && !landed.startSolid &&
                         landed.fraction < kFractionOne && landed.normal[2] >= kFloorNormalZ &&
-                        fxLength(gain) > kDistEpsilon)
+                        !fxLengthAtMost(gain, kDistEpsilon))
                     {
                         for (int a = 0; a < 3; ++a)
                             at[a] = landed.endPos[a];
@@ -4288,7 +4288,7 @@ namespace hldata
                 const fx dx = fxMul(clip.endOffset[0], cosine) - fxMul(clip.endOffset[1], sine);
                 const fx dy = fxMul(clip.endOffset[0], sine) + fxMul(clip.endOffset[1], cosine);
                 const fx d[3] = {dx, dy, 0};
-                if (fxLength(d) >= fxFromInt(8))
+                if (!fxLengthBelow(d, fxFromInt(8)))
                 {
                     actor.pos[0] += dx;
                     actor.pos[1] += dy;
@@ -4575,7 +4575,7 @@ namespace hldata
                     const fx root[2] = {actor.pos[0] + fxMul(bones[0].t[0], cosine) - fxMul(bones[0].t[1], sine),
                                         actor.pos[1] + fxMul(bones[0].t[0], sine) + fxMul(bones[0].t[1], cosine)};
                     const fx d[3] = {root[0] - actor.pos[0], root[1] - actor.pos[1], 0};
-                    if (fxLength(d) >= fxFromInt(8))
+                    if (!fxLengthBelow(d, fxFromInt(8)))
                     {
                         const fx was[3] = {actor.pos[0], actor.pos[1], actor.pos[2]};
                         actor.pos[0] = root[0];

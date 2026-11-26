@@ -190,6 +190,29 @@ namespace hldata
         return static_cast<fx>(isqrt64(static_cast<std::uint64_t>(sum)));
     }
 
+    /// The square of a Q12 vector's length, Q24: what fxLength takes the
+    /// root of.
+    constexpr std::int64_t fxLengthSquared(const fx *v)
+    {
+        return static_cast<std::int64_t>(v[0]) * v[0] + static_cast<std::int64_t>(v[1]) * v[1] +
+               static_cast<std::int64_t>(v[2]) * v[2];
+    }
+
+    /// fxLength(v) < r, without the root, and always the same answer: the
+    /// root rounded down is under r exactly when the square is under r^2.
+    /// (fxLength(v) >= r is its opposite.)
+    constexpr bool fxLengthBelow(const fx *v, fx r)
+    {
+        return r > 0 && fxLengthSquared(v) < static_cast<std::int64_t>(r) * r;
+    }
+
+    /// fxLength(v) <= r, likewise: when the square is under (r + 1)^2.
+    /// (fxLength(v) > r is its opposite.)
+    constexpr bool fxLengthAtMost(const fx *v, fx r)
+    {
+        return r >= 0 && fxLengthSquared(v) < (static_cast<std::int64_t>(r) + 1) * (static_cast<std::int64_t>(r) + 1);
+    }
+
     namespace detail
     {
         // fxSinCos's quarter wave at 14 bits, two more than the answer has, so

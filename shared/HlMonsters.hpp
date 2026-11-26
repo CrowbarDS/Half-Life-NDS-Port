@@ -2596,7 +2596,7 @@ namespace hldata
                         tossOn(*w.world, t, shot.velocity, ms, to, true);
                         if (satchel && shot.sprite == 0xFFFF)
                             shot.sprite = 0xFFFE;
-                        if (!gib && met == kTossBounced && w.heard != nullptr && fxLength(shot.velocity) > fxFromInt(60))
+                        if (!gib && met == kTossBounced && w.heard != nullptr && !fxLengthAtMost(shot.velocity, fxFromInt(60)))
                         {
                             // (One of its three knocks: a grenade's quiet, a
                             // quarter of full; a satchel's at full.)
@@ -2625,7 +2625,7 @@ namespace hldata
                         // second in its last second, where it will be
                         // (TumbleThink, BounceTouch).
                         const fx slow[3] = {shot.velocity[0], shot.velocity[1], shot.velocity[2] * 45 / 100};
-                        if (shot.sprite == 0xFFFF && fxLength(slow) <= fxFromInt(60))
+                        if (shot.sprite == 0xFFFF && fxLengthAtMost(slow, fxFromInt(60)))
                         {
                             shot.sprite = 0xFFFE;
                             aiSound(a, kSoundDanger, shot.pos, kGrenadeBlast * 10 / 4, 300);
@@ -2857,7 +2857,7 @@ namespace hldata
             if ((player.health <= 0 || unseen(player)))
                 return false;
             const fx d[3] = {player.origin[0] - eye[0], player.origin[1] - eye[1], player.origin[2] - eye[2]};
-            if (fxLength(d) > fxFromInt(kTurretRange))
+            if (!fxLengthAtMost(d, fxFromInt(kTurretRange)))
                 return false;
             const fx head[3] = {player.origin[0], player.origin[1], player.origin[2] + player.viewHeight};
             return lineClear(*w.world, eye, player.origin) || lineClear(*w.world, eye, head);
@@ -5484,7 +5484,7 @@ namespace hldata
                 reach[a] = (from < mins[a] ? mins[a] : (from > maxs[a] ? maxs[a] : from)) - from;
                 to[a] = (eye[a] < mins[a] ? mins[a] : (eye[a] > maxs[a] ? maxs[a] : eye[a])) - eye[a];
             }
-            if (fxLength(reach) > kUseRange)
+            if (!fxLengthAtMost(reach, kUseRange))
                 continue;
             const fx distance = fxLength(to);
             if (distance > 0 && (static_cast<std::int64_t>(to[0]) * forward[0] + static_cast<std::int64_t>(to[1]) * forward[1] +
@@ -5530,7 +5530,7 @@ namespace hldata
         const int tank = static_cast<int>(w.states[controls].bits) - 1;
         const fx moved[3] = {player.origin[0] - w.states[controls].base[0], player.origin[1] - w.states[controls].base[1],
                              player.origin[2] - w.states[controls].base[2]};
-        if (player.health <= 0 || fxLength(moved) >= fxFromInt(30) || tank < 0 || tank >= w.recordCount ||
+        if (player.health <= 0 || !fxLengthBelow(moved, fxFromInt(30)) || tank < 0 || tank >= w.recordCount ||
             w.states[tank].dead)
         {
             tankRelease(w);

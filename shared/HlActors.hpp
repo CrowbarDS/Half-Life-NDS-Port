@@ -1550,7 +1550,7 @@ namespace hldata
             if (exact)
             {
                 const fx gap[3] = {old.at[0] - at[0], old.at[1] - at[1], old.at[2] - at[2]};
-                if (old.picture != picture || fxLength(gap) > fxFromInt(1))
+                if (old.picture != picture || !fxLengthAtMost(gap, fxFromInt(1)))
                     continue;
                 old.leftMs = decalLife(picture) / 100 * a.markLifePercent;
                 return old;
@@ -1564,7 +1564,7 @@ namespace hldata
                 continue;
             const fx d[3] = {old.at[0] - at[0], old.at[1] - at[1], old.at[2] - at[2]};
             const int reach = blows ? (old.half > half ? old.half : half) : (old.half < half ? old.half : half) / 2;
-            if (family != 9 && fxLength(d) > fxFromInt(reach))
+            if (family != 9 && !fxLengthAtMost(d, fxFromInt(reach)))
                 continue;
             old.half = static_cast<std::uint8_t>(old.half > half ? old.half : half);
             old.leftMs = life;

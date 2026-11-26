@@ -731,8 +731,9 @@ namespace hldata
         }
     }
 
-    /// PBestSound: the nearest sound heard (not smelt); null if none.
-    inline const AiSound *aiBestSound(AiCtx &c)
+    /// PBestSound: the nearest sound heard (not smelt); null if none. (One
+    /// copy: called from four places, a fifth inlined copy cost the guest.)
+    __attribute__((noinline)) inline const AiSound *aiBestSound(AiCtx &c)
     {
         fx ear[3];
         aiEye(c, ear);

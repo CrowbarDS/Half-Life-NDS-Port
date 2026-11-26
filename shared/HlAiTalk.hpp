@@ -771,7 +771,7 @@ namespace hldata
                     // Watch the player -- stare back, if he is close and
                     // looking.
                     const fx d[3] = {c.player.origin[0] - c.me.pos[0], c.player.origin[1] - c.me.pos[1], 0};
-                    if (fxLength(d) < fxFromInt(kStareDist) && playerLooksAt(c, c.me.pos) >= c.kind.fov)
+                    if (fxLengthBelow(d, fxFromInt(kStareDist)) && playerLooksAt(c, c.me.pos) >= c.kind.fov)
                         return &slTlkIdleWatchClientStare;
                     return &slTlkIdleWatchClient;
                 }
@@ -893,7 +893,7 @@ namespace hldata
                 if (task.task == kTaskTlkClientStare)
                 {
                     const fx d[3] = {c.player.origin[0] - c.me.pos[0], c.player.origin[1] - c.me.pos[1], 0};
-                    if (fxLength(d) > fxFromInt(kStareDist))
+                    if (!fxLengthAtMost(d, fxFromInt(kStareDist)))
                         aiTaskFail(c);
                     if (playerLooksAt(c, c.me.pos) < c.kind.fov)
                         aiTaskFail(c);

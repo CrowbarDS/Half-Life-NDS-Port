@@ -217,6 +217,7 @@ if(HLDS_BUILD_TESTS)
             test_actors
             test_softdiv
             test_softroot
+            test_lengthcmp
             test_sound
             test_sprite
             test_effects

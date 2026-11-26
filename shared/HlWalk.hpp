@@ -830,7 +830,7 @@ namespace hldata
         // about someone it goes for, a corner by its waypoint: nothing to go
         // round; it stops short there, or goes on from it.)
         const fx d[3] = {aim[0] - from[0], aim[1] - from[1], 0};
-        if (clear + fxFromInt(48) >= fxLength(d))
+        if (fxLengthAtMost(d, clear + fxFromInt(48)))
             return false;
         return walkTriangulate(world, a, index, small, from, aim, size, clear, apex);
     }
@@ -1077,7 +1077,7 @@ namespace hldata
         {
             const fx *node = a.nodes[actor.goalNode].pos;
             const fx off[3] = {node[0] - actor.pos[0], node[1] - actor.pos[1], 0};
-            if (fxLength(off) > fxFromInt(8))
+            if (!fxLengthAtMost(off, fxFromInt(8)))
                 return;
             const std::uint8_t next = pathStep(a, actor.goalNode, theirs, pathSizeOf(small), opensDoors(actor.kind));
             if (next == kNoPathNode || next == actor.goalNode)
@@ -1103,7 +1103,7 @@ namespace hldata
             door = -1;
             const fx d[3] = {dest[0] - actor.pos[0], dest[1] - actor.pos[1], 0};
             // Straight there, if that is a walk that can be made.
-            if (fxLength(d) < fxFromInt(reach) &&
+            if (fxLengthBelow(d, fxFromInt(reach)) &&
                 walkClear(world, &a, index, small, actor.pos, dest, reach / 16))
             {
                 for (int i = 0; i < 3; ++i)
@@ -1339,7 +1339,7 @@ namespace hldata
                 actor.pos[i] = feet[i];
             if (budget != nullptr)
                 *budget -= step;
-            if (fxLength(went) * 4 >= step)
+            if (!fxLengthBelow(went, (step + 3) >> 2))
             {
                 actor.stuckMs = 0;
             }

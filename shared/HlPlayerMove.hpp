@@ -937,7 +937,7 @@ namespace hldata
                     return;
                 // Not while backing away from what is ahead.
                 const fx flat[3] = {s.velocity[0], s.velocity[1], 0};
-                if (fxLength(flat) > 0 &&
+                if (fxLengthSquared(flat) > 0 &&
                     fxMul(s.velocity[0], cmd.forwardXY[0]) + fxMul(s.velocity[1], cmd.forwardXY[1]) < 0)
                     return;
                 // Both looks are lines, not the player's box: a box as tall
@@ -1168,7 +1168,7 @@ namespace hldata
                 s.velocity[2] = 0;
                 carry(1);
 
-                if (fxLength(s.velocity) < kFxOne)
+                if (fxLengthBelow(s.velocity, kFxOne))
                 {
                     s.velocity[0] = s.velocity[1] = s.velocity[2] = 0;
                     return;
@@ -1282,7 +1282,7 @@ namespace hldata
                 }
                 // With the module, running, and a crouch just pressed: far.
                 if (cmd.duck && (s.ducked || s.ducking) && s.duckMs < kLongJumpDuckMs && s.arsenal != nullptr &&
-                    (s.arsenal->have & kArsenalLongJump) && fxLength(s.velocity) > kLongJumpLeast)
+                    (s.arsenal->have & kArsenalLongJump) && !fxLengthAtMost(s.velocity, kLongJumpLeast))
                 {
                     s.velocity[0] = fxMul(cmd.viewForward[0], kLongJumpSpeed);
                     s.velocity[1] = fxMul(cmd.viewForward[1], kLongJumpSpeed);

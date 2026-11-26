@@ -1069,7 +1069,7 @@ namespace hlrt
             if (!other.busy() || other.placed != placed)
                 continue;
             const fx d[3] = {other.pos[0] - event.pos[0], other.pos[1] - event.pos[1], other.pos[2] - event.pos[2]};
-            if (!placed || fxLength(d) < fxFromInt(96))
+            if (!placed || fxLengthBelow(d, fxFromInt(96)))
                 speech = &other;
         }
         for (Speech &other : speech_)
