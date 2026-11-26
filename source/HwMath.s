@@ -240,8 +240,12 @@ __wrap___aeabi_uldivmod:
 @ hlRootWay (source/HwMathTune.arm.cpp chooses it at start) says how: on a
 @ DSi (bit 31) a value of 32 bits goes to the root by multiplies; the unit's
 @ answer is read after the wait the rest gives, in turns of a two-instruction
-@ loop, or polled if it is 0. The mode is always written, after the value: it
-@ starts the unit again, so the wait runs from a write whose time is known.
+@ loop, or polled if it is 0. The value starts the unit; the mode is written
+@ only if the unit is not in it already (Kuratius's idea: nothing else in the
+@ game takes roots, so it stays in 64 bits and the write is left out, a DS's
+@ root 27 bus ticks instead of 31, a DSi's 22 instead of 25 --
+@ tools/hwtest/divtricks). Writing it starts the unit again, later than the
+@ wait was found for: that root polls.
     .global hlHwSqrt64
     .type   hlHwSqrt64, %function
 hlHwSqrt64:
@@ -273,13 +277,16 @@ hlHwSqrt64:
     mov     r2, #0x04000000
     add     r2, r2, #REG_SQRT_PARAM
     stm     r2, {r0, r1}
-    mov     r0, #1                      @ of 64 bits
-    strh    r0, [r2, #-8]
+    ldrh    r0, [r2, #-8]
+    tst     r0, #1                      @ (of 64 bits already?)
+    beq     4f
     bics    r12, r12, #0x80000000
     beq     2f
 1:  subs    r12, r12, #1
     bne     1b
     b       3f
+4:  mov     r0, #1                      @ of 64 bits: that starts it again, and
+    strh    r0, [r2, #-8]               @ the wait is for one that was not
 2:  ldrh    r0, [r2, #-8]
     tst     r0, #0x8000
     bne     2b

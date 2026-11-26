@@ -689,7 +689,12 @@ Milestone 11, "levels of detail".
   `source/HwMathTune.arm.cpp` finds the shortest wait that gives every
   root right, then holds the choice to roots of every size, and polls the
   busy bit if one is wrong): 35 bus ticks on a DS and 27 on a DSi, where
-  polling took 46 and 37 (`tools/hwtest/divtricks/`). A DSi takes a root of
+  polling took 46 and 37 (`tools/hwtest/divtricks/`). The unit's mode is
+  written only when it is not in it already (Kuratius again): nothing else
+  in the game takes roots, so the value alone starts it, 27 ticks on a DS
+  and 22 on a DSi by the probe's own count, against 31 and 25 with the mode
+  written every time; a root that does write it polls, the wait being found
+  for one that does not. A DSi takes a root of
   32 bits by multiplies instead (`shared/HlSoftRoot.hpp`, `test_softroot`
   checks every 32-bit value): 17 ticks. `tools/hwtest/divcontract/`
   holds quotients, remainders and roots against the library's, word for

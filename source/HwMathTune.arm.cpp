@@ -9,6 +9,8 @@
 //   holds interrupts off around the unit, so nothing can cut into a root and
 //   make the wait look longer or shorter than it is. If no wait up to the
 //   most is right (an emulator that times the unit otherwise), it polls.
+//   The wait is for a unit already in 64 bits, whose mode HwMath.s does not
+//   write again (a DS 27 ticks, a DSi 22): the first root here sets it.
 // - On a DSi, a value of 32 bits takes its root by multiplies alone
 //   (shared/HlSoftRoot.hpp): 17 ticks instead of 37. On a DS that costs what
 //   the unit does, so the unit keeps it.
