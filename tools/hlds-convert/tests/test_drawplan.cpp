@@ -6,6 +6,7 @@
 #include <cstdio>
 
 #include "HlDrawPlan.hpp"
+#include "HlModel.hpp"
 #include "TestBspBuilder.hpp"
 
 using namespace hldata;
@@ -556,6 +557,46 @@ namespace
             check(plan.polygons <= 1190 + plan.grown, "and what is drawn is what was reckoned");
         }
     }
+
+    /// A body part's choice (ModelView::bodyChoice), which leaves out the
+    /// divides where it can: always the old sum's answer, body / base %
+    /// count (0 for a body under 0). Every part to 64 and 64, every body to
+    /// 5000; then random ones across the whole range.
+    void testBodyChoice()
+    {
+        auto old = [](const ModelBodyPart &part, int body)
+        { return part.count <= 1 ? 0 : (body < 0 ? 0 : body) / part.base % part.count; };
+        long wrong = 0, tried = 0;
+        auto one = [&](int base, int count, int body)
+        {
+            const ModelBodyPart part{static_cast<std::uint16_t>(base), static_cast<std::uint16_t>(count)};
+            ++tried;
+            if (ModelView::bodyChoice(part, body) != old(part, body) && ++wrong <= 5)
+                std::printf("FAIL: base %d, count %d, body %d: %d, not %d\n", base, count, body,
+                            ModelView::bodyChoice(part, body), old(part, body));
+        };
+        for (int base = 1; base <= 64; ++base)
+            for (int count = 1; count <= 64; ++count)
+                for (int body = -3; body <= 5000; ++body)
+                    one(base, count, body);
+        std::uint32_t seed = 0x2545F491u;
+        auto next = [&]
+        {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            return seed;
+        };
+        for (int k = 0; k < 2000000; ++k)
+        {
+            const int base = 1 + static_cast<int>(next() % 65535);
+            const int count = 1 + static_cast<int>(next() % ((next() & 1) ? 65535 : 16));
+            const int body = static_cast<int>(next() >> (next() % 32)) * ((next() & 15) == 0 ? -1 : 1);
+            one(base, count, body);
+        }
+        check(wrong == 0, "a body part's choice is the old sum's, without its divides");
+        std::printf("test_drawplan: %ld body choices against the old sum\n", tried);
+    }
 } // namespace
 
 int main()
@@ -570,6 +611,7 @@ int main()
     testHiddenCache();
     testSteady();
     testBodies();
+    testBodyChoice();
     if (g_failures == 0)
         std::printf("test_drawplan: ok\n");
     return g_failures == 0 ? 0 : 1;

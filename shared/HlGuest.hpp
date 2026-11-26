@@ -131,7 +131,10 @@ namespace hldata
     // after the lamp's grid kept the sides' crossings of its lines (no more
     // cracks where a side lies along one; 26 Nov 2026): t0a0b1 about 72 KB
     // under.
-    inline constexpr std::uint32_t kGuestImageBytes = 0x1646C8 + 19 * 1024;
+    // Raised 128 bytes, with the child 112 over after a model's body parts
+    // were chosen without their divides (most of the 32-bit divides of a
+    // DS frame with soldiers in view; 26 Nov 2026).
+    inline constexpr std::uint32_t kGuestImageBytes = 0x1646C8 + 19 * 1024 + 128;
     /// The heap's end: the end of main RAM less what the start-up code keeps.
     inline constexpr std::uint32_t kGuestRamBytes = 0x3F4000;
     /// What the engine holds beside a map's data -- its tables, the world's

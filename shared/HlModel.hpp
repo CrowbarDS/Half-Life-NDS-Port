@@ -500,15 +500,26 @@ namespace hldata
             return -1;
         }
 
+        /// Which of a body part's choices this "body" number takes: body /
+        /// base % count (0 for a body under 0). The divides only where they
+        /// change the answer: most parts have one choice, most bodies are
+        /// under the part's base or within its count of it. (One copy: it is
+        /// called from many places.)
+        __attribute__((noinline)) static int bodyChoice(const ModelBodyPart &part, int body)
+        {
+            if (part.count <= 1 || body < static_cast<int>(part.base))
+                return 0;
+            const int quotient = part.base == 1 ? body : body / part.base;
+            return quotient < part.count ? quotient : quotient % part.count;
+        }
+
         /// Whether `batch` is part of the model for this "body" number, in
-        /// this skin (0: the usual one).
+        /// this skin (0: the usual one), at this level. (The level and the
+        /// skin first: they rule out most batches, without the body's sum.)
         bool batchInBody(const ModelBatch &batch, int body, int skin = 0, int level = 0) const
         {
-            const ModelBodyPart &part = bodyParts[batch.bodyPart];
-            // (Most parts have one choice: no divide for those.)
-            const int choice = part.count <= 1 ? 0 : (body < 0 ? 0 : body) / part.base % part.count;
-            return batch.level == level && choice == batch.subModel &&
-                   (batch.skin == 0 || batch.skin == skin + 1);
+            return batch.level == level && (batch.skin == 0 || batch.skin == skin + 1) &&
+                   bodyChoice(bodyParts[batch.bodyPart], body) == batch.subModel;
         }
         /// How many levels of detail the file has (at least one).
         int levelCount() const

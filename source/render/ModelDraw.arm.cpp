@@ -753,18 +753,22 @@ namespace hlrt
             one.hidden = !one.close && hiddenRun_[slotOf(seen[n])] != 0;
             one.shown = drawnAt_[slotOf(seen[n])] == static_cast<std::uint16_t>(planFrame_ - 1);
             one.wasNearest = slotOf(seen[n]) == nearestSlot_;
-            for (int l = 0; l < levels; ++l)
+            // (Each batch once, to its own level's count.)
             {
-                int p = 0, v = 0;
+                int p[kModelLevels] = {}, v[kModelLevels] = {};
                 for (int b = 0; b < model.header->batchCount; ++b)
                 {
-                    if (!model.batchInBody(model.batches[b], actor.body, actor.skin, l))
+                    const ModelBatch &batch = model.batches[b];
+                    if (batch.level >= levels || !model.batchInBody(batch, actor.body, actor.skin, batch.level))
                         continue;
-                    p += model.batches[b].polygons;
-                    v += model.batches[b].vertices;
+                    p[batch.level] += batch.polygons;
+                    v[batch.level] += batch.vertices;
                 }
-                one.polygons[l] = static_cast<std::uint16_t>(p);
-                one.vertices[l] = static_cast<std::uint16_t>(v);
+                for (int l = 0; l < levels; ++l)
+                {
+                    one.polygons[l] = static_cast<std::uint16_t>(p[l]);
+                    one.vertices[l] = static_cast<std::uint16_t>(v[l]);
+                }
             }
             // (A player's: and the gun in their hand, drawn at its coarsest.)
             {

@@ -29,8 +29,11 @@ DLPLAY_ARM7_AT = 0x022C0000
 
 def image_limit():
     text = open(os.path.join(ROOT, 'shared', 'HlGuest.hpp')).read()
-    m = re.search(r'kGuestImageBytes\s*=\s*0x([0-9A-Fa-f]+)\s*\+\s*(\d+)\s*\*\s*1024', text)
-    return int(m.group(1), 16) + int(m.group(2)) * 1024 if m else None
+    m = re.search(r'kGuestImageBytes\s*=\s*0x([0-9A-Fa-f]+)\s*\+\s*(\d+)\s*\*\s*1024(?:\s*\+\s*(\d+))?\s*;', text)
+    # (Not read, the check would be skipped without a word: stop instead.)
+    if not m:
+        sys.exit('child_size: kGuestImageBytes in HlGuest.hpp is not of the form 0x<hex> + <n> * 1024 [+ <bytes>]')
+    return int(m.group(1), 16) + int(m.group(2)) * 1024 + int(m.group(3) or 0)
 
 
 def main():
