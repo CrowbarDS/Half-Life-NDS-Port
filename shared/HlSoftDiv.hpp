@@ -134,6 +134,57 @@ namespace hldata
             return q;
         }
 
+        /// How many steps the shift-and-subtract divide takes for n / d: one
+        /// for each bit the quotient may have, from the two numbers' sizes
+        /// (n < d << k), 1 at least and 32 at most (n < d * 2^32 already).
+        /// d not 0.
+        inline int quotientBits(std::uint64_t n, std::uint32_t d)
+        {
+            const int nBits = n == 0 ? 0 : 64 - __builtin_clzll(n);
+            const int k = nBits - (32 - __builtin_clz(d)) + 1;
+            return k < 1 ? 1 : (k > 32 ? 32 : k);
+        }
+
+        /// n / d and n % d a bit of quotient at a step, k steps (k from
+        /// quotientBits): for a short quotient, quicker than the reciprocal.
+        /// d below 2^31, so that twice what is left never overflows a word.
+        /// The steps are source/HwMath.s's three instructions each, word for
+        /// word: what is left (hi) doubled with the numerator's next bit and
+        /// d taken off by adding -d, the carry saying whether it went (the
+        /// quotient's bit), and given back if not.
+        inline std::uint32_t shiftDivide(std::uint64_t n, std::uint32_t d, int k, std::uint32_t &rem)
+        {
+            // The numerator's top part, below d, and its last k bits at the
+            // top of a word. (A shift by 32 makes 0, as ARM's does.)
+            const auto nLow = static_cast<std::uint32_t>(n), nHigh = static_cast<std::uint32_t>(n >> 32);
+            std::uint32_t hi = (k == 32 ? 0u : nLow >> k) | (nHigh << (32 - k));
+            std::uint32_t lo = k == 32 ? nLow : nLow << (32 - k);
+            const std::uint32_t minusD = 0u - d;
+            bool carry = false; // (made 0 on the way in)
+            for (int i = 0; i < k; ++i)
+            {
+                // adcs lo, lo, lo: the last bit of quotient in, the next of
+                // the numerator out.
+                const bool bit = (lo >> 31) != 0;
+                lo = (lo << 1) | (carry ? 1u : 0u);
+                // adcs hi, minusD, hi, lsl #1: 2 hi + bit - d, carried if not
+                // below 0.
+                const std::uint64_t sum = static_cast<std::uint64_t>(minusD) + (static_cast<std::uint64_t>(hi) << 1) +
+                                          (bit ? 1u : 0u);
+                hi = static_cast<std::uint32_t>(sum);
+                carry = (sum >> 32) != 0;
+                // subcc hi, hi, minusD: given back.
+                if (!carry)
+                    hi -= minusD;
+            }
+            // adc lo, lo, lo: the last bit. (The numerator's bits have all
+            // gone off the top, and the 0 carried in at first is above the
+            // quotient's k bits, with only 0s above it: lo is the quotient.)
+            lo = (lo << 1) | (carry ? 1u : 0u);
+            rem = hi;
+            return lo;
+        }
+
         /// n / d rounded toward 0, as `/` gives it, d the reciprocal's. (A
         /// quotient of more than 32 bits is left to `/`.)
         inline HL_SOFTDIV_ONCE std::int64_t divideBy(std::int64_t n, const Reciprocal &rec)

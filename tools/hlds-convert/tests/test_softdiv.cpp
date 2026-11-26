@@ -23,6 +23,7 @@ namespace
     long g_steps[8] = {};
     bool g_shapes = false; // counting the game's shapes apart
     long g_shapeSteps[8] = {};
+    long g_shapeBits[33] = {}; // the game's shapes, by the shift-and-subtract divide's steps
 
     void check(bool ok, const char *what)
     {
@@ -70,6 +71,23 @@ namespace
                 std::printf("FAIL: %lld / %lld gave %lld rem %lld, not %lld rem %lld\n", static_cast<long long>(n),
                             static_cast<long long>(d), static_cast<long long>(q), static_cast<long long>(r),
                             static_cast<long long>(n / d), static_cast<long long>(n % d));
+        }
+        if (ud < 0x80000000u)
+        {
+            // The shift-and-subtract divide, for a divisor below 2^31.
+            const int k = softdiv::quotientBits(un, static_cast<std::uint32_t>(ud));
+            std::uint32_t rem = 0;
+            const std::uint32_t uq = softdiv::shiftDivide(un, static_cast<std::uint32_t>(ud), k, rem);
+            if (k < 1 || k > 32 || uq != un / ud || rem != un % ud)
+            {
+                ++g_failures;
+                if (told++ < 10)
+                    std::printf("FAIL: shiftDivide %llu / %llu (%d steps) gave %lu rem %lu\n",
+                                static_cast<unsigned long long>(un), static_cast<unsigned long long>(ud), k,
+                                static_cast<unsigned long>(uq), static_cast<unsigned long>(rem));
+            }
+            if (g_shapes)
+                ++g_shapeBits[k];
         }
         const softdiv::Reciprocal rec = softdiv::reciprocalOf(static_cast<std::uint32_t>(ud));
         const std::uint64_t want = un / ud, guess = softdiv::estimate(un, rec);
@@ -210,6 +228,11 @@ int main()
                 g_steps[4], g_steps[5]);
     std::printf("test_softdiv: the game's shapes, steps 0..2: %ld %ld %ld\n", g_shapeSteps[0], g_shapeSteps[1],
                 g_shapeSteps[2]);
+    std::printf("test_softdiv: the game's signed shapes by quotient steps (k: count):");
+    for (int k = 1; k <= 32; ++k)
+        if (g_shapeBits[k] != 0)
+            std::printf(" %d:%ld", k, g_shapeBits[k]);
+    std::printf("\n");
     // (The reciprocal is good to about 2^-30: a quotient near 2^32 is about
     // four steps off from it, and one more from the truncation.)
     check(g_worstSteps <= 6, "the estimate is never more than 6 steps off");
