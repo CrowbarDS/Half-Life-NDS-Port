@@ -134,7 +134,9 @@ namespace hlrt
         bool playIntro();
         /// The title screen's top: the game's menu background with its
         /// animated title over it, drawn by menuFrame() -- once a frame,
-        /// straight after the wait for the screen -- until hideMenu(), which
+        /// straight after the wait for the screen: the title's picture due
+        /// is put in place in the blank, and the next one read from the
+        /// card after the frame is handed over -- until hideMenu(), which
         /// leaves what is on the screen as a picture. False if the card has
         /// not got the background.
         bool showMenu();
@@ -158,16 +160,23 @@ namespace hlrt
         bool menuLogoOn_ = true;
         // The title screen's (showMenu): its background, its animated title
         // (a texture rewritten as it moves, the file it moves through), and
-        // which of its pictures is shown, since when.
+        // which of its pictures is shown, which is due, and which is read
+        // and waiting in the texture's own copy for the next blank.
         void *menuMaterial_ = nullptr;
         void *menuPalette_ = nullptr;
         void *logoMaterial_ = nullptr;
         void *logoPalette_ = nullptr;
         void *logoFile_ = nullptr;
         int logoFrames_ = 0;
-        int logoFrame_ = -1;
-        std::uint32_t logoMicros_ = 0;
-        std::uint32_t menuSince_ = 0;
+        int logoFrame_ = -1; ///< shown (-1: none yet)
+        int logoDue_ = 0;    ///< due, by the clock
+        int logoReady_ = -1; ///< read, not yet shown (-1: none)
+        // Its clock, in sixtieths of a microsecond (a blank adds a million):
+        // the time since the picture due began, and how long each lasts.
+        std::uint32_t logoClock_ = 0;
+        std::uint32_t logoStep_ = 0;
+        std::uint32_t logoLast_ = 0; ///< the blank the clock last saw
+        bool readLogo(int picture);
         bool suit_ = false;
         bool lampOn_ = false;
         bool lampSuit_ = false; ///< the suit is worn: its lamp is shown, alight or not

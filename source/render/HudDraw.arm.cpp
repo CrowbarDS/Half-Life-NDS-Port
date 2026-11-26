@@ -1292,7 +1292,7 @@ namespace hlrt
             if (file != nullptr && std::fread(&header, sizeof(header), 1, file) == 1 &&
                 std::memcmp(header.magic, kLogoMagic, 4) == 0 && header.version == kLogoVersion &&
                 header.width == kLogoWidth && header.height == kLogoHeight && header.frames > 0 &&
-                header.frameMicros > 0 && material != nullptr && palette != nullptr &&
+                header.frameMicros > 0 && header.frameMicros <= 1000000u && material != nullptr && palette != nullptr &&
                 NEA_MaterialTexBlank(material, NEA_A3PAL32, kLogoWidth, kLogoTextureHeight,
                                      static_cast<NEA_TextureFlags>(0)) == 1 &&
                 NEA_PaletteLoad(palette, greys, 32, NEA_A3PAL32) == 1)
@@ -1302,8 +1302,9 @@ namespace hlrt
                 logoPalette_ = palette;
                 logoFile_ = file;
                 logoFrames_ = header.frames;
-                logoMicros_ = header.frameMicros;
-                logoFrame_ = -1;
+                // (No picture shorter than a blank: one a blank at most, and
+                // the clock's catching up below a few steps at most.)
+                logoStep_ = (header.frameMicros < 16667u ? 16667u : header.frameMicros) * 60u;
             }
             else
             {
@@ -1315,7 +1316,14 @@ namespace hlrt
                     NEA_PaletteDelete(palette);
             }
         }
-        menuSince_ = Global::vblanks();
+        // The title from its first picture, that one read now: the first
+        // frame has only to put it in place.
+        logoLast_ = Global::vblanks();
+        logoClock_ = 0;
+        logoDue_ = 0;
+        logoFrame_ = logoReady_ = -1;
+        if (logoFile_ != nullptr)
+            readLogo(0);
         menuShown = static_cast<NEA_Material *>(menuMaterial_);
         logoShown = nullptr;
         // (The picture hideMenu left on the screen gives way to it: a map
@@ -1329,36 +1337,65 @@ namespace hlrt
     {
         if (menuShown == nullptr)
             return;
-        // The title's picture due now (round and round), into its texture in
-        // this blank, if it is another.
+        // The title's clock: the blanks since it last looked, a second of
+        // them at most (after a longer wait -- a load, the lid -- it goes on
+        // from where it was), each picture due in turn, round and round.
+        if (logoMaterial_ != nullptr)
+        {
+            const std::uint32_t now = Global::vblanks();
+            std::uint32_t gap = now - logoLast_;
+            logoLast_ = now;
+            if (gap > 60)
+                gap = 60;
+            logoClock_ += gap * 1000000u;
+            while (logoClock_ >= logoStep_)
+            {
+                logoClock_ -= logoStep_;
+                if (++logoDue_ == logoFrames_)
+                    logoDue_ = 0;
+            }
+        }
         if (!menuLogoOn_)
         {
             logoShown = nullptr;
             logoFrame_ = -1;
         }
-        else if (logoMaterial_ != nullptr)
+        else if (logoMaterial_ != nullptr && logoReady_ >= 0 && logoFrame_ != logoDue_)
         {
+            // In this blank, only the picture read before it into place (the
+            // due one, or after a wait the one just before it).
             auto *material = static_cast<NEA_Material *>(logoMaterial_);
-            const std::uint64_t micros = static_cast<std::uint64_t>(Global::vblanks() - menuSince_) * 1000000u / 60u;
-            const int due = static_cast<int>((micros / logoMicros_) % static_cast<std::uint64_t>(logoFrames_));
-            if (due != logoFrame_)
-            {
-                auto *file = static_cast<std::FILE *>(logoFile_);
-                auto *texels = static_cast<std::uint8_t *>(NEA_MaterialTexGetData(material));
-                constexpr int kBytes = kLogoWidth * kLogoHeight;
-                if (texels != nullptr &&
-                    std::fseek(file, static_cast<long>(sizeof(LogoHeader) + static_cast<std::size_t>(due) * kBytes),
-                               SEEK_SET) == 0 &&
-                    std::fread(texels, kBytes, 1, file) == 1)
-                {
-                    NEA_MaterialTexSetDirty(material);
-                    NEA_MaterialTexVramUpdate(material);
-                    logoFrame_ = due;
-                    logoShown = material;
-                }
-            }
+            NEA_MaterialTexSetDirty(material);
+            NEA_MaterialTexVramUpdate(material);
+            logoFrame_ = logoReady_;
+            logoReady_ = -1;
+            logoShown = material;
         }
         NEA_Process(drawMenu);
+        // The next picture from the card, now the frame is handed over.
+        if (menuLogoOn_ && logoFile_ != nullptr && logoReady_ < 0)
+            readLogo(logoDue_ + 1 == logoFrames_ ? 0 : logoDue_ + 1);
+    }
+
+    bool HudDraw::readLogo(int picture)
+    {
+        auto *file = static_cast<std::FILE *>(logoFile_);
+        auto *texels = static_cast<std::uint8_t *>(NEA_MaterialTexGetData(static_cast<NEA_Material *>(logoMaterial_)));
+        constexpr int kBytes = kLogoWidth * kLogoHeight;
+        if (texels != nullptr &&
+            std::fseek(file, static_cast<long>(sizeof(LogoHeader) + static_cast<std::size_t>(picture) * kBytes),
+                       SEEK_SET) == 0 &&
+            std::fread(texels, kBytes, 1, file) == 1)
+        {
+            logoReady_ = picture;
+            return true;
+        }
+        // (The card would not give it: the title stays as it is, still, not
+        // asked again every frame.)
+        std::fclose(file);
+        logoFile_ = nullptr;
+        logoReady_ = -1;
+        return false;
     }
 
     void HudDraw::hideMenu()
@@ -1390,6 +1427,7 @@ namespace hlrt
         if (logoFile_ != nullptr)
             std::fclose(static_cast<std::FILE *>(logoFile_));
         menuMaterial_ = menuPalette_ = logoMaterial_ = logoPalette_ = logoFile_ = nullptr;
+        logoFrame_ = logoReady_ = -1;
     }
 
     void HudDraw::hideLoading()
