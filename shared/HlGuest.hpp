@@ -122,7 +122,9 @@ namespace hldata
     // fixes) and what comes next, instead of a kilobyte a fix. t0a0b1 is
     // to stay at least 64 KB under (17 Nov 2026): none; t0a0b1 about 102 KB
     // under.
-    inline constexpr std::uint32_t kGuestImageBytes = 0x1646C8 + 9 * 1024;
+    // Raised 2 KB, to 11 KB over 0x1646C8, with the child 112 bytes over
+    // after cut-scene cameras that look at a monster's feet (26 Nov 2026).
+    inline constexpr std::uint32_t kGuestImageBytes = 0x1646C8 + 11 * 1024;
     /// The heap's end: the end of main RAM less what the start-up code keeps.
     inline constexpr std::uint32_t kGuestRamBytes = 0x3F4000;
     /// What the engine holds beside a map's data -- its tables, the world's
