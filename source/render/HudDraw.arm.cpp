@@ -1081,7 +1081,7 @@ namespace hlrt
         sheetDirty = 0;
     }
 
-    void HudDraw::onVblank()
+    HL_ITCM void HudDraw::onVblank()
     {
         auto *oam = reinterpret_cast<volatile std::uint16_t *>(0x07000000) + kFirstSprite * 4;
         for (int n = 0; n < kSprites; ++n)

@@ -92,7 +92,7 @@ namespace hlrt
             pitch = -kMaxPitch;
     }
 
-    void Camera::update()
+    HL_ITCM void Camera::update()
     {
         // libnds angles are 32768 to the circle; ours are 65536.
         const std::uint16_t turned = static_cast<std::uint16_t>(yaw + kickYaw);
@@ -190,7 +190,7 @@ namespace hlrt
         hudPixelX = wide ? (3058 * 6 * s + 240 * c) / (480 * c) : hudPixel;
     }
 
-    void Camera::buildPlanes()
+    HL_ITCM void Camera::buildPlanes()
     {
         // Side planes: forward tilted towards the middle by the half-angle.
         const std::int32_t sinH = zoomed ? kZoomSinH : kSinH, cosH = zoomed ? kZoomCosH : kCosH;
@@ -210,9 +210,9 @@ namespace hlrt
                          (hldata::drawDistanceFor(settings.graphics.drawDistance, mapFarUnits) << 12);
     }
 
-    // (Not in ITCM: a few times a frame, and the 64-bit divide needed the
-    // room -- HwMath.s.)
-    void Camera::apply() const
+    // (In ITCM again since round three: missed more for its size than most,
+    // by the clean counts.)
+    HL_ITCM void Camera::apply() const
     {
         glMatrixMode(GL_MODELVIEW);
         glLoadMatrix4x3(&view);

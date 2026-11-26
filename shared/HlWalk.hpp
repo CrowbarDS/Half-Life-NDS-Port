@@ -1272,7 +1272,9 @@ namespace hldata
     /// often) -- a DSi too.
     inline int walkReach(bool still) { return still ? 1024 : 480; }
 
-    HL_HOT int walkTick(ActorWorld &a, const MoveWorld &world, int index, int small, const fx *dest,
+    // (Out of ITCM since round three, 2026-11-26: little missed for its size,
+    // and the owner's DS and DSi frame times were better with it out.)
+    HL_WARM int walkTick(ActorWorld &a, const MoveWorld &world, int index, int small, const fx *dest,
                         fx speed, int ms, const PlayerState *player, fx half, fx height,
                         bool still = false, std::uint16_t *idealYaw = nullptr, int reach = 0,
                         fx *budget = nullptr)

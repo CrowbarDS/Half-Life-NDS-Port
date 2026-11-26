@@ -3504,7 +3504,7 @@ namespace hldata
     }
 
     /// The box a shot at the actor is first tried against.
-    inline void targetBox(const ActorState &actor, fx *mins, fx *maxs)
+    HL_HOT void targetBox(const ActorState &actor, fx *mins, fx *maxs)
     {
         if (isTurret(actor.kind))
         {

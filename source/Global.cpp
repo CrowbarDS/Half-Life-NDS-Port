@@ -43,7 +43,7 @@ namespace
     volatile std::uint32_t vblankCount = 0;
 
     /// NEA's own vblank work, plus the tick the game's clock runs on.
-    void onVblank()
+    HL_ITCM void onVblank()
     {
         const hlrt::DebugLog::Perf::Timed timed(hlrt::DebugLog::Section::Vblank);
         vblankCount = vblankCount + 1;
@@ -70,12 +70,13 @@ namespace
 #endif
 } // namespace
 
-std::uint32_t Global::vblanks()
+// (ITCM round three, clean counts: missed often for its size.)
+HL_ITCM std::uint32_t Global::vblanks()
 {
     return vblankCount;
 }
 
-bool Global::hasRoom()
+HL_ITCM bool Global::hasRoom()
 {
     return global.isDSi || hlrt::slot2::pakBytes() != 0;
 }
@@ -100,7 +101,7 @@ namespace
 #ifdef HLDS_PROFILE
     constexpr std::uint32_t kWaiterPaint = 0x7A17E25Bu;
 #endif
-    int vblankWaiter(void *)
+    HL_ITCM int vblankWaiter(void *)
     {
         for (;;)
             cothread_yield_irq(IRQ_VBLANK);
@@ -141,12 +142,12 @@ namespace
     std::uint32_t drawClockAt = 0;
 }
 
-std::uint32_t Global::drawClock()
+HL_ITCM std::uint32_t Global::drawClock()
 {
     return drawClockAt;
 }
 
-void Global::latchDrawClock()
+HL_ITCM void Global::latchDrawClock()
 {
     drawClockAt = vblankCount;
 }

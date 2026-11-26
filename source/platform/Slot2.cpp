@@ -1,4 +1,5 @@
 #include "platform/Slot2.hpp"
+#include "Hot.hpp"
 
 #ifndef HLDS_CHILD
 
@@ -93,8 +94,8 @@ namespace hlrt::slot2
     }
 
     std::size_t pakBytes() { return pak ? pakSize : 0; }
-    bool hasRumble() { return motor; }
-    bool rumbleEdge() { return motorEdge; }
+    HL_ITCM bool hasRumble() { return motor; }
+    HL_ITCM bool rumbleEdge() { return motorEdge; }
     std::uint8_t rumbleMost() { return motorMost; }
 
     std::uint8_t *take(std::size_t bytes)

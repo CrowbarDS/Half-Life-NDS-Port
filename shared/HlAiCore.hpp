@@ -66,7 +66,9 @@ namespace hldata
 
     inline bool aiAlive(const ActorWorld &a, int index);
 
-    HL_HOT bool aiTargetOf(LogicWorld &w, const PlayerState &player, std::int16_t id, AiTarget &t)
+    // (Out of ITCM since round three: less missed for its size than what
+    // took its place, by the clean counts.)
+    HL_WARM bool aiTargetOf(LogicWorld &w, const PlayerState &player, std::int16_t id, AiTarget &t)
     {
         t = AiTarget();
         t.id = id;
@@ -623,9 +625,9 @@ namespace hldata
 
     /// Look: what it can see of what it has feelings about, within
     /// `distance` (m_flDistLook), sets SEE_* (and remembers what it saw for
-    /// BestVisibleEnemy). (ARM, in main memory: the least missed of the
-    /// AI's for its size, out of the ITCM to make room -- docs/TECHNICAL.md.)
-    HL_WARM void aiLook(AiCtx &c, int distance)
+    /// BestVisibleEnemy). (In ITCM again since round three: by the clean
+    /// counts it misses more for its size than what made room for it.)
+    HL_HOT void aiLook(AiCtx &c, int distance)
     {
         aiClear(c, kCondSeeHate | kCondSeeDislike | kCondSeeEnemy | kCondSeeFear | kCondSeeNemesis | kCondSeeClient);
         c.m.seenCount = 0;
@@ -3381,7 +3383,7 @@ namespace hldata
     /// the last look stopped to a tenth of a second ahead of where it is now
     /// -- the game's are given that far ahead, not as the frames pass -- and
     /// whether the clip is done within that tenth (m_fSequenceFinished).
-    inline void aiAnimEventsAhead(AiCtx &c)
+    HL_HOT void aiAnimEventsAhead(AiCtx &c)
     {
         const ModelView *model = actorModel(c.a, c.me);
         if (model == nullptr || c.me.clip < 0)
@@ -4160,8 +4162,9 @@ namespace hldata
         c.m.moveNear = aiDist2D(dest, c.me.pos) < near && dz < fxFromInt(72) && dz > -fxFromInt(72);
     }
 
-    /// MonsterThink: ten times a second.
-    inline void aiMonsterThink(AiCtx &c)
+    /// MonsterThink: ten times a second. (In ITCM since round three: missed
+    /// often for its size, by the clean counts.)
+    HL_HOT void aiMonsterThink(AiCtx &c)
     {
         // (Where its eyes are: what it can see of the map, and whoever
         // looks at it, go by that.)

@@ -1,5 +1,6 @@
 // (ARM: it asks the processor's mode, to refuse an interrupt's call.)
 #include "ui/UiText.hpp"
+#include "Hot.hpp"
 
 #include <cstring>
 
@@ -37,7 +38,8 @@ namespace hlrt::ui
 #endif
     }
 
-    void textFrameEnd()
+    // (ITCM round three, clean counts: missed often for its size.)
+    HL_ITCM void textFrameEnd()
     {
 #ifdef HLDS_DEBUG_BUILD
         // ('#' all through, a NUL at the end: kept text shows as #####.)

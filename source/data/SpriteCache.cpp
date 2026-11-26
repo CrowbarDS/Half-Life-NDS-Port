@@ -62,7 +62,7 @@ namespace hlrt
         return true;
     }
 
-    const hldata::SpriteRef *SpriteCache::ref(unsigned index) const
+    HL_ITCM const hldata::SpriteRef *SpriteCache::ref(unsigned index) const
     {
         // (A common sprite a level cooked before it has not got: that place
         // is one of the map's own.)

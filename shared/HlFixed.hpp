@@ -124,7 +124,7 @@ namespace hldata
     /// multiply, not a trip to the divider; else in 64. The same answer
     /// either way (test_divfree). One copy, out of line: inline at each of
     /// its forty-odd places it cost the program more than the divide's call.
-    HL_WARM __attribute__((noinline)) constexpr fx fxTimesMs32(std::int32_t perSecond, int ms)
+    HL_HOT __attribute__((noinline)) constexpr fx fxTimesMs32(std::int32_t perSecond, int ms)
     {
         const std::int64_t product = static_cast<std::int64_t>(perSecond) * ms;
         if (product >= INT32_MIN && product <= INT32_MAX)

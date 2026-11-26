@@ -158,7 +158,8 @@ namespace hlrt
         return true;
     }
 
-    bool TextureCache::use(unsigned index) const
+    // (ITCM round three, clean counts: missed often for its size.)
+    HL_ITCM bool TextureCache::use(unsigned index) const
     {
         if (streamed_[index] != 0)
         {
@@ -199,7 +200,7 @@ namespace hlrt
         palettes_[index] = nullptr;
     }
 
-    HL_ARM unsigned TextureCache::shown(unsigned index, bool switched) const
+    HL_ARM HL_ITCM unsigned TextureCache::shown(unsigned index, bool switched) const
     {
         const hldata::TextureRef &ref = level.view.textures[index];
         unsigned first = index, pictures = ref.frames;
@@ -211,7 +212,7 @@ namespace hlrt
         return pictures > 1 ? first + tick_ % pictures : first;
     }
 
-    HL_ARM void TextureCache::frame()
+    HL_ARM HL_ITCM void TextureCache::frame()
     {
         tick_ = Global::drawClock() / 6;
     }

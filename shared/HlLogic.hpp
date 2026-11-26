@@ -801,7 +801,7 @@ namespace hldata
             return blocked ? refuse() : true;
         }
 
-        inline bool playerTouchesBox(const PlayerState &player, const fx *mins, const fx *maxs,
+        HL_HOT bool playerTouchesBox(const PlayerState &player, const fx *mins, const fx *maxs,
                                      fx slack)
         {
             for (int a = 0; a < 3; ++a)

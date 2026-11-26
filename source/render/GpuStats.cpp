@@ -21,7 +21,7 @@ namespace hlrt
         volatile std::uint8_t seenLines = 46;
     } // namespace
 
-    void GpuStats::onVblank()
+    HL_ITCM void GpuStats::onVblank()
     {
         const std::uint16_t control = GFX_CONTROL;
         if (control & (kUnderflow | kOverflow))

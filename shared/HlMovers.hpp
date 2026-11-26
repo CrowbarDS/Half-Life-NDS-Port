@@ -459,9 +459,10 @@ namespace hldata
             int size(const MoveWorld &world) const { return count < 0 ? world.moverCount : count; }
             int at(int k) const { return count < 0 ? k : ids[k]; }
         };
-        // (In main memory, and one copy of it, not one in each file that
-        // traces -- once a trace, not in its inner loop: ITCM has no room.)
-        [[gnu::noinline, gnu::noclone]] HL_WARM void moversNear(const MoveWorld &world, const SegmentReach &move,
+        // (One copy of it, not one in each file that traces. In ITCM since
+        // round three: missed more for its size than the trace's inner
+        // loops, by the clean counts.)
+        [[gnu::noinline, gnu::noclone]] HL_HOT void moversNear(const MoveWorld &world, const SegmentReach &move,
                                                                MoversNear &near)
         {
             near.count = -1;
@@ -689,7 +690,8 @@ namespace hldata
         /// The boxes (the actors') in the way of a move from `start` to
         /// `end`: each grown by `growXY` across and `growZ` up and down, one
         /// pair of faces at a time; the nearer hit put into `best`.
-        HL_HOT void traceBoxes(const MoveWorld &world, const fx *start, const fx *end, fx growXY, fx growZ, Trace &best)
+        // (Out of ITCM since round three: little missed for its size.)
+        HL_WARM void traceBoxes(const MoveWorld &world, const fx *start, const fx *end, fx growXY, fx growZ, Trace &best)
         {
             // (A move that starts inside one passes through it, as with a
             // brush: nobody is ever frozen inside an actor who walked up to

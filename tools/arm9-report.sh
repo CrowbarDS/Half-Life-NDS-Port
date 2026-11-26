@@ -102,10 +102,12 @@ HOT = {
     "hldata::logicTick": ["lmul"],
 }
 # What has to be in the ITCM. (The game'"'"'s core is linked into the program:
-# its shot traces with the rest.)
+# its shot traces with the rest.) ModelDraw::draw and walkTick left the list in
+# round three (2026-11-26): the frame times on the console, A against B, were
+# better without them.
 HOT_ITCM = ["hldata::detail::hullCheck", "hldata::traceHull", "hldata::traceAll", "hldata::poseModel",
-            "hldata::detail::sampleTrack", "hldata::walkStep", "hldata::walkTick",
-            "hlrt::ModelDraw::drawActor", "hlrt::ModelDraw::draw", "hlrt::WorldDraw::walk",
+            "hldata::detail::sampleTrack", "hldata::walkStep",
+            "hlrt::ModelDraw::drawActor", "hlrt::WorldDraw::walk",
             "hldata::traceShot", "hldata::pointContents"]
 
 def run(*args):

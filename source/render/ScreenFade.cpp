@@ -121,7 +121,8 @@ namespace hlrt
         glMatrixMode(GL_MODELVIEW);
     }
 
-    void ScreenFade::frameDrawn()
+    // (ITCM round three, clean counts: missed often for its size.)
+    HL_ITCM void ScreenFade::frameDrawn()
     {
         // The picture just handed over shows from the next blank: the
         // sprites' share goes with it. (Nothing drawn: the sprites as they
@@ -133,7 +134,7 @@ namespace hlrt
         leaveCriticalSection(state);
     }
 
-    void ScreenFade::onVblank()
+    HL_ITCM void ScreenFade::onVblank()
     {
         if (!pending_)
             return;
@@ -145,7 +146,7 @@ namespace hlrt
         REG_BLDALPHA = static_cast<std::uint16_t>(shownEva_ < 0 ? kPlainAlpha : (shownEva_ | (16 << 8)));
     }
 
-    void ScreenFade::apply(bool advance)
+    HL_ITCM void ScreenFade::apply(bool advance)
     {
         // The fade in 1/256ths of the hardware's steps; shown as the step
         // below it, or the one above as often as it is owed.
@@ -193,13 +194,13 @@ namespace hlrt
         setBrightness(1, level);
     }
 
-    void ScreenFade::setFade(int alpha, std::uint16_t colour)
+    HL_ITCM void ScreenFade::setFade(int alpha, std::uint16_t colour)
     {
         fade_ = alpha < 0 ? 0 : (alpha > 255 ? 255 : alpha);
         colour_ = static_cast<std::uint16_t>(colour & 0x7FFF);
     }
 
-    void ScreenFade::setDim(bool under)
+    HL_ITCM void ScreenFade::setDim(bool under)
     {
         dim_ = under;
         apply(false);

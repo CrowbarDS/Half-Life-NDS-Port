@@ -1047,7 +1047,10 @@ namespace hlrt
         }
     } // namespace
 
-    HL_ITCM void ModelDraw::draw(int &drawn, int &cut)
+    // (Out of ITCM since round three, 2026-11-26: the least missed of its
+    // size by the clean counts, and the owner's DS and DSi frame times were
+    // better with it out -- its 4.5 KB serve the code that misses more.)
+    void ModelDraw::draw(int &drawn, int &cut)
     {
         const ActorWorld &actors = game.actors;
         cut += cut_;
@@ -1233,7 +1236,7 @@ namespace hlrt
         lightOff();
     }
 
-    void ModelDraw::lightOn()
+    HL_ITCM void ModelDraw::lightOn()
     {
         // One light, set in view space: with the direction matrix at identity
         // the hardware takes the vector as it is given.

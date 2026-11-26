@@ -269,7 +269,7 @@ namespace hlrt
         return turned;
     }
 
-    bool WorldDraw::brushPlanes(std::uint32_t index, bool turned, const std::int32_t *axes, CullPlane *out) const
+    HL_ITCM bool WorldDraw::brushPlanes(std::uint32_t index, bool turned, const std::int32_t *axes, CullPlane *out) const
     {
         const Brush &brush = level.view.brushes[index];
         const fx *pos = brushState_ != nullptr ? brushState_[index].pos : brush.origin;
