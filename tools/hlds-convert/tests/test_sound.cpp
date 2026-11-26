@@ -540,10 +540,59 @@ namespace
         // a bit more by the sample's own low bits, as the game's is -- and on
         // a quiet one those lean the one way. Its share, not its figure.)
         check(soft >= loud * 0.2 && soft <= loud * 0.45, "... and about a third as far for a word a third as loud");
-        check(meter.open == 0, "... and shuts when the word is over");
         meter.stop();
         meter.feed(1000);
-        check(meter.open == 0 && meter.data == nullptr, "nothing said: shut");
+        check(meter.open == 0 && meter.data == nullptr, "... and shuts when the sentence is over");
+
+        // A sentence of two loud words: the mouth goes on from the first
+        // into the second, as the game's does -- not shut at the word's end,
+        // nor shut again until ten readings into the next.
+        WavData word;
+        word.rate = 11025;
+        word.samples = tone(11025, 300, 0.25, 12000);
+        const CookedSound one = encodeSound(word, 11025, false);
+        const std::uint32_t oneSamples = static_cast<std::uint32_t>((one.data.size() - 4) * 2);
+        meter.start(one.data.data(), static_cast<std::uint32_t>(one.data.size()), 11025);
+        int shutAfterOpen = 0;
+        bool opened = false;
+        std::uint32_t saying = 0; // (which word)
+        for (int frame = 1;; ++frame)
+        {
+            const std::uint32_t to = static_cast<std::uint32_t>(frame * 11025 / 60);
+            if (to >= 2 * oneSamples)
+                break;
+            if (to / oneSamples != saying)
+            {
+                meter.feed(oneSamples); // (the first word to its end)
+                saying = to / oneSamples;
+                meter.next(one.data.data(), static_cast<std::uint32_t>(one.data.size()), 11025);
+            }
+            meter.feed(to % oneSamples);
+            opened = opened || meter.open > 0;
+            if (opened && meter.open == 0)
+                ++shutAfterOpen;
+        }
+        check(opened && shutAfterOpen == 0, "a sentence's mouth stays open from one word into the next");
+        meter.stop();
+
+        // The same word cooked at half the rate opens about as soon (the
+        // game reads a voice every 80-odd samples at 11025 a second).
+        const CookedSound half = encodeSound(word, 5512, false);
+        auto firstOpen = [&](const CookedSound &cooked, int hz)
+        {
+            MouthMeter m;
+            m.start(cooked.data.data(), static_cast<std::uint32_t>(cooked.data.size()), static_cast<std::uint32_t>(hz));
+            for (int frame = 1; frame <= 30; ++frame)
+            {
+                m.feed(static_cast<std::uint32_t>(frame * hz / 60));
+                if (m.open > 0)
+                    return frame;
+            }
+            return 99;
+        };
+        const int fullFrame = firstOpen(one, 11025), halfFrame = firstOpen(half, 5512);
+        std::printf("test_sound: a word opens the mouth at frame %d (11025 a second), %d (5512)\n", fullFrame, halfFrame);
+        check(halfFrame <= fullFrame + 1, "a word cooked at half the rate opens the mouth as soon");
     }
 } // namespace
 

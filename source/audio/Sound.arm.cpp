@@ -1266,7 +1266,8 @@ namespace hlrt
             }
             speech.voice = -1;
             speech.cutMs = 0;
-            speech.mouth.stop();
+            // (The mouth is not shut between words: the next goes on from
+            // it, as the game's does; the sentence's end shuts it.)
             releaseWord(speech, speech.cur);
             bool said = false;
             while (speech.at < speech.count && !said)
@@ -1344,6 +1345,7 @@ namespace hlrt
             }
             if (!said)
             {
+                speech.mouth.stop(); // (the sentence is over)
                 speech.count = speech.at = 0;
                 releaseWord(speech, speech.cur ^ 1);
                 speech.ahead = -1;
@@ -1371,7 +1373,12 @@ namespace hlrt
 
     void Sound::mouthBegin(Speech &speech, const std::uint8_t *data, std::uint32_t bytes, std::uint16_t hz, int rate)
     {
-        speech.mouth.start(data, bytes);
+        // (A sentence's first word starts the mouth; the next ones go on
+        // with it -- HlMouth.hpp.)
+        if (speech.mouth.data != nullptr)
+            speech.mouth.next(data, bytes, hz);
+        else
+            speech.mouth.start(data, bytes, hz);
         speech.played = 0;
         // (Thousandths of a sample a millisecond: hz samples a second, at
         // rate / 1024 of the speed it was made at.)

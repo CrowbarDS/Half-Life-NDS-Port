@@ -245,7 +245,8 @@ namespace hlrt
         void playOnce(const hldata::SoundEvent &event, int tag = -1);
         void say(const hldata::SoundEvent &event);
         void speechTick(int ms);
-        /// A word begins to be said: its mouth read from its start.
+        /// A word begins to be said: its mouth read from its start, going
+        /// on from the last word's if the sentence goes on.
         static void mouthBegin(Speech &speech, const std::uint8_t *data, std::uint32_t bytes, std::uint16_t hz, int rate);
         void loopsTick();
         void follow();
