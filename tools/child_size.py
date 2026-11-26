@@ -10,7 +10,10 @@ Two limits:
     guest's memory takes them to be (shared/HlGuest.hpp, kGuestImageBytes),
     or that account says maps fit that do not.
 A test build (HLDS_CHILD_TESTPACK, which links a map's data in) is reported
-but not held to them.
+but not held to them. A development or measuring build (HLDS_DEV,
+HLDS_PROFILE) is held to the first only: the converter's account is of the
+release's child, so such a build's child, if sent, may find a map it is
+offered too big for -- a test's risk, not a player's.
 """
 
 import os
@@ -38,12 +41,18 @@ def main():
         sys.exit('child_size: no __end__ in %s' % elf)
     image = end - 0x02000000
     test = os.environ.get('HLDS_CHILD_TESTPACK', '').strip() != ''
+    unsent = [name for name in ('HLDS_DEV', 'HLDS_PROFILE') if os.environ.get(name, '').strip() not in ('', '0')]
     limit = image_limit()
     print('child: program and data end at %#x (%d KB)%s' % (end, image // 1024, ' -- a test build' if test else ''))
     if test:
         return
     if end > DLPLAY_ARM7_AT:
         sys.exit('child_size: past %#x, where Download Play puts the ARM7\'s program' % DLPLAY_ARM7_AT)
+    if unsent:
+        if limit is not None and image > limit:
+            print('child: %d KB, over what HlGuest.hpp counts (%d KB): allowed in a %s build; '
+                  'a map offered to its guests may not fit' % (image // 1024, limit // 1024, ' and '.join(unsent)))
+        return
     if limit is not None and image > limit:
         sys.exit('child_size: %d KB, more than HlGuest.hpp counts (%d KB): raise kGuestImageBytes'
                  % (image // 1024, limit // 1024))
