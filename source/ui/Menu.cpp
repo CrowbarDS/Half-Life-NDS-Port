@@ -138,6 +138,7 @@ namespace hlrt
             kJumpButton,
             kTapJump,
             kTapUse,
+            kCrouchJump,
             kButtons,
             kTouchAim,
             kAimSpeed,
@@ -1221,8 +1222,8 @@ namespace hlrt
         const Row kControlRows[] = {{Kind::Value, kScheme, opt::RowLayout},          {Kind::Value, kHand, opt::RowHand},
                                     {Kind::Value, kDuck, opt::RowCrouch},            {Kind::Value, kWalk, opt::RowWalk},
                                     {Kind::Value, kJumpButton, opt::RowJumpButton}, {Kind::Value, kTapJump, opt::RowTapJump},
-                                    {Kind::Value, kTapUse, opt::RowTapUse},          {Kind::Value, kPadSide, opt::RowPadSide},
-                                    {Kind::Value, kPadUp, opt::RowPadUp},
+                                    {Kind::Value, kTapUse, opt::RowTapUse},          {Kind::Value, kCrouchJump, opt::RowCrouchJump},
+                                    {Kind::Value, kPadSide, opt::RowPadSide},        {Kind::Value, kPadUp, opt::RowPadUp},
                                     {Kind::Value, kAutoaim, opt::RowAutoaim}};
         const Row kTouchRows[] = {{Kind::Slider, kAimSpeed, opt::RowAimSpeed},
                                   {Kind::Slider, kPitchSpeed, opt::RowPitchSpeed},
@@ -1732,6 +1733,7 @@ namespace hlrt
             case kWalk: ui::putText(out, size, settings.walkToggle ? opt::Toggle : opt::Hold); break;
             case kJumpButton: ui::putText(out, size, settings.jumpWalks ? opt::JumpWalks : opt::JumpJumps); break;
             case kTapUse: ui::putText(out, size, settings.tapUse ? opt::On : opt::Off); break;
+            case kCrouchJump: ui::putText(out, size, settings.crouchJump ? opt::On : opt::Off); break;
             case kTapJump:
                 // (Where nothing else jumps, it stays on: HlControls.hpp's tapJumps.)
                 ui::putText(out, size,
@@ -1797,6 +1799,7 @@ namespace hlrt
             case kJumpButton: return opt::HelpJumpButton.at;
             case kTapJump: return opt::HelpTapJump.at;
             case kTapUse: return opt::HelpTapUse.at;
+            case kCrouchJump: return opt::HelpCrouchJump.at;
             case kPadSide: return opt::HelpPadSide.at;
             case kPadUp: return opt::HelpPadUp.at;
             case kAutoaim: return opt::HelpAutoaim.at;
@@ -1997,6 +2000,7 @@ namespace hlrt
             case kWalk: settings.walkToggle = !settings.walkToggle; return true;
             case kJumpButton: settings.jumpWalks = !settings.jumpWalks; return true;
             case kTapUse: settings.tapUse = !settings.tapUse; return true;
+            case kCrouchJump: settings.crouchJump = !settings.crouchJump; return true;
             case kTapJump:
                 if (!hldata::jumpsOtherwise(settings.controls()))
                     return false; // (the only way to jump: not turned off)

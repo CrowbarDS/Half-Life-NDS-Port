@@ -115,6 +115,9 @@ namespace hldata
         /// A quick tap on the aim pad is USE (the modern layout). Off unless
         /// asked for: a touch to aim was too often a USE.
         std::uint8_t tapUse = 0;
+        /// Jump held in the air crouches too (HlControls.hpp's crouch jump;
+        /// version 32). Off unless asked for.
+        std::uint8_t crouchJump = 0;
         /// How far the music and the ambience are let down while someone
         /// speaks (kFocus*, HlMixer.hpp).
         std::uint8_t dialogueFocus = kFocusLight;
@@ -274,9 +277,17 @@ namespace hldata
             ar &gyroSpeed;
             ar &lastGame;
             ar &graphics.dsiLight;
+            ar &crouchJump;
 #endif
         }
 #ifndef HLDS_CHILD
+        /// ... and of version 31: no crouch jump (read as off, the default).
+        template <class Ar>
+        void serializeThirtyOne(Ar &ar)
+        {
+            serializeThirty(ar);
+            ar &graphics.dsiLight;
+        }
         /// ... and of version 30: no DSi light (read as off, the default).
         template <class Ar>
         void serializeThirty(Ar &ar)
@@ -425,8 +436,9 @@ namespace hldata
     inline constexpr std::uint8_t kQualityStandard = 0, kQualityHigh = 1, kQualityChoices = 2;
 
     inline constexpr char kSettingsMagic[4] = {'H', 'L', 'S', 'T'};
-    inline constexpr std::uint16_t kSettingsVersion = 31;
-    /// The versions before, which are still read: 30 had no DSi light (read
+    inline constexpr std::uint16_t kSettingsVersion = 32;
+    /// The versions before, which are still read: 31 had no crouch jump (read
+    /// as off); 30 had no DSi light (read
     /// as off), and its fog, by default on where wanted, is read as off; 29
     /// had no game chosen
     /// (read as Half-Life); 28 had no gyroscope's
@@ -446,6 +458,7 @@ namespace hldata
     /// 11 had no achievements' pop-ups to turn off; 10 had no autoaim; 9 had
     /// the layouts but no aim speed, custom buttons or stylus pressure; 8 no
     /// controls to choose.
+    inline constexpr std::uint16_t kSettingsVersionThirtyOne = 31;
     inline constexpr std::uint16_t kSettingsVersionThirty = 30;
     inline constexpr std::uint16_t kSettingsVersionTwentyNine = 29;
     inline constexpr std::uint16_t kSettingsVersionTwentyEight = 28;
@@ -561,6 +574,8 @@ namespace hldata
             data.serializeTwentyNine(ar);
         else if (version == kSettingsVersionThirty)
             data.serializeThirty(ar);
+        else if (version == kSettingsVersionThirtyOne)
+            data.serializeThirtyOne(ar);
 #endif
         else
             ar &data;
@@ -576,7 +591,7 @@ namespace hldata
     inline constexpr std::uint16_t kSettingsPayload[] = {
         17,  20,  52,  53,  54,  57,  100, 168, 169, 170, 174, // 8 to 18
         175, 176, 178, 179, 180, 188, 189, 192, 193, 194, 195, // 19 to 29
-        196, 197,                                              // 30, 31
+        196, 197, 198,                                         // 30 to 32
     };
     static_assert(sizeof(kSettingsPayload) / sizeof(kSettingsPayload[0]) ==
                       kSettingsVersion - kSettingsVersionBefore + 1,
@@ -612,7 +627,8 @@ namespace hldata
             return false;
         std::memcpy(&header, bytes, sizeof(header));
         if (std::memcmp(header.magic, kSettingsMagic, sizeof(header.magic)) != 0 ||
-            (header.version != kSettingsVersion && header.version != kSettingsVersionThirty &&
+            (header.version != kSettingsVersion && header.version != kSettingsVersionThirtyOne &&
+             header.version != kSettingsVersionThirty &&
              header.version != kSettingsVersionTwentyNine &&
              header.version != kSettingsVersionTwentyEight &&
              header.version != kSettingsVersionTwentySeven &&
@@ -667,7 +683,7 @@ namespace hldata
             return false;
         if (read.aimSpeed < 1 || read.aimSpeed > kAimSpeedMost || read.pitchSpeed < 1 ||
             read.pitchSpeed > kAimSpeedMost || read.invertPitch > 1 || read.duckToggle > 1 ||
-            read.walkToggle > 1 || read.jumpWalks > 1 || read.tapJump > 1 || read.tapUse > 1 || read.firmness > kFirmnessMost || read.firmPress >= kFirmActions)
+            read.walkToggle > 1 || read.jumpWalks > 1 || read.tapJump > 1 || read.tapUse > 1 || read.crouchJump > 1 || read.firmness > kFirmnessMost || read.firmPress >= kFirmActions)
             return false;
         for (std::uint16_t key : read.keys)
         {

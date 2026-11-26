@@ -8,10 +8,13 @@
 #include <cstring>
 
 #include "HlControls.hpp"
+#include "HlLevelReader.hpp"
 #include "HlMonsters.hpp"
+#include "HlPlayerMove.hpp"
 #include "HlSettings.hpp"
 #include "HlWeaponList.hpp"
 #include "TestBspBuilder.hpp"
+#include "hlds/Cooker.hpp"
 
 using namespace hldata;
 using namespace hldstest;
@@ -1675,6 +1678,275 @@ namespace
         out = touch(set, open, at.spray.x + 2, at.spray.y + 2, blank);
         check(out.sprayPressed && !out.talkHeld && !out.micToggle, "... and the touch screen's SPRAY sprays");
     }
+    // ---- the crouch jump --------------------------------------------------
+
+    /// One frame with `held` down, no stylus, in the air or not.
+    ControlsOut airPress(const ControlSettings &set, ControlsState &state, std::uint32_t held, bool inAir,
+                         std::uint32_t &blank)
+    {
+        ControlsIn in;
+        in.held = held;
+        in.inAir = inAir;
+        in.blank = ++blank;
+        return controlsStep(set, in, state);
+    }
+    ControlsOut airTouch(const ControlSettings &set, ControlsState &state, bool touching, int x, int y, bool inAir,
+                         std::uint32_t &blank)
+    {
+        ControlsIn in;
+        in.touching = touching;
+        in.touchX = x;
+        in.touchY = y;
+        in.inAir = inAir;
+        in.blank = ++blank;
+        return controlsStep(set, in, state);
+    }
+
+    /// A hall to jump about in, cooked as a level is: the move's own world.
+    struct Hall
+    {
+        hlds::BspFile bsp;
+        std::vector<std::uint8_t> bytes;
+        LevelView view;
+        MoveWorld move;
+        bool ok = false;
+    };
+    void buildHall(Hall &w)
+    {
+        BoxRoom room;
+        room.mins[0] = room.mins[1] = -2000;
+        room.maxs[0] = room.maxs[1] = 2000;
+        std::string error;
+        hlds::CookedLevel level;
+        hlds::CookReport report;
+        w.ok = w.bsp.parse(buildBoxRoom(room), error) &&
+               hlds::cookLevel(w.bsp, hlds::CookOptions(), {}, level, report, error) &&
+               hlds::writeLevel(level, w.bytes, error) &&
+               w.view.open(w.bytes.data(), static_cast<std::uint32_t>(w.bytes.size())) == LevelError::Ok;
+        if (!w.ok)
+        {
+            std::fprintf(stderr, "hall failed: %s\n", error.c_str());
+            return;
+        }
+        w.move.standing = Hull{w.view.clipNodes, w.view.planes, w.view.planeTypes, w.view.models[0].clipStanding};
+        w.move.crouched = Hull{w.view.clipNodes, w.view.planes, w.view.planeTypes, w.view.models[0].clipCrouched};
+    }
+
+    /// The controls driving the move, frame by frame, as the console has
+    /// them (Input.cpp, Player.arm.cpp): in the air as the last move left
+    /// the player. With the long jump module; how many long jumps were made.
+    struct Jumper
+    {
+        Hall &hall;
+        ControlSettings set;
+        ControlsState controls;
+        PlayerState s;
+        Arsenal arsenal;
+        std::uint32_t blank = 1000;
+        int longJumps = 0;
+        fx risingFrom = 0; ///< the upward speed the last jump left (after its frame)
+
+        Jumper(Hall &h, bool crouchJump) : hall(h)
+        {
+            set.scheme = kControlsModern;
+            set.crouchJump = crouchJump;
+            arsenal.have = kArsenalLongJump;
+            s.arsenal = &arsenal;
+            s.origin[2] = fxFromInt(40);
+            for (int i = 0; i < 30; ++i)
+                frame(0);
+        }
+        /// `air`: the controls are told the player is in the air, whatever
+        /// the move then finds.
+        ControlsOut frame(std::uint32_t held, bool air = false)
+        {
+            ControlsIn in;
+            in.held = held;
+            in.blank = (blank += 2);
+            in.inAir = air || playerInAir(s);
+            const ControlsOut out = controlsStep(set, in, controls);
+            MoveCommand cmd;
+            cmd.forward = out.moveForward;
+            cmd.side = out.moveSide;
+            cmd.jump = out.jump;
+            cmd.duck = out.duck;
+            cmd.walk = out.walk;
+            const bool wasGround = s.onGround;
+            playerMove(s, cmd, hall.move, kPlayerTick);
+            if (wasGround && !s.onGround && s.velocity[2] > 0)
+                risingFrom = s.velocity[2];
+            if (arsenal.longJumped)
+            {
+                ++longJumps;
+                arsenal.longJumped = false;
+            }
+            return out;
+        }
+    };
+
+    /// THE CROUCH JUMP: jump held in the air crouches too -- never on the
+    /// frame of the press, so it is never the long jump -- and the player
+    /// stands when it is let go.
+    void testCrouchJump()
+    {
+        // (Modern, right-handed: A jumps, B crouches, Up runs.)
+        ControlSettings set;
+        set.scheme = kControlsModern;
+        const std::uint32_t jump = kButtonA, duck = kButtonB;
+        std::uint32_t blank = 100;
+        ControlsState state;
+        check(!set.crouchJump && SettingsData().crouchJump == 0, "the crouch jump is off unless asked for");
+        airPress(set, state, jump, false, blank);
+        ControlsOut out = airPress(set, state, jump, true, blank);
+        check(out.jump && !out.duck, "off, jump held in the air is a jump alone");
+
+        set.crouchJump = true;
+        state = ControlsState();
+        airPress(set, state, 0, false, blank);
+        out = airPress(set, state, jump, false, blank);
+        check(out.jump && !out.duck, "on: the press is a jump alone");
+        out = airPress(set, state, jump, true, blank);
+        check(out.jump && out.duck, "... held in the air, a crouch too");
+        out = airPress(set, state, 0, true, blank);
+        check(!out.jump && !out.duck, "... let go, no crouch: the player stands");
+        out = airPress(set, state, jump, true, blank);
+        check(out.jump && !out.duck, "pressed again in the air: no crouch on the frame of the press");
+        out = airPress(set, state, jump, true, blank);
+        check(out.jump && out.duck, "... but on the next");
+        out = airPress(set, state, jump, false, blank);
+        check(out.jump && !out.duck, "held on the ground (landed, or in water, or on a ladder): no crouch");
+        state = ControlsState();
+        airPress(set, state, 0, true, blank);
+        out = airPress(set, state, jump | duck, true, blank);
+        check(out.jump && out.duck, "the player's own crouch is theirs, on the press too");
+
+        // The screen's JUMP, and two taps on the aim pad.
+        const TouchLayout at = touchLayout(false);
+        state = ControlsState();
+        out = airTouch(set, state, true, at.jump.x + 5, at.jump.y + 5, true, blank);
+        check(out.jump && !out.duck, "JUMP touched in the air: no crouch as it lands");
+        out = airTouch(set, state, true, at.jump.x + 5, at.jump.y + 5, true, blank);
+        check(out.jump && out.duck, "... held, a crouch");
+        out = airTouch(set, state, false, 0, 0, true, blank);
+        check(!out.jump && !out.duck, "... lifted, none");
+        const int px = at.pad.x + at.pad.w / 2, py = at.pad.y + at.pad.h / 2;
+        airTouch(set, state, true, px, py, true, blank);
+        airTouch(set, state, false, 0, 0, true, blank);
+        out = airTouch(set, state, true, px, py, true, blank);
+        check(out.jump && !out.duck, "the second of two taps: a jump, no crouch on its first frame");
+        out = airTouch(set, state, true, px, py, true, blank);
+        check(out.jump && out.duck, "... held, a crouch");
+
+        // The settings file.
+        {
+            constexpr std::size_t flags = yas::mem | yas::binary | yas::no_header;
+            SettingsData old;
+            old.crouchJump = 1; // (not in a version 31 file)
+            yas::mem_ostream os;
+            yas::binary_oarchive<yas::mem_ostream, flags> oa(os);
+            serializeSettings(kSettingsVersionThirtyOne, old, oa);
+            const auto buf = os.get_intrusive_buffer();
+            SettingsHeader header{};
+            std::memcpy(header.magic, kSettingsMagic, sizeof(header.magic));
+            header.version = kSettingsVersionThirtyOne;
+            header.payloadBytes = static_cast<std::uint16_t>(buf.size);
+            header.crc32 = crc32(reinterpret_cast<const std::uint8_t *>(buf.data), static_cast<std::uint32_t>(buf.size));
+            std::vector<std::uint8_t> file(sizeof(header) + buf.size);
+            std::memcpy(file.data(), &header, sizeof(header));
+            std::memcpy(file.data() + sizeof(header), buf.data, buf.size);
+            SettingsData back;
+            back.crouchJump = 1;
+            check(readSettings(file.data(), file.size(), back) && back.crouchJump == 0,
+                  "a version 31 file is read with no crouch jump");
+            SettingsData chose;
+            chose.crouchJump = 1;
+            std::vector<std::uint8_t> written = writeSettings(chose);
+            check(readSettings(written.data(), written.size(), back) && back.crouchJump == 1,
+                  "... and one written now keeps it");
+            chose.crouchJump = 2;
+            written = writeSettings(chose);
+            check(!readSettings(written.data(), written.size(), back), "... and one with it out of range is not read");
+        }
+
+        // With the move itself: a hall, the module, running.
+        Hall hall;
+        buildHall(hall);
+        check(hall.ok, "the hall cooks");
+        if (!hall.ok)
+            return;
+        const std::uint32_t run = kButtonUp;
+        {
+            Jumper j(hall, true);
+            for (int i = 0; i < 10; ++i)
+                j.frame(run);
+            j.frame(run | jump);
+            const double up = j.risingFrom / 4096.0;
+            bool tucked = false;
+            int n = 0;
+            while (!j.s.onGround && n++ < 60)
+            {
+                j.frame(run | jump);
+                tucked = tucked || j.s.ducked;
+            }
+            check(j.longJumps == 0 && up > 200 && up < 270, "a crouch jump running, with the module: an ordinary jump");
+            check(tucked, "... crouched in the air");
+            check(j.s.onGround, "... and down again");
+            j.frame(run | jump);
+            j.frame(run | jump);
+            check(!j.s.ducked && j.longJumps == 0, "... and standing once down, jump still held");
+        }
+        {
+            Jumper j(hall, true);
+            j.frame(jump);
+            for (int i = 0; i < 4; ++i)
+                j.frame(jump);
+            check(j.s.ducked && !j.s.onGround, "jump held in the air: crouched");
+            j.frame(0);
+            check(!j.s.ducked, "... let go: standing again, in the open air");
+        }
+        {
+            // Jump held, let go and pressed again at every timing about a
+            // landing: never a long jump.
+            int longJumps = 0, jumps = 0;
+            for (int hold = 1; hold <= 14; ++hold)
+            {
+                for (int gap = 1; gap <= 8; ++gap)
+                {
+                    Jumper j(hall, true);
+                    for (int i = 0; i < 10; ++i)
+                        j.frame(run);
+                    for (int f = 0; f < 150; ++f)
+                    {
+                        const bool held = f % (hold + gap) < hold;
+                        const bool ground = j.s.onGround;
+                        j.frame(run | (held ? jump : 0));
+                        jumps += ground && !j.s.onGround ? 1 : 0;
+                    }
+                    longJumps += j.longJumps;
+                }
+            }
+            std::printf("test_controls: %d crouch jumps at every timing, %d long\n", jumps, longJumps);
+            check(jumps > 100 && longJumps == 0, "jump let go and pressed again at every timing: never a long jump");
+        }
+        {
+            // The controls told the player is in the air as the move finds
+            // the ground (a lift come up under them): still no long jump.
+            Jumper j(hall, true);
+            for (int i = 0; i < 10; ++i)
+                j.frame(run);
+            j.frame(run | jump, true);
+            check(j.longJumps == 0 && !j.s.onGround, "in the air to the controls, on the ground to the move: a jump, not a long one");
+        }
+        {
+            // (The harness can long jump: the player's own crouch and jump.)
+            Jumper j(hall, true);
+            for (int i = 0; i < 10; ++i)
+                j.frame(run);
+            j.frame(run | duck);
+            j.frame(run | duck | jump);
+            check(j.longJumps == 1, "the player's own crouch and jump: the long jump, as before");
+        }
+    }
 } // namespace
 
 int main()
@@ -1696,6 +1968,7 @@ int main()
     testSensitivity();
     testUseHeld();
     testTalk();
+    testCrouchJump();
     if (g_failures == 0)
         std::printf("test_controls: ok\n");
     return g_failures == 0 ? 0 : 1;

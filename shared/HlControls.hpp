@@ -41,6 +41,13 @@
 // has LONG JUMP then: a touch is both, and the crouch is held a moment longer
 // however short the touch, for the legs to come up.
 //
+// THE CROUCH JUMP. Asked for, jump held in the air holds the crouch too: the
+// legs come up, to clear a ledge; let go, the player stands (where there is
+// room: the move waits for it). Not in water nor on a ladder, where jump swims
+// and climbs: the caller says (ControlsIn::inAir). Never on the frame jump is
+// first pressed -- the only frame the move can jump on -- so it is never a
+// crouch and a jump at once, which with the module is the long jump.
+//
 // Either way, two quick taps on the aim pad jump (and holding the second
 // keeps the jump held, for swimming up); a touch that starts on a control is
 // that control and never turns the view, however far it then slides.
@@ -158,6 +165,7 @@ namespace hldata
         bool jumpWalks = false;  ///< the jump button walks
         bool tapJump = true;     ///< two taps on the aim pad jump (tapJumps)
         bool tapUse = false;     ///< a quick tap on the aim pad is USE (the modern layout)
+        bool crouchJump = false; ///< jump held in the air crouches too (THE CROUCH JUMP)
         /// The player has the long jump module: the screen has LONG JUMP. Not
         /// a setting: the game's state.
         bool longJump = false;
@@ -347,6 +355,10 @@ namespace hldata
         /// smaller is firmer. 0: the console cannot say.
         int pressure = 0;
         std::uint32_t blank = 0; ///< the count of sixtieths of a second so far
+        /// The player is in the air -- off the ground, off a ladder, not
+        /// where jump swims -- as the last frame left them (the game's state,
+        /// for the crouch jump).
+        bool inAir = false;
     };
 
     /// What that means.
@@ -434,6 +446,8 @@ namespace hldata
         /// was pressed under it (else, let go of soon, it was a reload).
         std::uint32_t shiftBlank = 0;
         bool shiftUsed = false;
+        /// Jump was held last frame (the crouch jump waits a frame past its press).
+        bool jumpWas = false;
     };
 
     /// How far a stylus step of `fine` sixteenths of a pixel turns the view,
@@ -793,8 +807,11 @@ namespace hldata
         if (state.longJumping && state.touch != kTouchLongJump && in.blank - state.longJumpBlank >= kLongJumpBlanks)
             state.longJumping = false;
         out.jump = state.jumping || state.touch == kTouchJump || state.touch == kTouchLongJump || faceJump || (firmNow && set.firmPress == kFirmJump);
+        // The crouch jump: jump held in the air, from the frame after its press.
+        const bool tuck = set.crouchJump && in.inAir && out.jump && state.jumpWas;
+        state.jumpWas = out.jump;
         out.duck = (state.touch == kTouchDuck && !set.duckToggle) || (state.duckSlide && state.touching) ||
-                   state.crouched || duckHeld || state.longJumping;
+                   state.crouched || duckHeld || state.longJumping || tuck;
         out.walk = (state.touch == kTouchWalk && !set.walkToggle) || (state.walkSlide && state.touching) ||
                    state.walking || walkHeld;
         out.touchOn = !state.touching ? kTouchAim

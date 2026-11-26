@@ -389,6 +389,14 @@ namespace hldata
         Unsaved<int> drownBackMs{2000};
     };
 
+    /// Whether the player is in the air, for the controls' crouch jump
+    /// (HlControls.hpp): off the ground and off a ladder, and not where jump
+    /// swims (to the waist) nor climbing out of the water.
+    inline bool playerInAir(const PlayerState &s)
+    {
+        return !s.onGround && !s.onLadder && s.waterLevel < 2 && s.waterJumpMs <= 0;
+    }
+
     /// Whether nothing may hurt the player (the god cheat).
     inline bool godMode(const PlayerState &player) { return player.cheats != nullptr && player.cheats->god; }
 

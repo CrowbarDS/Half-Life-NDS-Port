@@ -91,6 +91,7 @@ Choose between two layouts in OPTIONS > CONTROLS, which also explains each butto
 With either layout:
 
 - Hold WALK on the touch screen to walk (Half-Life runs by default), or set it to toggle in OPTIONS > CONTROLS. The same page can make the jump button walk instead; two quick taps still jump.
+- CROUCH JUMP in OPTIONS > CONTROLS (off by default): holding jump in the air tucks the legs up, to clear ledges; let go to stand.
 - Touch a weapon's slot to take it, or to reload the one in your hand.
 - Touch RELOAD, JUMP, DUCK or USE for what they say.
 - Start, or MENU on the touch screen, opens the pause menu.

@@ -62,6 +62,9 @@ namespace hlrt
         hldata::ControlsIn in;
         in.held = held;
         in.blank = Global::vblanks();
+        // (For the crouch jump: as the last move left the player. Not flying
+        // through walls, where the crouch is the way down.)
+        in.inAir = !player.noclip && player.state.health > 0 && hldata::playerInAir(player.state);
         // (A touch the menu had, still down: as though it were not.)
         if (touchHeld_ && !(held & KEY_TOUCH))
             touchHeld_ = false;
