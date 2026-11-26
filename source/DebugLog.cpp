@@ -18,7 +18,8 @@ extern "C" char __sp_usr[];
 // The interrupts' stack (ds_arm9.ld): from __dtcm_data_top up to __sp_irq_user.
 extern "C" char __dtcm_data_top[], __sp_irq_user[];
 // (HwMath.s: the divides and the roots the hardware has been asked for.)
-extern "C" std::uint32_t hlHwCount[3]; // (divides, roots, divides left to the library: HwMath.s)
+// (divides, roots, divides left to the library, the library's 32-bit divides: HwMath.s)
+extern "C" std::uint32_t hlHwCount[4];
 // (The linker's: the program's code, and the top of the interrupt stack,
 // under which the BIOS keeps what an interrupt broke into.)
 extern "C" char __text_start[], __text_end[], __sp_irq[];
@@ -234,12 +235,13 @@ namespace hlrt::DebugLog::Perf
         // hlProfileSite, interrupts held off): the return address of each
         // call, and how many. A table each, looked up by a hash of the
         // address; one that finds no room in eight tries is counted lost.
+        // (div32Sites: the library's 32-bit divides, which keep to it.)
         struct Site
         {
             std::uint32_t at, count;
         };
-        constexpr int kDivSites = 256, kRootSites = 64;
-        Site divSites[kDivSites], rootSites[kRootSites];
+        constexpr int kDivSites = 256, kRootSites = 64, kDiv32Sites = 512;
+        Site divSites[kDivSites], rootSites[kRootSites], div32Sites[kDiv32Sites];
         // Who traces, and how long it takes (shared/HlTraceCount.hpp): the
         // line that called, which trace (kTrace*, kTraceOnWorker on the think
         // worker's thread), how many times and the time in all.
@@ -250,7 +252,7 @@ namespace hlrt::DebugLog::Perf
         constexpr int kTraceSites = 512;
         TraceSite traceSites[kTraceSites];
         std::uint32_t traceSitesLost = 0;
-        std::uint32_t divFits = 0, sitesLost = 0;
+        std::uint32_t divFits = 0, sitesLost = 0, div32Lost = 0;
 
         void writeSites(std::FILE *log, const char *what, Site *sites, int count)
         {
@@ -274,6 +276,9 @@ namespace hlrt::DebugLog::Perf
             if (sites == divSites)
                 std::fprintf(log, ", %lu fit 32 bits, %lu lost", static_cast<unsigned long>(divFits),
                              static_cast<unsigned long>(sitesLost));
+            if (sites == div32Sites)
+                std::fprintf(log, ", %lu divides, %lu lost", static_cast<unsigned long>(hlHwCount[3]),
+                             static_cast<unsigned long>(div32Lost));
             for (int k = 0; k < shown; ++k)
                 std::fprintf(log, ", %lx %lu", static_cast<unsigned long>(sites[top[k]].at),
                              static_cast<unsigned long>(sites[top[k]].count));
@@ -469,6 +474,7 @@ namespace hlrt::DebugLog::Perf
             writeSites(log, "divsites", divSites, kDivSites);
             writeTraceSites(log);
             writeSites(log, "rootsites", rootSites, kRootSites);
+            writeSites(log, "div32sites", div32Sites, kDiv32Sites);
             std::fclose(log);
         }
         {
@@ -481,6 +487,9 @@ namespace hlrt::DebugLog::Perf
                 site = Site{};
             for (Site &site : rootSites)
                 site = Site{};
+            for (Site &site : div32Sites)
+                site = Site{};
+            div32Lost = 0;
             for (TraceSite &site : traceSites)
                 site = TraceSite{};
             traceSitesLost = 0;
@@ -511,7 +520,7 @@ namespace hlrt::DebugLog::Perf
         recordLongest = 0;
         recordLongestIndex = -1;
         framesIn = 0;
-        hlHwCount[0] = hlHwCount[1] = hlHwCount[2] = 0;
+        hlHwCount[0] = hlHwCount[1] = hlHwCount[2] = hlHwCount[3] = 0;
         // (The frame the writing is in is not one of the game's.)
         for (int i = 0; i < kCount; ++i)
             running[i] = 0;
@@ -672,19 +681,21 @@ namespace hlrt::DebugLog::Perf
 } // namespace hlrt::DebugLog::Perf
 
 // HwMath.s, with interrupts held off, for each divide (kind 0; `wide` 0 if
-// both its numbers fit 32 bits) and each root (kind 1): `at`, the return
-// address of the call. (No divide here, nor anything that waits.)
+// both its numbers fit 32 bits), each root (kind 1) and each of the
+// library's 32-bit divides (kind 2): `at`, the return address of the call.
+// (No divide here, nor anything that waits.)
 extern "C" void hlProfileSite(std::uint32_t at, int kind, std::uint32_t wide)
 {
     using namespace hlrt::DebugLog::Perf;
     if (kind == 0 && wide == 0)
         ++divFits;
-    Site *const sites = kind == 0 ? divSites : rootSites;
-    const std::uint32_t mask = static_cast<std::uint32_t>(kind == 0 ? kDivSites : kRootSites) - 1;
+    Site *const sites = kind == 0 ? divSites : (kind == 1 ? rootSites : div32Sites);
+    const std::uint32_t mask =
+        static_cast<std::uint32_t>(kind == 0 ? kDivSites : (kind == 1 ? kRootSites : kDiv32Sites)) - 1;
     const std::uint32_t hash = (at >> 1) * 2654435761u;
     for (std::uint32_t k = 0; k < 8; ++k)
     {
-        Site &site = sites[((hash >> 24) + k) & mask];
+        Site &site = sites[((hash >> 23) + k) & mask];
         if (site.at == at)
         {
             ++site.count;
@@ -697,7 +708,7 @@ extern "C" void hlProfileSite(std::uint32_t at, int kind, std::uint32_t wide)
             return;
         }
     }
-    ++sitesLost;
+    ++(kind == 2 ? div32Lost : sitesLost);
 }
 
 // shared/HlTraceCount.hpp: the profiler's clock, and a trace counted to the

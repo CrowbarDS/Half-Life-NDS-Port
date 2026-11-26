@@ -305,11 +305,54 @@ hlRootWay:
     .space  4
 
 #ifdef HLDS_PROFILE
-@ How many divides, how many roots, and how many of the divides were left to
-@ the library, since whoever reads it last cleared it.
+@ A build that measures also counts the library's 32-bit divides
+@ (hlHwCount[3]) and where each comes from (hlProfileSite, kind 2), then
+@ leaves the divide to the library as it was (build.py wraps them only
+@ then). In main memory, not ITCM: the measured build's ITCM is the game's.
+    .section .text.hwmath_div32count, "ax", %progbits
+    .arm
+    .align  2
+.Lcount32:                              @ r0: the caller's lr
+    mrs     r3, cpsr
+    orr     r2, r3, #0x80
+    msr     cpsr_c, r2
+    ldr     r12, =hlHwCount
+    ldr     r1, [r12, #12]
+    add     r1, r1, #1
+    str     r1, [r12, #12]
+    push    {r3, lr}
+    mov     r1, #2
+    mov     r2, #0
+    ldr     r12, =hlProfileSite
+    blx     r12
+    pop     {r3, lr}
+    msr     cpsr_c, r3
+    bx      lr
+
+.macro DIV32_COUNTED name
+    .global __wrap_\name
+    .type   __wrap_\name, %function
+__wrap_\name:
+    push    {r0-r3, r12, lr}
+    mov     r0, lr
+    bl      .Lcount32
+    pop     {r0-r3, r12, lr}
+    ldr     r12, =__real_\name
+    bx      r12
+    .size   __wrap_\name, . - __wrap_\name
+.endm
+    DIV32_COUNTED __aeabi_idiv
+    DIV32_COUNTED __aeabi_uidiv
+    DIV32_COUNTED __aeabi_idivmod
+    DIV32_COUNTED __aeabi_uidivmod
+    .pool
+
+@ How many divides, how many roots, how many of the divides were left to
+@ the library, and how many 32-bit divides, since whoever reads it last
+@ cleared it.
     .section .bss.hlHwCount, "aw", %nobits
     .align  2
     .global hlHwCount
 hlHwCount:
-    .space  12
+    .space  16
 #endif

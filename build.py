@@ -87,6 +87,10 @@ if trace:
 # The 64-bit divide goes to the console's divider (source/HwMath.s), and to
 # the library's for what the divider would answer otherwise.
 HW_MATH_WRAPS = ['__aeabi_ldivmod', '__aeabi_uldivmod']
+# A profiling build also counts the library's 32-bit divides by where they
+# are called from (HwMath.s, the "div32sites:" line), and leaves them to it.
+if os.environ.get('HLDS_PROFILE'):
+    HW_MATH_WRAPS += ['__aeabi_idiv', '__aeabi_uidiv', '__aeabi_idivmod', '__aeabi_uidivmod']
 # picolibc's printf and scanf at their integer level (the program's and the
 # child's): see the program's link below.
 INTEGER_STDIO = ['-Wl,--undefined=__i_vfprintf', '-Wl,--undefined=__i_vfscanf',

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Where the hardware's divides and roots are asked for, from perf.txt's
-"divsites:" and "rootsites:" lines.
+"divsites:" and "rootsites:" lines; and the library's 32-bit divides, from
+"div32sites:".
 
 usage: divsites.py <perf.txt> [<map name>] [--elf ARM9.elf] [--last N] [--top N]
 
@@ -24,15 +25,17 @@ ADDR2LINE = '/opt/wonderful/toolchain/gcc-arm-none-eabi/bin/arm-none-eabi-addr2l
 
 
 def parse(lines, map_name=None):
-    """{'divsites'|'rootsites': [(frames, fits, lost, {address: count})]},
-    each line kept if its "time:" line is of `map_name` (or any)."""
+    """{'divsites'|'rootsites'|'div32sites': [(frames, fits, lost, {address: count})]},
+    each line kept if its "time:" line is of `map_name` (or any). (For
+    div32sites, `fits` is how many divides in all.)"""
     out = collections.defaultdict(list)
     current_map = None
     for line in lines:
         if line.startswith('time:'):
             current_map = line.split()[1]
             continue
-        m = re.match(r'(divsites|rootsites): (\d+) frames(?:, (\d+) fit 32 bits, (\d+) lost)?(.*)$', line)
+        m = re.match(r'(divsites|rootsites|div32sites): (\d+) frames'
+                     r'(?:, (\d+) (?:fit 32 bits|divides), (\d+) lost)?(.*)$', line)
         if not m or (map_name is not None and current_map != map_name):
             continue
         sites = {}
@@ -87,7 +90,7 @@ def main():
     found = parse(open(perf).read().splitlines(), map_name)
     if not found:
         sys.exit('divsites: no "divsites:" lines%s' % (' for ' + map_name if map_name else ''))
-    for kind in ('divsites', 'rootsites'):
+    for kind in ('divsites', 'rootsites', 'div32sites'):
         chosen = found.get(kind, [])
         if '--last' in opts:
             chosen = chosen[-int(opts['--last']):]
@@ -99,8 +102,11 @@ def main():
             totals.update(sites)
         names = where(elf, list(totals))
         whole = sum(totals.values())
-        what = 'divides' if kind == 'divsites' else 'roots'
+        what = {'divsites': 'divides', 'rootsites': 'roots', 'div32sites': "the library's 32-bit divides"}[kind]
         print('%s: %.1f a frame at the sites shown, over %d frames' % (what, whole / frames, frames))
+        if kind == 'div32sites':
+            print('  (%.1f a frame in all; %d calls found no room in the table)'
+                  % (sum(c[1] for c in chosen) / frames, sum(c[2] for c in chosen)))
         if kind == 'divsites':
             fits = sum(c[1] for c in chosen)
             lost = sum(c[2] for c in chosen)
