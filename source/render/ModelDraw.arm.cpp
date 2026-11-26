@@ -1297,12 +1297,16 @@ namespace hlrt
             direct = add * 9 / 10;
             // Its way in view space (as lightOn sets the other's).
             const int *view = camera.view.m;
+            // (Made unit once, not again for each of the three axes.)
+            std::int64_t unit[3];
+            for (int i = 0; i < 3; ++i)
+                unit[i] = (static_cast<std::int64_t>(d[i]) << 12) / length;
             int v[3];
             for (int j = 0; j < 3; ++j)
             {
                 std::int64_t sum = 0;
                 for (int i = 0; i < 3; ++i)
-                    sum += static_cast<std::int64_t>((static_cast<std::int64_t>(d[i]) << 12) / length) * view[i * 3 + j];
+                    sum += unit[i] * view[i * 3 + j];
                 v[j] = static_cast<int>(sum >> (15 + 3));
                 v[j] = v[j] > 511 ? 511 : (v[j] < -511 ? -511 : v[j]);
             }
