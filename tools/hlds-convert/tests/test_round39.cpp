@@ -211,6 +211,58 @@ namespace
               "... and then the view is the player's again, and what it looked at is fired");
     }
 
+    /// The camera's yaw now, in degrees (-180..180).
+    int cameraYawDegrees(const Game &g, int cam)
+    {
+        const auto turns = static_cast<std::int16_t>(static_cast<std::uint32_t>(g.logic.states[cam].travel[0]) >> 16);
+        return turns * 360 / 65536;
+    }
+
+    void testCameraOnUnseenTrain()
+    {
+        // ba_canal1's opening: the camera looks at a train that is neither
+        // seen nor in the way, and turns after it as it rides.
+        BoxRoom room;
+        room.mins[0] = -512, room.maxs[0] = 512;
+        room.mins[1] = -512, room.maxs[1] = 512;
+        room.brushes.push_back(volume("func_train", 284, -216, 16, 316, -184, 48,
+                                      "\"targetname\" \"ride\"\n\"target\" \"p1\"\n\"speed\" \"100\"\n"
+                                      "\"spawnflags\" \"8\"\n\"rendermode\" \"1\"\n\"renderamt\" \"0\"\n"));
+        room.extraEntities =
+            entity("\"classname\" \"path_corner\"\n\"targetname\" \"p1\"\n\"target\" \"p2\"\n"
+                   "\"origin\" \"300 -200 32\"\n") +
+            entity("\"classname\" \"path_corner\"\n\"targetname\" \"p2\"\n\"origin\" \"300 200 32\"\n") +
+            entity("\"classname\" \"trigger_camera\"\n\"targetname\" \"cam\"\n\"target\" \"ride\"\n"
+                   "\"origin\" \"-300 0 32\"\n\"angle\" \"90\"\n\"wait\" \"20\"\n\"spawnflags\" \"4\"\n");
+        auto game = cook(room);
+        check(game->ok, "the room of the camera and the unseen train cooks");
+        if (!game->ok)
+            return;
+        Game &g = *game;
+        const int cam = named(g, "cam", LogicKind::Camera);
+        const int train = named(g, "ride", LogicKind::Train);
+        check(cam >= 0 && train >= 0 && g.view.logic[train].brush != kNoBrush,
+              "an unseen train a camera looks at is kept as a brush");
+        if (cam < 0 || train < 0 || g.view.logic[train].brush == kNoBrush)
+            return;
+        standAt(g, 0, 0);
+        use(g, cam);
+        check(g.logic.camera == cam && cameraYawDegrees(g, cam) == 90, "... the camera starts as the map turned it");
+        // (At the first corner, 18 degrees to the right of straight on.)
+        for (int i = 0; i < 60 * 4; ++i)
+            ticks(g, 1);
+        const int atFirst = cameraYawDegrees(g, cam);
+        check(atFirst < 0 && atFirst > -30, "... and turns to the train where it waits");
+        use(g, train);
+        for (int i = 0; i < 60 * 8; ++i)
+            ticks(g, 1);
+        fx at[3];
+        check(placeOfName(g.logic, g.view.logic[cam].target, at) && at[1] > fxFromInt(150),
+              "... which rides to its next corner when used");
+        const int atSecond = cameraYawDegrees(g, cam);
+        check(atSecond > 0 && atSecond < 30, "... and the camera turns after it");
+    }
+
     void testGunAndButtonTargets()
     {
         BoxRoom room;
@@ -651,6 +703,7 @@ int main()
     testCounterAndChange();
     testLostAndEnd();
     testCamera();
+    testCameraOnUnseenTrain();
     testGunAndButtonTargets();
     testBloodAndSprite();
     testSpeaker();

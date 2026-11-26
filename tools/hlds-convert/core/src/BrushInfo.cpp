@@ -89,6 +89,13 @@ namespace hlds
                 ((!(flags & 2) && intKey(entity, "renderamt") > 0) || (!(flags & 4) && intKey(entity, "rendermode") == 0)))
                 shown.emplace_back(entity.value("target"));
         }
+        // The names a trigger_camera looks at.
+        std::vector<std::string> looked;
+        for (const Entity &entity : entities)
+        {
+            if (entity.className() == "trigger_camera" && !entity.value("target").empty())
+                looked.emplace_back(entity.value("target"));
+        }
         for (std::size_t e = 0; e < entities.size(); ++e)
         {
             const Entity &entity = entities[e];
@@ -120,6 +127,9 @@ namespace hlds
             info.solid = !isPassable(info.className, spawnflags);
             info.usable = isUsable(info.className, spawnflags);
             info.startsOff = info.className == "func_wall_toggle" && (spawnflags & 1);
+            info.looked = !entity.value("targetname").empty() &&
+                          std::find(looked.begin(), looked.end(), std::string(entity.value("targetname"))) !=
+                              looked.end();
 
             switch (mode)
             {

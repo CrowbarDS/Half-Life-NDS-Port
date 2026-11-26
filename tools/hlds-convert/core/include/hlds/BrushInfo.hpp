@@ -50,6 +50,10 @@ namespace hlds
         /// its box is what USE looks for (c1a4f's lift button, inside the
         /// car, is both).
         bool usable = false;
+        /// A trigger_camera looks at it (ba_canal1's unseen train, which
+        /// the opening's camera follows): kept as a brush, seen or not, so
+        /// that it moves and the camera finds where it is.
+        bool looked = false;
         /// The game adds it to what is behind it (rendermode 3 or 5): its
         /// textures are cooked as light (kTextureLight), so that its black
         /// shows nothing rather than darkening what it covers.

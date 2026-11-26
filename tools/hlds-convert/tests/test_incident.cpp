@@ -1519,6 +1519,24 @@ namespace
             const bool security = std::string(map) == "ba_security2";
             check(cameras > 0 && monitors == (security ? cameras : 0),
                   security ? "ba_security2: its three cameras are monitors" : "ba_canal1: its cut-scene's camera is not");
+            if (security)
+                continue;
+            // The opening's camera follows an unseen train (camera_target),
+            // which is kept as a brush so that it rides and is found.
+            int camera = -1;
+            for (std::uint32_t i = 0; i < game->view.logicCount && camera < 0; ++i)
+            {
+                if (game->view.logic[i].kind == static_cast<std::uint8_t>(LogicKind::Camera))
+                    camera = static_cast<int>(i);
+            }
+            bool trainFound = false;
+            for (std::uint32_t i = 0; camera >= 0 && i < game->view.logicCount; ++i)
+            {
+                const LogicRecord &r = game->view.logic[i];
+                trainFound |= r.kind == static_cast<std::uint8_t>(LogicKind::Train) &&
+                              r.name == game->view.logic[camera].target && r.brush != kNoBrush;
+            }
+            check(trainFound, "ba_canal1: the train its camera looks at is kept as a brush");
         }
         activeGame = was;
     }
