@@ -111,7 +111,7 @@ __wrap___aeabi_ldivmod:
     addpl   r3, r3, r3, lsr #8
     @ The hidden Newton step: (2^32 - b) is 2^31 (1 + e).
     rsb     r2, r2, #0
-    umull   lr, r2, r2, r3
+    umull   lr, r2, r3, r2              @ (r2 last: ARMv5 wants RdHi apart from Rm)
     rsb     r0, r0, #30                 @ (the quotient's shift, 30 - c: 0..30)
     mov     r2, r2, lsl #1              @ r, in 2^62 / b0's scale
     @ One more: r (2 - r b0).
