@@ -2,7 +2,10 @@
 // floor(sqrt(v)), held to that by integers alone (r^2 <= v < (r + 1)^2),
 // over every value below 2^24, every square and its neighbours, the 64-bit
 // edges and random values of every size; and the steps it is put right by at
-// the end stay few. "--all" also walks every 32-bit value (some minutes).
+// the end stay few. And HwMath.s's root a bit at a time (hlBitRoot32), step
+// for step as its instructions take them: every value below 2^28 (what an
+// animation key's last part is the root of), the squares and random ones.
+// "--all" also walks every 32-bit value, with both (some minutes).
 
 #include <cstdint>
 #include <cstdio>
@@ -48,6 +51,33 @@ namespace
         const std::uint32_t r = softroot::root32(v);
         if (!isRoot(v, r))
             fail("root32", v, r);
+    }
+
+    /// HwMath.s's hlBitRoot32, its instructions as sums: the steps a value
+    /// below 4^(16 - k) cannot take a bit in jumped over (k: half its
+    /// leading zero bits), each step `cmp r0, r2, ror #2n; subhs r0, r0, r2,
+    /// ror #2n; adc r2, r1, r2, lsl #1`, the root in r2 under its top two.
+    std::uint32_t bitRoot32(std::uint32_t v)
+    {
+        const std::uint32_t r1 = 3u << 30;
+        std::uint32_t r0 = v, r2 = 1u << 30;
+        const int k = (v == 0 ? 32 : __builtin_clz(v)) / 2;
+        for (int n = k; n < 16; ++n)
+        {
+            const int turn = 2 * n;
+            const std::uint32_t step = turn == 0 ? r2 : (r2 >> turn) | (r2 << (32 - turn));
+            const std::uint32_t carry = r0 >= step ? 1 : 0;
+            r0 -= carry ? step : 0;
+            r2 = r1 + (r2 << 1) + carry;
+        }
+        return r2 & ~(3u << 30);
+    }
+    void oneBits(std::uint32_t v)
+    {
+        ++g_checked;
+        const std::uint32_t r = bitRoot32(v);
+        if (!isRoot(v, r))
+            fail("bitRoot32", v, r);
     }
 
     void one64(std::uint64_t v)
@@ -98,12 +128,14 @@ namespace
 int main(int argc, char **argv)
 {
     const bool all = argc > 1 && std::strcmp(argv[1], "--all") == 0;
-    // Every value below 2^24.
+    // Every value below 2^24; the bit at a time's below 2^28.
     for (std::uint32_t v = 0; v < (1u << 24); ++v)
     {
         one32(v);
         steps32(v);
     }
+    for (std::uint32_t v = 0; v < (1u << 28); ++v)
+        oneBits(v);
     // Every square of 32 bits and its neighbours, as 32 and as 64 bits.
     for (std::uint64_t r = 0; r <= 0xFFFF; ++r)
     {
@@ -112,6 +144,7 @@ int main(int argc, char **argv)
             if (v > 0xFFFFFFFFull)
                 continue;
             one32(static_cast<std::uint32_t>(v));
+            oneBits(static_cast<std::uint32_t>(v));
             one64(v);
             steps32(static_cast<std::uint32_t>(v));
         }
@@ -150,13 +183,17 @@ int main(int argc, char **argv)
         if (bits <= 32)
         {
             one32(static_cast<std::uint32_t>(v));
+            oneBits(static_cast<std::uint32_t>(v));
             steps32(static_cast<std::uint32_t>(v));
         }
     }
     if (all)
     {
         for (std::uint64_t v = 0; v <= 0xFFFFFFFFull; ++v)
+        {
             one32(static_cast<std::uint32_t>(v));
+            oneBits(static_cast<std::uint32_t>(v));
+        }
         std::printf("test_softroot: every 32-bit value walked\n");
     }
     std::printf("test_softroot: %ld roots; before the last steps, off by %d (32 bits) and %d (64 bits) at most\n",

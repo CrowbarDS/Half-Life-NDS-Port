@@ -297,6 +297,59 @@ hlHwSqrt64:
 
     .pool
 
+@ uint32_t hlBitRoot32(uint32_t value): its square root, rounded down, a bit
+@ at a time without the unit (Kuratius's: three instructions a bit, entered
+@ past the bits the value cannot have). Each step tries the next bit of the
+@ root: r2 holds the root so far, interleaved with the trial bit; a step
+@ that takes no bit leaves r2 at 1 << 30, so the steps for the value's
+@ leading pairs of zero bits are jumped over without setting anything up.
+@ Every 32-bit value's answer is the exact root's (tools/hlds-convert/tests/
+@ test_softroot.cpp holds the steps to it; tools/hwtest/divtricks this
+@ code). Uses no unit: safe anywhere. In a section of its own: kept only if
+@ something calls it.
+    .section .itcm.text.hwmath_bitroot, "ax", %progbits
+    .arm
+    .align  2
+    .global hlBitRoot32
+    .type   hlBitRoot32, %function
+hlBitRoot32:
+    clz     r3, r0
+    mov     r1, #3 << 30
+    mov     r2, #1 << 30
+    bic     r3, r3, #1                  @ twice the steps to jump over
+    add     r3, r3, r3, lsl #1          @ (12 bytes a step: r3 * 6)
+    add     pc, pc, r3, lsl #1
+    nop                                 @ (pc reads 8 ahead)
+.macro BITROOT_STEP n
+    .if \n == 0
+    cmp     r0, r2
+    subhs   r0, r0, r2
+    .else
+    cmp     r0, r2, ror #(2 * \n)
+    subhs   r0, r0, r2, ror #(2 * \n)
+    .endif
+    adc     r2, r1, r2, lsl #1
+.endm
+    BITROOT_STEP 0
+    BITROOT_STEP 1
+    BITROOT_STEP 2
+    BITROOT_STEP 3
+    BITROOT_STEP 4
+    BITROOT_STEP 5
+    BITROOT_STEP 6
+    BITROOT_STEP 7
+    BITROOT_STEP 8
+    BITROOT_STEP 9
+    BITROOT_STEP 10
+    BITROOT_STEP 11
+    BITROOT_STEP 12
+    BITROOT_STEP 13
+    BITROOT_STEP 14
+    BITROOT_STEP 15
+    bic     r0, r2, #3 << 30
+    bx      lr
+    .size   hlBitRoot32, . - hlBitRoot32
+
 @ The root's way (above), in DTCM: 0, polled, until the start has chosen.
     .section .sbss.hlRootWay, "aw", %nobits
     .align  2

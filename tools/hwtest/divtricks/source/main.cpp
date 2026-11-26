@@ -20,7 +20,11 @@
 //   3  Pairs and roots: a walk's step done as two soft divides, by one
 //      reciprocal, or by the divider and the soft divide at once; and the
 //      root by the unit (the game's, polled with the count, timed) and
-//      without it.
+//      without it: by multiplies (soft), or a bit at a time (bits:
+//      HwMath.s's hlBitRoot32, Kuratius's three instructions a bit), on
+//      32-bit values and on an animation key's (under 2^28). "bits edges":
+//      how many of its answers at every square and its neighbours were
+//      wrong (must be 0).
 //   4  Timed read: what the wait sweep found.
 //
 // A turns the page.
@@ -51,6 +55,7 @@ extern "C"
     void pairReciprocal();
     std::uint32_t rootSoft32(std::uint32_t v);
     std::uint32_t rootSoft64(std::uint64_t v);
+    std::uint32_t hlBitRoot32(std::uint32_t v);
     void __wrap___aeabi_ldivmod();
     void __real___aeabi_ldivmod();
     extern std::uint32_t divCount, sqrtCount, divDelay, sqrtDelay, rootWait;
@@ -221,6 +226,44 @@ namespace
     {
         for (Case &c : cases)
             putRoot(c, next() >> (32 + static_cast<int>(next() % 25)));
+    }
+    /// What an animation key's last part is the root of (shared/HlAnim.hpp,
+    /// fullQuat): 2^28 less the squares of three Q14 parts of a unit turn.
+    void fillRootKey()
+    {
+        for (Case &c : cases)
+        {
+            std::int32_t rest;
+            do
+            {
+                rest = 1 << 28;
+                for (int k = 0; k < 3; ++k)
+                {
+                    const std::int32_t part = static_cast<std::int32_t>(next() % 32769) - 16384;
+                    rest -= part * part;
+                }
+            } while (rest <= 0);
+            putRoot(c, static_cast<std::uint64_t>(rest));
+        }
+    }
+
+    /// hlBitRoot32 at every square of 32 bits and its neighbours: how many
+    /// answers were wrong.
+    int bitRootEdgesBad = -1;
+    void checkBitRootEdges()
+    {
+        int bad = 0;
+        for (std::uint32_t r = 0; r <= 0xFFFF; ++r)
+        {
+            const std::uint32_t sq = r * r;
+            if (hlBitRoot32(sq) != r)
+                ++bad;
+            if (sq != 0 && hlBitRoot32(sq - 1) != r - 1)
+                ++bad;
+            if (hlBitRoot32(sq + 2 * r) != r) // ((r + 1)^2 - 1, at most 2^32 - 1)
+                ++bad;
+        }
+        bitRootEdgesBad = bad;
     }
 
     struct Result
@@ -410,6 +453,13 @@ namespace
         show(" game", measure(fn(rootGame), 1));
         show(" hw timed", measure(fn(rootTimedCount), 1));
         show(" soft 32", measure(fn(rootSoft32), 1));
+        show(" bits", measure(fn(hlBitRoot32), 1));
+        fillRootKey();
+        printf("root of an anim key (<2^28)\n");
+        show(" game", measure(fn(rootGame), 1));
+        show(" soft 32", measure(fn(rootSoft32), 1));
+        show(" bits", measure(fn(hlBitRoot32), 1));
+        printf("bits edges bad %d\n", bitRootEdgesBad);
     }
 
     void showSweep(const char *name, const Sweep &s)
@@ -492,6 +542,7 @@ int main()
     }
     printf("Finding the waits...\n");
     findAll();
+    checkBitRootEdges();
 
     for (;;)
     {
