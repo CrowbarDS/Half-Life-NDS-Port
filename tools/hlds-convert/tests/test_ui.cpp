@@ -1011,6 +1011,217 @@ namespace
         }
     }
 
+    // The lamp's grid on thousands of random surfaces: meshes whose
+    // neighbouring polygons share their corners exactly -- quads of a
+    // jittered lattice, some cut into triangles -- of four kinds: ordinary,
+    // tiny, long and thin, and with corners on (or a quarter unit off) the
+    // grid's lines. What is made must hold, every time: one vertex at one
+    // place whichever polygon or square made it (a shared side cut the same
+    // both ways round: no crack), each where its texture coordinate puts it
+    // within a unit, and the lit squares covered once.
+    void testLampGridRandom()
+    {
+        using namespace lampgrid;
+        static LampGrid grid;
+        std::uint64_t seed = 0x51ED27A3C0FFEE11ull;
+        auto next = [&seed]()
+        {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            return seed;
+        };
+        auto upTo = [&next](int n) { return static_cast<int>(next() % static_cast<std::uint64_t>(n)); };
+        const fx up[3] = {0, 0, kFxOne};
+        const LampGridTexture texture{64, 64, 64, 64};
+        int surfaces = 0, polygonsIn = 0, polygonsOut = 0, badSame = 0, badPlace = 0, badArea = 0, badJoin = 0;
+        std::uint64_t sum = 1469598103934665603ull; // (of everything made: FNV-1a)
+        auto mix = [&sum](std::int64_t v)
+        {
+            sum = (sum ^ static_cast<std::uint64_t>(v)) * 1099511628211ull;
+        };
+
+        for (int run = 0; run < 3000; ++run)
+        {
+            const int kind = run % 4; // 0 ordinary, 1 tiny, 2 long and thin, 3 on the grid's lines
+            const int step = (run / 4) % 2 ? 32 : 16;
+            // The light: over the floor, 5 to 70 units up, about the middle.
+            const int lightX = upTo(161) - 80, lightY = upTo(161) - 80;
+            const LampLight light{{fxFromInt(lightX), fxFromInt(lightY), fxFromInt(5 + upTo(66))}, 64 + upTo(193)};
+            // The lattice, in quarter units (a texel a unit: s = 16 x).
+            int columns = 3 + upTo(4), rows = 3 + upTo(4), across = 0, along = 0;
+            switch (kind)
+            {
+            case 0: across = 64 + upTo(193); along = 64 + upTo(193); break;
+            case 1: across = 2 + upTo(11); along = 2 + upTo(11); columns = rows = 4 + upTo(5); break;
+            case 2: across = 800 + upTo(1201); along = 4 + upTo(9); columns = 2 + upTo(2); rows = 3 + upTo(6); break;
+            default: across = step * 4; along = step * 4; break;
+            }
+            const int x0 = lightX * 4 - columns * across / 2, y0 = lightY * 4 - rows * along / 2;
+            std::vector<std::array<int, 2>> at((columns + 1) * (rows + 1));
+            std::vector<std::uint16_t> colour(at.size());
+            for (int j = 0; j <= rows; ++j)
+            {
+                for (int i = 0; i <= columns; ++i)
+                {
+                    int x = x0 + i * across, y = y0 + j * along;
+                    if (kind == 3)
+                    {
+                        // On a line of the grid, or a quarter unit off it.
+                        // (Rounded down, below 0 too: no two on one line.)
+                        const int line = step * 4;
+                        x = (x >= 0 ? x / line : -((-x + line - 1) / line)) * line + upTo(3) - 1;
+                        y = (y >= 0 ? y / line : -((-y + line - 1) / line)) * line + upTo(3) - 1;
+                    }
+                    else if (i > 0 && i < columns && j > 0 && j < rows)
+                    {
+                        // Inside: moved by up to a fifth of a cell (still convex).
+                        x += across >= 10 ? upTo(across / 5 * 2 + 1) - across / 5 : 0;
+                        y += along >= 10 ? upTo(along / 5 * 2 + 1) - along / 5 : 0;
+                    }
+                    at[j * (columns + 1) + i] = {x, y};
+                    colour[j * (columns + 1) + i] =
+                        static_cast<std::uint16_t>(upTo(32) | upTo(32) << 5 | upTo(32) << 10);
+                }
+            }
+            auto vertexOf = [&](int i, int j)
+            {
+                const auto &p = at[j * (columns + 1) + i];
+                GxVertex v;
+                v.x = static_cast<std::int16_t>(p[0]);
+                v.y = static_cast<std::int16_t>(p[1]);
+                v.z = 0;
+                v.s = static_cast<std::int16_t>(p[0] * 4);
+                v.t = static_cast<std::int16_t>(p[1] * 4);
+                v.colour = colour[j * (columns + 1) + i];
+                return v;
+            };
+            // Each cell a quad, or two triangles cut either way.
+            std::vector<int> cut(columns * rows);
+            for (int &c : cut)
+                c = upTo(3);
+            GxPacker packer;
+            packer.begin(GxPrimitive::Quads);
+            int sentIn = 0;
+            for (int j = 0; j < rows; ++j)
+                for (int i = 0; i < columns; ++i)
+                {
+                    if (cut[j * columns + i] != 0)
+                        continue;
+                    for (const auto &c : {std::array<int, 2>{i, j}, {i + 1, j}, {i + 1, j + 1}, {i, j + 1}})
+                        packer.vertex(vertexOf(c[0], c[1]));
+                    ++sentIn;
+                }
+            packer.begin(GxPrimitive::Triangles);
+            for (int j = 0; j < rows; ++j)
+                for (int i = 0; i < columns; ++i)
+                {
+                    const int c = cut[j * columns + i];
+                    if (c == 0)
+                        continue;
+                    const std::array<std::array<int, 2>, 6> tri =
+                        c == 1 ? std::array<std::array<int, 2>, 6>{{{i, j}, {i + 1, j}, {i + 1, j + 1}, {i, j}, {i + 1, j + 1}, {i, j + 1}}}
+                               : std::array<std::array<int, 2>, 6>{{{i, j}, {i + 1, j}, {i, j + 1}, {i + 1, j}, {i + 1, j + 1}, {i, j + 1}}};
+                    for (const auto &k : tri)
+                        packer.vertex(vertexOf(k[0], k[1]));
+                    sentIn += 2;
+                }
+            const std::vector<std::uint32_t> words = packer.finish();
+            Taken taken;
+            LampGridCounts counts;
+            grid.build(words.data(), static_cast<int>(words.size()), up, light, texture, step, taken, &counts);
+            ++surfaces;
+            polygonsIn += sentIn;
+            polygonsOut += taken.sent;
+
+            // One place, one vertex: two points at the very same place are
+            // the same -- texture coordinate and colour -- whichever polygon
+            // or square made them. (Not the other way round: two sides of a
+            // sliver may cross a grid line within a sixteenth of a texel of
+            // each other, distinct points with one coordinate.)
+            std::vector<const LampVertex *> all;
+            bool same = true, placed = true;
+            for (const auto &q : taken.polygons)
+            {
+                for (const LampVertex &v : q)
+                {
+                    for (const LampVertex *o : all)
+                    {
+                        if (o->pos[0] == v.pos[0] && o->pos[1] == v.pos[1] && o->pos[2] == v.pos[2])
+                            same = same && o->colour == v.colour && o->s == v.s && o->t == v.t;
+                    }
+                    all.push_back(&v);
+                    // Where its texture coordinate puts it: x = s / 16 units.
+                    placed = placed && std::fabs(v.pos[0] / 4096.0 - v.s / 16.0) <= 1.0 &&
+                             std::fabs(v.pos[1] / 4096.0 - v.t / 16.0) <= 1.0 && v.pos[2] == 0;
+                }
+            }
+            for (const auto &q : taken.polygons)
+                for (const LampVertex &v : q)
+                {
+                    mix(v.s);
+                    mix(v.t);
+                    mix(v.pos[0]);
+                    mix(v.pos[1]);
+                    mix(v.colour);
+                }
+            badSame += same ? 0 : 1;
+            badPlace += placed ? 0 : 1;
+            // No vertex in the middle of another piece's side: a side cut
+            // the same both ways round (the hardware leaves a pixel's gap
+            // at a T).
+            for (const auto &q : taken.polygons)
+            {
+                for (std::size_t i = 0; i < q.size(); ++i)
+                {
+                    const LampVertex &a = q[i], &b = q[(i + 1) % q.size()];
+                    const double dx = static_cast<double>(b.pos[0]) - a.pos[0], dy = static_cast<double>(b.pos[1]) - a.pos[1];
+                    const double len = std::hypot(dx, dy);
+                    if (len < 4096)
+                        continue; // (a side under a unit: nothing to see in it)
+                    for (const LampVertex *v : all)
+                    {
+                        const double cross = dx * (v->pos[1] - a.pos[1]) - dy * (v->pos[0] - a.pos[0]);
+                        const double along = (v->pos[0] - a.pos[0]) * dx + (v->pos[1] - a.pos[1]) * dy;
+                        // (On the side, to the rounding of a point worked out
+                        // on it -- two 4096ths of a unit -- and well inside
+                        // its ends.)
+                        if (std::fabs(cross) <= len * 2 && along > len * 4096 && along < len * len - len * 4096)
+                            ++badJoin;
+                    }
+                }
+            }
+            // The light's squares covered once: what was sent of them, their
+            // area, against the polygons' area inside the squares lit.
+            double want = 0, area = 0;
+            for (const auto &q : taken.polygons)
+            {
+                double a = 0;
+                for (std::size_t i = 0; i < q.size(); ++i)
+                {
+                    const LampVertex &p = q[i], &r = q[(i + 1) % q.size()];
+                    a += (static_cast<double>(p.s) * r.t - static_cast<double>(r.s) * p.t) / 2;
+                }
+                area += std::fabs(a);
+            }
+            // (Each piece sent lies inside one lit square and inside the
+            // mesh: their area is at most the lit squares'. Covered "once"
+            // is that it never goes over.)
+            for (int m = 0; m + 1 < grid.columns(); ++m)
+                for (int n = 0; n + 1 < grid.rows(); ++n)
+                    want += static_cast<double>(grid.lineS(m + 1) - grid.lineS(m)) * (grid.lineT(n + 1) - grid.lineT(n));
+            if (area > want + 1)
+                ++badArea;
+        }
+        std::printf("test_ui: lamp grid on %d random surfaces: %d polygons in, %d out (all made: %016llx)\n", surfaces,
+                    polygonsIn, polygonsOut, static_cast<unsigned long long>(sum));
+        check(polygonsOut > surfaces, "random surfaces: the light is made on them");
+        check(badSame == 0, "random surfaces: one place, one vertex, whichever polygon or square made it");
+        check(badPlace == 0, "random surfaces: every vertex within a unit of where its texture coordinate puts it");
+        check(badArea == 0, "random surfaces: the light's pieces never cover more than its squares");
+        check(badJoin == 0, "random surfaces: no vertex in the middle of another piece's side");
+    }
+
     // How far the lamp's solid light is pulled toward the eye over its wall
     // (lampPull): a pixel's depth, and 8/4096 more -- the probe's "s1px"
     // (tools/hwtest/lamppatch P5) at the angles it was measured at.
@@ -1772,6 +1983,7 @@ int main()
     testLamp();
     testLampPatch();
     testLampGrid();
+    testLampGridRandom();
     testLampPull();
     testLampStream();
     testLogos();

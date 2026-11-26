@@ -208,6 +208,7 @@ namespace hldata
     public:
         static constexpr int kLines = 13; ///< grid lines along each axis, at most
         static constexpr int kCorners = 32; ///< corners on grid lines kept, at most
+        static constexpr int kCrossings = 192; ///< sides' crossings of grid lines kept, at most
 
         /// The light on the surface whose stream is `words` (`count` words),
         /// facing `normal` (Q12 unit, toward the eye), its texture `texture`,
@@ -362,6 +363,7 @@ namespace hldata
         {
             columns_ = rows_ = 0;
             cornerCount_ = 0;
+            crossedCount_ = 0;
             if (light.strength <= 0)
                 return false;
             // The first polygon whose texture runs across it: the frame
@@ -644,6 +646,51 @@ namespace hldata
                     if (on && !known)
                         corners_[cornerCount_++] = x;
                 }
+                // Each side's crossings of the grid's lines, between its ends
+                // and inside the grid (a crossing of two lines is the grid's
+                // own point: not kept).
+                for (int i = 0; i < n; ++i)
+                {
+                    const LampGridCorner &a = poly[i], &b = poly[ring(i + 1, n)];
+                    for (int axis = 0; axis < 2; ++axis)
+                    {
+                        const bool onS = axis == 0;
+                        const std::int32_t from = onS ? a.s : a.t, to = onS ? b.s : b.t;
+                        const std::int32_t lo = from < to ? from : to, hi = from < to ? to : from;
+                        const int lines = onS ? columns_ : rows_;
+                        for (int l = 0; l < lines && crossedCount_ < kCrossings; ++l)
+                        {
+                            const std::int32_t line = onS ? lineS_[l] : lineT_[l];
+                            if (line <= lo || line >= hi)
+                                continue;
+                            LampVertex v;
+                            std::int32_t colour[3];
+                            crossingOf(a, b, onS, line, v, colour);
+                            const std::int32_t other = onS ? v.t : v.s;
+                            const std::int32_t *otherLines = onS ? lineT_ : lineS_;
+                            const int otherCount = onS ? rows_ : columns_;
+                            if (other <= otherLines[0] || other >= otherLines[otherCount - 1])
+                                continue;
+                            bool grid = false;
+                            for (int k = 0; k < otherCount && !grid; ++k)
+                                grid = other == otherLines[k];
+                            bool known = false;
+                            for (int j = 0; j < crossedCount_ && !known; ++j)
+                                known = crossed_[j].s == v.s && crossed_[j].t == v.t;
+                            if (!grid && !known)
+                            {
+                                Crossed &c = crossed_[crossedCount_++];
+                                c.s = v.s;
+                                c.t = v.t;
+                                for (int k = 0; k < 3; ++k)
+                                {
+                                    c.pos[k] = v.pos[k];
+                                    c.colour256[k] = static_cast<std::int16_t>(colour[k]);
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -706,11 +753,25 @@ namespace hldata
             made_[m][n] = true;
             v.s = lineS_[m];
             v.t = lineT_[n];
+            std::int32_t colour[3];
+            // (A polygon's corner exactly there: that corner, as it is --
+            // whichever polygon asks first.)
+            for (int j = 0; j < cornerCount_; ++j)
+            {
+                const LampGridCorner &q = corners_[j];
+                if (q.s != v.s || q.t != v.t)
+                    continue;
+                for (int k = 0; k < 3; ++k)
+                    v.pos[k] = q.pos[k];
+                for (int ch = 0; ch < 3; ++ch)
+                    colour[ch] = ((q.colour >> (5 * ch)) & 31) * 256;
+                v.colour = lit(colour, add_[m][n]);
+                return v;
+            }
             const std::int32_t ds = v.s - p.corner[0].s, dt = v.t - p.corner[0].t;
             for (int k = 0; k < 3; ++k)
                 v.pos[k] = p.corner[0].pos[k] + static_cast<fx>((static_cast<std::int64_t>(ds) * p.a[k] +
                                                                  static_cast<std::int64_t>(dt) * p.b[k]) >> 12);
-            std::int32_t colour[3];
             colourAt(p, v.s, v.t, colour);
             v.colour = lit(colour, add_[m][n]);
             return v;
@@ -738,10 +799,11 @@ namespace hldata
         {
             std::int32_t s, t;
             std::uint8_t kind; ///< kCorner, kEdge, kGrid
-            std::uint8_t which; ///< kCorner: the polygon's corner; kEdge: its side; kGrid: 0..3 the square's corner
+            std::uint8_t which; ///< kCorner: the polygon's corner; kEdge: its side; kGrid: 0..3 the square's corner;
+                                ///< kInserted: of the corners kept; kCrossedIn: of the crossings kept
             std::uint8_t along; ///< the side after it
         };
-        static constexpr std::uint8_t kCorner = 0, kEdge = 1, kGrid = 2, kInserted = 3;
+        static constexpr std::uint8_t kCorner = 0, kEdge = 1, kGrid = 2, kInserted = 3, kCrossedIn = 4;
 
         /// Where `p`'s side `e` crosses the line `s` = x (`onS`) or `t` = x:
         /// worked out from the side's two ends taken in one order whichever
@@ -749,7 +811,14 @@ namespace hldata
         static void crossing(const Polygon &p, int e, bool onS, std::int32_t x, LampVertex &out,
                              std::int32_t *colour256)
         {
-            const LampGridCorner *a = &p.corner[e], *b = &p.corner[ring(e + 1, p.n)];
+            crossingOf(p.corner[e], p.corner[ring(e + 1, p.n)], onS, x, out, colour256);
+        }
+
+        /// The same, of the side from `first` to `second`.
+        static void crossingOf(const LampGridCorner &first, const LampGridCorner &second, bool onS, std::int32_t x,
+                               LampVertex &out, std::int32_t *colour256)
+        {
+            const LampGridCorner *a = &first, *b = &second;
             if (b->s < a->s || (b->s == a->s && b->t < a->t))
             {
                 const LampGridCorner *swap = a;
@@ -844,6 +913,27 @@ namespace hldata
                 in = made;
                 made = swap;
             }
+            // (Worked out from the polygon's whole side, a crossing can fall
+            // outside the square: a side nearly along a grid line, which an
+            // earlier line's crossing put on that line by its rounding, meets
+            // it again past the square's corner. On the line already, it is
+            // then that corner -- the grid's own vertex, which the square
+            // next to it shares: no piece reaches past its square. Done on
+            // the piece made, not on the way: each line's cut must see the
+            // points on the polygon's sides that they are.)
+            {
+                const std::int32_t sLo = lineS_[m], sHi = lineS_[m + 1], tLo = lineT_[n], tHi = lineT_[n + 1];
+                for (int i = 0; i < count; ++i)
+                {
+                    Cut &x = in[i];
+                    if (x.kind != kEdge || (x.s >= sLo && x.s <= sHi && x.t >= tLo && x.t <= tHi))
+                        continue;
+                    x.s = x.s < sLo ? sLo : (x.s > sHi ? sHi : x.s);
+                    x.t = x.t < tLo ? tLo : (x.t > tHi ? tHi : x.t);
+                    x.kind = kGrid;
+                    x.which = static_cast<std::uint8_t>((x.s == sHi ? 1 : 0) + (x.t == tHi ? 2 : 0));
+                }
+            }
             // Points the same as the one before: one (a grid corner over a
             // crossing that falls on it).
             int k = 0;
@@ -871,11 +961,13 @@ namespace hldata
                 }
                 --k;
             }
-            // A crossing that falls exactly on a grid corner is that corner.
+            // A crossing -- or a corner of the polygon -- that falls exactly on
+            // a grid corner is that corner: the one vertex every piece there
+            // has.
             for (int i = 0; i < k; ++i)
             {
                 Cut &c = out[i];
-                if (c.kind != kEdge)
+                if (c.kind != kEdge && c.kind != kCorner)
                     continue;
                 for (int q = 0; q < 4; ++q)
                 {
@@ -906,7 +998,7 @@ namespace hldata
         /// count (`c` has 16 of room).
         int addCornersOnSides(Cut *c, int n) const
         {
-            if (cornerCount_ == 0)
+            if (cornerCount_ == 0 && crossedCount_ == 0)
                 return n;
             Cut out[16];
             int k = 0;
@@ -925,25 +1017,35 @@ namespace hldata
                 const int way = to > from ? 1 : -1;
                 for (;;)
                 {
+                    // (Of the polygons' corners and the sides' crossings: the
+                    // next along. Two at one place are one.)
                     int best = -1;
+                    bool bestCrossed = false;
                     std::int32_t bestAt = 0;
-                    for (int j = 0; j < cornerCount_; ++j)
+                    auto consider = [&](std::int32_t qs, std::int32_t qt, int j, bool isCrossed)
                     {
-                        const LampGridCorner &q = corners_[j];
-                        if (onS ? q.s != x.s : q.t != x.t)
-                            continue;
-                        const std::int32_t at = onS ? q.t : q.s;
+                        if (onS ? qs != x.s : qt != x.t)
+                            return;
+                        const std::int32_t at = onS ? qt : qs;
                         if ((at - from) * way <= 0 || (to - at) * way <= 0)
-                            continue;
+                            return;
                         if (best < 0 || (at - bestAt) * way < 0)
                         {
                             best = j;
+                            bestCrossed = isCrossed;
                             bestAt = at;
                         }
-                    }
+                    };
+                    for (int j = 0; j < cornerCount_; ++j)
+                        consider(corners_[j].s, corners_[j].t, j, false);
+                    for (int j = 0; j < crossedCount_; ++j)
+                        consider(crossed_[j].s, crossed_[j].t, j, true);
                     if (best < 0 || k >= 16)
                         break;
-                    out[k++] = Cut{corners_[best].s, corners_[best].t, kInserted, static_cast<std::uint8_t>(best), x.along};
+                    if (bestCrossed)
+                        out[k++] = Cut{crossed_[best].s, crossed_[best].t, kCrossedIn, static_cast<std::uint8_t>(best), x.along};
+                    else
+                        out[k++] = Cut{corners_[best].s, corners_[best].t, kInserted, static_cast<std::uint8_t>(best), x.along};
                     from = bestAt;
                 }
             }
@@ -976,7 +1078,18 @@ namespace hldata
                 return;
             }
             std::int32_t colour[3];
-            if (c.kind == kCorner || c.kind == kInserted)
+            if (c.kind == kCrossedIn)
+            {
+                const Crossed &q = crossed_[c.which];
+                v.s = q.s;
+                v.t = q.t;
+                for (int k = 0; k < 3; ++k)
+                {
+                    v.pos[k] = q.pos[k];
+                    colour[k] = q.colour256[k];
+                }
+            }
+            else if (c.kind == kCorner || c.kind == kInserted)
             {
                 const LampGridCorner &q = c.kind == kCorner ? p.corner[c.which] : corners_[c.which];
                 for (int k = 0; k < 3; ++k)
@@ -1153,6 +1266,17 @@ namespace hldata
         LampVertex grid_[kLines][kLines];
         LampGridCorner corners_[kCorners];
         int cornerCount_ = 0;
+        /// Where the surface's sides cross the grid's lines (not at a
+        /// crossing of two): worked out as the pieces work them out, for
+        /// a piece whose side runs along that line to have them too.
+        struct Crossed
+        {
+            std::int32_t s, t;
+            fx pos[3];
+            std::int16_t colour256[3]; ///< the wall's own, in 256ths of a level (up to 31 * 256)
+        };
+        Crossed crossed_[kCrossings];
+        int crossedCount_ = 0;
     };
     /// How much nearer the eye (of 4096) the lamp's light is drawn over its
     /// wall, solid, by the ordinary depth test: as much as the depth changes

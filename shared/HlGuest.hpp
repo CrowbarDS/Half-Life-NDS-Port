@@ -127,7 +127,11 @@ namespace hldata
     // Raised 2 KB, to 13 KB over 0x1646C8, with the child 816 bytes over
     // after ITCM round three (the long branches to what moved into ITCM;
     // 26 Nov 2026).
-    inline constexpr std::uint32_t kGuestImageBytes = 0x1646C8 + 13 * 1024;
+    // Raised 6 KB, to 19 KB over 0x1646C8, with the child 5,392 bytes over
+    // after the lamp's grid kept the sides' crossings of its lines (no more
+    // cracks where a side lies along one; 26 Nov 2026): t0a0b1 about 72 KB
+    // under.
+    inline constexpr std::uint32_t kGuestImageBytes = 0x1646C8 + 19 * 1024;
     /// The heap's end: the end of main RAM less what the start-up code keeps.
     inline constexpr std::uint32_t kGuestRamBytes = 0x3F4000;
     /// What the engine holds beside a map's data -- its tables, the world's
