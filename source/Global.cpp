@@ -33,7 +33,7 @@ extern "C" {
 
 namespace hlrt
 {
-    void hwMathTune(bool dsi); // HwMathTune.arm.cpp
+    void hwMathTune(); // HwMathTune.arm.cpp
 }
 
 Global global;
@@ -258,7 +258,7 @@ void Global::Init(const char *launchedFrom)
     }
     // The root's way on this console (HwMath.s): its wait is counted in the
     // CPU's instructions, so after the clock is set.
-    hlrt::hwMathTune(isDSi);
+    hlrt::hwMathTune();
 
     // The GBA slot: an Expansion Pak or a Rumble Pak (none in DSi mode).
     hlrt::slot2::init();

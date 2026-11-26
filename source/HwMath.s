@@ -237,8 +237,10 @@ __wrap___aeabi_uldivmod:
 #endif
 
 @ uint32_t hlHwSqrt64(uint64_t value): its square root, rounded down.
-@ hlRootWay (source/HwMathTune.arm.cpp chooses it at start) says how: on a
-@ DSi (bit 31) a value of 32 bits goes to the root by multiplies; the unit's
+@ hlRootWay (source/HwMathTune.arm.cpp chooses it at start) says how: with
+@ bit 31, a value of 32 bits goes to the root a bit at a time (hlBitRoot32,
+@ below: a DS 19-24 bus ticks, a DSi 9-12, against the unit's 35 and 27 and
+@ the multiplies' 35 and 17 -- tools/hwtest/divtricks); the unit's
 @ answer is read after the wait the rest gives, in turns of a two-instruction
 @ loop, or polled if it is 0. The value starts the unit; the mode is written
 @ only if the unit is not in it already (Kuratius's idea: nothing else in the
@@ -257,9 +259,9 @@ hlHwSqrt64:
 #endif
     ldr     r12, =hlRootWay
     ldr     r12, [r12]
-    cmp     r12, #0                     @ (C set, unless the DSi's way...)
+    cmp     r12, #0                     @ (C set, unless bit 31...)
     cmplt   r1, #1                      @ (...and the value's high word is 0)
-    ldrcc   pc, =hlSoftRoot32
+    bcc     hlBitRoot32
     mrs     r3, cpsr
     orr     r2, r3, #0x80
     msr     cpsr_c, r2

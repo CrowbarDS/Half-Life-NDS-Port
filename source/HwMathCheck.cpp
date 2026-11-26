@@ -119,10 +119,10 @@ namespace hlrt
             if (wrongRoot != 0)
                 hlRootWay = 0;
             // (The root's way, HwMathTune.arm.cpp: the unit's wait, 0 if
-            // polled; and whether 32 bits go by multiplies.)
+            // polled; and whether 32 bits go a bit at a time.)
             std::fprintf(log, "hwmath: root unit read after %lu turns%s\n",
                          static_cast<unsigned long>(hlRootWay & 0x7FFFFFFFu),
-                         (hlRootWay >> 31) != 0 ? ", 32 bits by multiplies" : "");
+                         (hlRootWay >> 31) != 0 ? ", 32 bits a bit at a time" : "");
             std::fclose(log);
         }
         return wrongSigned + wrongUnsigned + wrongBig + wrongRoot;

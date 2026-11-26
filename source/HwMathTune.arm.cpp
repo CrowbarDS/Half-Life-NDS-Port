@@ -11,25 +11,22 @@
 //   most is right (an emulator that times the unit otherwise), it polls.
 //   The wait is for a unit already in 64 bits, whose mode HwMath.s does not
 //   write again (a DS 27 ticks, a DSi 22): the first root here sets it.
-// - On a DSi, a value of 32 bits takes its root by multiplies alone
-//   (shared/HlSoftRoot.hpp): 17 ticks instead of 37. On a DS that costs what
-//   the unit does, so the unit keeps it.
+// - A value of 32 bits takes its root a bit at a time, without the unit
+//   (HwMath.s's hlBitRoot32, Kuratius's three instructions a bit): a DS 19
+//   to 24 ticks instead of the unit's 35, a DSi 9 to 12 instead of the
+//   multiplies' 17 (shared/HlSoftRoot.hpp, its way before).
 //
-// Here, not in ITCM: the start runs once, and the soft root is called from
-// HwMath.s by its address.
+// Here, not in ITCM: the start runs once.
 
 #include <cstdint>
 
 #include "HlFixed.hpp"
-#include "HlSoftRoot.hpp"
 
 extern "C"
 {
-    /// HwMath.s's: bit 31 the DSi's soft root for 32 bits; the rest, the
-    /// turns of its loop to wait for the unit, or 0 to poll it. (In DTCM.)
+    /// HwMath.s's: bit 31, 32 bits a bit at a time; the rest, the turns of
+    /// its loop to wait for the unit, or 0 to poll it. (In DTCM.)
     extern std::uint32_t hlRootWay;
-
-    std::uint32_t hlSoftRoot32(std::uint32_t value) { return hldata::softroot::root32(value); }
 
     /// HwMath.s's root under a name not marked const: the tune takes the
     /// same roots again on purpose, each time after another wait, which the
@@ -43,7 +40,7 @@ namespace hlrt
     {
         constexpr int kValues = 256;
         constexpr std::uint32_t kMostTurns = 48;
-        constexpr std::uint32_t kSoft = 0x80000000u;
+        constexpr std::uint32_t kBits = 0x80000000u;
 
         /// The root a bit at a time: what the unit is held to.
         std::uint32_t slowRoot(std::uint64_t value)
@@ -72,7 +69,7 @@ namespace hlrt
 
     /// Chooses the root's way for this console: once, at start, after the
     /// CPU's clock is set (the wait is counted in its instructions).
-    void hwMathTune(bool dsi)
+    void hwMathTune()
     {
         // Values of every size, above 32 bits (the unit's, on either console).
         std::uint64_t values[kValues];
@@ -105,10 +102,10 @@ namespace hlrt
                 inRow = 0;
             }
         }
-        hlRootWay = (inRow >= 3 ? found : 0) | (dsi ? kSoft : 0);
-        // The way chosen, held to other values of every size (a DSi's of 32
-        // bits by multiplies among them): one wrong, and the unit is polled
-        // for every root, as before any of this.
+        hlRootWay = (inRow >= 3 ? found : 0) | kBits;
+        // The way chosen, held to other values of every size (those of 32
+        // bits, a bit at a time, among them): one wrong, and the unit is
+        // polled for every root, as before any of this.
         if (!hwMathRootsRight())
             hlRootWay = 0;
     }
