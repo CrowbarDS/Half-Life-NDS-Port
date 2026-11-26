@@ -1151,4 +1151,21 @@ namespace hldata
         LampGridCorner corners_[kCorners];
         int cornerCount_ = 0;
     };
+    /// How much nearer the eye (of 4096) the lamp's light is drawn over its
+    /// wall, solid, by the ordinary depth test: as much as the depth changes
+    /// across one pixel there, the wall seen at `cosine` (4096ths: square on
+    /// is 4096), and 8/4096 of the distance more, for the rounding. So its
+    /// wall is under it whichever the hardware draws first, and what stands
+    /// in front of the wall farther than that is not (tools/hwtest/lamppatch,
+    /// P5 "s1px": the wall whole, a panel 4 units in front untouched down
+    /// to 20 degrees, on a DSi as in melonDS). The "same depth" test cannot
+    /// do this: by W it passes 8 units either side of the wall (P4).
+    inline int lampPull(int cosine)
+    {
+        const int c = cosine < 82 ? 82 : (cosine > 4096 ? 4096 : cosine);
+        const int sine = static_cast<int>(isqrt64(static_cast<std::uint64_t>(4096 * 4096 - c * c)));
+        const int tangent = sine * 4096 / c;
+        const int pull = 8 + tangent / 128;
+        return pull > 2048 ? 2048 : pull;
+    }
 } // namespace hldata

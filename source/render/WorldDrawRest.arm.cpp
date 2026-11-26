@@ -718,13 +718,17 @@ namespace hlrt
         // here the lit part of each wall in the light is drawn again, in its
         // own texture, on the game's grid -- its light map's, every 16 texels
         // (32 on a DS) -- each point of it as bright as the game makes it
-        // there (shared/HlLampGrid.hpp). All but solid (alpha 30): drawn
-        // after everything solid, so that its wall is always there first (the
-        // hardware draws the solid in an order of its own), and leaving the
-        // depth as it was for the marks drawn on it after. Where the eye meets
-        // all of it at 30 degrees or more, by the "same depth" test -- on its
-        // wall and nowhere else; under that, pulled toward the eye as the
-        // marks are (tools/hwtest/lamppatch).
+        // there (shared/HlLampGrid.hpp). Solid, by the ordinary depth test,
+        // pulled toward the eye by a pixel's depth (lampPull): its wall is
+        // under it whichever the hardware draws first, and nothing that
+        // stands in front of the wall is lit with the wall's texture -- the
+        // "same depth" test passes 8 units either side of it, by W
+        // (tools/hwtest/lamppatch P4, P5). Where a DSi lays its light over a
+        // surface (the setting), that light is see-through and drawn after
+        // everything solid, so it would cover a solid lamp's: the lamp is
+        // then all but solid (alpha 30) too and drawn after it, by the "same
+        // depth" test where the eye meets all of it at 30 degrees or more,
+        // pulled as the marks are below.
         constexpr int kDepthEqual = NEA_DEPTH_TEST_EQUAL;
         constexpr int kLampSteep = 2048; ///< the cosine of 60 degrees off its wall's normal
         const bool dsi = isDSiMode();
@@ -830,26 +834,29 @@ namespace hlrt
             const std::int64_t whole = static_cast<std::int64_t>(isqrt64(whole2 << 12));
             const int cosine = whole > 0 ? static_cast<int>((static_cast<std::int64_t>(front) << 12) / whole) : 4096;
             const bool steep = cosine >= kLampSteep;
+            // (Over the light a DSi lays over the surface, where it has one:
+            // the lamp adds to that.)
+            std::uint16_t overWords = 0;
+            const std::uint32_t *over =
+                level.overlayOf(static_cast<std::uint32_t>(&surface - view.surfaces), overWords);
             sender.eye = eye;
-            sender.pull = steep ? 0 : markPull(cosine);
+            sender.pull = over == nullptr ? lampPull(cosine) : (steep ? 0 : markPull(cosine));
             const unsigned picture = textureCache.shown(surface.texture, switched);
             if (picture != bound)
             {
                 bound = picture;
                 textureCache.use(picture);
             }
-            NEA_PolyFormat(30, kIdLamp, static_cast<NEA_LightEnum>(0), NEA_CULL_NONE,
-                           static_cast<NEA_OtherFormatEnum>(static_cast<int>(polygonMode()) | (steep ? kDepthEqual : 0)));
+            if (over == nullptr)
+                NEA_PolyFormat(31, 0, static_cast<NEA_LightEnum>(0), NEA_CULL_NONE, polygonMode());
+            else
+                NEA_PolyFormat(30, kIdLamp, static_cast<NEA_LightEnum>(0), NEA_CULL_NONE,
+                               static_cast<NEA_OtherFormatEnum>(static_cast<int>(polygonMode()) | (steep ? kDepthEqual : 0)));
             const TextureRef &ref = view.textures[surface.texture];
             const LampGridTexture texture{ref.width, ref.height, ref.sourceWidth, ref.sourceHeight};
             const LampLight light{{at[0], at[1], at[2]}, strength};
             LampGridCounts made;
             ++counts.surfaces;
-            // (Over the light a DSi lays over the surface, where it has one:
-            // the lamp adds to that.)
-            std::uint16_t overWords = 0;
-            const std::uint32_t *over =
-                level.overlayOf(static_cast<std::uint32_t>(&surface - view.surfaces), overWords);
             room = over != nullptr
                        ? lampGrid.build(over, overWords, normal, light, texture, step, sender, &made)
                        : lampGrid.build(level.gxAt(surface), surface.gxWords, normal, light, texture, step, sender, &made);

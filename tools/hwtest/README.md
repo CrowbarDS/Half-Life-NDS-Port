@@ -558,7 +558,11 @@ patch lands on anything that near its wall. By Z, nothing off at 64 units,
 | 20 | 99/82 | 99/0 | 99/51 | 95/0 |
 | 10 | 99/100 | 99/4 | 99/93 | 72/0 |
 
-The console's figures are still to come.
+On the owner's DSi (DSi mode, 2026-11-26): by W and in P5 the same as
+melonDS to the figure. By Z: nothing off at 64 units, half a unit behind at
+256, 8.5 units behind at 1024 (melonDS: 16 behind to 4 in front). So the
+game draws the patch s1px (`lampPull`), except over a DSi's own light over a
+surface, which is see-through and drawn after it. DS mode not yet run.
 Results go to lamppatch.txt at the root of the card.
 
 ## slot3/ — a texture in Bank D while Bank D is lent out

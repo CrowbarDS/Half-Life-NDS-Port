@@ -1011,6 +1011,30 @@ namespace
         }
     }
 
+    // How far the lamp's solid light is pulled toward the eye over its wall
+    // (lampPull): a pixel's depth, and 8/4096 more -- the probe's "s1px"
+    // (tools/hwtest/lamppatch P5) at the angles it was measured at.
+    void testLampPull()
+    {
+        check(lampPull(4096) == 8 && lampPull(5000) == 8, "square on: only the rounding's 8/4096");
+        bool same = true, grows = true;
+        for (const int grazing : {90, 60, 45, 30, 20, 10})
+        {
+            const double off = (90 - grazing) * 3.14159265358979 / 180.0;
+            const int cosine = static_cast<int>(std::lround(std::cos(off) * 4096));
+            const double probe = 8 + std::tan(off) / 128.0 * 4096.0;
+            same = same && std::abs(lampPull(cosine) - probe) <= 2;
+        }
+        int last = 0;
+        for (int cosine = 4096; cosine >= 0; --cosine)
+        {
+            grows = grows && lampPull(cosine) >= last && lampPull(cosine) <= 2048;
+            last = lampPull(cosine);
+        }
+        check(same, "it is the probe's pull at 90 to 10 degrees");
+        check(grows && lampPull(0) == lampPull(82), "it grows as the wall is seen edge on, and stops");
+    }
+
     // A surface's packed geometry read back a triangle at a time, as the
     // lamp's patches read it (lampStreamTriangles): every form of vertex the
     // converter packs, in every kind of run.
@@ -1748,6 +1772,7 @@ int main()
     testLamp();
     testLampPatch();
     testLampGrid();
+    testLampPull();
     testLampStream();
     testLogos();
     const char *dir = std::getenv("HLDS_VALVE_DIR");

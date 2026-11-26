@@ -1218,14 +1218,22 @@ Milestone 11, "levels of detail".
   brighter and its texture as it is (measured beside the game with
   `tools/ref/measure.py --delta`: the game adds 42.6 a patch of picture
   where the light is, the port 42.1; the old way, which blended towards
-  the wall's average colour, 20). The patch is all but solid (alpha 30),
-  so it is drawn after everything solid -- the hardware draws the solid
-  in an order of its own, which would put a solid patch before its wall
-  -- and leaves the depth as it was for the marks drawn on it after; by
-  the "same depth" test where the eye meets its wall at 30 degrees or
-  more, and pulled toward the eye below that, as the marks are
-  (`tools/hwtest/lamppatch`). Doors and other solid brushes are lit the
-  same way. The light's line stops on a monster or one of the people as
+  the wall's average colour, 20). The patch is solid, by the ordinary
+  depth test, pulled toward the eye by as much as the depth changes
+  across a pixel there and 8/4096 of the distance (`lampPull`): its wall
+  is under it whichever of the two the hardware draws first (it draws the
+  solid in an order of its own, by where they are on the screen), and
+  what stands in front of the wall is not lit in the wall's texture. The
+  "same depth" test, which it used before, cannot tell them apart: by W
+  it passes 8 units either side of a wall, so a button's panel 4 units in
+  front of its wall took the wall's light (`tools/hwtest/lamppatch`, P4
+  and P5, the same on a DSi as in melonDS). Where a DSi lays its finer
+  light over a surface (the setting), that light is see-through, drawn
+  after everything solid, and would cover a solid patch: there the patch
+  is all but solid (alpha 30) and drawn after it, by the "same depth"
+  test where the eye meets its wall at 30 degrees or more and pulled as
+  the marks are below. Doors and other solid brushes are lit the same
+  way. The light's line stops on a monster or one of the people as
   it does in the game (their hit boxes), and the light is then at their
   feet. A model is lit as the game lights one (R_EntityDynamicLight): by
   80 units less how far its origin is from the light, nine tenths of it
