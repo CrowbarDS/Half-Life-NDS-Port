@@ -463,6 +463,9 @@ namespace hldata
             return s;
         }
         static std::int32_t absolute(std::int32_t v) { return v < 0 ? -v : v; }
+        /// A corner's index round a polygon of n, a in [0, 2 n): a % n
+        /// without the library's divide.
+        static int ring(int a, int n) { return a >= n ? a - n : a; }
 
         /// A line `g` game sixteenths of a texel along, in stream units (the
         /// cooked texture's sixteenths): exact when the sizes are the same.
@@ -602,7 +605,7 @@ namespace hldata
             std::int64_t area = 0;
             for (int i = 0; i < n; ++i)
             {
-                const LampGridCorner &x = p.corner[i], &y = p.corner[(i + 1) % n];
+                const LampGridCorner &x = p.corner[i], &y = p.corner[ring(i + 1, n)];
                 area += static_cast<std::int64_t>(x.s) * y.t - static_cast<std::int64_t>(y.s) * x.t;
             }
             if (area == 0)
@@ -650,7 +653,7 @@ namespace hldata
         /// inside or on it.
         static std::int64_t side(const Polygon &p, int i, std::int32_t s, std::int32_t t)
         {
-            const LampGridCorner &x = p.corner[i], &y = p.corner[(i + 1) % p.n];
+            const LampGridCorner &x = p.corner[i], &y = p.corner[ring(i + 1, p.n)];
             return (static_cast<std::int64_t>(y.s - x.s) * (t - x.t) - static_cast<std::int64_t>(y.t - x.t) * (s - x.s)) * p.sign;
         }
         static bool inside(const Polygon &p, std::int32_t s, std::int32_t t)
@@ -746,7 +749,7 @@ namespace hldata
         static void crossing(const Polygon &p, int e, bool onS, std::int32_t x, LampVertex &out,
                              std::int32_t *colour256)
         {
-            const LampGridCorner *a = &p.corner[e], *b = &p.corner[(e + 1) % p.n];
+            const LampGridCorner *a = &p.corner[e], *b = &p.corner[ring(e + 1, p.n)];
             if (b->s < a->s || (b->s == a->s && b->t < a->t))
             {
                 const LampGridCorner *swap = a;
@@ -800,7 +803,7 @@ namespace hldata
                 int k = 0;
                 for (int i = 0; i < count; ++i)
                 {
-                    const Cut &c = in[i], &d = in[(i + 1) % count];
+                    const Cut &c = in[i], &d = in[ring(i + 1, count)];
                     const bool cIn = within(m, n, l, c.s, c.t), dIn = within(m, n, l, d.s, d.t);
                     if (cIn != dIn)
                     {
@@ -892,7 +895,7 @@ namespace hldata
             std::int64_t area = 0;
             for (int i = 0; i < n; ++i)
             {
-                const Cut &x = c[i], &y = c[(i + 1) % n];
+                const Cut &x = c[i], &y = c[ring(i + 1, n)];
                 area += static_cast<std::int64_t>(x.s) * y.t - static_cast<std::int64_t>(y.s) * x.t;
             }
             return area;
@@ -910,7 +913,7 @@ namespace hldata
             for (int i = 0; i < n && k < 16; ++i)
             {
                 out[k++] = c[i];
-                const Cut &x = c[i], &y = c[(i + 1) % n];
+                const Cut &x = c[i], &y = c[ring(i + 1, n)];
                 // (A side along the square's, or along the polygon's own --
                 // where its edge lies on a grid line, the faces next to it
                 // may have a corner in the middle of it.)
@@ -996,7 +999,7 @@ namespace hldata
         /// not three in a line.
         static bool turns(const Cut *c, int n, int i)
         {
-            const Cut &x = c[(i + n - 1) % n], &y = c[i], &z = c[(i + 1) % n];
+            const Cut &x = c[ring(i + n - 1, n)], &y = c[i], &z = c[ring(i + 1, n)];
             return static_cast<std::int64_t>(y.s - x.s) * (z.t - x.t) - static_cast<std::int64_t>(y.t - x.t) * (z.s - x.s) != 0;
         }
 
@@ -1025,14 +1028,14 @@ namespace hldata
             int from = -1;
             for (int i = 0; i < count && from < 0; ++i)
             {
-                if (turns(c, count, i) && turns(c, count, (i + 1) % count) && turns(c, count, (i + count - 1) % count))
+                if (turns(c, count, i) && turns(c, count, ring(i + 1, count)) && turns(c, count, ring(i + count - 1, count)))
                     from = i;
             }
             if (from >= 0)
             {
                 for (int i = 1; i + 1 < count; ++i)
                 {
-                    const LampVertex *tri[3] = {v[from], v[(from + i) % count], v[(from + i + 1) % count]};
+                    const LampVertex *tri[3] = {v[from], v[ring(from + i, count)], v[ring(from + i + 1, count)]};
                     if (!out.polygon(tri, 3, p.ds, p.dt))
                         return false;
                 }
@@ -1057,7 +1060,7 @@ namespace hldata
             middle.colour = lit(colour, addInside(m, n, middle.s, middle.t));
             for (int i = 0; i < count; ++i)
             {
-                const LampVertex *tri[3] = {&middle, v[i], v[(i + 1) % count]};
+                const LampVertex *tri[3] = {&middle, v[i], v[ring(i + 1, count)]};
                 if (!out.polygon(tri, 3, p.ds, p.dt))
                     return false;
             }
