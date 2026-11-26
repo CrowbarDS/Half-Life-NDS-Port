@@ -216,6 +216,7 @@ if(HLDS_BUILD_TESTS)
             test_uplink
             test_actors
             test_softdiv
+            test_softroot
             test_sound
             test_sprite
             test_effects
