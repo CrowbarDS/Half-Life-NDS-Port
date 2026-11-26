@@ -234,17 +234,6 @@ namespace hlrt
         {
             return static_cast<NEA_OtherFormatEnum>(kPolygonMode | (fogOn_ ? NEA_FOG_ENABLE : 0));
         }
-        /// What a DSi's light laid over a surface is drawn with (HlDsiGx.hpp):
-        /// see-through (alpha 30), so it comes after every solid polygon,
-        /// over the wall; only where the wall is (the same depth, as the
-        /// lamp); the wall's depth left as it is, for the marks and the lamp
-        /// after it. (Polygon ID 0, the solid world's: no see-through thing
-        /// has it, so the lamp and the marks are still drawn over it.)
-        std::uint32_t overlayFormat() const
-        {
-            return POLY_ALPHA(30) | POLY_ID(0) | static_cast<std::uint32_t>(NEA_CULL_NONE) |
-                   static_cast<std::uint32_t>(polygonMode()) | static_cast<std::uint32_t>(NEA_DEPTH_TEST_EQUAL);
-        }
         /// Set the hardware's fog for the pass about to be drawn.
         void applyFog();
         int polygonBudget() const { return kPolygonBudget + budget_.extra; }
@@ -389,4 +378,63 @@ namespace hlrt
     };
 
     extern WorldDraw worldDraw;
+
+    // ---- Drawn nearer or farther than it is -----------------------------
+    //
+    // What is sent between projectionPull and projectionBack is drawn `pull`
+    // 4096ths of the way nearer the eye (negative: farther): the view's space
+    // is scaled before the projection, so every vertex goes along its own
+    // line of sight -- nothing moves on the screen, no vertex is rounded, and
+    // a polygon covers the very pixels it would have (tools/hwtest/lamppatch
+    // P8). The projection's stack holds the one it was (it has room for one:
+    // nothing else is pushed there while the world is drawn).
+
+    /// How far a surface a DSi lays its light over is pushed away from the
+    /// eye (of 4096): its light is drawn solid where the surface is, by the
+    /// ordinary depth test, and the surface itself, under it, can never come
+    /// through. Pushing what is not seen costs nothing that shows, where
+    /// pulling the light nearer would cover what stands on a floor near the
+    /// eye (P8: an eighth: the floor's light whole, nothing on the box).
+    inline constexpr int kUnderPush = 512;
+
+    inline void projectionPull(int pull)
+    {
+        MATRIX_CONTROL = GL_PROJECTION;
+        MATRIX_PUSH = 0;
+        const int scale = 4096 - pull;
+        MATRIX_SCALE = scale;
+        MATRIX_SCALE = scale;
+        MATRIX_SCALE = scale;
+        MATRIX_CONTROL = GL_MODELVIEW;
+    }
+    inline void projectionBack()
+    {
+        MATRIX_CONTROL = GL_PROJECTION;
+        MATRIX_POP = 1;
+        MATRIX_CONTROL = GL_MODELVIEW;
+    }
+
+    /// The same as packed command words, for a display list: `out` takes 6
+    /// words; projectionBackWords 4.
+    inline std::uint32_t *projectionPullWords(std::uint32_t *out, int pull)
+    {
+        *out++ = FIFO_COMMAND_PACK(REG2ID(MATRIX_CONTROL), REG2ID(MATRIX_PUSH), REG2ID(MATRIX_SCALE),
+                                   REG2ID(MATRIX_CONTROL));
+        *out++ = GL_PROJECTION;
+        const std::uint32_t scale = static_cast<std::uint32_t>(4096 - pull);
+        *out++ = scale;
+        *out++ = scale;
+        *out++ = scale;
+        *out++ = GL_MODELVIEW;
+        return out;
+    }
+    inline std::uint32_t *projectionBackWords(std::uint32_t *out)
+    {
+        // (The last command of a packed word must take a parameter.)
+        *out++ = FIFO_COMMAND_PACK(REG2ID(MATRIX_CONTROL), REG2ID(MATRIX_POP), REG2ID(MATRIX_CONTROL), 0);
+        *out++ = GL_PROJECTION;
+        *out++ = 1;
+        *out++ = GL_MODELVIEW;
+        return out;
+    }
 } // namespace hlrt

@@ -47,11 +47,20 @@ Milestone 11, "levels of detail".
   outline as the face's own corners have it, so the overlay ends without
   a step. A square is a quad, which the hardware blends from corner to
   corner as the game blends its lightmap between samples: no triangle's
-  crease. It is drawn see-through (alpha 30), so after every solid
-  polygon, and only where the wall is (the same depth): what it misses --
-  the edge of a pixel, a wall seen side-on -- is the wall as a DS draws
-  it, so it may put points anywhere, on the edges too, with no crack to
-  open. (Cutting the faces themselves instead, a point on an edge would
+  crease. It is drawn solid where its surface is, as if it were the
+  surface, and the surface itself is drawn under it pushed an eighth of
+  the way farther from the eye (by scaling the view before the projection:
+  every vertex along its own line of sight, nothing moved on the screen),
+  so it can never come through: what the overlay misses -- the edge of a
+  pixel -- is the wall as a DS draws it, so it may put points anywhere,
+  on the edges too, with no crack to open. (It was see-through and drawn
+  by the "same depth" test before: that test passes 8 units either side
+  of a wall, so it lit what stood in front, and missed a wall seen
+  side-on. Pulling the overlay nearer instead would not do: it covers a
+  whole floor, seen square on underfoot and side-on far off, and a pull
+  enough for the far end lit the feet of what stands near
+  (`tools/hwtest/lamppatch` P8: a floor's overlay whole and a box on it
+  untouched only so).) (Cutting the faces themselves instead, a point on an edge would
   open a crack against the neighbour that has not got it; kept off the
   edges, the squares covered a third of a face, and the rest was again
   triangles fanned from its corners.) The overlays are a member of the
@@ -1220,19 +1229,19 @@ Milestone 11, "levels of detail".
   where the light is, the port 42.1; the old way, which blended towards
   the wall's average colour, 20). The patch is solid, by the ordinary
   depth test, pulled toward the eye by as much as the depth changes
-  across a pixel there and 8/4096 of the distance (`lampPull`): its wall
+  across a pixel there and 8/4096 of the distance (`lampPull`; by scaling
+  the view before the projection, `projectionPull`: moved vertex by
+  vertex and rounded to quarter units, a patch close by and square on was
+  half lost, P8): its wall
   is under it whichever of the two the hardware draws first (it draws the
   solid in an order of its own, by where they are on the screen), and
   what stands in front of the wall is not lit in the wall's texture. The
   "same depth" test, which it used before, cannot tell them apart: by W
   it passes 8 units either side of a wall, so a button's panel 4 units in
   front of its wall took the wall's light (`tools/hwtest/lamppatch`, P4
-  and P5, the same on a DSi as in melonDS). Where a DSi lays its finer
-  light over a surface (the setting), that light is see-through, drawn
-  after everything solid, and would cover a solid patch: there the patch
-  is all but solid (alpha 30) and drawn after it, by the "same depth"
-  test where the eye meets its wall at 30 degrees or more and pulled as
-  the marks are below. Doors and other solid brushes are lit the same
+  and P5, the same on a DSi as in melonDS). Over a DSi's finer light on a
+  surface the same: that light is solid where its surface is, and the
+  patch is cut from it. Doors and other solid brushes are lit the same
   way. The light's line stops on a monster or one of the people as
   it does in the game (their hit boxes), and the light is then at their
   feet. A model is lit as the game lights one (R_EntityDynamicLight): by

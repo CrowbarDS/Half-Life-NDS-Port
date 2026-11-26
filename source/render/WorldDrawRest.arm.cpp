@@ -20,7 +20,6 @@
 #include "HlLamp.hpp"
 #include "HlLampGrid.hpp"
 #include "HlLampPatch.hpp"
-#include "HlMarkPlan.hpp"
 #include "HlTexture.hpp"
 #include "HlPlaneMath.hpp"
 #include "game/Game.hpp"
@@ -368,7 +367,6 @@ namespace hlrt
         // (Drawn solid as the world is: then the light a DSi lays over its
         // surfaces goes over them, as over the world's.)
         const bool solid = look == 0 && static_cast<RenderClass>(brush.renderClass) == RenderClass::Opaque;
-        const std::uint32_t brushFormat = NEA_PolyFormatGet();
 
         // Vertices are quarter units and positions are Q12 units: >> 10.
         const bool moved = pos[0] != 0 || pos[1] != 0 || pos[2] != 0 || turned;
@@ -446,19 +444,21 @@ namespace hlrt
                     sliding = false;
                 }
             }
-            const std::uint32_t *word = level.gxAt(*surface);
-            for (int k = surface->gxWords; k > 0; --k)
-                GFX_FIFO = *word++;
-            // (The light a DSi lays over it: on a brush drawn solid alone.)
+            // (The light a DSi lays over it: on a brush drawn solid alone,
+            // solid too, the surface pushed away under it, as the world's.)
             std::uint16_t overWords = 0;
             const std::uint32_t *over =
                 solid ? level.overlayOf(static_cast<std::uint32_t>(surface - view.surfaces), overWords) : nullptr;
             if (over != nullptr)
+                projectionPull(-kUnderPush);
+            const std::uint32_t *word = level.gxAt(*surface);
+            for (int k = surface->gxWords; k > 0; --k)
+                GFX_FIFO = *word++;
+            if (over != nullptr)
             {
-                GFX_POLY_FORMAT = overlayFormat();
+                projectionBack();
                 for (int k = overWords; k > 0; --k)
                     GFX_FIFO = *over++;
-                GFX_POLY_FORMAT = brushFormat;
             }
             stats_.polygons += surface->polygons;
             stats_.vertices += surface->vertices;
@@ -719,18 +719,13 @@ namespace hlrt
         // own texture, on the game's grid -- its light map's, every 16 texels
         // (32 on a DS) -- each point of it as bright as the game makes it
         // there (shared/HlLampGrid.hpp). Solid, by the ordinary depth test,
-        // pulled toward the eye by a pixel's depth (lampPull): its wall is
-        // under it whichever the hardware draws first, and nothing that
-        // stands in front of the wall is lit with the wall's texture -- the
-        // "same depth" test passes 8 units either side of it, by W
-        // (tools/hwtest/lamppatch P4, P5). Where a DSi lays its light over a
-        // surface (the setting), that light is see-through and drawn after
-        // everything solid, so it would cover a solid lamp's: the lamp is
-        // then all but solid (alpha 30) too and drawn after it, by the "same
-        // depth" test where the eye meets all of it at 30 degrees or more,
-        // pulled as the marks are below.
-        constexpr int kDepthEqual = NEA_DEPTH_TEST_EQUAL;
-        constexpr int kLampSteep = 2048; ///< the cosine of 60 degrees off its wall's normal
+        // pulled toward the eye by a pixel's depth (lampPull, by the
+        // projection: projectionPull): its wall is under it whichever the
+        // hardware draws first, and nothing that stands in front of the wall
+        // is lit with the wall's texture -- the "same depth" test passes 8
+        // units either side of it, by W (tools/hwtest/lamppatch P4, P5, P8).
+        // Over a DSi's own light on a surface the same: that light is solid
+        // where its surface is (kUnderPush), and the lamp's is built from it.
         const bool dsi = isDSiMode();
         const int step = dsi ? 16 : 32;
         const int strength = lampFalloff(game.lampDistance);
@@ -739,8 +734,6 @@ namespace hlrt
         struct Sender
         {
             WorldDraw *self;
-            const fx *eye;
-            int pull;
             int most, mostVertices;
             int polygons, vertices;
 
@@ -757,9 +750,7 @@ namespace hlrt
             }
             void vertex(const LampVertex &c, std::int32_t ds, std::int32_t dt) const
             {
-                fx p[3] = {c.pos[0], c.pos[1], c.pos[2]};
-                for (int k = 0; pull != 0 && k < 3; ++k)
-                    p[k] = eye[k] + static_cast<fx>((static_cast<std::int64_t>(p[k] - eye[k]) * (4096 - pull)) >> 12);
+                const fx *p = c.pos;
                 GFX_COLOR = c.colour;
                 GFX_TEX_COORD = (static_cast<std::uint32_t>(c.s + ds) & 0xFFFF) | (static_cast<std::uint32_t>(c.t + dt) << 16);
                 // (Rounded to the nearest quarter unit, not down: a wall's
@@ -788,7 +779,7 @@ namespace hlrt
                 return true;
             }
         };
-        Sender sender{this, nullptr, 0,
+        Sender sender{this,
                       (dsi ? HudDraw::kLampPolygonsDsi : HudDraw::kLampPolygonsDs) >> (modelDraw.strained() ? 1 : 0),
                       dsi ? HudDraw::kLampVerticesDsi : HudDraw::kLampVerticesDs, 0, 0};
         bool room = true;
@@ -833,33 +824,28 @@ namespace hlrt
             const std::uint64_t whole2 = static_cast<std::uint64_t>(((static_cast<std::int64_t>(front) * front) >> 12) + ((along * along) >> 12));
             const std::int64_t whole = static_cast<std::int64_t>(isqrt64(whole2 << 12));
             const int cosine = whole > 0 ? static_cast<int>((static_cast<std::int64_t>(front) << 12) / whole) : 4096;
-            const bool steep = cosine >= kLampSteep;
             // (Over the light a DSi lays over the surface, where it has one:
             // the lamp adds to that.)
             std::uint16_t overWords = 0;
             const std::uint32_t *over =
                 level.overlayOf(static_cast<std::uint32_t>(&surface - view.surfaces), overWords);
-            sender.eye = eye;
-            sender.pull = over == nullptr ? lampPull(cosine) : (steep ? 0 : markPull(cosine));
             const unsigned picture = textureCache.shown(surface.texture, switched);
             if (picture != bound)
             {
                 bound = picture;
                 textureCache.use(picture);
             }
-            if (over == nullptr)
-                NEA_PolyFormat(31, 0, static_cast<NEA_LightEnum>(0), NEA_CULL_NONE, polygonMode());
-            else
-                NEA_PolyFormat(30, kIdLamp, static_cast<NEA_LightEnum>(0), NEA_CULL_NONE,
-                               static_cast<NEA_OtherFormatEnum>(static_cast<int>(polygonMode()) | (steep ? kDepthEqual : 0)));
+            NEA_PolyFormat(31, 0, static_cast<NEA_LightEnum>(0), NEA_CULL_NONE, polygonMode());
             const TextureRef &ref = view.textures[surface.texture];
             const LampGridTexture texture{ref.width, ref.height, ref.sourceWidth, ref.sourceHeight};
             const LampLight light{{at[0], at[1], at[2]}, strength};
             LampGridCounts made;
             ++counts.surfaces;
+            projectionPull(lampPull(cosine));
             room = over != nullptr
                        ? lampGrid.build(over, overWords, normal, light, texture, step, sender, &made)
                        : lampGrid.build(level.gxAt(surface), surface.gxWords, normal, light, texture, step, sender, &made);
+            projectionBack();
             counts.triangles += made.polygons;
             counts.pieces += made.cells + made.pieces;
         };
