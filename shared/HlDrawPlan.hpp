@@ -53,7 +53,11 @@ namespace hldata
         // (Another player is never left out either: they shoot back.)
         if (actor.kind == static_cast<std::uint8_t>(ActorKind::Player))
             return kDrawEnemy;
-        if (isPerson(actor.kind) || actor.kind == static_cast<std::uint8_t>(ActorKind::Gman))
+        // (And one of Blue Shift's people made of a monster_generic -- a
+        // head that turns to whom it talks, kActorHeadTurns: two of them
+        // ride ba_elevator's lift with the player, between their scripts.)
+        if (isPerson(actor.kind) || actor.kind == static_cast<std::uint8_t>(ActorKind::Gman) ||
+            (actor.kind == static_cast<std::uint8_t>(ActorKind::Generic) && (actor.flags & kActorHeadTurns)))
             return dead ? kDrawBody : kDrawPerson;
         // (Whatever a scene has taken is what the scene is about.)
         if (actor.script >= 0 && actor.scriptPhase != kActorFree)
@@ -348,6 +352,17 @@ namespace hldata
         };
         int capPolygons = sharePolygons, capVertices = shareVertices;
         auto over = [&]() { return sum(false, kDrawPerson) > capPolygons || sum(true, kDrawPerson) > capVertices; };
+        // 0. With one close to the eye, big in the picture, the weapon in
+        //    hand gives way first: a coarser gun shows less than a coarser
+        //    face, or a face not there at all.
+        bool closeOne = false;
+        for (int i = 0; i < count; ++i)
+            closeOne = closeOne || (plan.drawn[i] && all[i].close && all[i].kind <= kDrawPerson);
+        while (closeOne && over() && held.active && plan.heldLevel + 1 < held.levels)
+        {
+            ++plan.heldLevel;
+            plan.strained = true;
+        }
         // 1. The far ones coarser, a step at a time, the farthest first;
         //    the nearest last of them -- and none close to the eye past
         //    its floor.

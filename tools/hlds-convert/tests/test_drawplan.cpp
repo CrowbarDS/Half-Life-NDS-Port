@@ -83,6 +83,13 @@ namespace
         a.script = 3;
         a.scriptPhase = kActorPlaying;
         check(drawClass(a) == kDrawPerson, "... unless a scene is playing it");
+        // Blue Shift's people made of monster_generic (a head that turns to
+        // whom it talks): people, with a script or without.
+        ActorState g{};
+        g.kind = kind(ActorKind::Generic);
+        check(drawClass(g) == kDrawProp, "a plain monster_generic is a prop");
+        g.flags = kActorHeadTurns;
+        check(drawClass(g) == kDrawPerson, "... one with a head that turns is one of the people");
         check(drawBefore(kDrawEnemy, 900, kDrawProp, 10) && drawBefore(kDrawPerson, 500, kDrawPickup, 20) &&
                   drawBefore(kDrawEnemy, 100, kDrawEnemy, 200) && !drawBefore(kDrawProp, 10, kDrawEnemy, 900),
               "what it is comes before how far off it is");
@@ -184,6 +191,16 @@ namespace
             check(plan.drawn[2] && plan.level[2] <= 1, "short of room, the guard close by stays at level 1");
             check(plan.level[3] >= plan.level[1] && plan.level[0] >= plan.level[1],
                   "... and the farther are made the coarser");
+        }
+        // Two of them at arm's length (ba_elevator's lift) and the weapon in
+        // hand: the weapon gives way before either face does, and both are
+        // drawn.
+        {
+            DrawCandidate all[2] = {guard(true, 40), guard(true, 50)};
+            const DrawHeld held = weapon(700, 200);
+            const DrawPlan plan = planModels(all, 2, 8, held, 0, 1400, 4000, kWhole, 12, 0, 0);
+            check(plan.drawn[0] && plan.drawn[1] && plan.cut[kDrawPerson] == 0, "two people close by and a weapon: both drawn");
+            check(plan.heldLevel == 1 && plan.level[0] == 0, "... the weapon coarser first, the nearest face whole");
         }
         // Even less room: no enemy is left out for the guard's floor -- he
         // gives it up first.
