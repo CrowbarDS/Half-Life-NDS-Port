@@ -107,7 +107,7 @@ namespace hlrt::SaveGame::work
     bool writeGame(const std::string &map, int slot, const hldata::SaveHeading &heading);
     bool remove(int slot);
     bool begin(const hldata::SaveData &save, int slot, const hldata::SaveHeading &heading);
-    hldata::SaveWriter::Result step();
+    hldata::SaveWriter::Result step(bool quiet);
     bool finish();
     bool leaveMap(const std::string &name, std::uint32_t level);
     int arriveMap(const std::string &name, std::uint32_t level);

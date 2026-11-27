@@ -517,6 +517,11 @@ HL_TWL_CODE void Global::remountCommon()
 #endif
 
 #ifndef HLDS_CHILD
+bool Global::cardOnArm9() const
+{
+    return hasFat && fatDevice != nullptr && std::strncmp(fatDevice, "fat", 3) == 0 && dldiGetMode() == DLDI_MODE_ARM9;
+}
+
 HL_TWL_CODE std::string Global::otherSavesDir() const
 {
     return otherGameDir() + "saves/";

@@ -160,6 +160,10 @@ namespace hlrt
                     std::fprintf(out, "mount: nitro the ROM %s, %d piece(s), table %lu bytes of heap\n", how,
                                  need > 0 ? (need - 2) / 2 : 1,
                                  static_cast<unsigned long>(bytes));
+                    // (Which CPU the card's driver runs on: on the ARM9, the
+                    // autosave's last writes wait for a quiet moment.)
+                    std::fprintf(out, "mount: card %s, %s\n", global.fatDevice != nullptr ? global.fatDevice : "none",
+                                 global.cardOnArm9() ? "driver on the ARM9" : "driver not on the ARM9");
                     std::fclose(out);
                 }
             }

@@ -38,6 +38,10 @@ public:
 
 
     bool hasFat = false;               ///< FAT init succeeded and a drive is mounted
+    /// The card's work is done by the ARM9 itself: a flashcart's driver
+    /// (DLDI) run on it. The game stops while the card is written then --
+    /// on a DSpico some 200 ms a write -- and no thread can hide it.
+    bool cardOnArm9() const;
     /// There is the game's data to read: on the card, or (a console that was
     /// sent the game, HLDS_CHILD) received, on the "air:" drive
     /// (net/AirDevice.hpp). What is WRITTEN -- saves, settings -- is the

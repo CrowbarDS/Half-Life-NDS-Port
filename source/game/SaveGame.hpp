@@ -39,7 +39,10 @@ namespace hlrt::SaveGame
     /// Failed. False if it cannot be begun (no card, or one is being written
     /// already). A write(), a read or leaving the map finishes it first.
     bool begin(const hldata::SaveData &save, int slot, const hldata::SaveHeading &heading);
-    hldata::SaveWriter::Result step();
+    /// `quiet`: the game is at a moment a stop would not spoil (paused, no
+    /// fighting for a while). Where the card's writes stop the game
+    /// (Global::cardOnArm9), the last of the save waits for one.
+    hldata::SaveWriter::Result step(bool quiet = true);
     bool busy();
     /// What is left of it, at once (false if it failed).
     bool finish();

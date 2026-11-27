@@ -848,6 +848,49 @@ int main()
                      cut.files.count("auto.sav.new") == 0;
         }
         check(always, "stopped between any two steps, the slot holds a whole save");
+
+        // Held (a card whose writes stop the game): it stops before the card's
+        // slow part, writing nothing more however often it is stepped.
+        // (Switched off meanwhile: whatever is on the card is a whole save,
+        // the one before or -- on this card, which keeps nothing back in
+        // memory -- the new one.)
+        {
+            MemoryCard held = card;
+            SaveIndex heldIndex = index;
+            SaveWriter w;
+            w.hold(true);
+            w.begin(held, heldIndex, kSlotAuto, big, heading("c2a1", "POWER UP", 7000));
+            int n = 0;
+            while (!w.waiting() && w.busy() && n < 1000)
+            {
+                w.step();
+                ++n;
+            }
+            const int stepsBefore = held.steps;
+            for (int k = 0; k < 50; ++k)
+                w.step();
+            SaveIndex during;
+            MemoryCard off = held;
+            saveIndexLoad(off, during);
+            SaveData back;
+            check(w.waiting() && w.busy() && held.steps == stepsBefore &&
+                      saveSlotRead(off, kSlotAuto, back, nullptr, during.half[kSlotAuto]) &&
+                      (back.map == "c1a0" || back.map == "c2a1"),
+                  "a save held waits before the card's last part, writing nothing more");
+            w.hold(false);
+            SaveWriter::Result r = SaveWriter::Result::Busy;
+            while ((r = w.step()) == SaveWriter::Result::Busy)
+            {
+            }
+            check(r == SaveWriter::Result::Done && held.files == once.files, "... let go of, it ends as one never held");
+
+            MemoryCard atOnce = card;
+            SaveIndex atOnceIndex = index;
+            SaveWriter f;
+            f.hold(true);
+            f.begin(atOnce, atOnceIndex, kSlotAuto, big, heading("c2a1", "POWER UP", 7000));
+            check(f.finish() && atOnce.files == once.files, "... and finished at once, held or not");
+        }
     }
 
     if (g_failures == 0)

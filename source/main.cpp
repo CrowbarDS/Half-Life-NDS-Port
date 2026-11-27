@@ -1516,12 +1516,32 @@ namespace
         return autosaveAgain() && arrival;
     }
 #endif
-    /// Once a frame: a step of the save being written, if one is.
-    void stepSave()
+    /// When the player last fought (fired, or was hurt), and when the save
+    /// being written began (Global::vblanks()).
+    std::uint32_t lastFight = 0, saveBegan = 0;
+    int lastHealth = 0;
+    bool wasSaving = false;
+
+    /// Once a frame: a step of the save being written, if one is. Where the
+    /// card's writes stop the game, its last part waits for a quiet moment:
+    /// the game paused, or three seconds without a fight -- ten at most.
+    void stepSave(bool paused)
     {
+        const std::uint32_t now = Global::vblanks();
+        if (hlrt::input.attack || hlrt::input.second || hlrt::player.state.health < lastHealth)
+            lastFight = now;
+        lastHealth = hlrt::player.state.health;
         if (!hlrt::SaveGame::busy())
+        {
+            wasSaving = false;
             return;
-        switch (hlrt::SaveGame::step())
+        }
+        if (!wasSaving)
+            saveBegan = now;
+        wasSaving = true;
+        constexpr std::uint32_t kCalm = 3 * 60, kLongest = 10 * 60;
+        const bool quiet = paused || now - lastFight >= kCalm || now - saveBegan >= kLongest;
+        switch (hlrt::SaveGame::step(quiet))
         {
         case hldata::SaveWriter::Result::Busy:
             break;
@@ -2748,7 +2768,7 @@ int main(int argc, char *argv[])
         // it in the vertical blanks), and what is written is drawn.
         hlrt::textureStream.upload();
         hlrt::modelCache.apply();
-        stepSave();
+        stepSave(paused);
         {
             const hlrt::DebugLog::Perf::Scope frame(hlrt::DebugLog::Section::Frame);
 #if defined(HLDS_ITCM_OFF) && !defined(HLDS_ICACHE_PHASES)

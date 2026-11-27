@@ -788,6 +788,14 @@ namespace hldata
     public:
         bool busy() const { return stage_ != Stage::Idle; }
         int slot() const { return slot_; }
+        /// Held, a write stops before the card's slow part -- the file let go
+        /// of (what was kept in memory for it written), read back, and the
+        /// index -- until let go of: step() then says Busy and does nothing.
+        /// (For a card whose writes stop the game: written at a quiet moment.
+        /// Switched off meanwhile, nothing of it is on the card yet, and the
+        /// save before is the slot's.) finish() does it at once.
+        void hold(bool on) { hold_ = on; }
+        bool waiting() const { return hold_ && stage_ == Stage::Close; }
         /// Where the last write that failed stopped ("write", "read back" ...).
         const char *failedAt() const { return failedAt_; }
 
@@ -860,6 +868,8 @@ namespace hldata
                 return Result::Busy;
             }
             case Stage::Close:
+                if (hold_)
+                    return Result::Busy;
                 if (!card_->finish(fresh_.c_str()))
                     return fail("close");
                 at_ = 0;
@@ -963,6 +973,7 @@ namespace hldata
         /// Every step that is left, now.
         bool finish()
         {
+            hold_ = false;
             Result r = Result::Busy;
             while (busy() && (r = step()) == Result::Busy)
             {
@@ -1017,6 +1028,7 @@ namespace hldata
         }
 
         Stage stage_ = Stage::Idle;
+        bool hold_ = false;
         const char *failedAt_ = "";
         SaveCard *card_ = nullptr;
         SaveIndex *index_ = nullptr;

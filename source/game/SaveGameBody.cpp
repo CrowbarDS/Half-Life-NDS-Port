@@ -237,8 +237,9 @@ namespace hlrt::SaveGame::work
         return writer.begin(card, list, slot, save, heading, &run, namesFolder(slot));
     }
 
-    hldata::SaveWriter::Result step()
+    hldata::SaveWriter::Result step(bool quiet)
     {
+        writer.hold(!quiet && global.cardOnArm9());
         return writer.step();
     }
 

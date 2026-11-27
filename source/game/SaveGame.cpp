@@ -84,7 +84,7 @@ namespace hlrt::SaveGame
     }
     bool remove(int) { return false; }
     bool begin(const hldata::SaveData &, int, const hldata::SaveHeading &) { return false; }
-    hldata::SaveWriter::Result step() { return hldata::SaveWriter::Result::Done; }
+    hldata::SaveWriter::Result step(bool) { return hldata::SaveWriter::Result::Done; }
     bool busy() { return false; }
     bool finish() { return true; }
     const char *whyFailed() { return "the host"; }
@@ -548,10 +548,10 @@ namespace hlrt::SaveGame
         return work::begin(save, slot, heading);
     }
 
-    HL_OVL_GATED hldata::SaveWriter::Result step()
+    HL_OVL_GATED hldata::SaveWriter::Result step(bool quiet)
     {
         HL_SAVE_WORK();
-        return work::step();
+        return work::step(quiet);
     }
 
     bool busy()
