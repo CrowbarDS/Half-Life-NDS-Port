@@ -2392,7 +2392,8 @@ int main(int argc, char *argv[])
             {
                 leaving();
                 hlrt::netGame.forMapLoad();
-                if (air.stream == hldata::AirStream::Base)
+                // (The base -- or, to a console in DSi mode, the map's bank.)
+                if (air.stream == hldata::AirStream::Base || air.stream == hldata::AirStream::MapBank)
                 {
                     guestBaseProgress(0);
                     if (!hlrt::guest::receiveAir(guestBaseProgress))

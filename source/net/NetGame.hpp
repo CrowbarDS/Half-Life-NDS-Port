@@ -366,6 +366,7 @@ namespace hlrt
         int joinFrames_ = 0;
         bool fullGuests_ = true;
         bool fullTried_ = false;
+        bool bankTried_ = false; ///< (Serving) the map's bank offered to those in DSi mode
         bool characterFullDone_ = false; ///< (Serving) this character has gone to those in DSi mode
         unsigned fullSent_ = 0; ///< (Serving) those sent the map at full quality
         /// Since when (vblanks) nothing has come from the host; and when it

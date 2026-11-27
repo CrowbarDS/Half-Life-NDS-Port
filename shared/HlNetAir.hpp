@@ -77,6 +77,7 @@ namespace hldata
         Character, ///< who a player chose to be (HlCharacters.hpp), by its name: after the map, to those with room
         Music,     ///< a track of a demo's map (music/trackNN.hsd), by "trackNN": to a demo's console, before the map is played
         Library,   ///< a family of the game's built for the child (dlplay/<family>.dsl), by the family's name: to a demo's console, as the map that needs it is loaded
+        MapBank,   ///< what a map at full quality asks for as it is played (<map>.dsi.bank), by the map's name: to a match's console in DSi mode, before the map, kept whole
     };
     /// A stream's name on the wire.
     inline constexpr int kAirNameBytes = 24;

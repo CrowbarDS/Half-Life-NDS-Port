@@ -73,6 +73,7 @@ INSTALLERS = {
         "hlrt::netlink::join(int)", "hlrt::netlink::joinDirect", "hlrt::netlink::scan()", "hlrt::netlink::shutdown()"},
     "hlrt::netlink::setSink(bool (*)(unsigned char const*, int))": {
         "hlrt::guest::(anonymous namespace)::demoWant", "hlrt::guest::(anonymous namespace)::ringOn",
+        "hlrt::guest::(anonymous namespace)::ringDirect",
         "hlrt::guest::(anonymous namespace)::demoGetTrack",
         "hlrt::guest::(anonymous namespace)::demoGetFamily"},
 }

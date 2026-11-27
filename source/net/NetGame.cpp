@@ -2077,6 +2077,7 @@ namespace hlrt
         serveStage_ = 0;
         serveCharacter_ = 1;
         fullTried_ = false;
+        bankTried_ = false;
         fetchHostStop();
         serveCharacters_ = 0;
         starting_ = true;
@@ -2124,8 +2125,22 @@ namespace hlrt
     HL_OVL_CODE(front) void NetGame::serveNextBody()
     {
         unsigned mask = guests_ & netlink::clients();
-        // Those in DSi mode first, the map at full quality, all of it in one
-        // stream (if this card has it); the rest of what follows is the others'.
+        // Those in DSi mode first: the map's bank, whole -- what the map at
+        // full quality asks for as it is played (its guns, their sounds, the
+        // textures that stream), had before the map so that nothing is asked
+        // for in play (as a demo's map) -- then the map at full quality, all
+        // of it in one stream (if this card has them); the rest of what
+        // follows is the others'.
+        if (serveStage_ == 0 && !bankTried_)
+        {
+            bankTried_ = true;
+            unsigned dsi = 0;
+            for (int c = 1; c < kNetPlayers; ++c)
+                dsi |= tiers_[c] != 0 ? 1u << c : 0u;
+            dsi &= mask;
+            if (fullGuests_ && dsi != 0 && airBegin(AirStream::MapBank, pendingMap_, "air/" + pendingMap_ + ".dsi.bank", dsi, serveSkill_))
+                return;
+        }
         if (serveStage_ == 0 && !fullTried_)
         {
             fullTried_ = true;

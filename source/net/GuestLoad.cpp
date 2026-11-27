@@ -67,6 +67,24 @@ namespace hlrt::guest
         std::uint16_t takenServe = 0;
         std::uint32_t takenLength = 0;
         std::uint8_t takenSkill = 2;
+        /// (A console in DSi mode) the match's map's bank, had whole before
+        /// the map (AirStream::MapBank): what that map asks for as it is
+        /// played -- its guns, their sounds, the textures that stream --
+        /// mounted with it (beginMap), as a demo's map's is. Kept until the
+        /// next match's.
+        std::uint8_t *bankData = nullptr;
+        std::uint32_t bankSize = 0;
+        char bankMap[hldata::kAirNameBytes] = {};
+        std::uint16_t bankServe = 0;
+        void bankDrop()
+        {
+            air::mountBank(nullptr, 0);
+            std::free(bankData);
+            bankData = nullptr;
+            bankSize = 0;
+            bankMap[0] = '\0';
+            bankServe = 0;
+        }
         /// How long (vblanks) a guest waits for the host to say anything.
         constexpr std::uint32_t kAirQuietVblanks = 600;
         constexpr std::uint32_t kAirStoppedVblanks = 240;
@@ -126,6 +144,22 @@ namespace hlrt::guest
             airLost = false;
             netlink::setSink(sinkTake);
             return ring != nullptr;
+        }
+        /// ... or into `room`, as long as the stream (a map's bank: kept
+        /// whole, where it is written). (Not inlined: it installs the radio's
+        /// handler, and tools/irq-divider.py knows it by name.)
+        __attribute__((noinline)) void ringDirect(hldata::AirStream stream, const char *name, std::uint8_t *room, std::uint32_t length)
+        {
+            streamSince = Global::vblanks();
+            std::uint8_t *was;
+            {
+                const Hold hold;
+                was = receiver.direct ? nullptr : receiver.ring;
+                receiver.wantDirect(stream, name, room, 0, length);
+            }
+            std::free(was);
+            airLost = false;
+            netlink::setSink(sinkTake);
         }
         void ringOff()
         {
@@ -906,6 +940,9 @@ namespace hlrt::guest
         // (The last map's weapons, kept packed, go with it; and its bank.)
         air::dropMapFiles();
         air::mountBank(nullptr, 0);
+        // (A console in DSi mode: the match's map's bank, had before it.)
+        if (bankData != nullptr && map == bankMap)
+            air::mountBank(bankData, bankSize);
         if (demoOn && offerCount > 0)
             offers[0].map = map;
         for (int i = 0; i < offerCount; ++i)
@@ -1048,6 +1085,34 @@ namespace hlrt::guest
                 quietSince = Global::vblanks();
             return false;
         }
+        // The match's map's bank: for a console in DSi mode alone, whole,
+        // into memory of its own (held already, from this sending: said so).
+        // No room for it: said to be held, and what the map asks for in play
+        // is fetched as before.
+        if (head.stream == hldata::AirStream::MapBank)
+        {
+            if (!global.twlChild)
+                return false;
+            if (bankData != nullptr && std::strcmp(head.name, bankMap) == 0 && head.serve == bankServe)
+            {
+                replySize = hldata::airHave(head.stream, head.serve, head.length, reply);
+                return false;
+            }
+            bankDrop();
+            auto *room = static_cast<std::uint8_t *>(memalign(32, (head.length + 31u) & ~31u));
+            if (room == nullptr)
+            {
+                replySize = hldata::airHave(head.stream, head.serve, head.length, reply);
+                return false;
+            }
+            ringDirect(head.stream, head.name, room, head.length);
+            {
+                const Hold hold;
+                receiver.frame(head);
+            }
+            quietSince = Global::vblanks();
+            return true;
+        }
         // At full quality: for a console in DSi mode alone. It has all it
         // needs of the map then, and the others' base and map go by.
         if (head.stream == hldata::AirStream::MapFull && !global.twlChild)
@@ -1103,10 +1168,71 @@ namespace hlrt::guest
         return true;
     }
 
+    namespace
+    {
+        /// The match's map's bank (taken by airFrame, into its own memory):
+        /// heard until it is all here, then kept for the map (beginMap).
+        bool receiveBank(void (*progress)(int percent))
+        {
+            int shown = -1;
+            bool ok = false;
+            for (;;)
+            {
+                bool done;
+                std::uint32_t have, pieces;
+                {
+                    const Hold hold;
+                    done = receiver.done();
+                    have = receiver.base;
+                    pieces = receiver.pieces();
+                }
+                if (done)
+                {
+                    ok = true;
+                    break;
+                }
+                if (!pump())
+                    break;
+                // (Hundredths of it: once a frame, out of the game's loop.)
+                const int percent = pieces != 0 ? static_cast<int>((static_cast<std::uint64_t>(have) * 100u) / pieces) : 0;
+                if (progress != nullptr && percent != shown)
+                {
+                    shown = percent;
+                    progress(percent);
+                }
+                Global::waitVBlank();
+            }
+            // (All here: said for a while -- the memory still the stream's
+            // -- then the memory the bank's.)
+            if (ok)
+                linger();
+            std::uint8_t *room;
+            {
+                const Hold hold;
+                room = receiver.ring;
+                receiver.ring = nullptr;
+                receiver.stream = hldata::AirStream::None;
+            }
+            if (!ok)
+            {
+                std::free(room);
+                return false;
+            }
+            bankData = room;
+            bankSize = receiver.length;
+            std::strncpy(bankMap, receiver.name, sizeof(bankMap) - 1);
+            bankMap[sizeof(bankMap) - 1] = '\0';
+            bankServe = receiver.serve;
+            return true;
+        }
+    } // namespace
+
     bool receiveAir(void (*progress)(int percent))
     {
         if (receiver.ring == nullptr)
             return false;
+        if (receiver.stream == hldata::AirStream::MapBank)
+            return receiveBank(progress);
         airSupply.progress = progress;
         airSupply.shown = -1;
         bool ok = false;
@@ -1516,6 +1642,7 @@ namespace hlrt::guest
 
     void forgetTaken()
     {
+        bankDrop();
         takenMap[0] = 0;
         takenCharacter = 0;
         takenFull = false;
