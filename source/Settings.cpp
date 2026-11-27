@@ -110,7 +110,7 @@ void Settings::load()
         jumpWalks = data.jumpWalks != 0;
         tapJump = data.tapJump != 0;
         tapUse = data.tapUse != 0;
-        crouchJump = data.crouchJump != 0;
+        crouchJump = data.crouchJump;
         firmness = data.firmness;
         firmPress = data.firmPress;
         for (int a = 0; a < hldata::kActionCount; ++a)
@@ -267,7 +267,7 @@ bool Settings::save() const
     data.jumpWalks = jumpWalks ? 1 : 0;
     data.tapJump = tapJump ? 1 : 0;
     data.tapUse = tapUse ? 1 : 0;
-    data.crouchJump = crouchJump ? 1 : 0;
+    data.crouchJump = crouchJump;
     data.firmness = firmness;
     data.firmPress = firmPress;
     for (int a = 0; a < hldata::kActionCount; ++a)

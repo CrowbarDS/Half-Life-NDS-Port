@@ -43,8 +43,9 @@ public:
     bool tapJump = true;
     /// A quick tap on the aim pad is USE (the modern layout).
     bool tapUse = false;
-    /// Jump held in the air crouches too (the crouch jump).
-    bool crouchJump = false;
+    /// Which jumps, held in the air, crouch too (hldata::kCrouchJump*: the
+    /// crouch jump).
+    std::uint8_t crouchJump = 0;
     /// How strict the stylus is about light touches, and what a firm press
     /// does (HlControls.hpp).
     std::uint8_t firmness = 4;

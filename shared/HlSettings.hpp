@@ -115,8 +115,9 @@ namespace hldata
         /// A quick tap on the aim pad is USE (the modern layout). Off unless
         /// asked for: a touch to aim was too often a USE.
         std::uint8_t tapUse = 0;
-        /// Jump held in the air crouches too (HlControls.hpp's crouch jump;
-        /// version 32). Off unless asked for.
+        /// Which jumps, held in the air, crouch too (HlControls.hpp's
+        /// kCrouchJump*; version 32, then only off or on, which is both). Off
+        /// unless asked for.
         std::uint8_t crouchJump = 0;
         /// How far the music and the ambience are let down while someone
         /// speaks (kFocus*, HlMixer.hpp).
@@ -683,7 +684,7 @@ namespace hldata
             return false;
         if (read.aimSpeed < 1 || read.aimSpeed > kAimSpeedMost || read.pitchSpeed < 1 ||
             read.pitchSpeed > kAimSpeedMost || read.invertPitch > 1 || read.duckToggle > 1 ||
-            read.walkToggle > 1 || read.jumpWalks > 1 || read.tapJump > 1 || read.tapUse > 1 || read.crouchJump > 1 || read.firmness > kFirmnessMost || read.firmPress >= kFirmActions)
+            read.walkToggle > 1 || read.jumpWalks > 1 || read.tapJump > 1 || read.tapUse > 1 || read.crouchJump >= kCrouchJumpChoices || read.firmness > kFirmnessMost || read.firmPress >= kFirmActions)
             return false;
         for (std::uint16_t key : read.keys)
         {

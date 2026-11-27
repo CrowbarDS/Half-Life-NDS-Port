@@ -1795,12 +1795,13 @@ namespace
         const std::uint32_t jump = kButtonA, duck = kButtonB;
         std::uint32_t blank = 100;
         ControlsState state;
-        check(!set.crouchJump && SettingsData().crouchJump == 0, "the crouch jump is off unless asked for");
+        check(set.crouchJump == kCrouchJumpOff && SettingsData().crouchJump == kCrouchJumpOff,
+              "the crouch jump is off unless asked for");
         airPress(set, state, jump, false, blank);
         ControlsOut out = airPress(set, state, jump, true, blank);
         check(out.jump && !out.duck, "off, jump held in the air is a jump alone");
 
-        set.crouchJump = true;
+        set.crouchJump = kCrouchJumpBoth;
         state = ControlsState();
         airPress(set, state, 0, false, blank);
         out = airPress(set, state, jump, false, blank);
@@ -1837,6 +1838,41 @@ namespace
         out = airTouch(set, state, true, px, py, true, blank);
         check(out.jump && out.duck, "... held, a crouch");
 
+        // Of one kind of jump alone: the other is a jump only.
+        {
+            ControlSettings tap = set, button = set;
+            tap.crouchJump = kCrouchJumpTap;
+            button.crouchJump = kCrouchJumpButton;
+            ControlsState st;
+            airPress(tap, st, jump, true, blank);
+            out = airPress(tap, st, jump, true, blank);
+            check(out.jump && !out.duck, "two taps' alone: the jump button held in the air, no crouch");
+            st = ControlsState();
+            airTouch(tap, st, true, at.jump.x + 5, at.jump.y + 5, true, blank);
+            out = airTouch(tap, st, true, at.jump.x + 5, at.jump.y + 5, true, blank);
+            check(out.jump && !out.duck, "... nor the screen's JUMP");
+            airTouch(tap, st, false, 0, 0, true, blank);
+            airTouch(tap, st, true, px, py, true, blank);
+            airTouch(tap, st, false, 0, 0, true, blank);
+            airTouch(tap, st, true, px, py, true, blank);
+            out = airTouch(tap, st, true, px, py, true, blank);
+            check(out.jump && out.duck, "... two taps held, a crouch");
+            st = ControlsState();
+            airPress(button, st, jump, true, blank);
+            out = airPress(button, st, jump, true, blank);
+            check(out.jump && out.duck, "the jump button's alone: held in the air, a crouch");
+            st = ControlsState();
+            airTouch(button, st, true, at.jump.x + 5, at.jump.y + 5, true, blank);
+            out = airTouch(button, st, true, at.jump.x + 5, at.jump.y + 5, true, blank);
+            check(out.jump && out.duck, "... the screen's JUMP too");
+            airTouch(button, st, false, 0, 0, true, blank);
+            airTouch(button, st, true, px, py, true, blank);
+            airTouch(button, st, false, 0, 0, true, blank);
+            airTouch(button, st, true, px, py, true, blank);
+            out = airTouch(button, st, true, px, py, true, blank);
+            check(out.jump && !out.duck, "... two taps held, no crouch");
+        }
+
         // The settings file.
         {
             constexpr std::size_t flags = yas::mem | yas::binary | yas::no_header;
@@ -1863,7 +1899,14 @@ namespace
             std::vector<std::uint8_t> written = writeSettings(chose);
             check(readSettings(written.data(), written.size(), back) && back.crouchJump == 1,
                   "... and one written now keeps it");
-            chose.crouchJump = 2;
+            for (std::uint8_t kind : {kCrouchJumpButton, kCrouchJumpTap})
+            {
+                chose.crouchJump = kind;
+                written = writeSettings(chose);
+                check(readSettings(written.data(), written.size(), back) && back.crouchJump == kind,
+                      "... as are the jump button's alone and two taps' alone");
+            }
+            chose.crouchJump = kCrouchJumpChoices;
             written = writeSettings(chose);
             check(!readSettings(written.data(), written.size(), back), "... and one with it out of range is not read");
         }

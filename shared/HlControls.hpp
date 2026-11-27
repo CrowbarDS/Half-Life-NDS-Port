@@ -43,7 +43,9 @@
 //
 // THE CROUCH JUMP. Asked for, jump held in the air holds the crouch too: the
 // legs come up, to clear a ledge; let go, the player stands (where there is
-// room: the move waits for it). Not in water nor on a ladder, where jump swims
+// room: the move waits for it). Asked for of the jump buttons (the button,
+// the screen's JUMP, a firm press that jumps), of two taps on the aim pad, or
+// of both (kCrouchJump*). Not in water nor on a ladder, where jump swims
 // and climbs: the caller says (ControlsIn::inAir). Never on the frame jump is
 // first pressed -- the only frame the move can jump on -- so it is never a
 // crouch and a jump at once, which with the module is the long jump.
@@ -154,6 +156,11 @@ namespace hldata
     inline constexpr std::uint8_t kAimSpeedDefault = 10;
     inline constexpr std::uint8_t kAimSpeedMost = 20;
 
+    /// Which jumps crouch too, held in the air (THE CROUCH JUMP). (1 is
+    /// both: what "on" was, before there was a choice.)
+    inline constexpr std::uint8_t kCrouchJumpOff = 0, kCrouchJumpBoth = 1, kCrouchJumpButton = 2, kCrouchJumpTap = 3,
+                                  kCrouchJumpChoices = 4;
+
     struct ControlSettings
     {
         std::uint8_t scheme = kControlsClassic;
@@ -165,7 +172,7 @@ namespace hldata
         bool jumpWalks = false;  ///< the jump button walks
         bool tapJump = true;     ///< two taps on the aim pad jump (tapJumps)
         bool tapUse = false;     ///< a quick tap on the aim pad is USE (the modern layout)
-        bool crouchJump = false; ///< jump held in the air crouches too (THE CROUCH JUMP)
+        std::uint8_t crouchJump = 0; ///< which jumps, held in the air, crouch too (kCrouchJump*: THE CROUCH JUMP)
         /// The player has the long jump module: the screen has LONG JUMP. Not
         /// a setting: the game's state.
         bool longJump = false;
@@ -806,9 +813,13 @@ namespace hldata
 
         if (state.longJumping && state.touch != kTouchLongJump && in.blank - state.longJumpBlank >= kLongJumpBlanks)
             state.longJumping = false;
-        out.jump = state.jumping || state.touch == kTouchJump || state.touch == kTouchLongJump || faceJump || (firmNow && set.firmPress == kFirmJump);
-        // The crouch jump: jump held in the air, from the frame after its press.
-        const bool tuck = set.crouchJump && in.inAir && out.jump && state.jumpWas;
+        const bool buttonJump = state.touch == kTouchJump || faceJump || (firmNow && set.firmPress == kFirmJump);
+        out.jump = state.jumping || state.touch == kTouchLongJump || buttonJump;
+        // The crouch jump: jump held in the air, from the frame after its press
+        // -- by the jumps asked for.
+        const bool tucks = ((set.crouchJump == kCrouchJumpBoth || set.crouchJump == kCrouchJumpButton) && buttonJump) ||
+                           ((set.crouchJump == kCrouchJumpBoth || set.crouchJump == kCrouchJumpTap) && state.jumping);
+        const bool tuck = tucks && in.inAir && state.jumpWas;
         state.jumpWas = out.jump;
         out.duck = (state.touch == kTouchDuck && !set.duckToggle) || (state.duckSlide && state.touching) ||
                    state.crouched || duckHeld || state.longJumping || tuck;

@@ -1748,7 +1748,12 @@ namespace hlrt
             case kWalk: ui::putText(out, size, settings.walkToggle ? opt::Toggle : opt::Hold); break;
             case kJumpButton: ui::putText(out, size, settings.jumpWalks ? opt::JumpWalks : opt::JumpJumps); break;
             case kTapUse: ui::putText(out, size, settings.tapUse ? opt::On : opt::Off); break;
-            case kCrouchJump: ui::putText(out, size, settings.crouchJump ? opt::On : opt::Off); break;
+            case kCrouchJump:
+                ui::putText(out, size, settings.crouchJump == hldata::kCrouchJumpBoth     ? opt::CrouchJumpBoth
+                                     : settings.crouchJump == hldata::kCrouchJumpButton ? opt::CrouchJumpButton
+                                     : settings.crouchJump == hldata::kCrouchJumpTap    ? opt::CrouchJumpTap
+                                                                                        : opt::Off);
+                break;
             case kTapJump:
                 // (Where nothing else jumps, it stays on: HlControls.hpp's tapJumps.)
                 ui::putText(out, size,
@@ -2021,7 +2026,13 @@ namespace hlrt
             case kWalk: settings.walkToggle = !settings.walkToggle; return true;
             case kJumpButton: settings.jumpWalks = !settings.jumpWalks; return true;
             case kTapUse: settings.tapUse = !settings.tapUse; return true;
-            case kCrouchJump: settings.crouchJump = !settings.crouchJump; return true;
+            case kCrouchJump:
+                // (Off, two taps, the jump button, both: in that order.)
+                settings.crouchJump = settings.crouchJump == hldata::kCrouchJumpOff      ? hldata::kCrouchJumpTap
+                                      : settings.crouchJump == hldata::kCrouchJumpTap    ? hldata::kCrouchJumpButton
+                                      : settings.crouchJump == hldata::kCrouchJumpButton ? hldata::kCrouchJumpBoth
+                                                                                         : hldata::kCrouchJumpOff;
+                return true;
             case kTapJump:
                 if (!hldata::jumpsOtherwise(settings.controls()))
                     return false; // (the only way to jump: not turned off)
