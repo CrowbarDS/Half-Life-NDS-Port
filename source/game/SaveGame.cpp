@@ -222,9 +222,33 @@ namespace hlrt::SaveGame
             return ok;
         }
 
+        bool FatCard::flushWriting()
+        {
+            if (buffered_ == 0 || writing_.file == nullptr)
+            {
+                buffered_ = 0;
+                return true;
+            }
+            const bool ok = std::fwrite(buffer_, 1, buffered_, writing_.file) == buffered_;
+            buffered_ = 0;
+            if (ok)
+                return true;
+            writing_.failed = true;
+            return no("write");
+        }
+
+        bool FatCard::shutWriting()
+        {
+            const bool flushed = flushWriting();
+            std::free(buffer_);
+            buffer_ = nullptr;
+            bufferBytes_ = 0;
+            return shut(writing_) && flushed;
+        }
+
         bool FatCard::close()
         {
-            const bool wrote = shut(writing_);
+            const bool wrote = shutWriting();
             shut(reading_);
             return wrote;
         }
@@ -244,7 +268,7 @@ namespace hlrt::SaveGame
         {
             if (first)
             {
-                shut(writing_);
+                shutWriting();
                 if (reading_.name == name)
                     shut(reading_);
                 makeFolder(name);
@@ -252,15 +276,34 @@ namespace hlrt::SaveGame
                 if (writing_.file == nullptr)
                     return no("open");
                 writing_.name = name;
+                bufferBytes_ = isDSiMode() ? kWriteBufferDsi : kWriteBufferDs;
+                buffer_ = static_cast<std::uint8_t *>(std::malloc(bufferBytes_));
+                if (buffer_ == nullptr)
+                    bufferBytes_ = 0;
             }
             else if (writing_.file == nullptr || writing_.name != name)
             {
                 return false; // (it was let go of in between: begun again by the writer)
             }
-            if (std::fwrite(bytes, 1, size, writing_.file) != size)
+            if (buffer_ == nullptr)
             {
-                writing_.failed = true;
-                return no("write");
+                if (std::fwrite(bytes, 1, size, writing_.file) != size)
+                {
+                    writing_.failed = true;
+                    return no("write");
+                }
+                return true;
+            }
+            while (size > 0)
+            {
+                const std::size_t room = bufferBytes_ - buffered_;
+                const std::size_t take = size < room ? size : room;
+                std::memcpy(buffer_ + buffered_, bytes, take);
+                buffered_ += take;
+                bytes += take;
+                size -= take;
+                if (buffered_ == bufferBytes_ && !flushWriting())
+                    return false;
             }
             return true;
         }
@@ -273,7 +316,7 @@ namespace hlrt::SaveGame
                 shut(reading_);
                 // (A file being written is read back from what is on the
                 // card: let go of first.)
-                if (writing_.name == name && !shut(writing_))
+                if (writing_.name == name && !shutWriting())
                     return no("close");
                 reading_.file = std::fopen(path(name).c_str(), "rb");
                 if (reading_.file == nullptr)
@@ -291,7 +334,7 @@ namespace hlrt::SaveGame
         {
             bool ok = true;
             if (writing_.name == name)
-                ok = shut(writing_);
+                ok = shutWriting();
             if (reading_.name == name)
                 shut(reading_);
             return ok || no("close");

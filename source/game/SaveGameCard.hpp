@@ -41,6 +41,20 @@ namespace hlrt::SaveGame::detail
         };
         Open writing_, reading_;
         static bool shut(Open &open);
+        /// What is written is kept here and goes to the card in big pieces: a
+        /// write costs about the same whatever its size -- tens of ms on a
+        /// DSi's SD, some 200, measured 2026-11-27 -- and a save in pieces of
+        /// a kilobyte was a hundred and fifty of them, a stall each. Written
+        /// when full, and when the file is let go of or read back
+        /// (shutWriting); let go of with the file (a block left in the heap is
+        /// room a DS's next map may not have). None if there is no room for
+        /// it: each piece as it comes, as before.
+        static constexpr std::size_t kWriteBufferDs = 8 * 1024;
+        static constexpr std::size_t kWriteBufferDsi = 64 * 1024;
+        std::uint8_t *buffer_ = nullptr;
+        std::size_t buffered_ = 0, bufferBytes_ = 0;
+        bool flushWriting();
+        bool shutWriting();
         bool close();
         /// The folder `name` is to be in, made if it is not there (it usually
         /// is): the saves', or a folder in it (run/).
