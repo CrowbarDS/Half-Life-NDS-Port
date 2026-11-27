@@ -4900,21 +4900,21 @@ namespace hldata
             const std::uint32_t made = breakMaterial(w.records[taker]);
             fx at[3], normal[3];
             int on = -1;
-            const bool found = w.actors != nullptr && traceShotWall(*w.world, eye, end, at, normal, &on);
-            if (found && !w.states[taker].dead && (made == 0 || made == 7) && w.brushStates != nullptr)
+            // (Where the round met its face: not a hand's breadth in front
+            // of it, where its clip hull is.)
+            const bool found = w.actors != nullptr && traceShotWall(*w.world, eye, end, at, normal, &on, true);
+            fx local[3];
+            const bool placed = found && on == shot.mover && markLocal(*w.world, on, at, local);
+            if (found && on == shot.mover && !w.states[taker].dead && (made == 0 || made == 7))
             {
-                fx local[3];
-                for (int k = 0; k < 3; ++k)
-                    local[k] = at[k] - w.brushStates[shot.mover].pos[k];
-                if (made == 0)
+                if (placed && made == 0)
                     decalAdd(*w.actors, kDecalCrack, local, normal, 20, kMarkCrack, shot.mover);
-                else if (bullet)
+                else if (placed && bullet)
                     decalAdd(*w.actors, static_cast<std::uint8_t>(kDecalShot + detail::chance(*w.actors) % kDecalShots),
                              local, normal, 4, kMarkCrack, shot.mover);
                 specksAdd(*w.actors, at, normal, 2, static_cast<std::uint16_t>(24 | 26 << 5 | 27 << 10), 60);
             }
-            else if (found && on == shot.mover && !w.states[taker].dead && w.brushStates != nullptr &&
-                     detail::isBreakable(w.records[taker]))
+            else if (placed && !w.states[taker].dead && detail::isBreakable(w.records[taker]))
             {
                 // Anything else that breaks takes the marks a wall takes
                 // (the game's DamageDecal), and they go with it: drawn as
@@ -4923,9 +4923,6 @@ namespace hldata
                 // holes in it (a grate), none.
                 const RenderClass drawn = w.brushes != nullptr ? static_cast<RenderClass>(w.brushes[shot.mover].renderClass)
                                                                : RenderClass::Opaque;
-                fx local[3];
-                for (int k = 0; k < 3; ++k)
-                    local[k] = at[k] - w.brushStates[shot.mover].pos[k];
                 if (drawn == RenderClass::Opaque && bullet)
                     decalAdd(*w.actors, static_cast<std::uint8_t>(kDecalShot + detail::chance(*w.actors) % kDecalShots),
                              local, normal, 8, kMarkShot, shot.mover);
@@ -5980,8 +5977,19 @@ namespace hldata
         if (state.secondMs > 0)
             state.secondMs -= ms;
         // The mark of the crowbar's last blow on a wall, a moment after it.
-        if (state.dentMs > 0 && (state.dentMs -= ms) <= 0 && w.actors != nullptr)
-            decalAdd(*w.actors, kDecalDent, state.dentAt, state.dentNormal, 8, kMarkShot);
+        // (On what is there now, a hand's breadth across where it struck: a
+        // door's, kept from the door and going with it; nothing, if what was
+        // struck has gone.)
+        if (state.dentMs > 0 && (state.dentMs -= ms) <= 0 && w.actors != nullptr && w.world != nullptr)
+        {
+            const fx *at = state.dentAt, *n = state.dentNormal;
+            const fx from[3] = {at[0] + (n[0] << 2), at[1] + (n[1] << 2), at[2] + (n[2] << 2)};
+            const fx to[3] = {at[0] - (n[0] << 2), at[1] - (n[1] << 2), at[2] - (n[2] << 2)};
+            fx on[3], normal[3];
+            int mover = -1;
+            if (traceShotWall(*w.world, from, to, on, normal, &mover, true, true))
+                markOn(*w.actors, *w.world, mover, kDecalDent, on, normal, 8, kMarkShot);
+        }
         // A weapon being put away: when it is, the other is taken out.
         // (Nothing is now: what a save from before kept.)
         if (state.holsterMs > 0)

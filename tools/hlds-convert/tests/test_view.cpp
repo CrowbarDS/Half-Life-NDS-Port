@@ -284,6 +284,26 @@ namespace
             check(met && on >= 0 && normal[0] < -4000 && std::abs(at[0] - fxFromInt(226)) <= kFxOne / 4 &&
                       std::abs(at[1] - fxFromInt(-1074)) <= kFxOne / 4,
                   "a mark on a brush met at a slant is where the line meets its face");
+            // Broken, the pane takes its marks with it, at once: none is
+            // left hanging where it was.
+            int record = -1;
+            for (int i = 0; met && on >= 0 && i < g.logic.recordCount; ++i)
+                record = g.logic.records[i].brush == on && hldata::detail::isBreakable(g.logic.records[i]) ? i : record;
+            check(record >= 0, "the pane is a breakable");
+            if (record >= 0)
+            {
+                markOn(a, g.move, on, kDecalShot, at, normal, 8, kMarkShot);
+                int onPane = 0;
+                for (const Decal &decal : a.decals)
+                    onPane += decal.active && decal.brush == on;
+                hldata::detail::breakIt(g.logic, g.player, record, 0);
+                int after = 0;
+                for (const Decal &decal : a.decals)
+                    after += decal.active && decal.brush == on;
+                check(onPane == 1 && after == 0, "a pane that breaks takes its marks with it at once");
+                const bool again = traceShotWall(g.move, from, to, at, normal, &on, true);
+                check(!again || on < 0, "... and is not met again");
+            }
         }
         // One spot, hit again and again, is one mark: not a pile of them.
         const int before = marks();

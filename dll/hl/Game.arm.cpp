@@ -1175,12 +1175,7 @@ namespace hlrt
                 const int gibs = breakGibRef(record);
                 if (gibs >= 0)
                     breakGibsBurst(actors, mins, maxs, material, gibs, way, &world);
-                // (The marks that were on it go with it.)
-                for (Decal &decal : actors.decals)
-                {
-                    if (decal.active && decal.brush == static_cast<std::int16_t>(record.brush))
-                        decal.active = false;
-                }
+                // (The marks that were on it went with it: breakIt.)
             };
             // (What was broken when the map began, or a save was laid, has
             // had its pieces: noted, not thrown.)

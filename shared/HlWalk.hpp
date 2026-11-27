@@ -66,6 +66,30 @@ namespace hldata
     /// where the brush is, and goes with it -- a door, a train, a lift; on
     /// one that turns (a door on hinges, a fan) it would be left in the
     /// air, so there is none.
+    /// Where `at` is from brush entity `mover`, as a mark on it is kept
+    /// (`local`). False for one that turns: a mark on it would be left in
+    /// the air, so there is none.
+    [[gnu::noinline]] inline bool markLocal(const MoveWorld &world, int mover, const fx *at, fx *local)
+    {
+        if (world.brushes == nullptr || world.movers == nullptr || mover < 0 || mover >= world.moverCount)
+            return false;
+        const Brush &brush = world.brushes[mover];
+        if (brush.flags & kBrushHasPivot)
+            return false;
+        // (Where the brush is, as its BrushState has it: a box's own space
+        // is centred on it -- logicPlaceBrushTurned.)
+        const MoverHull &hull = world.movers[mover];
+        const bool box = moverIsBox(hull);
+        for (int k = 0; k < 3; ++k)
+        {
+            fx pos = hull.origin[k];
+            if (box)
+                pos -= (fxFromInt(brush.mins[k]) + fxFromInt(brush.maxs[k])) / 2 - brush.origin[k];
+            local[k] = at[k] - pos;
+        }
+        return true;
+    }
+
     [[gnu::noinline]] inline void markOn(ActorWorld &a, const MoveWorld &world, int mover, std::uint8_t picture,
                                          const fx *at, const fx *normal, int half, std::uint16_t colour)
     {
@@ -74,22 +98,9 @@ namespace hldata
             decalAdd(a, picture, at, normal, half, colour);
             return;
         }
-        const Brush &brush = world.brushes[mover];
-        if (brush.flags & kBrushHasPivot)
-            return;
-        // (Where the brush is, as its BrushState has it: a box's own space
-        // is centred on it -- logicPlaceBrushTurned.)
-        const MoverHull &hull = world.movers[mover];
-        const bool box = moverIsBox(hull);
         fx local[3];
-        for (int k = 0; k < 3; ++k)
-        {
-            fx pos = hull.origin[k];
-            if (box)
-                pos -= (fxFromInt(brush.mins[k]) + fxFromInt(brush.maxs[k])) / 2 - brush.origin[k];
-            local[k] = at[k] - pos;
-        }
-        decalAdd(a, picture, local, normal, half, colour, mover);
+        if (markLocal(world, mover, at, local))
+            decalAdd(a, picture, local, normal, half, colour, mover);
     }
 
     /// A shot (or, with `blow`, a swing) has landed on the world at the end

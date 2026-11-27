@@ -1521,6 +1521,19 @@ namespace hldata
         return family == 0 || family == 4 || family >= 21 ? 0 : (family == 10 ? 2 : 1);
     }
 
+    /// The marks on brush entity `brush` go: it is gone for good (broken,
+    /// taken away), and they were on its faces. (One only hidden for a time
+    /// -- a func_wall_toggle -- keeps them, unseen while it is: the game's
+    /// stay on its faces, and show again with it.)
+    [[gnu::noinline]] inline void decalsOffBrush(ActorWorld &a, int brush)
+    {
+        for (Decal &decal : a.decals)
+        {
+            if (decal.active && decal.brush == brush)
+                decal.active = false;
+        }
+    }
+
     // (One copy: GCC kept a second, specialised one, 2 KB, in the program
     // that also had the first.)
     [[gnu::noinline, gnu::noclone]] inline Decal &decalAdd(ActorWorld &a, std::uint8_t picture, const fx *at,

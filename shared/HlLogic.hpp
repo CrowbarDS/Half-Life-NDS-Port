@@ -974,7 +974,11 @@ namespace hldata
                 }
             }
             if (w.records[i].brush != kNoBrush)
+            {
                 logicSetBrushActive(w, w.records[i].brush, false);
+                if (w.actors != nullptr)
+                    decalsOffBrush(*w.actors, w.records[i].brush);
+            }
             if (w.records[i].kind == static_cast<std::uint8_t>(LogicKind::Ladder) &&
                 w.ladders != nullptr)
             {
@@ -1199,6 +1203,15 @@ namespace hldata
                 if (a.decalRecord.value[i] != index + 1 || !decal.active || !(decal.turn & kDecalTheMaps) ||
                     decal.picture != picture)
                     continue;
+                // (On a brush entity: kept from where it is, and going with
+                // it -- there for as long as the brush is, unseen while it
+                // is hidden; gone with it when it is broken or taken away,
+                // decalsOffBrush.)
+                if (decal.brush >= 0)
+                {
+                    decal.leftMs = decalLife(picture) / 100 * a.markLifePercent;
+                    return;
+                }
                 bool near = true;
                 for (int k = 0; k < 3; ++k)
                 {
@@ -1229,8 +1242,19 @@ namespace hldata
                 const fx from[3] = {record.move[0] - step[0], record.move[1] - step[1], record.move[2] - step[2]};
                 const fx to[3] = {record.move[0] + step[0], record.move[1] + step[1], record.move[2] + step[2]};
                 fx at[3], normal[3];
-                if (!traceShotWall(*w.world, from, to, at, normal))
+                int on = -1;
+                // (Where a round would put it: not on the air a hand's
+                // breadth in front of a crate, and not on the sky.)
+                if (!traceShotWall(*w.world, from, to, at, normal, &on, true, true))
                     continue;
+                // On a brush entity, it is that brush's: kept from where it
+                // is, going with it, and gone when it is broken. (None on
+                // one that turns.)
+                const bool onBrush = on >= 0 && w.world->brushes != nullptr && w.world->movers != nullptr &&
+                                     on < w.world->moverCount;
+                if (onBrush && !markLocal(*w.world, on, at, at))
+                    continue;
+                const int brush = onBrush ? on : -1;
                 if (picture == kDecalSign)
                 {
                     // A sign: one of the map's sprites, as large as its
@@ -1242,7 +1266,7 @@ namespace hldata
                     const SpriteRef &ref = w.level->sprites[sprite];
                     const int half = (ref.worldWidth > ref.worldHeight ? ref.worldWidth : ref.worldHeight) / 2;
                     Decal &decal =
-                        decalAdd(*w.actors, picture, at, normal, half, static_cast<std::uint16_t>(sprite), -1, true);
+                        decalAdd(*w.actors, picture, at, normal, half, static_cast<std::uint16_t>(sprite), brush, true);
                     decal.turn = static_cast<std::uint8_t>(
                         kDecalTheMaps | (k == 0 ? (record.extra[3] >> 1) & (kSignTurnMask | kSignMirror) : 0));
                     placed(decal);
@@ -1254,7 +1278,7 @@ namespace hldata
                                      : (family == 5 ? kMarkBlood
                                                     : (family == 10 ? kMarkSoot
                                                                     : (picture >= kDecalWallCrack ? kMarkWall : kMarkShot))),
-                                -1, true));
+                                brush, true));
                 return;
             }
         }
@@ -2055,6 +2079,10 @@ namespace hldata
                     player.groundMover = -1;
                 }
                 logicSetBrushActive(w, record.brush, false);
+                // (The marks on it go with it: at once, not when its pieces
+                // are thrown.)
+                if (w.actors != nullptr)
+                    decalsOffBrush(*w.actors, record.brush);
             }
             breakSpill(w, record);
             logicUseTargets(w, player, index, kUseToggle, depth);
