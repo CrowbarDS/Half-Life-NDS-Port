@@ -1,7 +1,9 @@
 #include "game/GameLayout.hpp"
 
+#include <cstdio>
 #include <cstring>
 #include <filesystem.h>
+#include <malloc.h>
 #include <nds.h>
 
 #include <NEAMain.h>
@@ -10,6 +12,7 @@
 #include "Global.hpp"
 #include "Guard.hpp"
 #include "Overlay.hpp"
+#include "Settings.hpp"
 #include "audio/Sound.hpp"
 #include "data/LevelFile.hpp"
 #include "data/ModelCache.hpp"
@@ -106,6 +109,65 @@ namespace hlrt
 {
     GameFuncs gameApi;
 
+#ifndef HLDS_CHILD
+    namespace
+    {
+        /// The ROM's file on a card (a flashcart's, the DSi's SD) given a
+        /// table of where its pieces are, as NEA gives each archive
+        /// (NEANPAC.c): without one, every seek far into it -- an overlay, a
+        /// family -- walks the card's FAT down the file's chain. A table for
+        /// one piece first; for a file in more, the file opened again clean
+        /// (a table too small for it is left half made on it, and a seek past
+        /// it would go astray) and given one its size, up to kNitroTableMost.
+        /// (A ROM read by the card's own commands has no file: none wanted.)
+        /// False if NitroFS could not be had again.
+        constexpr std::uint32_t kNitroTableMost = 8 * 1024;
+        bool nitroSeekTable()
+        {
+            const std::size_t before = mallinfo().uordblks;
+            const int need = nitroFSInitLookupCache(16);
+            const char *how = need == 0 ? "fast seek" : "NO fast seek (no memory, or not on a FAT card)";
+            if (need > 0)
+            {
+                nitroFSExit();
+                if (!nitroFSInit(nullptr))
+                    return false;
+                how = "NO fast seek (too many pieces for the table)";
+                if (static_cast<std::uint32_t>(need) * 4u <= kNitroTableMost)
+                {
+                    if (nitroFSInitLookupCache(static_cast<std::uint32_t>(need) * 4u) == 0)
+                        how = "fast seek";
+                    else
+                    {
+                        // (Changed under it, or no memory: never kept half made.)
+                        nitroFSExit();
+                        if (!nitroFSInit(nullptr))
+                            return false;
+                        how = "NO fast seek (the second table failed)";
+                    }
+                }
+            }
+            // (perf.txt: what it takes of the heap, and in how many pieces the
+            // file is -- 1, or as FatFs's answer says: two words a piece and
+            // two more.)
+            const std::size_t bytes = mallinfo().uordblks - before;
+            if (need == 0 && bytes == 0)
+                how = "read by the card's own commands (no table needed)";
+            if (perfLogging())
+            {
+                if (std::FILE *out = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
+                {
+                    std::fprintf(out, "mount: nitro the ROM %s, %d piece(s), table %lu bytes of heap\n", how,
+                                 need > 0 ? (need - 2) / 2 : 1,
+                                 static_cast<unsigned long>(bytes));
+                    std::fclose(out);
+                }
+            }
+            return true;
+        }
+    } // namespace
+#endif
+
     bool loadGame(const char **why)
     {
 #ifndef HLDS_CHILD
@@ -113,7 +175,7 @@ namespace hlrt
         // Families.cpp), read through the card's FAT, which Global::Init has
         // brought up. At start, as the whole game's library once was, so
         // that nothing is read with one working folder and then another.
-        if (!nitroFSInit(nullptr))
+        if (!nitroFSInit(nullptr) || !nitroSeekTable())
         {
             *why = "The ROM's files cannot be read.";
             return false;
