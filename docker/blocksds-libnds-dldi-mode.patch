@@ -1,0 +1,92 @@
+diff --git a/include/fat.h b/include/fat.h
+index c1471556..038b50b5 100644
+--- a/include/fat.h
++++ b/include/fat.h
+@@ -103,6 +103,26 @@ char *fatGetDefaultCwd(void);
+ ///     Returns a string with the path.
+ const char *fatGetDefaultDrive(void);
+ 
++/// Moves the DLDI driver of a filesystem already mounted by fatInit() or
++/// fatInitDefault() to another CPU (see dldiSetMode()).
++///
++/// The driver is shut down, the new mode is set, and the driver is started
++/// again on the CPU it selects. If it can't be started there, the previous
++/// mode is restored and the driver is started again in it.
++///
++/// Files may stay open: the medium is the same, only the CPU that drives it
++/// changes. Nothing else may use the device while this runs (no other
++/// thread). If the device hasn't been mounted yet, this only calls
++/// dldiSetMode().
++///
++/// @param mode
++///     New DLDI mode (DLDI_MODE_ARM9, DLDI_MODE_ARM7 or DLDI_MODE_AUTODETECT).
++///
++/// @return
++///     true if the driver runs in the requested mode, false if the previous
++///     mode was restored.
++bool fatDldiSetMode(int mode);
++
+ /// This function initializes a lookup cache on a given FAT file.
+ /// For NitroFS, use @see nitrofsInitLookupCache instead.
+ ///
+diff --git a/source/arm9/libc/fatfs/diskio.c b/source/arm9/libc/fatfs/diskio.c
+index 66875f57..9c09a13a 100644
+--- a/source/arm9/libc/fatfs/diskio.c
++++ b/source/arm9/libc/fatfs/diskio.c
+@@ -163,6 +163,56 @@ DSTATUS disk_initialize(BYTE pdrv)
+     return disk_status(pdrv);
+ }
+ 
++bool fatDldiSetMode(int mode)
++{
++    if (!fs_initialized[DEV_DLDI])
++    {
++        dldiSetMode((DLDI_MODE)mode);
++        return true;
++    }
++
++    comutex_acquire(&fs_io_mutex);
++
++    const DISC_INTERFACE *was_io = fs_io[DEV_DLDI];
++    const DLDI_MODE was_mode = dldiGetMode();
++
++    // Resolve the requested mode (AUTODETECT becomes ARM9 or ARM7)
++    dldiSetMode((DLDI_MODE)mode);
++    const DISC_INTERFACE *io = dldiGetInternal();
++    if (io == was_io)
++    {
++        comutex_release(&fs_io_mutex);
++        return true;
++    }
++
++    // Stop the driver where it runs now. dldiGetInternal() has already given
++    // the bus to the new CPU, so give it back for the shutdown.
++    dldiSetMode(was_mode);
++    dldiGetInternal();
++    was_io->shutdown();
++
++    dldiSetMode((DLDI_MODE)mode);
++    io = dldiGetInternal();
++
++    bool ok = io != NULL && (io->features & FEATURE_MEDIUM_CANREAD) && io->startup() && io->isInserted();
++    if (ok)
++    {
++        fs_io[DEV_DLDI] = io;
++    }
++    else
++    {
++        if (io != NULL)
++            io->shutdown();
++
++        dldiSetMode(was_mode);
++        dldiGetInternal();
++        was_io->startup();
++    }
++
++    comutex_release(&fs_io_mutex);
++    return ok;
++}
++
+ #define IS_WORD_ALIGNED(buff) (!(((uintptr_t) (buff)) & 0x03))
+ 
+ //-----------------------------------------------------------------------
