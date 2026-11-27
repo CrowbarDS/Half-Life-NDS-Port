@@ -10,8 +10,9 @@
 @ rounds towards zero, its remainder with the numerator's sign.
 @
 @ The divide is done without the divider, by multiplies alone: Kuratius's
-@ method (shared/HlSoftDiv.hpp says how, and test_softdiv holds that code to
-@ the host's divide; this is the same steps by hand). It takes every divide
+@ method, its reciprocal begun from a table of seeds (shared/HlSoftDiv.hpp
+@ says how, and test_softdiv holds that code to the host's divide; this is
+@ the same steps by hand). It takes every divide
 @ whose divisor fits 32 bits and whose quotient does -- the game's: a trace's
 @ fraction, a vector made unit, a clip's place in its span -- and leaves the
 @ rest to the library (a divide by zero, the one by -1 that overflows, a
@@ -27,9 +28,8 @@
 @ operand to its answer (an interrupt handler that took a root in between
 @ would leave its own there). The CPU's own bit does that without a trip on
 @ the bus, which REG_IME would take three of. Its answer is read after a wait
-@ found at start (Kuratius's idea: source/HwMathTune.arm.cpp), and a DSi takes
-@ a root of 32 bits by multiplies (shared/HlSoftRoot.hpp), quicker there than
-@ the unit.
+@ found at start (Kuratius's idea: source/HwMathTune.arm.cpp), and a value of
+@ 32 bits takes its root a bit at a time (hlBitRoot32), quicker than the unit.
 @
 @ In ITCM: the code that divides most (the collision trace) is there too.
 
@@ -76,46 +76,27 @@ __wrap___aeabi_ldivmod:
 @ the one that takes its result costs nothing: the result would make it wait
 @ a cycle otherwise.)
 .Lsoft:
-    @ A reciprocal of d, of 2^62 / b0 with b0 = d << c its top bit set
-    @ (c = d's leading zeros): b0 >> 1 in [2^30, 2^31) multiplied by
-    @ (1 + 2^-i) for i = 1..8, each while it stays below 2^31; 2^31 by the
-    @ same factors is the estimate.
+    @ A reciprocal of d, of 2^63 / b0 with b0 = d << c its top bit set (c =
+    @ d's leading zeros), begun from a table: the seed y0 of 1 / x, x = b0 /
+    @ 2^32, read for b0's seven bits under its top one, then a Newton step
+    @ in two SMULWBs, y0 (1 + (1 - x y0)), good to 2^-16.
     clz     r0, r12
     cmp     r0, #31
     beq     .Lby_one
     mov     r1, r12, lsl r0             @ b0
-    mov     r2, r1, lsr #1              @ b
-    mov     r3, #0x80000000             @ the estimate
-    adds    lr, r2, r2, lsr #1
-    movpl   r2, lr
-    addpl   r3, r3, r3, lsr #1
-    adds    lr, r2, r2, lsr #2
-    movpl   r2, lr
-    addpl   r3, r3, r3, lsr #2
-    adds    lr, r2, r2, lsr #3
-    movpl   r2, lr
-    addpl   r3, r3, r3, lsr #3
-    adds    lr, r2, r2, lsr #4
-    movpl   r2, lr
-    addpl   r3, r3, r3, lsr #4
-    adds    lr, r2, r2, lsr #5
-    movpl   r2, lr
-    addpl   r3, r3, r3, lsr #5
-    adds    lr, r2, r2, lsr #6
-    movpl   r2, lr
-    addpl   r3, r3, r3, lsr #6
-    adds    lr, r2, r2, lsr #7
-    movpl   r2, lr
-    addpl   r3, r3, r3, lsr #7
-    adds    lr, r2, r2, lsr #8
-    movpl   r2, lr
-    addpl   r3, r3, r3, lsr #8
-    @ The hidden Newton step: (2^32 - b) is 2^31 (1 + e).
-    rsb     r2, r2, #0
-    umull   lr, r2, r3, r2              @ (r2 last: ARMv5 wants RdHi apart from Rm)
+    adr     r2, .Lseeds - 256           @ (b0 >> 24 is 128 and up)
+    mov     r3, r1, lsr #24
+    add     r2, r2, r3, lsl #1
+    ldrsh   r3, [r2]                    @ y0, Q14
+    mov     r2, r1, lsr #1              @ x, Q31
     rsb     r0, r0, #30                 @ (the quotient's shift, 30 - c: 0..30)
-    mov     r2, r2, lsl #1              @ r, in 2^62 / b0's scale
-    @ One more: r (2 - r b0).
+    smulwb  r2, r2, r3                  @ x y0, Q29
+    rsb     r2, r2, #0x20000000         @ e = 1 - x y0
+    smulwb  r2, r2, r3                  @ e y0, Q27
+    mov     r3, r3, lsl #14             @ y0, Q28
+    add     r2, r3, r2, lsl #1          @ y0 (1 + e), Q28
+    mov     r2, r2, lsl #3              @ r, 2^63 / b0: 1 / x in Q31
+    @ One more: r (2 - r b0), 2^62 / b0, a unit below it at most.
     umull   r3, lr, r2, r1              @ r b0
     eor     r5, r5, r4                  @ (the quotient's sign)
     rsbs    r3, r3, #0
@@ -171,6 +152,19 @@ __wrap___aeabi_ldivmod:
     mov     lr, r6
     mov     r6, #0
     b       .Ldone
+
+@ The seeds: 1 / x at the middle of each of 128 steps of x over [1/2, 1),
+@ Q14, rounded to the nearest: 2^23 / (257 + 2i) (shared/HlSoftDiv.hpp's
+@ kSeeds, the same numbers: tools/hwtest/divtricks compares them).
+    .global hlDivSeeds
+hlDivSeeds:
+.Lseeds:
+    .set    .Lseed_i, 0
+    .rept   128
+    .hword  ((1 << 24) + 257 + 2 * .Lseed_i) / (2 * (257 + 2 * .Lseed_i))
+    .set    .Lseed_i, .Lseed_i + 1
+    .endr
+    .align  2
 
 .Lsigned_library:
 #ifdef HLDS_PROFILE

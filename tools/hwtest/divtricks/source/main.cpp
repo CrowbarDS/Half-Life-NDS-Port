@@ -13,8 +13,10 @@
 // at a time beats the soft divide; the pages use what it found.
 //
 //   1  Divide: the old hardware divide, the divider with the dirty count
-//      (polled, and timed), the game's soft divide, and the "smart" one
-//      (a bit at a time for short quotients, soft for the rest).
+//      (polled, and timed), the game's soft divide (its reciprocal begun
+//      from a table since 2026-11-27: a sixth quicker than from factors), and
+//      the "smart" one (a bit at a time for short quotients, soft for the
+//      rest).
 //   2  Quotient bits: a bit at a time against the soft divide, by the size
 //      of the quotient.
 //   3  Pairs and roots: a walk's step done as two soft divides, by one
@@ -24,7 +26,8 @@
 //      HwMath.s's hlBitRoot32, Kuratius's three instructions a bit), on
 //      32-bit values and on an animation key's (under 2^28). "bits edges":
 //      how many of its answers at every square and its neighbours were
-//      wrong (must be 0).
+//      wrong (must be 0). "seeds bad": how many of the soft divide's table
+//      of seeds differ from HlSoftDiv.hpp's (must be 0).
 //   4  Timed read: what the wait sweep found.
 //
 // A turns the page.
@@ -33,6 +36,8 @@
 #include <cstdio>
 
 #include <nds.h>
+
+#include "HlSoftDiv.hpp"
 
 extern "C"
 {
@@ -56,6 +61,7 @@ extern "C"
     std::uint32_t rootSoft32(std::uint32_t v);
     std::uint32_t rootSoft64(std::uint64_t v);
     std::uint32_t hlBitRoot32(std::uint32_t v);
+    extern const std::int16_t hlDivSeeds[128];
     void __wrap___aeabi_ldivmod();
     void __real___aeabi_ldivmod();
     extern std::uint32_t divCount, sqrtCount, divDelay, sqrtDelay, rootWait;
@@ -459,7 +465,10 @@ namespace
         show(" game", measure(fn(rootGame), 1));
         show(" soft 32", measure(fn(rootSoft32), 1));
         show(" bits", measure(fn(hlBitRoot32), 1));
-        printf("bits edges bad %d\n", bitRootEdgesBad);
+        int seedsBad = 0;
+        for (int i = 0; i < 128; ++i)
+            seedsBad += hlDivSeeds[i] != hldata::softdiv::detail::kSeeds.at[i];
+        printf("bits edges bad %d, seeds bad %d\n", bitRootEdgesBad, seedsBad);
     }
 
     void showSweep(const char *name, const Sweep &s)

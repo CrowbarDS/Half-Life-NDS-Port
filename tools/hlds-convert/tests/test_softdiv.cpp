@@ -4,11 +4,15 @@
 // and not 0) and none it should not; its estimate is never above the
 // quotient (source/HwMath.s's step down never runs) and a few steps below at
 // most; and a reciprocal kept for several divides (divideBy) gives `/`'s.
+// The reciprocal, begun from a table of seeds, is held to 2^62 / b0 for
+// every divisor's top 24 bits ("--all": every divisor of 32 bits, a minute
+// or two).
 //
 // Integers only: the host's own 64-bit divide is the reference.
 
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <initializer_list>
 
 #include "HlSoftDiv.hpp"
@@ -198,6 +202,37 @@ namespace
         one(INT64_MAX, 0xFFFFFFFFll);
     }
 
+    /// The reciprocal of b0 (top bit set) against 2^62 / b0, in integers:
+    /// never above it, and the most it is below kept.
+    std::uint64_t g_recWorst = 0;
+    long g_recChecked = 0;
+    void oneReciprocal(std::uint32_t b0)
+    {
+        ++g_recChecked;
+        const std::uint64_t exact = (std::uint64_t(1) << 62) / b0;
+        const std::uint32_t r = softdiv::reciprocalOf(b0).r;
+        if (r > exact)
+        {
+            ++g_failures;
+            if (g_failures < 10)
+                std::printf("FAIL: the reciprocal of %08lx is above 2^62 / b0\n", static_cast<unsigned long>(b0));
+            return;
+        }
+        g_recWorst = exact - r > g_recWorst ? exact - r : g_recWorst;
+    }
+    void testReciprocals(bool all)
+    {
+        if (all)
+        {
+            for (std::uint64_t b0 = 0x80000000u; b0 <= 0xFFFFFFFFu; ++b0)
+                oneReciprocal(static_cast<std::uint32_t>(b0));
+            return;
+        }
+        for (std::uint32_t top = 0x800000u; top <= 0xFFFFFFu; ++top)
+            for (const std::uint32_t low : {0x00u, 0x01u, 0x80u, 0xFFu, static_cast<std::uint32_t>(next() & 0xFF)})
+                oneReciprocal((top << 8) | low);
+    }
+
     /// The game's divides: a trace's fraction ((t << 30) / d), a vector made
     /// unit ((v << 12) / length), a clip's place in its span.
     void testShapes()
@@ -217,8 +252,12 @@ namespace
     }
 } // namespace
 
-int main()
+int main(int argc, char **argv)
 {
+    testReciprocals(argc > 1 && std::strcmp(argv[1], "--all") == 0);
+    std::printf("test_softdiv: %ld divisors' reciprocals, below 2^62 / b0 by %llu at most\n", g_recChecked,
+                static_cast<unsigned long long>(g_recWorst));
+    check(g_recWorst <= 1, "the reciprocal is a unit below 2^62 / b0 at most");
     testEdges();
     testShapes();
     testRandom();

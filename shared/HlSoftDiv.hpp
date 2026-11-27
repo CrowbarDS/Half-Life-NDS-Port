@@ -5,7 +5,8 @@
 // mid-divide -- with nothing shared to save or hold off.
 //
 // Kuratius's method (udivf32), used with his agreement under this project's
-// licence. The console runs it as source/HwMath.s; this is the same steps,
+// licence, its reciprocal now begun from a table of seeds (reciprocalOf).
+// The console runs it as source/HwMath.s; this is the same steps,
 // word for word, so that test_softdiv's divides on the host hold the
 // console's arithmetic, truncations included.
 //
@@ -19,9 +20,12 @@
 // numbers. For two numbers that gains little over two divides by hand
 // (tools/hwtest/softdiv, its walk step page): the game does not use it yet.
 //
-// std-only: the converter's tests run the same code the console does.
+// std-only, but for HlDsp.hpp's multiplies: the converter's tests run the
+// same code the console does.
 
 #include <cstdint>
+
+#include "HlDsp.hpp"
 
 // On the console the reciprocal and the divide by it are ARM code whoever
 // calls them (Thumb has no long multiply, and GCC would make them Thumb in a
@@ -51,7 +55,37 @@ namespace hldata
             int shift; ///< 30 - clz(d): 0..30
         };
 
-        /// d's reciprocal. d must not be 0.
+        namespace detail
+        {
+            /// The seeds of reciprocalOf: for each of 128 equal steps of
+            /// x = b0 / 2^32 over [1/2, 1), 1 / x at the step's middle, Q14
+            /// (16384..32768: a signed half-word, as SMULWB takes it),
+            /// rounded to the nearest -- in integers, 2^23 / (257 + 2i).
+            struct Seeds
+            {
+                std::int16_t at[128];
+            };
+            constexpr Seeds makeSeeds()
+            {
+                Seeds s{};
+                for (int i = 0; i < 128; ++i)
+                {
+                    const std::int32_t middle = 257 + 2 * i; // (x at the middle, in 512ths)
+                    s.at[i] = static_cast<std::int16_t>((2 * (std::int32_t(1) << 23) + middle) / (2 * middle));
+                }
+                return s;
+            }
+            inline constexpr Seeds kSeeds = makeSeeds();
+        } // namespace detail
+
+        /// d's reciprocal, 2^62 / b0 (b0 = d << clz(d), its top bit set),
+        /// never above it and a unit below at most (test_softdiv, for every
+        /// divisor). Begun from a table: the seed y0 of 1 / x (x = b0 / 2^32),
+        /// good to 2^-8; a Newton step in two SMULWBs, y0 (1 + (1 - x y0)),
+        /// good to 2^-16; and one more in long multiplies. (The way the ARM9E
+        /// books take a reciprocal; these numbers are this project's. It
+        /// began from eight steps of factors before: a sixth slower.) d must
+        /// not be 0.
         inline HL_SOFTDIV_ONCE Reciprocal reciprocalOf(std::uint32_t d)
         {
             const int c = __builtin_clz(d);
@@ -59,48 +93,17 @@ namespace hldata
             // divide by hand takes the numerator as it is.)
             if (c == 31)
                 return {d, 0xFFFFFFFFu, 0};
-            const std::uint32_t b0 = d << c; // its top bit set
-            // b = b0 / 2, in [2^30, 2^31), multiplied by (1 + 2^-i) while it
-            // stays below 2^31; 2^31 by the same factors is the estimate of
-            // 2^62 / b0, good to about 2^-8.
-            std::uint32_t b = b0 >> 1;
-            std::uint32_t e = 0x80000000u;
-#if defined(__arm__) && defined(HL_HW_MATH)
-            // (By hand: GCC makes each step four instructions, not three --
-            // its bug 123604.)
-#define HL_SOFTDIV_FACTOR(i)                                                                                          \
-    do                                                                                                                \
-    {                                                                                                                 \
-        std::uint32_t grown;                                                                                          \
-        asm("adds %0, %1, %1, lsr #" #i "\n\tmovpl %1, %0\n\taddpl %2, %2, %2, lsr #" #i                              \
-            : "=&r"(grown), "+r"(b), "+r"(e)                                                                          \
-            :                                                                                                         \
-            : "cc");                                                                                                  \
-    } while (false)
-            HL_SOFTDIV_FACTOR(1);
-            HL_SOFTDIV_FACTOR(2);
-            HL_SOFTDIV_FACTOR(3);
-            HL_SOFTDIV_FACTOR(4);
-            HL_SOFTDIV_FACTOR(5);
-            HL_SOFTDIV_FACTOR(6);
-            HL_SOFTDIV_FACTOR(7);
-            HL_SOFTDIV_FACTOR(8);
-#undef HL_SOFTDIV_FACTOR
-#else
-            for (int i = 1; i <= 8; ++i)
-            {
-                const std::uint32_t t = b + (b >> i);
-                if (t < 0x80000000u)
-                {
-                    b = t;
-                    e += e >> i;
-                }
-            }
-#endif
-            // A Newton step hidden in one multiply: 2^32 - b is 2^31 times
-            // (1 + the estimate's error).
-            std::uint32_t r = mulHigh(0u - b, e) << 1;
-            // And one more, r (2 - r b0): about 30 bits.
+            const std::uint32_t b0 = d << c;
+            // (The step: b0's seven bits under its top one.)
+            const std::int32_t y0 = detail::kSeeds.at[(b0 >> 24) - 128]; // Q14
+            // x y0, Q29, x to 31 bits; then 1 - x y0, a few thousandths at
+            // most either way (the seed is the middle's: above or below).
+            const std::int32_t e = (std::int32_t(1) << 29) - smulwb(static_cast<std::int32_t>(b0 >> 1), y0);
+            // y0 (1 + e): Q28, below 2^29.
+            const std::int32_t y1 = (y0 << 14) + (smulwb(e, y0) << 1);
+            // 2^63 / b0: 1 / x in Q31.
+            std::uint32_t r = static_cast<std::uint32_t>(y1) << 3;
+            // r (2 - r b0): 2^62 / b0, about 30 bits.
             const std::uint64_t t = 0 - static_cast<std::uint64_t>(r) * b0;
             r = static_cast<std::uint32_t>(
                 (static_cast<std::uint64_t>(r) * static_cast<std::uint32_t>(t >> 32) +
