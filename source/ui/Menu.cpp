@@ -157,6 +157,7 @@ namespace hlrt
             kVibration,    ///< how hard a Rumble Pak's motor goes (a setting)
             kCheats,       ///< the COMMAND line's cheats let through (a setting)
             kKeyboard,     ///< where the touch keyboard's letters are (a setting)
+            kDldiMode,     ///< which CPU runs a flashcart's driver, from the next start (a setting)
             kPlayGame,     ///< NEW GAME's: the game itself
             kGameTraining, ///< ... the Hazard Course
             kGameUplink,   ///< ... Half-Life: Uplink
@@ -422,6 +423,9 @@ namespace hlrt
             // and its achievements are Half-Life's.)
             if (activeGame != kGameHalfLife && (id == kMultiplayer || id == kAchievementsOpen))
                 return true;
+            // (A flashcart's alone: the game read from a DLDI driver's card.)
+            if (id == kDldiMode)
+                return global.fatDevice == nullptr || std::strncmp(global.fatDevice, "fat", 3) != 0;
 #endif
             return (id == kGameTraining && !onCard[1]) || (id == kGameUplink && !onCard[2]) ||
                    (id == kContinue && !saveThere) || (id == kQuit && !quitThere) || (id == kEndMatch && (!netGame.isHost() || netGame.match().over)) ||
@@ -1239,7 +1243,11 @@ namespace hlrt
                                   {Kind::Value, kVibration, opt::RowVibration},
 #endif
                                   {Kind::Value, kCheats, opt::RowCheats},
-                                  {Kind::Value, kKeyboard, opt::RowKeyboard}};
+                                  {Kind::Value, kKeyboard, opt::RowKeyboard},
+#ifndef HLDS_CHILD
+                                  {Kind::Value, kDldiMode, opt::RowDldiMode},
+#endif
+        };
         /// BUTTONS' rows: an action's name (HlControls.hpp's Action order).
         const TextRef kActionName[kActionCount] = {
             opt::ActionForward, opt::ActionBack,       opt::ActionLeft,       opt::ActionRight,      opt::ActionFire,
@@ -1700,6 +1708,13 @@ namespace hlrt
             case kKeyboard:
                 ui::putText(out, size, settings.keyboardLayout == hldata::kKeyboardAzerty ? opt::KeyboardAzerty : opt::KeyboardQwerty);
                 break;
+#ifndef HLDS_CHILD
+            case kDldiMode:
+                ui::putText(out, size, settings.dldiMode == Settings::kDldiArm9   ? opt::DldiArm9
+                                     : settings.dldiMode == Settings::kDldiArm7 ? opt::DldiArm7
+                                                                              : opt::Auto);
+                break;
+#endif
             case kFog: ui::putText(out, size, kFogTypeName[settings.graphics.fog]); break;
             case kFogColour: ui::putText(out, size, kFogColourName[settings.graphics.fogColour]); break;
             case kModelDetail: ui::putText(out, size, kDetailName[settings.graphics.modelDetail]); break;
@@ -1818,6 +1833,9 @@ namespace hlrt
 #endif
             case kCheats: return opt::HelpCheats.at;
             case kKeyboard: return opt::HelpKeyboard.at;
+#ifndef HLDS_CHILD
+            case kDldiMode: return opt::HelpDldiMode.at;
+#endif
             case kKey: return opt::HelpKey.at;
             default: return kNoLine;
             }
@@ -1950,6 +1968,9 @@ namespace hlrt
                 achievements.cheatsSwitched(settings.cheats);
                 return true;
             case kKeyboard: cycle(settings.keyboardLayout, hldata::kKeyboardLayouts); return true;
+#ifndef HLDS_CHILD
+            case kDldiMode: cycle(settings.dldiMode, Settings::kDldiChoices); return true;
+#endif
             case kFog: cycle(settings.graphics.fog, kFogTypes); return true;
             case kFogColour: cycle(settings.graphics.fogColour, kFogColours); return true;
             case kModelDetail: cycle(settings.graphics.modelDetail, kDetailLevels); return true;

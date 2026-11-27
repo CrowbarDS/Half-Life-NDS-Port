@@ -352,7 +352,13 @@ Milestone 11, "levels of detail".
   card, and libnds runs the other threads meanwhile: that autosave is
   written on a thread of its own, under the frame and the think worker, and
   the game goes on. (Not on a DS: its heap has no room for the thread's
-  stack.)
+  stack.) Which CPU runs a flashcart's driver is the OPTIONS' DLDI MODE:
+  AUTO (as the driver asks), ARM9 or ARM7, kept in `dldi.dat` beside the
+  settings and set at the next start through a small libnds addition
+  (`docker/blocksds-libnds-dldi-mode.patch`, `fatDldiSetMode`). The first
+  start in a mode writes a file and reads it back; if the driver will not
+  start there, or the file comes back wrong, the game goes back to AUTO and
+  says so. SELECT held as the game starts goes back to AUTO too.
   How it is made (`shared/HlSaveFiles.hpp`, `shared/HlSaveState.hpp`):
   the state is written with yas a field at a time, never as memory lies;
   no list of fields is kept by hand -- each structure is taken apart

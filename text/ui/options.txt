@@ -58,6 +58,7 @@ RowHideMapName = Hide map name
 RowVibration = Vibration
 RowCheats = Cheats
 RowKeyboard = Keyboard
+RowDldiMode = DLDI mode
 
 # BUTTONS: one row an action, in HlControls.hpp's Action order.
 ActionForward = Forward
@@ -135,6 +136,8 @@ FirmNotHere = n/a here
 NoRumblePak = no Rumble Pak
 VibrationLight = light
 VibrationStrong = strong
+DldiArm9 = ARM9
+DldiArm7 = ARM7
 
 # What each row does, for the box under the list.
 HelpRoomEffectsDsp = The rooms heard: off, as the game has them, or richer from the DSi's sound processor.
@@ -181,6 +184,7 @@ HelpHideMapName = The loading screen does not say which map is coming. A match's
 HelpVibration = How hard a Rumble Pak in the GBA slot shakes when you are hit, shoot, land hard or the ground shakes.
 HelpCheats = Lets the COMMAND line's cheats work. On, Cheater is earned and no other achievement is until it is off.
 HelpKeyboard = Where the letters are on the touch keyboard: QWERTY or AZERTY.
+HelpDldiMode = Which processor runs the flashcart's card driver: auto, as the driver asks, or ARM9 or ARM7. From the next start; hold SELECT as it starts for auto.
 HelpKey = Touch an action, then press its button. START: leave it as it was.
 KeyboardQwerty = QWERTY
 KeyboardAzerty = AZERTY

@@ -11,8 +11,14 @@
 #include "game/SaveGame.hpp"
 
 #include <cstring>
+#include <vector>
+
+#include <fcntl.h>
+#include <nds/arm9/dldi.h>
+#include <unistd.h>
 
 #include "Global.hpp"
+#include "Settings.hpp"
 #include "Guard.hpp"
 #include "audio/Sound.hpp"
 #include "game/Game.hpp"
@@ -118,6 +124,93 @@ namespace hlrt::SaveGame::work
         finish();
         needRun();
         hldata::runClear(card, run, runId);
+    }
+
+    namespace
+    {
+        /// A file written and read back in the DLDI mode just set: 4 KB, the
+        /// same coming back, and gone after. (Read back from the card
+        /// itself: libnds keeps only the card's tables, not what is written.)
+        bool dldiWorks(const std::string &dir)
+        {
+            const std::string path = dir + "dldi.tst";
+            constexpr std::size_t kBytes = 4096;
+            std::vector<std::uint8_t> out(kBytes), back(kBytes, 0);
+            for (std::size_t i = 0; i < kBytes; ++i)
+                out[i] = static_cast<std::uint8_t>(i * 37 + (i >> 8) * 101 + 5);
+            int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
+            if (fd < 0)
+                return false;
+            bool ok = ::write(fd, out.data(), kBytes) == static_cast<ssize_t>(kBytes);
+            ok = ::close(fd) == 0 && ok;
+            if (ok)
+            {
+                fd = ::open(path.c_str(), O_RDONLY);
+                ok = fd >= 0 && ::read(fd, back.data(), kBytes) == static_cast<ssize_t>(kBytes);
+                if (fd >= 0)
+                    ::close(fd);
+            }
+            ::unlink(path.c_str());
+            return ok && back == out;
+        }
+    } // namespace
+
+    // The OPTIONS' DLDI mode (dldi.dat, beside the settings): the driver moved to the
+    // CPU asked for (libnds's fatDldiSetMode, our patch: files open stay open,
+    // the card is the same), and tested there the first time. SELECT held at
+    // the start, or a mode that does not work: AUTO, as the driver says, and
+    // the setting put back to it. (A card that is not a flashcart's: nothing.
+    // Here, in the saves' overlay, as the card's work: it costs a DS's heap
+    // nothing.)
+    void chooseDldiMode()
+    {
+        if (!global.hasFat || global.fatDevice == nullptr || std::strncmp(global.fatDevice, "fat", 3) != 0)
+            return;
+        {
+            std::uint8_t dldi[4] = {};
+            const int fd = ::open(global.dataPath("dldi.dat").c_str(), O_RDONLY);
+            if (fd < 0)
+                return; // (none: AUTO)
+            const bool read = ::read(fd, dldi, sizeof(dldi)) == static_cast<ssize_t>(sizeof(dldi));
+            ::close(fd);
+            if (!read || dldi[0] != 'D' || dldi[1] != 'L' || dldi[2] >= Settings::kDldiChoices ||
+                dldi[3] >= Settings::kDldiChoices)
+                return;
+            settings.dldiMode = dldi[2];
+            settings.dldiTested = dldi[3];
+            Settings::dldiOnCard(dldi[2], dldi[3]);
+        }
+        if (settings.dldiMode == Settings::kDldiAuto)
+            return;
+        scanKeys();
+        if (keysHeld() & KEY_SELECT)
+            global.dldiStart = Global::DldiStart::Select;
+        else
+        {
+            const int mode = settings.dldiMode == Settings::kDldiArm9 ? DLDI_MODE_ARM9 : DLDI_MODE_ARM7;
+            // (Where AUTO put it already, it has just read the settings: it works.)
+            if (dldiGetMode() != mode)
+            {
+                if (!fatDldiSetMode(mode))
+                    global.dldiStart = Global::DldiStart::Refused;
+                else if (settings.dldiTested != settings.dldiMode && !dldiWorks(global.dataDir()))
+                {
+                    fatDldiSetMode(DLDI_MODE_AUTODETECT);
+                    global.dldiStart = Global::DldiStart::TestFailed;
+                }
+            }
+        }
+        if (global.dldiStart != Global::DldiStart::AsAsked)
+        {
+            settings.dldiMode = Settings::kDldiAuto;
+            settings.dldiTested = Settings::kDldiAuto;
+            settings.save();
+        }
+        else if (settings.dldiTested != settings.dldiMode)
+        {
+            settings.dldiTested = settings.dldiMode;
+            settings.save();
+        }
     }
 
     bool fromSave(int slot, const hldata::SaveData &save, std::uint32_t runId)

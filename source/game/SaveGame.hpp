@@ -18,6 +18,10 @@ namespace hlrt::SaveGame
 #ifndef HLDS_CHILD
     /// Another game chosen: its saves are in another folder, listed afresh.
     void forget();
+    /// A flashcart's driver set up as the OPTIONS' DLDI mode asks: call once,
+    /// after the settings are read; they are told what came of it
+    /// (Global::dldiStart says it).
+    void chooseDldiMode();
 #endif
     /// The save thread's stack (a step-at-a-time save is written on a
     /// thread of its own where the card's work is not the ARM9's): where it

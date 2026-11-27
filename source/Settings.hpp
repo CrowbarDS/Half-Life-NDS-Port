@@ -63,6 +63,16 @@ public:
     std::uint8_t vibration = 1;
     /// The game last chosen (hldata::GameId): offered first.
     std::uint8_t lastGame = 0;
+    /// Which CPU runs a flashcart's driver (kDldi*), from the next start;
+    /// and the mode a write and its read back were last seen to work in
+    /// (AUTO: none tried). Kept beside settings.dat, in dldi.dat, not in it:
+    /// read at the start (SaveGame::chooseDldiMode), written by save() when
+    /// changed.
+    std::uint8_t dldiMode = 0;
+    std::uint8_t dldiTested = 0;
+    static constexpr std::uint8_t kDldiAuto = 0, kDldiArm9 = 1, kDldiArm7 = 2, kDldiChoices = 3;
+    /// What dldi.dat holds, as read (none there: AUTO, AUTO).
+    static void dldiOnCard(std::uint8_t mode, std::uint8_t tested);
     /// The COMMAND line's cheats are let through. While it is on, Cheater
     /// is earned and no other achievement is.
     bool cheats = false;

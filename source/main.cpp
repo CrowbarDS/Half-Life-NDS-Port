@@ -455,6 +455,24 @@ namespace
         std::fclose(log);
     }
 
+#ifndef HLDS_CHILD
+    /// The OPTIONS' DLDI mode not used at this start (Global::chooseDldiMode):
+    /// said once, on the first map's screen.
+    void sayDldiStart()
+    {
+        static bool said = false;
+        if (said || global.dldiStart == Global::DldiStart::AsAsked)
+            return;
+        said = true;
+        const char *text = global.dldiStart == Global::DldiStart::Select
+                               ? "DLDI MODE: AUTO\nSELECT held at the start"
+                           : global.dldiStart == Global::DldiStart::Refused
+                               ? "DLDI MODE: AUTO\nthe card's driver would not start"
+                               : "DLDI MODE: AUTO\nthe card failed a test in that mode";
+        hlrt::topText.announce(text, 8000);
+    }
+#endif
+
 #if defined(HLDS_DEBUG_BUILD) && !defined(HLDS_CHILD)
     /// A debug build: an archive that seeks the slow way (in more pieces on
     /// the card than its fast-seek table may hold) is said on the screen.
@@ -1099,6 +1117,9 @@ namespace
 #if defined(HLDS_DEBUG_BUILD) && !defined(HLDS_CHILD)
         warnSlowSeek();
         measureReopen(name.c_str());
+#endif
+#ifndef HLDS_CHILD
+        sayDldiStart();
 #endif
         if (hlrt::player.debugTrack >= 0)
         {
@@ -2184,6 +2205,9 @@ int main(int argc, char *argv[])
 
     // (The console's own, whichever game: first, for the game last played.)
     settings.load();
+#ifndef HLDS_CHILD
+    hlrt::SaveGame::chooseDldiMode();
+#endif
     // The games on the card (HlGame.hpp): Half-Life, and on a DSi the
     // expansions, each in a folder of its own -- the one played last is
     // started with (game/GameChoice.hpp). A DS plays Half-Life alone.

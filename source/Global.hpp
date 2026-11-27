@@ -42,6 +42,20 @@ public:
     /// (DLDI) run on it. The game stops while the card is written then --
     /// on a DSpico some 200 ms a write -- and no thread can hide it.
     bool cardOnArm9() const;
+#ifndef HLDS_CHILD
+    /// How the flashcart's driver was set up at this start
+    /// (SaveGame::chooseDldiMode, from the OPTIONS' DLDI mode): as asked; AUTO because SELECT was
+    /// held; AUTO because the mode asked for would not start, or failed its
+    /// test (a file written and read back). Said once a map is up.
+    enum class DldiStart : std::uint8_t
+    {
+        AsAsked,
+        Select,
+        Refused,
+        TestFailed
+    };
+    DldiStart dldiStart = DldiStart::AsAsked;
+#endif
     /// There is the game's data to read: on the card, or (a console that was
     /// sent the game, HLDS_CHILD) received, on the "air:" drive
     /// (net/AirDevice.hpp). What is WRITTEN -- saves, settings -- is the

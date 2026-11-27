@@ -732,6 +732,12 @@ namespace hlrt::SaveGame
     }
 
 #ifndef HLDS_CHILD
+    HL_OVL_GATED void chooseDldiMode()
+    {
+        HL_SAVE_WORK();
+        work::chooseDldiMode();
+    }
+
     HL_TWL_CODE void forget()
     {
         // (Both read whole when next asked for: runIndexRead starts afresh.)

@@ -132,4 +132,5 @@ namespace hlrt::SaveGame::work
     bool fromSave(int slot, const hldata::SaveData &save, std::uint32_t runId);
     void dropNamedAuto();
     const hldata::RunIndex &runIndex();
+    void chooseDldiMode();
 } // namespace hlrt::SaveGame::work

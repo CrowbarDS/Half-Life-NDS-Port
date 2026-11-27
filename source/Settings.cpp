@@ -32,7 +32,42 @@ namespace
     std::uint8_t onCard[hldata::kSettingsMostBytes];
     std::size_t onCardBytes = 0;
     bool onCardKnown = false;
+#ifndef HLDS_CHILD
+    // ... and dldi.dat (none: AUTO, never tried).
+    std::uint8_t dldiFile[2] = {Settings::kDldiAuto, Settings::kDldiAuto};
+#endif
 } // namespace
+#endif
+
+#if !defined(HLDS_CHILD) && !defined(HLDS_SETTINGS_IN_MEMORY)
+namespace
+{
+    __attribute__((noinline)) void writeDldi(std::uint8_t mode, std::uint8_t tested)
+    {
+        char path[128];
+        std::snprintf(path, sizeof(path), "%s_nds/hl_nds/data/dldi.dat", global.fatDevice);
+        const std::uint8_t dldi[4] = {'D', 'L', mode, tested};
+        const int fd = ::open(path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+        if (fd < 0)
+            return;
+        const bool wrote = ::write(fd, dldi, sizeof(dldi)) == static_cast<ssize_t>(sizeof(dldi));
+        if (::close(fd) == 0 && wrote)
+            Settings::dldiOnCard(mode, tested);
+    }
+} // namespace
+#endif
+
+#ifndef HLDS_CHILD
+void Settings::dldiOnCard(std::uint8_t mode, std::uint8_t tested)
+{
+#ifndef HLDS_SETTINGS_IN_MEMORY
+    dldiFile[0] = mode;
+    dldiFile[1] = tested;
+#else
+    (void)mode;
+    (void)tested;
+#endif
+}
 #endif
 
 void Settings::load()
@@ -275,6 +310,11 @@ bool Settings::save() const
         data.rotation[i] = rotation[i];
     const std::vector<std::uint8_t> bytes = hldata::writeSettings(data);
 
+#ifndef HLDS_CHILD
+    // (The DLDI mode: its own small file, written only when it changes.)
+    if (dldiFile[0] != dldiMode || dldiFile[1] != dldiTested)
+        writeDldi(dldiMode, dldiTested);
+#endif
     if (onCardKnown && bytes.size() == onCardBytes && std::memcmp(bytes.data(), onCard, onCardBytes) == 0)
         return true;
     // (Written over where it is, in one call: made anew, the card's table of
