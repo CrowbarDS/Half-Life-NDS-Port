@@ -1036,6 +1036,46 @@ void testMarksOnMovers(const char *dir)
     }
 }
 
+// The sky takes no mark, as in the game: c1a0e's sky over its yard, at z
+// 3488 (a face of the sky facing down, its middle at -1525 -2472).
+void testNoMarkOnSky(const char *dir)
+{
+    auto game = std::make_unique<Game>();
+    std::string error;
+    if (!game->bsp.load(std::string(dir) + "/maps/c1a0e.bsp", error))
+    {
+        check(false, (std::string(dir) + "/maps/c1a0e.bsp loads").c_str());
+        return;
+    }
+    finish(*game, nullptr, dir);
+    if (!game->ok)
+        return;
+    Game &g = *game;
+    const fx under[3] = {fxFromInt(-1525), fxFromInt(-2472), fxFromInt(3480)};
+    const fx above[3] = {under[0], under[1], fxFromInt(3600)};
+    fx at[3], normal[3];
+    int on = -1;
+    const bool met = traceShotWall(g.move, under, above, at, normal, &on, true);
+    check(met && on < 0 && std::abs(at[2] - fxFromInt(3488)) <= kFxOne && normal[2] < -4000,
+          "a line up from c1a0e's yard meets its sky");
+    check(!traceShotWall(g.move, under, above, at, normal, &on, true, true), "... which takes no mark");
+    const fx upward[3] = {0, 0, kFxOne};
+    const fx wound[3] = {under[0], under[1], fxFromInt(3440)};
+    int before = 0, after = 0;
+    for (const Decal &decal : g.actors.decals)
+        before += decal.active;
+    // (Blood flies on a little down: from this close, still up into it.)
+    markBlood(g.actors, g.move, wound, upward, false, false);
+    for (const Decal &decal : g.actors.decals)
+        after += decal.active;
+    check(before == after, "blood thrown up into the sky leaves no stain on it");
+    check(markShot(g.actors, g.move, under, above, false), "a round into the sky still lands (its sound, its sparks)");
+    after = 0;
+    for (const Decal &decal : g.actors.decals)
+        after += decal.active;
+    check(before == after, "... but leaves no hole in it");
+}
+
 // Which marks are drawn (HlMarkPlan.hpp): a stain beside the eye does not
 // leave the rest of a corridor's out; none thins out to nothing.
 void testMarkChoice()
@@ -1434,6 +1474,7 @@ int main()
         testLanding(dir);
         testMarks(dir);
         testMarksOnMovers(dir);
+        testNoMarkOnSky(dir);
         testImpactsOnMap(dir);
         testBreakGibs(dir);
     }

@@ -1086,6 +1086,16 @@ namespace hldata
         return shot;
     }
 
+    /// Whether the world's face at `at`, facing `normal` (Q12), is the sky's:
+    /// the leaf half a unit past it.
+    inline bool onSky(const MoveWorld &world, const fx *at, const fx *normal)
+    {
+        if (world.nodes == nullptr || world.leaves == nullptr)
+            return false;
+        const fx past[3] = {at[0] - (normal[0] >> 1), at[1] - (normal[1] >> 1), at[2] - (normal[2] >> 1)};
+        return world.leaves[worldLeaf(world, past)].contents == kContentsSky;
+    }
+
     /// The same, and which way what stopped it faces: `normal` (Q12, towards
     /// where the line came from) and `at`, the point on it. False if nothing
     /// stopped it, or nothing that says which way it faces.
@@ -1096,14 +1106,16 @@ namespace hldata
     /// breadth of, as traceShot does not count it). `asShot`: such a brush
     /// does not stop the line either, as it does not stop a shot -- a mark
     /// goes where the round went, not on the air in front of a crate it
-    /// passed close by.
+    /// passed close by. `noSky`: the sky stops the line, but false -- no
+    /// mark goes on it.
     // (One copy, not one in every monster that looks for a wall.)
     [[gnu::noinline]] inline bool traceShotWall(const MoveWorld &world, const fx *start, const fx *end, fx *at, fx *normal,
-                                                int *metMover = nullptr, bool asShot = false)
+                                                int *metMover = nullptr, bool asShot = false, bool noSky = false)
     {
         std::int32_t fraction = kFractionOne;
         int wall = -1;
         bool found = false;
+        bool byWorld = false;
         int on = -1;
         if (world.nodes != nullptr &&
             !detail::lineThrough(world, world.headNode, 0, kFractionOne, start, end, fraction, 0, -1, &wall) &&
@@ -1112,7 +1124,7 @@ namespace hldata
             const Plane &plane = world.standing.planes[wall >> 1];
             for (int i = 0; i < 3; ++i)
                 normal[i] = (wall & 1) ? -(plane.normal[i] >> 18) : (plane.normal[i] >> 18);
-            found = true;
+            found = byWorld = true;
         }
         fx back = 0;
         fx stop[3];
@@ -1179,6 +1191,7 @@ namespace hldata
                         for (int i = 0; i < 3; ++i)
                             normal[i] = (face & 1) ? -(plane.normal[i] >> 18) : (plane.normal[i] >> 18);
                         found = true;
+                        byWorld = false;
                         continue;
                     }
                 }
@@ -1193,6 +1206,7 @@ namespace hldata
                 back += (i == 2 ? 18 : 16) * n;
             }
             found = true;
+            byWorld = false;
         }
         if (!found || fraction >= kFractionOne)
             return false;
@@ -1204,6 +1218,10 @@ namespace hldata
                                                 kFractionShift);
             at[i] -= static_cast<fx>((static_cast<std::int64_t>(normal[i]) * back) >> 12);
         }
+        // The sky stops a line as a wall does, but takes no mark (`noSky`):
+        // the game's decals pass over it.
+        if (noSky && byWorld && onSky(world, at, normal))
+            return false;
         return true;
     }
 
