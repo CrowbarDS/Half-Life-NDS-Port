@@ -26,6 +26,11 @@
 #include "game/Game.hpp"
 #include "render/Camera.hpp"
 
+namespace hlrt::SaveGame
+{
+    bool cardInUse(); // (game/SaveGame.hpp)
+}
+
 namespace hlrt
 {
     Sound sound;
@@ -1881,6 +1886,11 @@ namespace hlrt
         // moved past it.
         const std::uint32_t reading = arm7Audio.musicRead() / StereoMusic::kPairsPerBlock;
         std::uint32_t written = arm7Audio.musicWritten();
+        // (The save thread in the middle of a write: read later, while two
+        // blocks -- a sixth of a second -- are left to play; the frame would
+        // wait for the card's write, a fifth of a second or more.)
+        if (SaveGame::cardInUse() && written >= reading + 2)
+            return;
         while (musicLeft_ != 0 && written < reading + kMusicRingBlocks)
         {
             std::uint16_t *slot = musicRing + (written % kMusicRingBlocks) * StereoMusic::kBlockWords;

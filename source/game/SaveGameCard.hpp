@@ -92,6 +92,9 @@ namespace hlrt::SaveGame::detail
         /// hundred files asked for one by one).
         bool list(std::vector<std::string> &names) override;
     };
+    /// The save thread, if it has a save: waited for. What its save came to
+    /// (true: done, or none), if not yet said by step().
+    bool waitThread();
     extern FatCard card;
     extern hldata::SaveIndex list;
     extern hldata::SaveWriter writer;

@@ -83,6 +83,9 @@ namespace hlrt::SaveGame
         return write(game.snapshot(map), slot, heading);
     }
     bool remove(int) { return false; }
+    const void *stackOverflowed() { return nullptr; }
+    std::uint32_t stackPeak() { return 0; }
+    bool cardInUse() { return false; }
     bool begin(const hldata::SaveData &, int, const hldata::SaveHeading &) { return false; }
     hldata::SaveWriter::Result step(bool) { return hldata::SaveWriter::Result::Done; }
     bool busy() { return false; }
@@ -182,7 +185,10 @@ namespace hlrt::SaveGame
 
 #include <cerrno>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+
+#include <nds/cothread.h>
 
 #include "Global.hpp"
 #include "Overlay.hpp"
@@ -214,6 +220,62 @@ namespace hlrt::SaveGame
 
 namespace hlrt::SaveGame
 {
+    namespace
+    {
+        // The save thread (below), and how deep it is in the card's calls.
+        // The card is one: what the frame reads of it meanwhile (the music,
+        // a sound) waits for the call the thread is in -- and the lock on
+        // the card's files is not handed over in turn: let go and taken
+        // again at once, the frame would wait for the whole save (2026-11-27,
+        // a DSpico: 93 blanks). So the thread gives the frame its turn after
+        // each call, and the frame's streams leave the card alone while it is
+        // in one, if what they have read ahead lasts (cardInUse).
+        // (DSi code: on a DS there is no thread, and only `saveThread < 0`
+        // is ever asked.)
+        cothread_t saveThread = -1;
+        volatile int cardDepth = 0;
+        HL_TWL_CODE bool onSaveThread() { return cothread_get_current() == saveThread; }
+        HL_TWL_CODE void enterCard()
+        {
+            if (onSaveThread())
+                ++cardDepth;
+        }
+        HL_TWL_CODE void leaveCard()
+        {
+            if (onSaveThread() && --cardDepth == 0)
+                cothread_yield();
+        }
+        /// Between two pieces of a write: the frame's turn, out of the card.
+        HL_TWL_CODE void giveTurn()
+        {
+            if (!onSaveThread())
+                return;
+            const int depth = cardDepth;
+            cardDepth = 0;
+            cothread_yield();
+            cardDepth = depth;
+        }
+        struct CardCall
+        {
+            CardCall()
+            {
+                if (saveThread >= 0)
+                    enterCard();
+            }
+            ~CardCall()
+            {
+                if (saveThread >= 0)
+                    leaveCard();
+            }
+        };
+        /// What the save thread writes in one call at most: a piece of the
+        /// card's work the frame may have to wait for (one of the card's
+        /// writes, or two).
+        constexpr std::size_t kThreadPiece = 16 * 1024;
+    } // namespace
+
+    bool cardInUse() { return cardDepth > 0; }
+
     namespace detail
     {
         std::string FatCard::path(const char *name) const { return global.gameSavesDir() + name; }
@@ -294,9 +356,12 @@ namespace hlrt::SaveGame
 
         bool FatCard::writeAll(int fd, const std::uint8_t *bytes, std::size_t size)
         {
-            while (size > 0)
+            const std::size_t most = saveThread >= 0 ? kThreadPiece : size;
+            for (bool first = true; size > 0; first = false)
             {
-                const ssize_t n = ::write(fd, bytes, size);
+                if (!first)
+                    giveTurn();
+                const ssize_t n = ::write(fd, bytes, size < most ? size : most);
                 if (n <= 0)
                     return false;
                 bytes += n;
@@ -325,6 +390,7 @@ namespace hlrt::SaveGame
 
         bool FatCard::append(const char *name, const std::uint8_t *bytes, std::size_t size, bool first)
         {
+            const CardCall call;
             if (first)
             {
                 shutWriting();
@@ -368,6 +434,7 @@ namespace hlrt::SaveGame
 
         bool FatCard::readAt(const char *name, std::size_t offset, std::size_t size, std::vector<std::uint8_t> &out)
         {
+            const CardCall call;
             out.clear();
             if (reading_.file == nullptr || reading_.name != name)
             {
@@ -390,6 +457,7 @@ namespace hlrt::SaveGame
 
         bool FatCard::finish(const char *name)
         {
+            const CardCall call;
             bool ok = true;
             if (writing_.name == name)
                 ok = shutWriting();
@@ -400,6 +468,7 @@ namespace hlrt::SaveGame
 
         bool FatCard::read(const char *name, std::vector<std::uint8_t> &out, std::size_t most)
         {
+            const CardCall call;
             close();
             out.clear();
             std::FILE *file = std::fopen(path(name).c_str(), "rb");
@@ -420,6 +489,7 @@ namespace hlrt::SaveGame
 
         bool FatCard::write(const char *name, const std::uint8_t *bytes, std::size_t size)
         {
+            const CardCall call;
             close();
             long was = 0;
             const int fd = overwrite(name, was);
@@ -431,18 +501,21 @@ namespace hlrt::SaveGame
 
         bool FatCard::remove(const char *name)
         {
+            const CardCall call;
             close();
             return unlink(path(name).c_str()) == 0 || no("remove");
         }
 
         bool FatCard::rename(const char *from, const char *to)
         {
+            const CardCall call;
             close();
             return ::rename(path(from).c_str(), path(to).c_str()) == 0 || no("rename");
         }
 
         bool FatCard::list(std::vector<std::string> &names)
         {
+            const CardCall call;
             close();
             names.clear();
             std::string dir = global.gameSavesDir();
@@ -478,6 +551,143 @@ namespace hlrt::SaveGame
     } // namespace detail
 
     using namespace detail;
+
+    namespace
+    {
+        // The save thread. Where the card's work is not the ARM9's -- the
+        // DSi's SD, or a flashcart's driver run on the ARM7 -- the ARM9 only
+        // waits for it, and libnds lets the other threads run meanwhile: a
+        // step-at-a-time save is written here, under the frame and the think
+        // worker, so the game goes on while the card writes (some 200 ms a
+        // write on a DSpico). With the driver on the ARM9 it would only stop
+        // the game as before, at a moment the frame does not choose: there,
+        // the frame steps it (and holds its last part for a quiet moment).
+        // Only this thread touches the card and the writer while it has a
+        // save; everything else of the saves' finishes it first (waitThread).
+        // A DSi's only: a DS's heap has no 6 KB to spare for its stack (the
+        // tightest map leaves it a few), and steps its saves in the frame.
+        constexpr int kSavePriority = -2;
+        // (Its stack: taken once from the heap, when the list of saves is
+        // first read -- before play -- and kept. Its first words are a
+        // pattern the guard looks at every frame.)
+        constexpr std::size_t kStackBytes = 6 * 1024;
+        std::uint32_t *stack = nullptr;
+        constexpr std::uint32_t kGuardWords = 16;
+        constexpr std::uint32_t kGuardMark = 0x53415645u; // "SAVE"
+#ifdef HLDS_PROFILE
+        constexpr std::uint32_t kStackPaint = 0x7E1A5B3Du;
+#endif
+        bool made = false;
+        cosema_t go = 0, over = 0;
+        // It has a save (set by the frame, cleared by it when the save is
+        // done); its result, not yet said by step().
+        volatile bool running = false, unsaid = false;
+        volatile hldata::SaveWriter::Result result = hldata::SaveWriter::Result::Done;
+
+        HL_OVL_GATED hldata::SaveWriter::Result stepOnThread()
+        {
+            HL_SAVE_WORK();
+            return work::step(true);
+        }
+
+        HL_TWL_CODE int saveWork(void *)
+        {
+            for (;;)
+            {
+                cosema_wait(&go);
+                hldata::SaveWriter::Result r = hldata::SaveWriter::Result::Busy;
+                while ((r = stepOnThread()) == hldata::SaveWriter::Result::Busy)
+                    cothread_yield();
+                result = r;
+                running = false;
+                cosema_signal(&over);
+            }
+            return 0;
+        }
+
+        HL_TWL_CODE bool makeThread()
+        {
+            if (global.cardOnArm9())
+                return false;
+            stack = static_cast<std::uint32_t *>(std::malloc(kStackBytes));
+            if (stack == nullptr)
+                return false;
+#ifdef HLDS_PROFILE
+            for (std::size_t i = 0; i < kStackBytes / 4; ++i)
+                stack[i] = kStackPaint;
+#endif
+            for (std::uint32_t i = 0; i < kGuardWords; ++i)
+                stack[i] = kGuardMark ^ i;
+            cosema_init(&go, 0);
+            cosema_init(&over, 0);
+            saveThread = cothread_create_priority_manual(saveWork, nullptr, stack, kStackBytes, kSavePriority, 0);
+            made = saveThread >= 0;
+            return made;
+        }
+
+        /// The thread, made the first time it is asked for (DSi code: a DS
+        /// has none of it). False: not here.
+        bool threaded()
+        {
+            if (made)
+                return true;
+            if (!global.hasFat || !global.isDSi || stack != nullptr)
+                return false;
+            return makeThread();
+        }
+    } // namespace
+
+    namespace
+    {
+        HL_TWL_CODE bool waitForThread()
+        {
+            while (running)
+                cosema_wait(&over);
+            if (!unsaid)
+                return true;
+            unsaid = false;
+            return result == hldata::SaveWriter::Result::Done;
+        }
+        HL_TWL_CODE void handOff()
+        {
+            while (cosema_try_wait(&over))
+            {
+            }
+            unsaid = true;
+            running = true;
+            cosema_signal(&go);
+        }
+        HL_TWL_CODE const void *stackBroken()
+        {
+            for (std::uint32_t i = 0; i < kGuardWords; ++i)
+            {
+                if (stack[i] != (kGuardMark ^ i))
+                    return stack;
+            }
+            return nullptr;
+        }
+    } // namespace
+
+    namespace detail
+    {
+        bool waitThread() { return made ? waitForThread() : true; }
+    } // namespace detail
+
+    const void *stackOverflowed() { return made ? stackBroken() : nullptr; }
+
+    std::uint32_t stackPeak()
+    {
+#ifdef HLDS_PROFILE
+        if (!made)
+            return 0;
+        std::size_t untouched = kGuardWords;
+        while (untouched < kStackBytes / 4 && stack[untouched] == kStackPaint)
+            ++untouched;
+        return static_cast<std::uint32_t>(kStackBytes - untouched * 4);
+#else
+        return 0;
+#endif
+    }
 
     HL_OVL_GATED bool leaveMap(const std::string &name, std::uint32_t level)
     {
@@ -534,6 +744,7 @@ namespace hlrt::SaveGame
 
     HL_OVL_GATED const hldata::SaveIndex &index()
     {
+        threaded(); // (made here, before play: it takes its stack from the heap)
         HL_SAVE_WORK();
         return work::index();
     }
@@ -570,13 +781,27 @@ namespace hlrt::SaveGame
 
     HL_OVL_GATED hldata::SaveWriter::Result step(bool quiet)
     {
+        if (running)
+            return hldata::SaveWriter::Result::Busy;
+        if (unsaid)
+        {
+            unsaid = false;
+            return result;
+        }
+        // (Handed to the save thread, where there is one, in one go. Never
+        // made here: in play, nothing is taken from the heap.)
+        if (writer.busy() && made)
+        {
+            handOff();
+            return hldata::SaveWriter::Result::Busy;
+        }
         HL_SAVE_WORK();
         return work::step(quiet);
     }
 
     bool busy()
     {
-        return writer.busy();
+        return writer.busy() || running || unsaid;
     }
 
     const char *whyFailed()
@@ -595,7 +820,7 @@ namespace hlrt::SaveGame
     {
         // (Every map's load asks, a match's too: nothing to finish, nothing
         // read in.)
-        if (!writer.busy())
+        if (!busy())
             return true;
         HL_SAVE_WORK();
         return work::finish();

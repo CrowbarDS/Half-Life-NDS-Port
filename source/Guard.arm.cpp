@@ -41,6 +41,11 @@ extern "C"
     extern char __text_start[], __text_end[], __dtcm_start[], __sp_usr[];
 }
 
+namespace hlrt::SaveGame
+{
+    const void *stackOverflowed(); // (game/SaveGame.hpp: the save thread's stack)
+}
+
 namespace hlrt::guard
 {
     namespace
@@ -776,6 +781,8 @@ namespace hlrt::guard
             crash("STACK: overflowed (DTCM)", reinterpret_cast<std::uint32_t>(stackFloor()), kStackWords * 4);
         if (const void *end = think.stackOverflowed())
             crash("STACK: overflowed (thinking)", reinterpret_cast<std::uint32_t>(end), 64);
+        if (const void *end = SaveGame::stackOverflowed())
+            crash("STACK: overflowed (saving)", reinterpret_cast<std::uint32_t>(end), 64);
     }
 
     void check(const char *where)

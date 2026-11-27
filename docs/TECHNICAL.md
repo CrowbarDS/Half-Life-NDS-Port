@@ -347,7 +347,12 @@ Milestone 11, "levels of detail".
   on the ARM9 (DLDI in ARM9 mode), the game stops while the card is
   written, so the autosave made in play keeps its file in memory and writes
   it only at a quiet moment: the game paused, or three seconds without a
-  fight, ten at most; a map's load writes it at once.
+  fight, ten at most; a map's load writes it at once. Elsewhere on a DSi
+  (its SD, or a flashcart's driver on the ARM7) the ARM9 only waits for the
+  card, and libnds runs the other threads meanwhile: that autosave is
+  written on a thread of its own, under the frame and the think worker, and
+  the game goes on. (Not on a DS: its heap has no room for the thread's
+  stack.)
   How it is made (`shared/HlSaveFiles.hpp`, `shared/HlSaveState.hpp`):
   the state is written with yas a field at a time, never as memory lies;
   no list of fields is kept by hand -- each structure is taken apart

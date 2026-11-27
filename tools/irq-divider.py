@@ -85,8 +85,9 @@ UNITS = ("hlHwSqrt64",)
 # and which a switch of threads does not save the units for: they may use
 # them only through UNITS -- source/HwMath.s, which holds the interrupts off
 # while it does -- never directly. (The think worker: its loop, and the
-# game's thinkRunOne, which it reaches through the game's table.)
-THREADS = ["hlrt::(anonymous namespace)::work(void*)"]
+# game's thinkRunOne, which it reaches through the game's table. The save
+# thread: SaveGame.cpp.)
+THREADS = ["hlrt::(anonymous namespace)::work(void*)", "hlrt::SaveGame::(anonymous namespace)::saveWork(void*)"]
 THREAD_PATTERN = re.compile(r"^hldata::thinkRunOne\(")
 CRASH = "__assert_func"
 REGISTERS = range(0x04000280, 0x040002C0)

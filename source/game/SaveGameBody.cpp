@@ -245,8 +245,10 @@ namespace hlrt::SaveGame::work
 
     bool finish()
     {
+        // (One on the save thread: waited for, never stepped here as well.)
+        const bool threadDone = waitThread();
         if (!writer.busy())
-            return true;
+            return threadDone;
         // (All that is left in one go: as write's.)
         sound.holdPipeline(true);
         const bool done = writer.finish();

@@ -1,4 +1,5 @@
 #include "DebugLog.hpp"
+#include "game/SaveGame.hpp"
 
 #ifdef HLDS_PROFILE
 
@@ -456,10 +457,11 @@ namespace hlrt::DebugLog::Perf
                          static_cast<unsigned long>(cardWriteSectors / 2u),
                          static_cast<unsigned long>(toMicros(cardWriteTicks)),
                          static_cast<unsigned long>(toMicros(cardWriteLongest)));
-            std::fprintf(log, ", answered %lu, woken for none %lu, think stack %lu, key reads %lu, longest read %lu, "
-                         "keys in worst frame %lu\n",
+            std::fprintf(log, ", answered %lu, woken for none %lu, think stack %lu, save stack %lu, key reads %lu, "
+                         "longest read %lu, keys in worst frame %lu\n",
                          static_cast<unsigned long>(think.answered), static_cast<unsigned long>(think.idleWakes),
                          static_cast<unsigned long>(think.stackPeak()),
+                         static_cast<unsigned long>(SaveGame::stackPeak()),
                          static_cast<unsigned long>(keyReads), static_cast<unsigned long>(toMicros(keyLongest)),
                          static_cast<unsigned long>(toMicros(keysInWorstFrame)));
             // The window's slowest reads of the card: how long, where (sector

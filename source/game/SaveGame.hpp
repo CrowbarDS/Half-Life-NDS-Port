@@ -19,6 +19,12 @@ namespace hlrt::SaveGame
     /// Another game chosen: its saves are in another folder, listed afresh.
     void forget();
 #endif
+    /// The save thread's stack (a step-at-a-time save is written on a
+    /// thread of its own where the card's work is not the ARM9's): where it
+    /// is broken, if its guard words are (nullptr: whole); how deep it has
+    /// been (profiling builds; else 0).
+    const void *stackOverflowed();
+    std::uint32_t stackPeak();
     /// Read the save in `slot` (a kSlot*), if there is one and it is whole.
     bool read(hldata::SaveData &out, int slot);
     /// Write it. False if the card would not take it: the save that was
@@ -44,6 +50,9 @@ namespace hlrt::SaveGame
     /// (Global::cardOnArm9), the last of the save waits for one.
     hldata::SaveWriter::Result step(bool quiet = true);
     bool busy();
+    /// The save thread is in one of the card's calls: what the frame reads of
+    /// the card now waits for it (the music leaves it alone while it can).
+    bool cardInUse();
     /// What is left of it, at once (false if it failed).
     bool finish();
     /// Why the last write failed, in a few words: where it stopped, and the
