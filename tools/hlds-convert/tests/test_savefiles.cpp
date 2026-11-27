@@ -178,6 +178,9 @@ namespace
                   std::string(saveSlotFile(kSlotManual + 5)) == "save6.sav" &&
                   std::string(saveSlotFile(kSlotCount - 1)) == "save99.sav" && saveSlotFile(kSlotCount)[0] == 0,
               "the player's saves are save1.sav to save99.sav (the six of before among them)");
+        check(saveHalfFile(kSlotManual + 98, 1) == "save99.sv2" && saveHalfFile(kSlotArrival, 0) == "arrival.sav" &&
+                  saveHalfFile(kSlotQuick, 1) == "quick.sv2",
+              "each has a second file, .sv2, written in turn with the first");
         check(saveSlotOfFile("save12.sav") == kSlotManual + 11 && saveSlotOfFile("arrival.sav") == kSlotArrival &&
                   saveSlotOfFile("save0.sav") < 0 && saveSlotOfFile("save100.sav") < 0 &&
                   saveSlotOfFile("save01.sav") < 0 && saveSlotOfFile("index.dat") < 0,
@@ -206,7 +209,7 @@ namespace
         // One deleted: gone from the card and the list, and its place is
         // the next one's.
         check(saveSlotDelete(card, index, kSlotManual + 40) && card.files.count("save41.sav") == 0 &&
-                  index.slots[kSlotManual + 40].status == kSaveNone && saveFreeManual(index) == kSlotManual + 40,
+                  card.files.count("save41.sv2") == 0 && index.slots[kSlotManual + 40].status == kSaveNone && saveFreeManual(index) == kSlotManual + 40,
               "a save deleted: its file gone, and the first free place is its");
         check(!saveSlotDelete(card, index, kSlotAuto) && card.files.count("auto.sav") == 0,
               "the game's own saves are not the player's to delete");
@@ -240,7 +243,13 @@ namespace
         card.budget = -1;
         SaveIndex after;
         saveIndexLoad(card, after);
-        check(card.files.count("save41.sav.new") == 0, "a half-written save41 is put right at the next start");
+        SaveData back;
+        check(after.slots[kSlotManual + 40].status == kSaveGood &&
+                  std::string(after.slots[kSlotManual + 40].heading.map) == "early" &&
+                  saveSlotRead(card, kSlotManual + 40, back, nullptr, after.half[kSlotManual + 40]) && back.map == "early",
+              "a save41 cut off half-way leaves the one before it as the slot's");
+        check(saveSlotRead(card, kSlotManual + 40, back) && back.map == "early",
+              "... read as the newest whole one without the list too");
     }
 
     /// A card from before: the old index (the nine slots of 'HLSI'), the
@@ -302,15 +311,14 @@ namespace
                 may[a.slot].push_back(a.map);
         }
         // A start on the card as it is: nothing it holds is lost -- each
-        // slot's save is in the slot, or set aside, or new beside it.
+        // slot's save is whole in one of its two files.
         {
             SaveIndex during;
             saveIndexLoad(card, during);
             for (const auto &[slot, maps] : may)
             {
                 bool found = false;
-                for (const std::string &name : {std::string(saveSlotFile(slot)), std::string(saveSlotFile(slot)) + ".old",
-                                                std::string(saveSlotFile(slot)) + ".new"})
+                for (const std::string &name : {saveHalfFile(slot, 0), saveHalfFile(slot, 1)})
                 {
                     const auto at = card.files.find(name);
                     if (at == card.files.end() || !saveFileWhole(card, name.c_str()))
@@ -334,7 +342,7 @@ namespace
         for (const auto &[slot, maps] : may)
         {
             SaveData back;
-            if (after.slots[slot].status != kSaveGood || !saveSlotRead(card, slot, back))
+            if (after.slots[slot].status != kSaveGood || !saveSlotRead(card, slot, back, nullptr, after.half[slot]))
             {
                 why = std::string("no save in ") + saveSlotFile(slot);
                 return false;
@@ -444,6 +452,113 @@ namespace
             check(saveSlotRead(card, kSlotManual, back) && back.map == "m0", "... it is as it was");
         }
     }
+
+    /// A card that counts what is renamed and removed, and can lose the
+    /// index's writes (switched off after a save's file, before its index).
+    struct CountingCard : ListingCard
+    {
+        int renames = 0, removes = 0;
+        bool dropIndex = false;
+        bool write(const char *name, const std::uint8_t *bytes, std::size_t size) override
+        {
+            if (dropIndex && std::strcmp(name, kSaveIndexFile) == 0)
+                return false;
+            return ListingCard::write(name, bytes, size);
+        }
+        bool remove(const char *name) override
+        {
+            if (dropIndex && std::strcmp(name, kSaveIndexFile) == 0)
+                return false;
+            ++removes;
+            return ListingCard::remove(name);
+        }
+        bool rename(const char *from, const char *to) override
+        {
+            ++renames;
+            return ListingCard::rename(from, to);
+        }
+    };
+
+    /// A slot's saves written in turn into its two files, over what was
+    /// there: nothing renamed or removed (each a slow write on some cards);
+    /// cut off before the index says so, the newer found by its number; what
+    /// a version before left half-way (.new, .old) put right.
+    void testInTurn()
+    {
+        CountingCard card;
+        SaveIndex index;
+        saveIndexLoad(card, index);
+        const char *maps[] = {"t0", "t1", "t2", "t3"};
+        bool turns = true;
+        for (int n = 0; n < 4; ++n)
+        {
+            turns = turns && saveSlotWrite(card, index, kSlotAuto, game(maps[n], 50), heading(maps[n], "C", 10 + n)) &&
+                    index.half[kSlotAuto] == n % 2;
+        }
+        check(turns && card.files.count("auto.sav") && card.files.count("auto.sv2"),
+              "a slot's saves go into its two files in turn");
+        check(card.renames == 0 && card.removes == 0, "... nothing renamed or removed");
+        SaveData back;
+        check(saveSlotRead(card, kSlotAuto, back, nullptr, index.half[kSlotAuto]) && back.map == "t3",
+              "... the last read back");
+
+        card.dropIndex = true;
+        saveSlotWrite(card, index, kSlotAuto, game("t4", 50), heading("t4", "C", 20));
+        card.dropIndex = false;
+        SaveIndex after;
+        saveIndexLoad(card, after);
+        check(after.slots[kSlotAuto].status == kSaveGood && std::string(after.slots[kSlotAuto].heading.map) == "t4" &&
+                  saveSlotRead(card, kSlotAuto, back, nullptr, after.half[kSlotAuto]) && back.map == "t4" &&
+                  after.nextSerial > after.slots[kSlotAuto].heading.serial,
+              "switched off before the index is written: the newer save is found at the next start");
+        check(saveSlotWrite(card, after, kSlotAuto, game("t5", 50), heading("t5", "C", 30)) &&
+                  saveSlotRead(card, kSlotAuto, back, nullptr, after.half[kSlotAuto]) && back.map == "t5",
+              "... and the next goes into the other file");
+
+        // A failed write leaves the slot's save as it was, and its list.
+        {
+            RefusingCard refusing;
+            SaveIndex list;
+            saveIndexLoad(refusing, list);
+            saveSlotWrite(refusing, list, kSlotQuick, game("q0", 50), heading("q0", "C", 10));
+            refusing.kinds = RefusingCard::kWrite;
+            refusing.only = "quick";
+            check(!saveSlotWrite(refusing, list, kSlotQuick, game("q1", 50), heading("q1", "C", 20)), "a write refused");
+            refusing.works();
+            SaveIndex later;
+            saveIndexLoad(refusing, later);
+            check(saveSlotRead(refusing, kSlotQuick, back, nullptr, later.half[kSlotQuick]) && back.map == "q0" &&
+                      std::string(later.slots[kSlotQuick].heading.map) == "q0",
+                  "... the save there was is the slot's still");
+        }
+
+        // A card a version before left half-way: a whole new quick save
+        // beside the old (.new), and one of the player's set aside with
+        // nothing in its place yet (.old). The index is that version's.
+        {
+            ListingCard old;
+            SaveIndex was;
+            saveIndexLoad(old, was);
+            saveSlotWrite(old, was, kSlotQuick, game("q0", 50), heading("q0", "C", 10));
+            saveSlotWrite(old, was, kSlotManual, game("m0", 50), heading("m0", "C", 10));
+            const std::vector<std::uint8_t> oldIndex = old.files[kSaveIndexFile];
+            saveSlotWrite(old, was, kSlotQuick, game("q1", 50), heading("q1", "C", 20));
+            old.files["quick.sav.new"] = old.files["quick.sv2"];
+            old.files.erase("quick.sv2");
+            old.files["save1.sav.old"] = old.files["save1.sav"];
+            old.files.erase("save1.sav");
+            old.files[kSaveIndexFile] = oldIndex;
+            SaveIndex now;
+            saveIndexLoad(old, now);
+            bool left = false;
+            for (const auto &file : old.files)
+                left = left || file.first.find(".new") != std::string::npos || file.first.find(".old") != std::string::npos;
+            check(!left && std::string(now.slots[kSlotQuick].heading.map) == "q1" &&
+                      saveSlotRead(old, kSlotQuick, back, nullptr, now.half[kSlotQuick]) && back.map == "q1" &&
+                      saveSlotRead(old, kSlotManual, back, nullptr, now.half[kSlotManual]) && back.map == "m0",
+                  "what a version before left half-way is put right: the newest of each slot kept");
+        }
+    }
 } // namespace
 
 namespace
@@ -534,6 +649,7 @@ int main()
     testMany();
     testOldCard();
     testRefusingCard();
+    testInTurn();
     // An empty card: an empty list, nothing most recent.
     {
         MemoryCard card;
@@ -664,7 +780,8 @@ int main()
             SaveIndex after;
             saveIndexLoad(torn, after);
             SaveData back;
-            const bool whole = after.slots[kSlotQuick].status == kSaveGood && saveSlotRead(torn, kSlotQuick, back) &&
+            const bool whole = after.slots[kSlotQuick].status == kSaveGood &&
+                               saveSlotRead(torn, kSlotQuick, back, nullptr, after.half[kSlotQuick]) &&
                                (back.map == "c1a1a" || back.map == "c1a3") &&
                                std::string(after.slots[kSlotQuick].heading.map) == back.map;
             always = always && whole && torn.files.count("quick.sav.new") == 0;

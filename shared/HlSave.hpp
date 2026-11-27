@@ -163,6 +163,8 @@ namespace hldata
         std::uint32_t visitedAt = 0;
         bool visitedByRef = false;
         std::uint32_t visitedRunId = 0, visitedGeneration = 0;
+        /// Which of its slot's two files it was read from (saveSlotRead).
+        std::uint8_t half = 0;
 
         template <class Ar>
         void serialize(Ar &ar)

@@ -141,7 +141,8 @@ namespace hlrt::SaveGame::work
         if (list.slots[hldata::kSlotAuto].status != hldata::kSaveGood)
             return;
         held = hldata::SaveData();
-        if (hldata::saveSlotRead(card, hldata::kSlotAuto, held) && held.visitedByRef)
+        if (hldata::saveSlotRead(card, hldata::kSlotAuto, held, nullptr, list.half[hldata::kSlotAuto]) &&
+            held.visitedByRef)
             hldata::saveSlotForget(card, list, hldata::kSlotAuto);
         held = hldata::SaveData();
     }
@@ -164,7 +165,12 @@ namespace hlrt::SaveGame::work
             return false;
         need();
         finish();
-        return hldata::saveSlotRead(card, slot, out);
+        // (The file the list has as the slot's: the other may hold a save
+        // that failed half-way, with a higher number.)
+        const int half = slot >= 0 && slot < hldata::kSlotCount && list.slots[slot].status != hldata::kSaveNone
+                             ? list.half[slot]
+                             : -1;
+        return hldata::saveSlotRead(card, slot, out, nullptr, half);
     }
 
     bool write(const hldata::SaveData &save, int slot, const hldata::SaveHeading &heading)

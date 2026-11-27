@@ -350,7 +350,8 @@ namespace hldata
         RunIndex fresh;
         fresh.runId = runId;
         std::size_t at = save.visitedAt;
-        const char *from = saveSlotFile(slot);
+        const std::string fromName = saveHalfFile(slot, save.half);
+        const char *from = fromName.c_str();
         for (const RunEntry &entry : save.visited)
         {
             const std::size_t here = at;

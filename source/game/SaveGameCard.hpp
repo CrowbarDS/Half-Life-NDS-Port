@@ -38,6 +38,8 @@ namespace hlrt::SaveGame::detail
             std::FILE *file = nullptr;
             std::string name;
             bool failed = false;
+            /// (Being written:) how long it was before (overwrite).
+            long was = 0;
         };
         Open writing_, reading_;
         static bool shut(Open &open);
@@ -55,6 +57,12 @@ namespace hlrt::SaveGame::detail
         std::size_t buffered_ = 0, bufferBytes_ = 0;
         bool flushWriting();
         bool shutWriting();
+        /// A file written over where it is, not made anew: the card's table
+        /// of where a file's pieces are is left as it is unless the file grows
+        /// or shrinks -- every change to it a write more, as slow as any. Cut
+        /// to its new length when let go of (shutWriting).
+        std::FILE *overwrite(const char *name, long &was);
+        bool cut(std::FILE *file, long was);
         bool close();
         /// The folder `name` is to be in, made if it is not there (it usually
         /// is): the saves', or a folder in it (run/).

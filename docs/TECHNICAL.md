@@ -338,8 +338,12 @@ Milestone 11, "levels of detail".
   them -- each only if its first map is on the card -- then how hard), OPTIONS.
   A write is said on the screen (SAVED, AUTOSAVED, or that the card would
   not take it) and is safe against the console being switched off in the
-  middle of it: the new file takes the old one's place only when it is
-  whole, and what is found half-way at the next start is put right.
+  middle of it: each slot has two files (`auto.sav`, `auto.sv2`) written in
+  turn, a save going over the older one, so the newer stays whole until the
+  index says the new one is; switched off before that, the next start finds
+  the newer whole file by its number. Nothing is renamed or removed when a
+  save is done: on some cards each change to a folder costs as much as
+  writing the save (some 200 ms on a DSpico).
   How it is made (`shared/HlSaveFiles.hpp`, `shared/HlSaveState.hpp`):
   the state is written with yas a field at a time, never as memory lies;
   no list of fields is kept by hand -- each structure is taken apart

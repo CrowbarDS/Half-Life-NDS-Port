@@ -251,10 +251,38 @@ namespace hlrt::SaveGame
         bool FatCard::shutWriting()
         {
             const bool flushed = flushWriting();
+            const bool cutOk = writing_.file == nullptr || writing_.failed || cut(writing_.file, writing_.was);
             std::free(buffer_);
             buffer_ = nullptr;
             bufferBytes_ = 0;
-            return shut(writing_) && flushed;
+            return shut(writing_) && flushed && cutOk;
+        }
+
+        std::FILE *FatCard::overwrite(const char *name, long &was)
+        {
+            was = 0;
+            std::FILE *file = std::fopen(path(name).c_str(), "r+b");
+            if (file != nullptr)
+            {
+                std::fseek(file, 0, SEEK_END);
+                was = std::ftell(file);
+                std::fseek(file, 0, SEEK_SET);
+                return was >= 0 ? file : (std::fclose(file), nullptr);
+            }
+            makeFolder(name);
+            return std::fopen(path(name).c_str(), "wb");
+        }
+
+        bool FatCard::cut(std::FILE *file, long was)
+        {
+            // (Only if it is shorter than it was: as long or longer, its end
+            // is where the writing stopped.)
+            const long now = std::ftell(file);
+            if (now < 0)
+                return no("tell");
+            if (now >= was)
+                return true;
+            return (std::fflush(file) == 0 && ftruncate(fileno(file), now) == 0) || no("cut");
         }
 
         bool FatCard::close()
@@ -282,8 +310,7 @@ namespace hlrt::SaveGame
                 shutWriting();
                 if (reading_.name == name)
                     shut(reading_);
-                makeFolder(name);
-                writing_.file = std::fopen(path(name).c_str(), "wb");
+                writing_.file = overwrite(name, writing_.was);
                 if (writing_.file == nullptr)
                     return no("open");
                 writing_.name = name;
@@ -374,11 +401,11 @@ namespace hlrt::SaveGame
         bool FatCard::write(const char *name, const std::uint8_t *bytes, std::size_t size)
         {
             close();
-            makeFolder(name);
-            std::FILE *file = std::fopen(path(name).c_str(), "wb");
+            long was = 0;
+            std::FILE *file = overwrite(name, was);
             if (file == nullptr)
                 return no("open");
-            const bool wrote = std::fwrite(bytes, 1, size, file) == size || no("write");
+            const bool wrote = (std::fwrite(bytes, 1, size, file) == size || no("write")) && cut(file, was);
             return (std::fclose(file) == 0 || no("close")) && wrote;
         }
 
