@@ -90,6 +90,9 @@ namespace hlrt::DebugLog
         /// line: the first slow pass after a run of quick ones given no
         /// more than the pace. Before endFrame.
         void notePace(int incoming, bool slow);
+        /// The last pass: its frame's length, and its three longest sections
+        /// (ms), into `out` -- for the save line (main.cpp's stepSave).
+        void worstSections(char *out, std::size_t size);
         /// Samples the mouth's meter decoded this frame (inside Speech): what
         /// the speech costs a sample, in perf.txt.
         void noteSpeechSamples(std::uint32_t samples);

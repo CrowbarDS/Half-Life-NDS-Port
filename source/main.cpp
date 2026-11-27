@@ -1547,16 +1547,18 @@ namespace
     /// passes it took, the longest gap between two, how many took 4 blanks
     /// or more -- said in perf.txt when it is done.)
     std::uint32_t saveLastPass = 0, saveLongest = 0, savePasses = 0, saveSlowPasses = 0;
+    char saveWorst[96] = "";
     void noteSaveEnd(const char *how)
     {
         if (!perfLogging())
             return;
         if (std::FILE *out = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
         {
-            std::fprintf(out, "save: %s %s, %lu passes over %lu blanks, longest %lu blanks, %lu of 4 or more, %s\n",
+            std::fprintf(out,
+                         "save: %s %s, %lu passes over %lu blanks, longest %lu blanks (%s), %lu of 4 or more, %s\n",
                          currentMap.c_str(), how, static_cast<unsigned long>(savePasses),
                          static_cast<unsigned long>(Global::vblanks() - saveBegan),
-                         static_cast<unsigned long>(saveLongest), static_cast<unsigned long>(saveSlowPasses),
+                         static_cast<unsigned long>(saveLongest), saveWorst, static_cast<unsigned long>(saveSlowPasses),
                          global.isDSi && !global.cardOnArm9() ? "on its thread" : "in the frame");
             std::fclose(out);
         }
@@ -1583,13 +1585,18 @@ namespace
 #ifdef HLDS_PROFILE
             saveLastPass = now;
             saveLongest = savePasses = saveSlowPasses = 0;
+            saveWorst[0] = 0;
 #endif
         }
         wasSaving = true;
 #ifdef HLDS_PROFILE
         {
             const std::uint32_t gap = now - saveLastPass;
-            saveLongest = gap > saveLongest ? gap : saveLongest;
+            if (gap > saveLongest)
+            {
+                saveLongest = gap;
+                hlrt::DebugLog::Perf::worstSections(saveWorst, sizeof(saveWorst));
+            }
             saveSlowPasses += gap >= 4 ? 1 : 0;
             ++savePasses;
             saveLastPass = now;

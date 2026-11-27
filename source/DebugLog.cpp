@@ -714,6 +714,32 @@ namespace hlrt::DebugLog::Perf
         return (latched[static_cast<int>(section)] * 2u) / 67u;
     }
 
+    void worstSections(char *out, std::size_t size)
+    {
+        // (The last pass's three longest, but the frame, which holds them.)
+        int top[3] = {-1, -1, -1};
+        for (int i = 0; i < kCount; ++i)
+        {
+            if (i == static_cast<int>(Section::Frame))
+                continue;
+            for (int k = 0; k < 3; ++k)
+            {
+                if (top[k] < 0 || latched[i] > latched[top[k]])
+                {
+                    for (int m = 2; m > k; --m)
+                        top[m] = top[m - 1];
+                    top[k] = i;
+                    break;
+                }
+            }
+        }
+        std::snprintf(out, size, "frame %lu ms: %s %lu, %s %lu, %s %lu",
+                      static_cast<unsigned long>(micros(Section::Frame) / 1000), kNames[top[0]],
+                      static_cast<unsigned long>(latched[top[0]] * 2u / 67u / 1000), kNames[top[1]],
+                      static_cast<unsigned long>(latched[top[1]] * 2u / 67u / 1000), kNames[top[2]],
+                      static_cast<unsigned long>(latched[top[2]] * 2u / 67u / 1000));
+    }
+
     void noteKeyRead(std::uint32_t ticks)
     {
         running[static_cast<int>(Section::Keys)] += ticks;
