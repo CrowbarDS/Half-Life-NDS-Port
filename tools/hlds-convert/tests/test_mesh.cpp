@@ -471,6 +471,7 @@ namespace
         GxShapeAudit shapes;
         double lostArea = 0;
         int vertices = 0;
+        int sheetPieces = 0;
         bool ok = false;
     };
 
@@ -485,6 +486,7 @@ namespace
         if (!cookLevel(bsp, options, {}, level, report, error))
             return g;
         g.lostArea = report.lostArea;
+        g.sheetPieces = report.sheetPieces;
         for (const hldata::Model &model : level.models)
         {
             ModelGeometry m;
@@ -688,6 +690,197 @@ namespace
                     badPlanes, wrong);
     }
 
+    /// Outline edges of `on`'s surfaces that pass a vertex of `others`
+    /// without stopping at it: within `slack` quarter units of the line, and
+    /// well inside the edge. Those within `radius` quarter units of `spot`
+    /// (x, y) are printed. (A crack between two models: what weldTJunctions,
+    /// model by model, never sees.)
+    int crossCracks(const ModelGeometry &on, const std::vector<const ModelGeometry *> &others, int slack,
+                    const int *spot, int radius, const char *what, double endGap = 2.0)
+    {
+        std::vector<GxVertex> theirs;
+        for (const ModelGeometry *other : others)
+            for (const auto &piece : other->pieces)
+                for (const GxVertex &v : piece)
+                    theirs.push_back(v);
+        int cracks = 0, shown = 0;
+        for (const auto &pieces : on.bySurface)
+        {
+            std::map<std::array<int, 6>, int> uses;
+            for (const auto &piece : pieces)
+                for (std::size_t i = 0; i < piece.size(); ++i)
+                {
+                    const GxVertex &a = piece[i], &c = piece[(i + 1) % piece.size()];
+                    std::array<int, 6> id = {a.x, a.y, a.z, c.x, c.y, c.z};
+                    if (Key{c.x, c.y, c.z} < Key{a.x, a.y, a.z})
+                        id = {c.x, c.y, c.z, a.x, a.y, a.z};
+                    ++uses[id];
+                }
+            for (const auto &use : uses)
+            {
+                if (use.second != 1)
+                    continue;
+                const double a[3] = {double(use.first[0]), double(use.first[1]), double(use.first[2])};
+                const double c[3] = {double(use.first[3]), double(use.first[4]), double(use.first[5])};
+                const double d[3] = {c[0] - a[0], c[1] - a[1], c[2] - a[2]};
+                const double length2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+                if (length2 <= 0)
+                    continue;
+                for (const GxVertex &v : theirs)
+                {
+                    const double p[3] = {v.x - a[0], v.y - a[1], v.z - a[2]};
+                    const double t = (p[0] * d[0] + p[1] * d[1] + p[2] * d[2]) / length2;
+                    const double ends = endGap / std::sqrt(length2);
+                    if (t <= ends || t >= 1 - ends)
+                        continue;
+                    const double off[3] = {p[0] - t * d[0], p[1] - t * d[1], p[2] - t * d[2]};
+                    if (off[0] * off[0] + off[1] * off[1] + off[2] * off[2] > double(slack) * slack)
+                        continue;
+                    ++cracks;
+                    const bool near = spot != nullptr && std::abs(v.x - spot[0]) < radius &&
+                                      std::abs(v.y - spot[1]) < radius;
+                    if (near && shown++ < 12)
+                        std::printf("    %s: edge (%.2f %.2f %.2f)-(%.2f %.2f %.2f) passes (%.2f %.2f %.2f)\n", what,
+                                    a[0] / 4, a[1] / 4, a[2] / 4, c[0] / 4, c[1] / 4, c[2] / 4, v.x / 4.0, v.y / 4.0,
+                                    v.z / 4.0);
+                    break;
+                }
+            }
+        }
+        return cracks;
+    }
+
+    /// ba_canal1's see-through sheet over its floor (model 31, a
+    /// func_friction two units over the floor, near 872 -1134): its own
+    /// cracks, and those between it and the world. Measured, not judged:
+    /// what decides how it is fixed.
+    void testSheetOverFloor(const char *valve)
+    {
+        const std::string path = std::string(valve) + "/../bshift/maps/ba_canal1.bsp";
+        BspFile bsp;
+        std::string error;
+        if (!bsp.load(path, error))
+        {
+            std::printf("test_mesh: no %s, the sheet's cracks not measured\n", path.c_str());
+            return;
+        }
+        const MapGeometry g = cookAndDecode(bsp, true);
+        check(g.ok && g.models.size() > 31, "ba_canal1 cooks");
+        if (!g.ok || g.models.size() <= 31)
+            return;
+        const ModelGeometry &world = g.models[0], &sheet = g.models[31];
+        const int spot[2] = {872 * 4, -1134 * 4};
+        std::printf("  ba_canal1 sheet: %zu pieces, world %zu pieces\n", sheet.pieces.size(), world.pieces.size());
+        const int own = countCracks(sheet.bySurface);
+
+        const int worldOwn = countCracks(world.bySurface);
+        const int sheetByWorld = crossCracks(sheet, {&world}, 2, spot, 2000, "sheet edge, world vertex");
+        const int worldBySheet = crossCracks(world, {&sheet}, 2, spot, 2000, "world edge, sheet vertex");
+        std::printf("  ba_canal1: sheet's own cracks %d; world's own %d; sheet edges through world vertices %d; "
+                    "world edges through sheet vertices %d\n",
+                    own, worldOwn, sheetByWorld, worldBySheet);
+        // Its top, cut along the floor under it: each polygon of it over
+        // one polygon of the floor, its corners inside that one's outline
+        // (seen from above, to within a quarter unit) -- or over no floor
+        // within reach (the grate's pit).
+        auto inside = [](const std::vector<GxVertex> &floor, const GxVertex &p, double slack = 1.0) {
+            double sign = 0;
+            for (std::size_t i = 0; i < floor.size(); ++i)
+            {
+                const GxVertex &a = floor[i], &b = floor[(i + 1) % floor.size()];
+                const double cross = double(b.x - a.x) * (p.y - a.y) - double(b.y - a.y) * (p.x - a.x);
+                const double length = std::hypot(double(b.x - a.x), double(b.y - a.y));
+                if (length == 0 || std::fabs(cross) / length <= slack)
+                    continue;
+                if (sign == 0)
+                    sign = cross;
+                else if ((cross > 0) != (sign > 0))
+                    return false;
+            }
+            return true;
+        };
+        int tops = 0, overOne = 0, overNone = 0;
+        auto area2 = [](const std::vector<GxVertex> &poly) {
+            double sum = 0;
+            for (std::size_t i = 0; i < poly.size(); ++i)
+            {
+                const GxVertex &a = poly[i], &b = poly[(i + 1) % poly.size()];
+                sum += double(a.x) * b.y - double(b.x) * a.y;
+            }
+            return std::fabs(sum);
+        };
+        for (const auto &piece : sheet.pieces)
+        {
+            if (piece.size() < 3 || piece[0].z != -190 * 4 || piece[1].z != -190 * 4 || piece[2].z != -190 * 4 ||
+                area2(piece) < 16)
+                continue;
+            ++tops;
+            GxVertex middle;
+            double mx = 0, my = 0;
+            for (const GxVertex &v : piece)
+            {
+                mx += v.x;
+                my += v.y;
+            }
+            middle.x = static_cast<std::int16_t>(std::lround(mx / piece.size()));
+            middle.y = static_cast<std::int16_t>(std::lround(my / piece.size()));
+            const std::vector<GxVertex> *under = nullptr;
+            for (const auto &floor : world.pieces)
+            {
+                if (floor.size() < 3 || floor[0].z != -192 * 4 || floor[1].z != -192 * 4 || floor[2].z != -192 * 4 ||
+                    area2(floor) < 16)
+                    continue;
+                if (inside(floor, middle, 0.0))
+                {
+                    under = &floor;
+                    break;
+                }
+            }
+            if (under == nullptr)
+            {
+                ++overNone;
+                continue;
+            }
+            bool all = true;
+            // (To within the grid: a corner where the sheet's own outline
+            // crosses the floor's edge is put on the nearest quarter unit.)
+            for (const GxVertex &v : piece)
+                all = all && inside(*under, v, 3.0);
+            overOne += all;
+            static int told = 0;
+            if (!all && told++ < 4)
+            {
+                std::printf("    sheet polygon past its floor's:");
+                for (const GxVertex &v : piece)
+                    std::printf(" (%.2f %.2f)", v.x / 4.0, v.y / 4.0);
+                std::printf("\n      floor:");
+                for (const GxVertex &v : *under)
+                    std::printf(" (%.2f %.2f)", v.x / 4.0, v.y / 4.0);
+                std::printf("\n");
+            }
+        }
+        crossCracks(sheet, {&sheet}, 0, spot, 4000, "sheet's own", 0.01);
+        std::printf("  ba_canal1 sheet: %d pieces cut over the floor; of its %d top polygons %d lie over one floor "
+                    "polygon, %d over none\n",
+                    g.sheetPieces, tops, overOne, overNone);
+        check(g.sheetPieces > 0 && tops > 0 && overOne + overNone == tops,
+              "ba_canal1's sheet: each polygon of its top lies over one polygon of the floor");
+        // Every drawn brush entity against the world, for scale.
+        int brushesByWorld = 0, worldByBrushes = 0;
+        std::vector<const ModelGeometry *> brushes;
+        for (std::size_t m = 1; m < g.models.size(); ++m)
+        {
+            if (g.models[m].pieces.empty())
+                continue;
+            brushes.push_back(&g.models[m]);
+            brushesByWorld += crossCracks(g.models[m], {&world}, 2, nullptr, 0, "");
+        }
+        worldByBrushes = crossCracks(world, brushes, 2, spot, 1200, "world edge, brush vertex");
+        std::printf("  ba_canal1: %zu drawn brushes; their edges through world vertices %d; world edges through "
+                    "theirs %d\n",
+                    brushes.size(), brushesByWorld, worldByBrushes);
+    }
+
     void testMaps()
     {
         BspFile box;
@@ -711,6 +904,7 @@ namespace
             }
             auditMap(bsp, map);
         }
+        testSheetOverFloor(dir);
     }
 } // namespace
 

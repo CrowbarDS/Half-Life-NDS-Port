@@ -98,6 +98,7 @@ namespace hlds
         double dsiErrorBefore = 0, dsiErrorAfter = 0;   ///< their faces' light error, of 255, before and after
         int removedVertices = 0; ///< mid-edge vertices dropped
         int weldedVertices = 0;  ///< vertices given to sides that ran past them
+        int sheetPieces = 0;     ///< pieces of see-through sheets cut over the floor polygons under them
         double sourceArea = 0;   ///< of every drawn face, square units, on the grid
         double lostArea = 0;     ///< of that, what no surface covers: should be nothing
         int droppedFaces = 0;  ///< tool and sky faces, and faces of undrawn brushes

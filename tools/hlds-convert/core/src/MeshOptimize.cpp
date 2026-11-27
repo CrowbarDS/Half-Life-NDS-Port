@@ -1061,4 +1061,222 @@ namespace hlds
         out.words = packer.finish();
         return out;
     }
+
+    namespace
+    {
+        double dot3(const double *a, const double *b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+
+        /// A point a fraction `t` of the way from `a` to `b`: its place, its
+        /// texture coordinates and its colour, channel by channel.
+        FacePoint between(const FacePoint &a, const FacePoint &b, double t)
+        {
+            FacePoint p;
+            for (int i = 0; i < 3; ++i)
+                p.pos[i] = a.pos[i] + (b.pos[i] - a.pos[i]) * t;
+            p.s = a.s + (b.s - a.s) * t;
+            p.t = a.t + (b.t - a.t) * t;
+            std::uint16_t colour = 0;
+            for (int shift = 0; shift <= 10; shift += 5)
+            {
+                const int ca = (a.colour >> shift) & 31, cb = (b.colour >> shift) & 31;
+                colour = static_cast<std::uint16_t>(colour | (static_cast<int>(std::lround(ca + (cb - ca) * t)) << shift));
+            }
+            p.colour = colour;
+            return p;
+        }
+
+        /// `poly` split by the plane through `at` square to `across` (in the
+        /// face's own plane): what is on the side `across` points to, and
+        /// what is not. A point within a 64th of a unit of the line is on it.
+        void splitBy(const std::vector<FacePoint> &poly, const double *at, const double *across,
+                     std::vector<FacePoint> &in, std::vector<FacePoint> &out)
+        {
+            constexpr double kOn = 1.0 / 64;
+            in.clear();
+            out.clear();
+            const std::size_t n = poly.size();
+            std::vector<double> side(n);
+            for (std::size_t i = 0; i < n; ++i)
+            {
+                const double d[3] = {poly[i].pos[0] - at[0], poly[i].pos[1] - at[1], poly[i].pos[2] - at[2]};
+                side[i] = dot3(d, across);
+            }
+            for (std::size_t i = 0; i < n; ++i)
+            {
+                const std::size_t j = (i + 1) % n;
+                const double si = side[i], sj = side[j];
+                if (si >= -kOn)
+                    in.push_back(poly[i]);
+                if (si <= kOn)
+                    out.push_back(poly[i]);
+                if ((si > kOn && sj < -kOn) || (si < -kOn && sj > kOn))
+                {
+                    const FacePoint cut = between(poly[i], poly[j], si / (si - sj));
+                    in.push_back(cut);
+                    out.push_back(cut);
+                }
+            }
+        }
+
+        /// Area of a polygon lying in the plane facing `normal`.
+        double areaOf(const std::vector<FacePoint> &poly, const double *normal)
+        {
+            double sum[3] = {0, 0, 0};
+            for (std::size_t i = 0; i < poly.size(); ++i)
+            {
+                const double *a = poly[i].pos, *b = poly[(i + 1) % poly.size()].pos;
+                sum[0] += a[1] * b[2] - a[2] * b[1];
+                sum[1] += a[2] * b[0] - a[0] * b[2];
+                sum[2] += a[0] * b[1] - a[1] * b[0];
+            }
+            return std::fabs(dot3(sum, normal)) / 2;
+        }
+
+        /// The same polygon without a corner that is the one before it.
+        void dropRepeats(std::vector<FacePoint> &poly)
+        {
+            std::vector<FacePoint> kept;
+            for (const FacePoint &p : poly)
+            {
+                if (!kept.empty() && keyOf(kept.back()) == keyOf(p))
+                    continue;
+                kept.push_back(p);
+            }
+            while (kept.size() > 1 && keyOf(kept.front()) == keyOf(kept.back()))
+                kept.pop_back();
+            poly.swap(kept);
+        }
+    } // namespace
+
+    std::vector<std::pair<MeshFace, int>> cutOverFloors(const MeshFace &face, const std::vector<MeshFace> &floors,
+                                                        double reach)
+    {
+        std::vector<std::pair<MeshFace, int>> pieces;
+        if (face.points.size() < 3)
+        {
+            pieces.emplace_back(face, -1);
+            return pieces;
+        }
+        const double *n = face.normal;
+        const double height = dot3(face.points[0].pos, n);
+        double lo[3], hi[3];
+        for (int a = 0; a < 3; ++a)
+        {
+            lo[a] = hi[a] = face.points[0].pos[a];
+            for (const FacePoint &p : face.points)
+            {
+                lo[a] = std::min(lo[a], p.pos[a]);
+                hi[a] = std::max(hi[a], p.pos[a]);
+            }
+        }
+        // (A floor polygon the piece is over by less than a square unit
+        // does not cut it: what that would leave are slivers the grid bends
+        // out of line. What a cut leaves is never thrown away: a hole.)
+        constexpr double kOver = 1.0;           // square units
+        constexpr double kNothing = 1.0 / 256;  // square units
+        std::vector<std::vector<FacePoint>> left = {face.points};
+        std::vector<std::pair<std::vector<FacePoint>, int>> over;
+        for (std::size_t f = 0; f < floors.size(); ++f)
+        {
+            const MeshFace &floor = floors[f];
+            if (floor.points.size() < 3 || dot3(floor.normal, n) < 0.999)
+                continue;
+            const double below = height - dot3(floor.points[0].pos, n);
+            if (below <= 1.0 / 64 || below > reach)
+                continue;
+            // (Brought up onto the sheet's plane; and near it at all.)
+            std::vector<std::array<double, 3>> outline;
+            bool apart = true;
+            double flo[3] = {1e30, 1e30, 1e30}, fhi[3] = {-1e30, -1e30, -1e30};
+            for (const FacePoint &p : floor.points)
+            {
+                const double off = height - dot3(p.pos, n);
+                std::array<double, 3> q = {p.pos[0] + n[0] * off, p.pos[1] + n[1] * off, p.pos[2] + n[2] * off};
+                for (int a = 0; a < 3; ++a)
+                {
+                    flo[a] = std::min(flo[a], q[a]);
+                    fhi[a] = std::max(fhi[a], q[a]);
+                }
+                outline.push_back(q);
+            }
+            apart = false;
+            for (int a = 0; a < 3; ++a)
+                apart = apart || fhi[a] < lo[a] - 0.5 || flo[a] > hi[a] + 0.5;
+            if (apart)
+                continue;
+            double middle[3] = {0, 0, 0};
+            for (const auto &q : outline)
+                for (int a = 0; a < 3; ++a)
+                    middle[a] += q[a] / outline.size();
+            // Its sides as half-planes, each with the way in.
+            std::vector<std::array<double, 6>> sides;
+            for (std::size_t i = 0; i < outline.size(); ++i)
+            {
+                const auto &a = outline[i], &b = outline[(i + 1) % outline.size()];
+                const double e[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+                double in[3] = {n[1] * e[2] - n[2] * e[1], n[2] * e[0] - n[0] * e[2], n[0] * e[1] - n[1] * e[0]};
+                const double length = std::sqrt(dot3(in, in));
+                if (length < 1e-9)
+                    continue;
+                const double toMiddle[3] = {middle[0] - a[0], middle[1] - a[1], middle[2] - a[2]};
+                const double way = dot3(in, toMiddle) < 0 ? -1.0 / length : 1.0 / length;
+                sides.push_back({a[0], a[1], a[2], in[0] * way, in[1] * way, in[2] * way});
+            }
+            std::vector<std::vector<FacePoint>> still;
+            std::vector<FacePoint> in, out;
+            for (const std::vector<FacePoint> &piece : left)
+            {
+                // Over this floor at all? (Else left whole: not cut along
+                // lines that only run past it.)
+                std::vector<FacePoint> inside = piece;
+                for (const auto &side : sides)
+                {
+                    splitBy(inside, side.data(), side.data() + 3, in, out);
+                    inside = in;
+                    if (inside.size() < 3)
+                        break;
+                }
+                if (inside.size() < 3 || areaOf(inside, n) < kOver)
+                {
+                    still.push_back(piece);
+                    continue;
+                }
+                inside = piece;
+                for (const auto &side : sides)
+                {
+                    splitBy(inside, side.data(), side.data() + 3, in, out);
+                    dropRepeats(out);
+                    if (out.size() >= 3 && areaOf(out, n) > kNothing)
+                        still.push_back(out);
+                    inside = in;
+                }
+                dropRepeats(inside);
+                over.emplace_back(inside, static_cast<int>(f));
+            }
+            left.swap(still);
+        }
+        if (over.empty())
+        {
+            pieces.emplace_back(face, -1);
+            return pieces;
+        }
+        auto make = [&](std::vector<FacePoint> &&points, int floor) {
+            MeshFace piece;
+            piece.points = std::move(points);
+            piece.key = face.key;
+            for (int a = 0; a < 3; ++a)
+                piece.normal[a] = face.normal[a];
+            piece.sources = face.sources;
+            pieces.emplace_back(std::move(piece), floor);
+        };
+        for (auto &piece : over)
+            make(std::move(piece.first), piece.second);
+        for (auto &piece : left)
+        {
+            dropRepeats(piece);
+            if (piece.size() >= 3)
+                make(std::move(piece), -1);
+        }
+        return pieces;
+    }
 } // namespace hlds

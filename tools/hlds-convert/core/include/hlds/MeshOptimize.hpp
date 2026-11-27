@@ -102,6 +102,21 @@ namespace hlds
 
         void optimizeFaces(std::vector<MeshFace> &faces, OptimizeReport &report);
 
+    /// A see-through sheet just over a floor (ba_canal1's puddle, two units
+    /// over it): `face` cut along the outlines of the `floors` under it --
+    /// facing the same way, at most `reach` units below it -- so that each
+    /// piece lies over one floor polygon, its corners over that polygon's.
+    /// The DS works out a polygon's depth across it only roughly, more
+    /// roughly the larger it is: one large sheet over many floor polygons is
+    /// out by more than the two units between them, and the floor shows
+    /// through it in patches along the floor's edges. A piece over its own
+    /// polygon is out by nearly what that polygon is, and stays over it.
+    /// Each piece comes with the index into `floors` it lies over (-1: over
+    /// none, what is left of `face` past them). Nothing over a floor: `face`
+    /// alone, -1.
+    std::vector<std::pair<MeshFace, int>> cutOverFloors(const MeshFace &face, const std::vector<MeshFace> &floors,
+                                                        double reach);
+
     /// Step 3's grouping: lists of indices into `faces`, each one surface.
     std::vector<std::vector<int>> groupFaces(const std::vector<MeshFace> &faces);
 

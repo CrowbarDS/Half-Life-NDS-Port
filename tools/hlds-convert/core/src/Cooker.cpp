@@ -744,6 +744,10 @@ namespace hlds
             }
         }
 
+        // The world's floors as the DS draws them -- each polygon it is sent,
+        // after the strips are made -- for a see-through sheet over them to
+        // be cut along (cutOverFloors). (The world is first.)
+        std::vector<MeshFace> worldFaces;
         for (std::size_t m = 0; m < bsp.models.size(); ++m)
         {
             const BspModel &src = bsp.models[m];
@@ -838,6 +842,44 @@ namespace hlds
                 meshFaces.push_back(std::move(mesh));
             }
 
+            // A see-through sheet that can be walked through -- a puddle, a
+            // spill -- lying just over the floor: cut along the floor's own
+            // polygons under it, each piece kept apart from the others (its
+            // own key: not merged back into one), so that the DS's depth
+            // across each is out as the floor's under it is, and the floor
+            // does not show through it in patches (ba_canal1's, two units
+            // over its floor).
+            const bool sheet = brush != nullptr && !brush->solid && !brush->hasPivot &&
+                               (brush->renderClass == RenderClass::Blend || brush->renderClass == RenderClass::Colour);
+            if (sheet && !worldFaces.empty())
+            {
+                constexpr double kSheetReach = 4; // units over the floor
+                std::vector<MeshFace> cut;
+                std::map<std::pair<int, int>, int> pieceKeys; // (key, floor) -> key
+                for (const MeshFace &face : meshFaces)
+                {
+                    for (auto &piece : cutOverFloors(face, worldFaces, kSheetReach))
+                    {
+                        if (piece.second >= 0)
+                        {
+                            auto found = pieceKeys.find({face.key, piece.second});
+                            if (found == pieceKeys.end())
+                            {
+                                found = pieceKeys.insert({{face.key, piece.second}, static_cast<int>(keyPlane.size())}).first;
+                                keyPlane.push_back(keyPlane[face.key]);
+                                keySide.push_back(keySide[face.key]);
+                                keyTexture.push_back(keyTexture[face.key]);
+                                keyForm.push_back(keyForm[face.key]);
+                            }
+                            piece.first.key = found->second;
+                            ++report.sheetPieces;
+                        }
+                        cut.push_back(std::move(piece.first));
+                    }
+                }
+                meshFaces.swap(cut);
+            }
+
             report.weldedVertices += weldTJunctions(meshFaces);
 
             if (options.guardedMerges)
@@ -904,6 +946,44 @@ namespace hlds
                     members.push_back(&meshFaces[index]);
                 BuiltSurface built = buildGroupSurface(
                     members, sizeOf(bspTexture, form), tex.width, tex.height);
+                if (m == 0 && meshFaces[group[0]].normal[2] > 0.7)
+                {
+                    std::vector<GxRun> runs;
+                    std::string why;
+                    if (decodeGxStream(built.words.data(), built.words.size(), runs, why))
+                    {
+                        auto polygon = [&](std::initializer_list<const GxVertex *> corners) {
+                            MeshFace floor;
+                            for (int a = 0; a < 3; ++a)
+                                floor.normal[a] = meshFaces[group[0]].normal[a];
+                            for (const GxVertex *v : corners)
+                            {
+                                FacePoint p{};
+                                p.pos[0] = v->x / 4.0;
+                                p.pos[1] = v->y / 4.0;
+                                p.pos[2] = v->z / 4.0;
+                                floor.points.push_back(p);
+                            }
+                            worldFaces.push_back(std::move(floor));
+                        };
+                        for (const GxRun &run : runs)
+                        {
+                            const auto &v = run.vertices;
+                            if (run.type == GxPrimitive::Triangles)
+                                for (std::size_t i = 0; i + 2 < v.size(); i += 3)
+                                    polygon({&v[i], &v[i + 1], &v[i + 2]});
+                            else if (run.type == GxPrimitive::Quads)
+                                for (std::size_t i = 0; i + 3 < v.size(); i += 4)
+                                    polygon({&v[i], &v[i + 1], &v[i + 2], &v[i + 3]});
+                            else if (run.type == GxPrimitive::QuadStrip)
+                                for (std::size_t i = 0; i + 3 < v.size(); i += 2)
+                                    polygon({&v[i], &v[i + 1], &v[i + 3], &v[i + 2]});
+                            else
+                                for (std::size_t i = 0; i + 2 < v.size(); ++i)
+                                    polygon({&v[i], &v[i + 1], &v[i + 2]});
+                        }
+                    }
+                }
                 // Light that changes reaches this surface: each of its
                 // vertices gets a colour word of its own, and the level is
                 // told what each changing light adds to it (LightPatch).
