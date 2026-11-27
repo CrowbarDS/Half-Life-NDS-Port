@@ -4323,9 +4323,17 @@ namespace hldata
             else
             {
                 actorRest(actor);
+                // (Onto the world or a brush, as the game drops them: a
+                // brush that moves takes them along -- ba_maint's G-Man, put
+                // on the passing tram, rides it away. A console sent the game
+                // keeps the world alone: what it has no room for.)
                 const fx from[3] = {actor.pos[0], actor.pos[1], actor.pos[2] + fxFromInt(36 + 18)};
                 const fx to[3] = {actor.pos[0], actor.pos[1], actor.pos[2] + fxFromInt(36 - 256)};
+#ifndef HLDS_CHILD
+                const Trace tr = traceAll(*w.world, false, from, to);
+#else
                 const Trace tr = traceHull(w.world->standing, from, to);
+#endif
                 if (tr.startSolid || tr.allSolid)
                 {
                     // (In something: back where the clip began.)
@@ -4335,6 +4343,9 @@ namespace hldata
                 else if (tr.fraction < kFractionOne)
                 {
                     actor.pos[2] = tr.endPos[2] - fxFromInt(36);
+#ifndef HLDS_CHILD
+                    actor.groundMover = -2; // (what is under them, looked for again)
+#endif
                 }
                 else if (played)
                 {

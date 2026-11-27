@@ -1583,6 +1583,63 @@ namespace
         }
         activeGame = was;
     }
+    /// Blue Shift's ba_maint: the G-Man ("patsy") is put on the passing tram
+    /// by a script (moved there at once) as it is made seen and set off,
+    /// and rides it away down its rails.
+    void testBlueShiftGmanTram(const std::string &bshift)
+    {
+        const GameId was = activeGame;
+        activeGame = kGameBlueShift;
+        if (const std::unique_ptr<Game> game = load(bshift.c_str(), "ba_maint"))
+        {
+            Game &g = *game;
+            const int name = nameOf(g, "patsy");
+            int gman = -1;
+            for (int i = 0; i < g.actors.count && gman < 0; ++i)
+                gman = g.actors.states[i].name == name ? i : -1;
+            int tram = -1;
+            for (std::uint32_t i = 0; i < g.view.logicCount && tram < 0; ++i)
+            {
+                const LogicRecord &r = g.view.logic[i];
+                if (r.name == nameOf(g, "passing_tram") && r.kind == static_cast<std::uint8_t>(LogicKind::TrackTrain))
+                    tram = r.brush;
+            }
+            check(gman >= 0 && tram >= 0, "ba_maint's G-Man and the passing tram");
+            if (gman >= 0 && tram >= 0)
+            {
+                for (int n = 0; n < 30; ++n)
+                    g.frame();
+                const ActorState &a = g.actors.states[gman];
+                const BrushState &b = g.brushStates[tram];
+                auto show = [&](const char *when)
+                {
+                    std::printf("test_incident: ba_maint %s: G-Man %.1f %.1f %.1f (flags %x, ground %d, script %d), tram %.1f %.1f %.1f\n",
+                                when, a.pos[0] / 4096.0, a.pos[1] / 4096.0, a.pos[2] / 4096.0, a.flags,
+                                a.groundMover, a.script, b.pos[0] / 4096.0, b.pos[1] / 4096.0, b.pos[2] / 4096.0);
+                };
+                show("before");
+                logicFire(g.logic, g.player, static_cast<std::uint16_t>(nameOf(g, "mgr_tram")), -1, kUseToggle, 0);
+                g.frame();
+                show("fired");
+                const double gx = a.pos[0] / 4096.0, gy = a.pos[1] / 4096.0, gz = a.pos[2] / 4096.0;
+                const double tx = b.pos[0] / 4096.0, ty = b.pos[1] / 4096.0, tz = b.pos[2] / 4096.0;
+                for (int n = 0; n < 30 * 4; ++n)
+                {
+                    g.frame();
+                    if (n % 30 == 29)
+                        show("riding");
+                }
+                const double tramWent = std::hypot(b.pos[0] / 4096.0 - tx, b.pos[1] / 4096.0 - ty);
+                const double gmanWent = std::hypot(a.pos[0] / 4096.0 - gx, a.pos[1] / 4096.0 - gy);
+                check(std::fabs(gx - 300) < 8 && std::fabs(gy + 3212) < 8 && gz > tz,
+                      "ba_maint: the G-Man is put on his mark in the tram, above its floor");
+                check(tramWent > 300 && std::fabs(gmanWent - tramWent) < 16 && std::fabs((a.pos[2] / 4096.0 - gz) -
+                                                                                         (b.pos[2] / 4096.0 - tz)) < 8,
+                      "ba_maint: the G-Man rides the tram away");
+            }
+        }
+        activeGame = was;
+    }
 } // namespace
 
 int main()
@@ -1621,6 +1678,7 @@ int main()
             testBlueShiftElevator(bshift.string());
             testBlueShiftMonitors(bshift.string());
             testBlueShiftCartWorker(bshift.string());
+            testBlueShiftGmanTram(bshift.string());
         }
         else
             std::printf("test_incident: no Blue Shift beside Half-Life, its start was not tried\n");
