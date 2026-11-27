@@ -425,8 +425,8 @@ namespace hlrt
 #endif
             return (id == kGameTraining && !onCard[1]) || (id == kGameUplink && !onCard[2]) ||
                    (id == kContinue && !saveThere) || (id == kQuit && !quitThere) || (id == kEndMatch && (!netGame.isHost() || netGame.match().over)) ||
-                   // (CHAT: not in a demo, and not on a console sent the game.)
-                   (id == kChat && (childConsole || !isDSiMode() || netGame.demo() != 0)) ||
+                   // (CHAT: online only, not in a demo, and not on a console sent the game.)
+                   (id == kChat && (childConsole || !isDSiMode() || !netGame.online() || netGame.demo() != 0)) ||
                    // (SPRAY: here only when TALK has its place on the touch screen.)
                    (id == kSpray && (childConsole || !netGame.talkAllowed())) ||
                    // (MIC: here when the room's microphones are open.)
@@ -2886,8 +2886,8 @@ namespace hlrt
             if (canSend())
                 drawSheetButton(sheetBarBox(1, buttons), uiText(lob::SendGame), sheetPressed_ == kSheetBar - 1, playersHere() > 1);
 #ifndef HLDS_CHILD
-            // CHAT (a DSi's): what is said shows here, in the box above, and in a match.
-            if (isDSiMode())
+            // CHAT (online, a DSi's): what is said shows here, in the box above, and in a match.
+            if (chatShown())
                 drawSheetButton(sheetBarBox(chatButton(), buttons), uiText(host::Chat), sheetPressed_ == kSheetBar - chatButton());
             if (micShown())
                 drawSheetButton(sheetBarBox(buttons - 2, buttons), uiText(voice::muted() ? host::MicOff : host::MicOn),
@@ -2919,7 +2919,7 @@ namespace hlrt
             drawSheetButton(sheetBarBox(0, buttons), uiText(lob::Profile), sheetPressed_ == kSheetBar);
             drawSheetButton(sheetBarBox(1, buttons), uiText(lob::Options), sheetPressed_ == kSheetBar - 1);
 #ifndef HLDS_CHILD
-            if (isDSiMode())
+            if (chatShown())
                 drawSheetButton(sheetBarBox(chatButton(), buttons), uiText(host::Chat), sheetPressed_ == kSheetBar - chatButton());
             if (micShown())
                 drawSheetButton(sheetBarBox(buttons - 2, buttons), uiText(voice::muted() ? host::MicOff : host::MicOn),
@@ -3098,6 +3098,11 @@ namespace hlrt
     bool Menu::micShown() const
     {
         return isDSiMode() && netGame.openMic();
+    }
+
+    bool Menu::chatShown() const
+    {
+        return isDSiMode() && netGame.online();
     }
 
 #ifndef HLDS_CHILD
@@ -3351,7 +3356,7 @@ namespace hlrt
             drawSheetBar();
             return Action::None;
         }
-        if ((page_ == Page::NetHost || page_ == Page::NetLobby) && isDSiMode() && button == chatButton() &&
+        if ((page_ == Page::NetHost || page_ == Page::NetLobby) && chatShown() && button == chatButton() &&
             !(page_ == Page::NetHost && canSend() && button == 1))
         {
             sound.ui(kUiSoundPress);

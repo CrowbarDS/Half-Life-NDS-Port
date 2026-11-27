@@ -188,14 +188,13 @@ namespace hlrt
         int sheetButtons() const
         {
 #ifndef HLDS_CHILD
-            // (The lobbies' CHAT as well: START, SEND GAME, CHAT, BACK; PROFILE,
-            // OPTIONS, CHAT, LEAVE.)
-            // (CHAT a DSi's: a DS has not the memory for it.)
+            // (The lobbies' CHAT as well, online: START, SEND GAME, CHAT, BACK;
+            // PROFILE, OPTIONS, CHAT, LEAVE -- chatShown.)
             // (And MIC before the last, the room's microphones open.)
             if (page_ == Page::NetHost)
-                return (canSend() ? 3 : 2) + (isDSiMode() ? 1 : 0) + (micShown() ? 1 : 0);
+                return (canSend() ? 3 : 2) + (chatShown() ? 1 : 0) + (micShown() ? 1 : 0);
             if (page_ == Page::NetLobby)
-                return (isDSiMode() ? 4 : 3) + (micShown() ? 1 : 0);
+                return (chatShown() ? 4 : 3) + (micShown() ? 1 : 0);
 #endif
             return page_ == Page::Saves || page_ == Page::NetLobby || (page_ == Page::NetHost && canSend()) ? 3
                    : page_ == Page::NetStarting                                                             ? 1
@@ -239,6 +238,9 @@ namespace hlrt
         /// The lobbies' MIC (the room's microphones open, a DSi): the
         /// player's own, on or off. Before the last button; CHAT before it.
         bool micShown() const;
+        /// CHAT (the lobbies' and a match's pause page): online, on a DSi --
+        /// a DS has not the memory for it; and side by side, players talk.
+        bool chatShown() const;
         int chatButton() const { return sheetButtons() - (micShown() ? 3 : 2); }
         bool micWas_ = false;
         std::uint32_t arm7Blocks_ = 0;
