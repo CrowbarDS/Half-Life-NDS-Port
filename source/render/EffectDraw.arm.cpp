@@ -806,20 +806,6 @@ namespace hlrt
             const fx span[3] = {mine.goal[0] - mine.pos[0], mine.goal[1] - mine.pos[1], mine.goal[2] - mine.pos[2]};
             add(kMine, i, middle, fxToInt(fxLength(span)) / 2 + 8, 1);
         }
-        // The small things that are see-through (broken glass): they have
-        // to take their turn with everything else that is. (The solid ones
-        // need no turn: drawSolid.)
-        for (int n = 0; n < kMaxPieces; ++n)
-        {
-            const Piece &piece = a.pieces[n];
-            if (piece.kind != kPieceShard || piece.alpha >= 31 || !pieceSeen(piece))
-                continue;
-            const std::int16_t at[3] = {static_cast<std::int16_t>(fxToInt(piece.pos[0])),
-                                        static_cast<std::int16_t>(fxToInt(piece.pos[1])),
-                                        static_cast<std::int16_t>(fxToInt(piece.pos[2]))};
-            if (worldDraw.ballVisible(at, 16))
-                add(kPiece, n, piece.pos, piece.half * 40, 1);
-        }
     }
 
     int EffectDraw::begin()
@@ -864,7 +850,6 @@ namespace hlrt
         case kShot:   drawShot(item.index); break;
         case kEffect: drawEffect(item.index); break;
         case kMine:   drawMine(item.index); break;
-        case kPiece:  drawPiece(item.index); break;
         default:      drawGlow(item.index); break;
         }
         return extraIds;
@@ -881,15 +866,14 @@ namespace hlrt
         const std::int32_t d[3] = {fxToInt(piece.pos[0] - camera.pos[0]), fxToInt(piece.pos[1] - camera.pos[1]),
                                    fxToInt(piece.pos[2] - camera.pos[2])};
         const std::int32_t depth = (d[0] * camera.forward[0] + d[1] * camera.forward[1] + d[2] * camera.forward[2]) >> 12;
-        const int reach = pressure >= 2 ? 150 : (pressure == 1 || piece.kind != kPieceShard ? 300 : 700);
+        const int reach = pressure >= 2 ? 150 : 300;
         return depth >= 4 && depth <= reach;
     }
 
-    /// A small thing's three corners. It is one triangle (a shard is; a
-    /// speck and a casing are too small to tell): turned to the eye, spun
-    /// about the view and tipped edge-on and back as it tumbles. Textured
-    /// with a patch of its texture, if it has one.
-    void EffectDraw::pieceCorners(const Piece &piece, bool textured)
+    /// A small thing's three corners. It is one triangle (a speck and a
+    /// can are too small to tell): turned to the eye, spun about the view
+    /// and tipped edge-on and back as it tumbles.
+    void EffectDraw::pieceCorners(const Piece &piece)
     {
         fx sine, cosine, tip, unused;
         fxSinCos(piece.spin, sine, cosine);
@@ -903,8 +887,6 @@ namespace hlrt
         if (casing)
             high = wide * 3;
         high = high < 4 ? 4 : high;
-        const int s0 = piece.s * 8, t0 = piece.t * 8;
-        const int st[3][2] = {{s0, t0 + 16}, {s0 + 16, t0 + 16}, {s0 + 8, t0}};
         const int across[3] = {-1, 1, 0}, up[3] = {-1, -1, 1};
         for (int k = 0; k < 3; ++k)
         {
@@ -915,41 +897,16 @@ namespace hlrt
                 const std::int32_t v = (camera.up[i] * cosine - camera.right[i] * sine) >> 12;
                 p[i] = piece.pos[i] + ((u * wide * across[k] + v * high * up[k]) >> 4);
             }
-            if (textured)
-                GFX_TEX_COORD = TEXTURE_PACK(st[k][0] << 4, st[k][1] << 4);
             corner(p);
         }
     }
 
-    /// One that is see-through (in its turn among what else is).
-    void EffectDraw::drawPiece(int n)
-    {
-        const Piece &piece = game.actors.pieces[n];
-        if (piece.kind == 0 || piece.kind == kPieceShell || piece.kind == kPieceShotShell)
-            return; // (a casing is its model, or nothing: ModelDraw)
-        // (In its last third of a second it thins away.)
-        int alpha = piece.alpha;
-        if (piece.leftMs < 320)
-            alpha = alpha * piece.leftMs / 320;
-        alpha = alpha < 1 ? 1 : (alpha > 31 ? 31 : alpha);
-        bool textured = false;
-        if (piece.texture != 0xFFFF)
-        {
-            noteTextureDrawn(piece.texture);
-            textured = textureCache.use(piece.texture);
-        }
-        else
-            GFX_TEX_FORMAT = 0;
-        look(alpha, freshId(), piece.colour);
-        GFX_BEGIN = GL_TRIANGLES;
-        pieceCorners(piece, textured);
-    }
-
-    /// The small things that are solid -- specks, casings, the pieces of
-    /// what is not glass -- which are most of them. Solid things need no
-    /// turn in the far-to-near list and no polygon number, so they are sent
-    /// in runs that share everything: the plain ones in one, then those of
-    /// each texture together. Returns how many triangles that was.
+    /// The small things -- specks off a wall, a soda can -- each a plain
+    /// triangle in its colour. They need no turn in the far-to-near list
+    /// and no polygon number, so they are sent in one run that shares
+    /// everything. Returns how many triangles that was. (A casing is its
+    /// model or nothing, and what has broken its pieces' model or nothing:
+    /// ModelDraw. Never a triangle in their place.)
     int EffectDraw::drawSolid()
     {
         const ActorWorld &a = game.actors;
@@ -966,16 +923,12 @@ namespace hlrt
                 NEA_PolyFormat(31, 0, static_cast<NEA_LightEnum>(0), NEA_CULL_NONE, worldDraw.polygonMode());
             }
         };
-        // The plain ones.
         bool plain = false;
         for (int n = 0; n < kMaxPieces; ++n)
         {
             const Piece &piece = a.pieces[n];
-            // (A casing is its model, or nothing: ModelDraw.)
-            if (piece.kind == 0 || piece.kind == kPieceShell || piece.kind == kPieceShotShell || piece.alpha < 31 ||
-                !pieceSeen(piece))
-                continue;
-            if (piece.kind == kPieceShard && piece.texture != 0xFFFF && textureCache.present(piece.texture))
+            if (piece.kind == 0 || piece.kind == kPieceShell || piece.kind == kPieceShotShell ||
+                piece.kind == kPieceShard || !pieceSeen(piece))
                 continue;
             if (!plain)
             {
@@ -985,41 +938,8 @@ namespace hlrt
                 GFX_BEGIN = GL_TRIANGLES;
             }
             GFX_COLOR = piece.colour;
-            pieceCorners(piece, false);
+            pieceCorners(piece);
             ++drawn;
-        }
-        // Those with a texture: each texture's together. (What breaks has a
-        // handful of textures at most: the pieces are gone through once
-        // for each that is met.)
-        std::uint16_t done[8];
-        int doneCount = 0;
-        for (const Piece &first : a.pieces)
-        {
-            if (first.kind != kPieceShard || first.alpha < 31 || first.texture == 0xFFFF)
-                continue;
-            bool seen = false;
-            for (int k = 0; k < doneCount; ++k)
-                seen = seen || done[k] == first.texture;
-            if (seen || !textureCache.present(first.texture) || doneCount == 8)
-                continue;
-            done[doneCount++] = first.texture;
-            bool bound = false;
-            for (const Piece &piece : a.pieces)
-            {
-                if (piece.kind != kPieceShard || piece.alpha < 31 || piece.texture != first.texture || !pieceSeen(piece))
-                    continue;
-                if (!bound)
-                {
-                    bound = true;
-                    start();
-                    noteTextureDrawn(first.texture);
-                    textureCache.use(first.texture);
-                    GFX_COLOR = 0x7FFF;
-                    GFX_BEGIN = GL_TRIANGLES;
-                }
-                pieceCorners(piece, true);
-                ++drawn;
-            }
         }
         if (begun)
         {

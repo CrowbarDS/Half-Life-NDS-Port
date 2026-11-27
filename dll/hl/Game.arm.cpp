@@ -1148,9 +1148,9 @@ namespace hlrt
                                                   aimRight, aimUp, alive && input.attack && !manning,
                                                   false, ms, alive && input.second && !manning, alive && !manning ? pick : 0,
                                                   alive && input.reloadPressed && !manning, ++shotSeed_);
-            // What has broken: its pieces, each a patch of the thing's
-            // own texture, thrown from where it was -- along the blow that
-            // broke it, at 200, for one that flies that way.
+            // What has broken: its pieces, the game's model of them, thrown
+            // from where it was -- along the blow that broke it, at 200, for
+            // one that flies that way.
             auto throwPieces = [&](int index)
             {
                 const LevelView &view = level.view;
@@ -1159,7 +1159,6 @@ namespace hlrt
                 if (record.brush == kNoBrush || record.brush >= view.brushCount)
                     return;
                 const Brush &brush = view.brushes[record.brush];
-                const Model &model = view.models[brush.model];
                 const fx *pos = brushStates_[record.brush].pos;
                 fx mins[3], maxs[3];
                 for (int a = 0; a < 3; ++a)
@@ -1167,24 +1166,14 @@ namespace hlrt
                     mins[a] = fxFromInt(brush.mins[a]) + pos[a] - brush.origin[a];
                     maxs[a] = fxFromInt(brush.maxs[a]) + pos[a] - brush.origin[a];
                 }
-                std::uint16_t textures[8];
-                int textureCount = 0;
-                for (int s = 0; s < model.surfaceCount && textureCount < 8; ++s)
-                {
-                    const std::uint16_t texture = view.surfaces[model.firstSurface + s].texture;
-                    if (texture != kNoTexture)
-                        textures[textureCount++] = texture;
-                }
                 const fx along[3] = {logic.struckFrom[0] * 200, logic.struckFrom[1] * 200, logic.struckFrom[2] * 200};
                 const int material = static_cast<int>(breakMaterial(record));
                 const fx *way = (record.flags & kLogicDirected) ? along : nullptr;
                 // (The game's model of its pieces, where it is loaded -- a
-                // DSi's, and a DS's with the room: else patches of its own
-                // texture.)
+                // DSi's, and a DS's with the room -- or nothing: never flat
+                // triangles in their place.)
                 const int gibs = breakGibRef(record);
-                if (gibs < 0 || gibPieces(actors, gibs) == 0)
-                    piecesBurst(actors, mins, maxs, material, textures, textureCount, way, &world);
-                else
+                if (gibs >= 0)
                     breakGibsBurst(actors, mins, maxs, material, gibs, way, &world);
                 // (The marks that were on it go with it.)
                 for (Decal &decal : actors.decals)

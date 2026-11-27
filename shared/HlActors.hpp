@@ -1879,7 +1879,7 @@ namespace hldata
     /// many as piecesBurst throws of its texture and from where, as fast,
     /// for as long -- each one of the model's pieces, tumbling -- and no
     /// more than there is room for. None (0) if the model is not loaded:
-    /// then it is patches of its texture after all.
+    /// then nothing is thrown (never flat triangles in their place).
     inline int breakGibsBurst(ActorWorld &a, const fx *mins, const fx *maxs, int material, int model,
                               const fx *along = nullptr, const MoveWorld *world = nullptr)
     {

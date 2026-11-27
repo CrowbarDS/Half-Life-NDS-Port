@@ -82,7 +82,7 @@ namespace hlrt
         int glowCount_ = 0;
 
         static constexpr int kMaxItems = 96;
-        enum : std::uint8_t { kRecord, kShot, kEffect, kGlow, kMine, kPiece };
+        enum : std::uint8_t { kRecord, kShot, kEffect, kGlow, kMine };
         struct Item
         {
             std::int32_t distance;
@@ -108,9 +108,8 @@ namespace hlrt
         void drawEffect(int index);
         void drawGlow(int index);
         void drawMine(int index);
-        void drawPiece(int index);
         bool pieceSeen(const hldata::Piece &piece) const;
-        void pieceCorners(const hldata::Piece &piece, bool textured);
+        void pieceCorners(const hldata::Piece &piece);
 
         /// The marks drawn the pass before (a bit each, by their place):
         /// those keep the room they had, a little more of it than one new.
