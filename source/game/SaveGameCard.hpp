@@ -38,10 +38,20 @@ namespace hlrt::SaveGame::detail
             std::FILE *file = nullptr;
             std::string name;
             bool failed = false;
-            /// (Being written:) how long it was before (overwrite).
-            long was = 0;
         };
-        Open writing_, reading_;
+        Open reading_;
+        /// The one being written: by its descriptor, not a FILE -- the C
+        /// library's FILE passes what it is given to the card 512 bytes at a
+        /// time, a write each (seen on a DSpico, 2026-11-27: 94 writes for
+        /// two saves).
+        struct Writing
+        {
+            int fd = -1;
+            std::string name;
+            bool failed = false;
+            long was = 0; ///< how long it was before (overwrite)
+        };
+        Writing writing_;
         static bool shut(Open &open);
         /// What is written is kept here and goes to the card in big pieces: a
         /// write costs about the same whatever its size -- tens of ms on a
@@ -61,8 +71,11 @@ namespace hlrt::SaveGame::detail
         /// of where a file's pieces are is left as it is unless the file grows
         /// or shrinks -- every change to it a write more, as slow as any. Cut
         /// to its new length when let go of (shutWriting).
-        std::FILE *overwrite(const char *name, long &was);
-        bool cut(std::FILE *file, long was);
+        int overwrite(const char *name, long &was);
+        bool cut(int fd, long was);
+        /// All of `size` bytes written to `fd`, in as few calls as the
+        /// library will take them.
+        bool writeAll(int fd, const std::uint8_t *bytes, std::size_t size);
         bool close();
         /// The folder `name` is to be in, made if it is not there (it usually
         /// is): the saves', or a folder in it (run/).

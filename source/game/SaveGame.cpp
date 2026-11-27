@@ -176,6 +176,7 @@ namespace hlrt::SaveGame
 #else
 
 #include <dirent.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -235,12 +236,12 @@ namespace hlrt::SaveGame
 
         bool FatCard::flushWriting()
         {
-            if (buffered_ == 0 || writing_.file == nullptr)
+            if (buffered_ == 0 || writing_.fd < 0)
             {
                 buffered_ = 0;
                 return true;
             }
-            const bool ok = std::fwrite(buffer_, 1, buffered_, writing_.file) == buffered_;
+            const bool ok = writeAll(writing_.fd, buffer_, buffered_);
             buffered_ = 0;
             if (ok)
                 return true;
@@ -251,38 +252,57 @@ namespace hlrt::SaveGame
         bool FatCard::shutWriting()
         {
             const bool flushed = flushWriting();
-            const bool cutOk = writing_.file == nullptr || writing_.failed || cut(writing_.file, writing_.was);
+            const bool cutOk = writing_.fd < 0 || writing_.failed || cut(writing_.fd, writing_.was);
             std::free(buffer_);
             buffer_ = nullptr;
             bufferBytes_ = 0;
-            return shut(writing_) && flushed && cutOk;
+            bool closed = true;
+            if (writing_.fd >= 0)
+                closed = ::close(writing_.fd) == 0 && !writing_.failed;
+            writing_ = Writing();
+            return closed && flushed && cutOk;
         }
 
-        std::FILE *FatCard::overwrite(const char *name, long &was)
+        int FatCard::overwrite(const char *name, long &was)
         {
             was = 0;
-            std::FILE *file = std::fopen(path(name).c_str(), "r+b");
-            if (file != nullptr)
+            const std::string where = path(name);
+            int fd = ::open(where.c_str(), O_RDWR);
+            if (fd >= 0)
             {
-                std::fseek(file, 0, SEEK_END);
-                was = std::ftell(file);
-                std::fseek(file, 0, SEEK_SET);
-                return was >= 0 ? file : (std::fclose(file), nullptr);
+                was = ::lseek(fd, 0, SEEK_END);
+                if (was >= 0 && ::lseek(fd, 0, SEEK_SET) == 0)
+                    return fd;
+                ::close(fd);
+                return -1;
             }
             makeFolder(name);
-            return std::fopen(path(name).c_str(), "wb");
+            return ::open(where.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
         }
 
-        bool FatCard::cut(std::FILE *file, long was)
+        bool FatCard::cut(int fd, long was)
         {
             // (Only if it is shorter than it was: as long or longer, its end
             // is where the writing stopped.)
-            const long now = std::ftell(file);
+            const long now = ::lseek(fd, 0, SEEK_CUR);
             if (now < 0)
                 return no("tell");
             if (now >= was)
                 return true;
-            return (std::fflush(file) == 0 && ftruncate(fileno(file), now) == 0) || no("cut");
+            return ftruncate(fd, now) == 0 || no("cut");
+        }
+
+        bool FatCard::writeAll(int fd, const std::uint8_t *bytes, std::size_t size)
+        {
+            while (size > 0)
+            {
+                const ssize_t n = ::write(fd, bytes, size);
+                if (n <= 0)
+                    return false;
+                bytes += n;
+                size -= static_cast<std::size_t>(n);
+            }
+            return true;
         }
 
         bool FatCard::close()
@@ -310,8 +330,8 @@ namespace hlrt::SaveGame
                 shutWriting();
                 if (reading_.name == name)
                     shut(reading_);
-                writing_.file = overwrite(name, writing_.was);
-                if (writing_.file == nullptr)
+                writing_.fd = overwrite(name, writing_.was);
+                if (writing_.fd < 0)
                     return no("open");
                 writing_.name = name;
                 bufferBytes_ = isDSiMode() ? kWriteBufferDsi : kWriteBufferDs;
@@ -319,13 +339,13 @@ namespace hlrt::SaveGame
                 if (buffer_ == nullptr)
                     bufferBytes_ = 0;
             }
-            else if (writing_.file == nullptr || writing_.name != name)
+            else if (writing_.fd < 0 || writing_.name != name)
             {
                 return false; // (it was let go of in between: begun again by the writer)
             }
             if (buffer_ == nullptr)
             {
-                if (std::fwrite(bytes, 1, size, writing_.file) != size)
+                if (!writeAll(writing_.fd, bytes, size))
                 {
                     writing_.failed = true;
                     return no("write");
@@ -402,11 +422,11 @@ namespace hlrt::SaveGame
         {
             close();
             long was = 0;
-            std::FILE *file = overwrite(name, was);
-            if (file == nullptr)
+            const int fd = overwrite(name, was);
+            if (fd < 0)
                 return no("open");
-            const bool wrote = (std::fwrite(bytes, 1, size, file) == size || no("write")) && cut(file, was);
-            return (std::fclose(file) == 0 || no("close")) && wrote;
+            const bool wrote = (writeAll(fd, bytes, size) || no("write")) && cut(fd, was);
+            return (::close(fd) == 0 || no("close")) && wrote;
         }
 
         bool FatCard::remove(const char *name)
