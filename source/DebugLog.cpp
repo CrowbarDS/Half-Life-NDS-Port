@@ -114,6 +114,14 @@ namespace hlrt::DebugLog::Perf
         };
         constexpr int kSlowWrites = 6;
         SlowWrite slowWrites[kSlowWrites];
+        // ... and all of them by who made them (CardWho; the last for the rest).
+        struct WhoWrote
+        {
+            const char *who = nullptr;
+            std::uint32_t writes = 0, sectors = 0, ticks = 0;
+        };
+        constexpr int kWhoWrote = 6;
+        WhoWrote whoWrote[kWhoWrote];
         // The lamp's counts since the last line (noteLamp): summed and most,
         // and in how many passes; the divides it made.
         constexpr int kLampCounts = 6;
@@ -484,6 +492,16 @@ namespace hlrt::DebugLog::Perf
                                      slow.who != nullptr ? slow.who : "?");
                 }
                 std::fprintf(log, "\n");
+                // (By who: "?" is mostly this file's own lines.)
+                std::fprintf(log, "cardwho: %s", map);
+                for (const WhoWrote &w : whoWrote)
+                {
+                    if (w.writes != 0)
+                        std::fprintf(log, "; %s %lu writes, %lu KB, %lu ms", w.who != nullptr ? w.who : "?",
+                                     static_cast<unsigned long>(w.writes), static_cast<unsigned long>(w.sectors / 2),
+                                     static_cast<unsigned long>(toMicros(w.ticks) / 1000));
+                }
+                std::fprintf(log, "\n");
             }
             // Where a pass that missed the game's pace spent its time, beside
             // one that did not, at the same time given to simulate (notePace):
@@ -598,6 +616,8 @@ namespace hlrt::DebugLog::Perf
             slow = SlowRead();
         for (SlowWrite &slow : slowWrites)
             slow = SlowWrite();
+        for (WhoWrote &w : whoWrote)
+            w = WhoWrote();
         for (int i = 0; i < kLampCounts; ++i)
             lampSum[i] = lampMost[i] = 0;
         lampPasses = 0;
@@ -875,6 +895,32 @@ extern "C" int __wrap_libnds_disk_write(unsigned char drive, const unsigned char
         least = slow.ticks < least->ticks ? &slow : least;
     if (ticks > least->ticks)
         *least = SlowWrite{ticks, static_cast<std::uint32_t>(sector), count, cardWho};
+    // (Its own row; else the first free one; else the last, "others".)
+    WhoWrote *tally = nullptr;
+    for (WhoWrote &w : whoWrote)
+    {
+        if (w.writes != 0 && w.who == cardWho)
+            tally = &w;
+    }
+    for (int k = 0; tally == nullptr && k < kWhoWrote - 1; ++k)
+    {
+        if (whoWrote[k].writes == 0)
+        {
+            tally = &whoWrote[k];
+            tally->who = cardWho;
+        }
+    }
+    if (tally == nullptr)
+    {
+        tally = &whoWrote[kWhoWrote - 1];
+        if (tally->writes == 0)
+            tally->who = cardWho;
+        else if (tally->who != cardWho)
+            tally->who = "others";
+    }
+    ++tally->writes;
+    tally->sectors += count;
+    tally->ticks += ticks;
     return result;
 }
 
