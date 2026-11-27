@@ -1521,8 +1521,11 @@ namespace hldata
         return family == 0 || family == 4 || family >= 21 ? 0 : (family == 10 ? 2 : 1);
     }
 
-    inline Decal &decalAdd(ActorWorld &a, std::uint8_t picture, const fx *at, const fx *normal, int half,
-                           std::uint16_t colour, int brush = -1, bool exact = false)
+    // (One copy: GCC kept a second, specialised one, 2 KB, in the program
+    // that also had the first.)
+    [[gnu::noinline, gnu::noclone]] inline Decal &decalAdd(ActorWorld &a, std::uint8_t picture, const fx *at,
+                                                           const fx *normal, int half, std::uint16_t colour,
+                                                           int brush = -1, bool exact = false)
     {
         const int limit = a.decalLimit < 1 ? 1 : (a.decalLimit > kMaxDecals ? kMaxDecals : a.decalLimit);
         const std::int32_t life = decalLife(picture) / 100 * a.markLifePercent;
