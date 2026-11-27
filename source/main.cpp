@@ -1521,6 +1521,26 @@ namespace
     std::uint32_t lastFight = 0, saveBegan = 0;
     int lastHealth = 0;
     bool wasSaving = false;
+#ifdef HLDS_PROFILE
+    /// (Profiling: how the game went on while a save was written -- the
+    /// passes it took, the longest gap between two, how many took 4 blanks
+    /// or more -- said in perf.txt when it is done.)
+    std::uint32_t saveLastPass = 0, saveLongest = 0, savePasses = 0, saveSlowPasses = 0;
+    void noteSaveEnd(const char *how)
+    {
+        if (!perfLogging())
+            return;
+        if (std::FILE *out = std::fopen(global.dataPath("perf.txt").c_str(), "a"))
+        {
+            std::fprintf(out, "save: %s %s, %lu passes over %lu blanks, longest %lu blanks, %lu of 4 or more, %s\n",
+                         currentMap.c_str(), how, static_cast<unsigned long>(savePasses),
+                         static_cast<unsigned long>(Global::vblanks() - saveBegan),
+                         static_cast<unsigned long>(saveLongest), static_cast<unsigned long>(saveSlowPasses),
+                         global.isDSi && !global.cardOnArm9() ? "on its thread" : "in the frame");
+            std::fclose(out);
+        }
+    }
+#endif
 
     /// Once a frame: a step of the save being written, if one is. Where the
     /// card's writes stop the game, its last part waits for a quiet moment:
@@ -1537,8 +1557,23 @@ namespace
             return;
         }
         if (!wasSaving)
+        {
             saveBegan = now;
+#ifdef HLDS_PROFILE
+            saveLastPass = now;
+            saveLongest = savePasses = saveSlowPasses = 0;
+#endif
+        }
         wasSaving = true;
+#ifdef HLDS_PROFILE
+        {
+            const std::uint32_t gap = now - saveLastPass;
+            saveLongest = gap > saveLongest ? gap : saveLongest;
+            saveSlowPasses += gap >= 4 ? 1 : 0;
+            ++savePasses;
+            saveLastPass = now;
+        }
+#endif
         constexpr std::uint32_t kCalm = 3 * 60, kLongest = 10 * 60;
         const bool quiet = paused || now - lastFight >= kCalm || now - saveBegan >= kLongest;
         switch (hlrt::SaveGame::step(quiet))
@@ -1548,10 +1583,16 @@ namespace
         case hldata::SaveWriter::Result::Done:
             hlrt::topText.notice("saved");
             hlrt::topText.endNotice(1000);
+#ifdef HLDS_PROFILE
+            noteSaveEnd("done");
+#endif
             break;
         case hldata::SaveWriter::Result::Failed:
             hlrt::topText.endNotice(0);
             sayNotSaved(hldata::kSlotAuto);
+#ifdef HLDS_PROFILE
+            noteSaveEnd("failed");
+#endif
             break;
         }
     }
