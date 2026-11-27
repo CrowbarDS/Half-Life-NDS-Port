@@ -6096,7 +6096,25 @@ namespace hldata
                      state.move == MoveState::AtBottom && w.brushStates[record.brush].active)
             {
                 const MoverHull &mover = w.movers[record.brush];
-                if (detail::playerTouchesBox(player, mover.mins, mover.maxs, kTouchSlack))
+                // (A hinged door's quick-reject box is the whole circle it can
+                // swing. Shut and not turned, it is touched by its own box, as
+                // the engine has it: its bounds are the circle's only while it
+                // is turned (SV_LinkEdict). ba_canal1's door behind a blocker
+                // the power box's breaking takes away opened through it.)
+                if (kind == LogicKind::DoorRotating && !mover.turned)
+                {
+                    const Brush &brush = w.brushes[record.brush];
+                    const BrushState &at = w.brushStates[record.brush];
+                    fx lo[3], hi[3];
+                    for (int a = 0; a < 3; ++a)
+                    {
+                        lo[a] = fxFromInt(brush.mins[a]) + at.pos[a] - brush.origin[a];
+                        hi[a] = fxFromInt(brush.maxs[a]) + at.pos[a] - brush.origin[a];
+                    }
+                    if (detail::playerTouchesBox(player, lo, hi, kTouchSlack))
+                        logicUse(w, player, i, -1, kUseToggle);
+                }
+                else if (detail::playerTouchesBox(player, mover.mins, mover.maxs, kTouchSlack))
                     logicUse(w, player, i, -1, kUseToggle);
             }
         }

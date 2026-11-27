@@ -1613,6 +1613,17 @@ namespace
         }
         check(shut > 0 && g.brushStates[brushIndex].angles[1] == 0, "after its wait it swings shut");
 
+        // Shut, it is touched by its own box, not by the circle it can swing:
+        // someone held back 8 units off its face (ba_canal1: by an unseen
+        // door that a breaking power box takes away) does not open it.
+        g.player.origin[0] = fxFromInt(64);
+        g.player.origin[1] = fxFromInt(-2 - 16 - 8);
+        g.player.velocity[0] = g.player.velocity[1] = g.player.velocity[2] = 0;
+        for (int i = 0; i < 20; ++i)
+            g.frame(cmd);
+        check(g.states[door].move == MoveState::AtBottom && g.brushStates[brushIndex].angles[1] == 0,
+              "a player near it but not touching it leaves it shut");
+
         // From the north it opens the other way: south.
         cmd.forward = 1;
         cmd.forwardXY[1] = -kFxOne;
