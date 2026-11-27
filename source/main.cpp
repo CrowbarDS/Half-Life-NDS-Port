@@ -2214,7 +2214,7 @@ int main(int argc, char *argv[])
         bool moving = showMenu();
         if (moving)
         {
-            NEA_WaitForVBL(static_cast<NEA_UpdateFlags>(0));
+            Global::waitVBlank();
             hlrt::hudDraw.menuFrame();
             hlrt::screenFade.curtainUp();
         }
@@ -2252,15 +2252,11 @@ int main(int argc, char *argv[])
 #endif
         while (true)
         {
+            // (The wait yields to the other threads -- the wireless's -- until
+            // a blank of its own, as the game's does.)
+            Global::waitVBlank();
             if (moving)
-            {
-                NEA_WaitForVBL(static_cast<NEA_UpdateFlags>(0));
                 hlrt::hudDraw.menuFrame();
-            }
-            else
-            {
-                Global::waitVBlank();
-            }
             hlrt::input.poll(false);
             if (lidWantsSleep())
                 sleepUntilLidOpens();
@@ -2520,7 +2516,7 @@ int main(int argc, char *argv[])
                 {
                     if (moving)
                     {
-                        NEA_WaitForVBL(static_cast<NEA_UpdateFlags>(0));
+                        Global::waitVBlank();
                         hlrt::hudDraw.menuFrame();
                     }
                     hlrt::screenFade.curtainUp();
