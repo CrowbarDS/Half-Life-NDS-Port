@@ -16,7 +16,8 @@
 #       it is to run (see the README).
 #
 # What it is made of is pinned: the BlocksDS image just below, the rest in
-# versions.env. Only those two files and fetch.sh go into the image, so it holds the tools and nothing of the game or of this
+# versions.env. Only those two files, fetch.sh and blocksds-dswifi-signal.patch
+# go into the image, so it holds the tools and nothing of the game or of this
 # repository.
 
 ARG BLOCKSDS_IMAGE=skylyrac/blocksds:slim-v1.25.0@sha256:c5f19b95d9c2f312e6a68ea244d2ed5120203b4b82af9785937a349096f8e5e4
@@ -32,18 +33,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3 python3-venv python3-pip && \
     rm -rf /var/lib/apt/lists/*
 
-COPY versions.env fetch.sh /opt/hlds/
+COPY versions.env fetch.sh blocksds-dswifi-signal.patch /opt/hlds/
 
 # BlocksDS's libraries and start-up files, at the commit the game is pinned
 # to (versions.env), built from source over the image's own release. Its
 # tools are the release's: the pinned commit has the same ones (grit, mmutil,
 # ndstool... at their v1.25.0 tags), and this system's compiler is too old
 # to build mmutil. The version.txt written reads BLOCKSDS_VERSION, which
-# every build checks (tools/blocksds_pin.py).
+# every build checks (tools/blocksds_pin.py). Its own dswifi gets one fix
+# (blocksds-dswifi-signal.patch): the pinned libnds took a helper out of its
+# headers that this dswifi still calls, and the SDK does not build without it.
 ARG SDK_JOBS=4
 RUN . /opt/hlds/versions.env && \
     sh /opt/hlds/fetch.sh "$BLOCKSDS_REPO" "$BLOCKSDS_COMMIT" /tmp/blocksds && \
     git -C /tmp/blocksds submodule update --init --recursive -q && \
+    git -C /tmp/blocksds/libs/dswifi apply /opt/hlds/blocksds-dswifi-signal.patch && \
     cd /tmp/blocksds && \
     for tool in "${BLOCKSDS}"/tools/*; do \
         [ -d "tools/$(basename "$tool")" ] && cp -r "$tool/." "tools/$(basename "$tool")/"; \
