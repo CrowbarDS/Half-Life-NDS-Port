@@ -78,6 +78,42 @@ namespace hlrt::DebugLog::Perf
         // Key reads since the last line: how many, the longest one, and what
         // of the worst frame was reading keys (does a read make that frame?).
         std::uint32_t keyReads = 0, keyLongest = 0, keysInWorstFrame = 0;
+        // Every read of the card's sectors (libnds's disk_read, wrapped: the
+        // card's own driver, DLDI or the DSi's SD), whoever asked: FatFs's own
+        // ones (its tables: a seek's walk down a file's chain, a folder) told
+        // apart from a file's. In the window, and the most in one pass.
+        // (Not the profiler's own: its log is written with cardAside set.)
+        struct CardReads
+        {
+            std::uint32_t reads = 0, sectors = 0, ticks = 0;
+            std::uint32_t fatReads = 0, fatTicks = 0;
+            std::uint32_t longest = 0; ///< one read
+        };
+        CardReads cardWindow;
+        std::uint32_t cardFrame = 0, cardFrameMost = 0, cardFrameReads = 0, cardFrameReadsMost = 0;
+        bool cardAside = false;
+        // ... its writes (the saves'), in the window, and passes since the
+        // last: a card may be slow to read for a while after it is written.
+        std::uint32_t cardWrites = 0, cardWriteSectors = 0, cardWriteTicks = 0, cardWriteLongest = 0;
+        std::uint32_t passesSinceWrite = 0xFFFF;
+        // ... and the window's slowest reads, each with who asked (CardWho).
+        struct SlowRead
+        {
+            std::uint32_t ticks = 0, sector = 0, count = 0, sinceWrite = 0;
+            bool fat = false;
+            const char *who = nullptr;
+        };
+        constexpr int kSlowReads = 8;
+        SlowRead slowReads[kSlowReads];
+        // ... and its slowest writes, each with who wrote (CardWho; none: the
+        // profiler's own log lines, the main one apart).
+        struct SlowWrite
+        {
+            std::uint32_t ticks = 0, sector = 0, count = 0;
+            const char *who = nullptr;
+        };
+        constexpr int kSlowWrites = 6;
+        SlowWrite slowWrites[kSlowWrites];
         // The lamp's counts since the last line (noteLamp): summed and most,
         // and in how many passes; the divides it made.
         constexpr int kLampCounts = 6;
@@ -344,6 +380,13 @@ namespace hlrt::DebugLog::Perf
     {
         if (framesIn < frames)
             return;
+        // (What the log itself reads of the card -- its folder, the end of
+        // the file -- is not the game's.)
+        cardAside = true;
+        struct Back
+        {
+            ~Back() { cardAside = false; }
+        } back;
         // The lowest word the stack has written over.
         const std::uint32_t *low = guard::stackLimit();
         const std::uint32_t *top = reinterpret_cast<const std::uint32_t *>(__sp_usr);
@@ -388,12 +431,60 @@ namespace hlrt::DebugLog::Perf
                              static_cast<unsigned long>(waits.takenOf[k] != 0 ? waits.framesOf[k] / waits.takenOf[k] : 0),
                              static_cast<unsigned long>(waits.longestOf[k]), static_cast<unsigned long>(waits.waitingOf[k]));
             }
+            // (The card: reads a pass, mean; its sectors as KB a pass; time a
+            // pass, mean and most; reads in the pass with most; the longest
+            // read; and of the reads, FatFs's own -- a seek's walk, a folder --
+            // in the window, and their time a pass.)
+            std::fprintf(log, ", card reads %lu, %lu KB, %lu/%lu us, most reads %lu, longest read %lu us, fat reads %lu (%lu us)",
+                         static_cast<unsigned long>(cardWindow.reads / static_cast<unsigned>(framesIn)),
+                         static_cast<unsigned long>(cardWindow.sectors / 2u / static_cast<unsigned>(framesIn)),
+                         static_cast<unsigned long>(toMicros(cardWindow.ticks / static_cast<unsigned>(framesIn))),
+                         static_cast<unsigned long>(toMicros(cardFrameMost)),
+                         static_cast<unsigned long>(cardFrameReadsMost),
+                         static_cast<unsigned long>(toMicros(cardWindow.longest)),
+                         static_cast<unsigned long>(cardWindow.fatReads),
+                         static_cast<unsigned long>(toMicros(cardWindow.fatTicks / static_cast<unsigned>(framesIn))));
+            std::fprintf(log, ", card writes %lu (%lu KB, %lu us, longest %lu us)", static_cast<unsigned long>(cardWrites),
+                         static_cast<unsigned long>(cardWriteSectors / 2u),
+                         static_cast<unsigned long>(toMicros(cardWriteTicks)),
+                         static_cast<unsigned long>(toMicros(cardWriteLongest)));
             std::fprintf(log, ", answered %lu, woken for none %lu, think stack %lu, key reads %lu, longest read %lu, "
                          "keys in worst frame %lu\n",
                          static_cast<unsigned long>(think.answered), static_cast<unsigned long>(think.idleWakes),
                          static_cast<unsigned long>(think.stackPeak()),
                          static_cast<unsigned long>(keyReads), static_cast<unsigned long>(toMicros(keyLongest)),
                          static_cast<unsigned long>(toMicros(keysInWorstFrame)));
+            // The window's slowest reads of the card: how long, where (sector
+            // and how many), FatFs's own or a file's, who asked, and how many
+            // passes after the card was last written.
+            if (slowReads[0].ticks != 0)
+            {
+                std::fprintf(log, "cardslow: %s", map);
+                for (const SlowRead &slow : slowReads)
+                {
+                    if (slow.ticks == 0)
+                        continue;
+                    std::fprintf(log, "; %lu us at %lu x%lu %s %s, %s", static_cast<unsigned long>(toMicros(slow.ticks)),
+                                 static_cast<unsigned long>(slow.sector), static_cast<unsigned long>(slow.count),
+                                 slow.fat ? "fat" : "data", slow.who != nullptr ? slow.who : "?",
+                                 slow.sinceWrite >= 0xFFFF ? "no write yet" : "");
+                    if (slow.sinceWrite < 0xFFFF)
+                        std::fprintf(log, "%lu passes after a write", static_cast<unsigned long>(slow.sinceWrite));
+                }
+                std::fprintf(log, "\n");
+            }
+            if (slowWrites[0].ticks != 0 || slowWrites[1].ticks != 0)
+            {
+                std::fprintf(log, "cardwrites: %s", map);
+                for (const SlowWrite &slow : slowWrites)
+                {
+                    if (slow.ticks != 0)
+                        std::fprintf(log, "; %lu us at %lu x%lu %s", static_cast<unsigned long>(toMicros(slow.ticks)),
+                                     static_cast<unsigned long>(slow.sector), static_cast<unsigned long>(slow.count),
+                                     slow.who != nullptr ? slow.who : "?");
+                }
+                std::fprintf(log, "\n");
+            }
             // Where a pass that missed the game's pace spent its time, beside
             // one that did not, at the same time given to simulate (notePace):
             // each section's mean over each, in microseconds.
@@ -500,6 +591,13 @@ namespace hlrt::DebugLog::Perf
         think.idleWakes = 0;
         worstCount = worstMonsters = worstFrameTicks = 0;
         keyReads = keyLongest = keysInWorstFrame = 0;
+        cardWindow = CardReads();
+        cardFrameMost = cardFrameReadsMost = 0;
+        cardWrites = cardWriteSectors = cardWriteTicks = cardWriteLongest = 0;
+        for (SlowRead &slow : slowReads)
+            slow = SlowRead();
+        for (SlowWrite &slow : slowWrites)
+            slow = SlowWrite();
         for (int i = 0; i < kLampCounts; ++i)
             lampSum[i] = lampMost[i] = 0;
         lampPasses = 0;
@@ -665,6 +763,14 @@ namespace hlrt::DebugLog::Perf
         }
         paceSlow = false;
         paceIn = 0;
+        // (The card's reads this pass.)
+        if (cardFrame > cardFrameMost)
+            cardFrameMost = cardFrame;
+        if (cardFrameReads > cardFrameReadsMost)
+            cardFrameReadsMost = cardFrameReads;
+        cardFrame = cardFrameReads = 0;
+        if (passesSinceWrite < 0xFFFF)
+            ++passesSinceWrite;
         for (int i = 0; i < kCount; ++i)
         {
             latched[i] = running[i];
@@ -709,6 +815,67 @@ extern "C" void hlProfileSite(std::uint32_t at, int kind, std::uint32_t wide)
         }
     }
     ++(kind == 2 ? div32Lost : sitesLost);
+}
+
+// libnds's disk_read (FatFs's read of the card's sectors), wrapped in a
+// profiling build (build.py): each read timed. `drive`'s top bit is FatFs's
+// mark for what it reads for itself (its tables, a folder): cached, and
+// what a seek's walk down a file's chain costs. (From whichever thread reads;
+// never an interrupt.)
+extern "C" int __real_libnds_disk_read(unsigned char drive, unsigned char *to, unsigned long sector, unsigned int count);
+extern "C" int __wrap_libnds_disk_read(unsigned char drive, unsigned char *to, unsigned long sector, unsigned int count)
+{
+    using namespace hlrt::DebugLog::Perf;
+    const std::uint32_t from = now();
+    const int result = __real_libnds_disk_read(drive, to, sector, count);
+    if (cardAside)
+        return result;
+    const std::uint32_t ticks = now() - from;
+    ++cardWindow.reads;
+    cardWindow.sectors += count;
+    cardWindow.ticks += ticks;
+    if (ticks > cardWindow.longest)
+        cardWindow.longest = ticks;
+    if (drive & 0x80)
+    {
+        ++cardWindow.fatReads;
+        cardWindow.fatTicks += ticks;
+    }
+    cardFrame += ticks;
+    ++cardFrameReads;
+    // (Among the window's slowest: in place of the quickest of them.)
+    SlowRead *least = &slowReads[0];
+    for (SlowRead &slow : slowReads)
+        least = slow.ticks < least->ticks ? &slow : least;
+    if (ticks > least->ticks)
+        *least = SlowRead{ticks, static_cast<std::uint32_t>(sector), count, passesSinceWrite, (drive & 0x80) != 0, cardWho};
+    return result;
+}
+
+// ... and its writes (build.py wraps this one too).
+extern "C" int __real_libnds_disk_write(unsigned char drive, const unsigned char *from, unsigned long sector,
+                                        unsigned int count);
+extern "C" int __wrap_libnds_disk_write(unsigned char drive, const unsigned char *from, unsigned long sector,
+                                        unsigned int count)
+{
+    using namespace hlrt::DebugLog::Perf;
+    const std::uint32_t start = now();
+    const int result = __real_libnds_disk_write(drive, from, sector, count);
+    if (cardAside)
+        return result;
+    const std::uint32_t ticks = now() - start;
+    ++cardWrites;
+    cardWriteSectors += count;
+    cardWriteTicks += ticks;
+    if (ticks > cardWriteLongest)
+        cardWriteLongest = ticks;
+    passesSinceWrite = 0;
+    SlowWrite *least = &slowWrites[0];
+    for (SlowWrite &slow : slowWrites)
+        least = slow.ticks < least->ticks ? &slow : least;
+    if (ticks > least->ticks)
+        *least = SlowWrite{ticks, static_cast<std::uint32_t>(sector), count, cardWho};
+    return result;
 }
 
 // shared/HlTraceCount.hpp: the profiler's clock, and a trace counted to the

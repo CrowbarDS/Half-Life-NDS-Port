@@ -225,6 +225,9 @@ arm9 = Arm9Binary(
         ['-Wl,--wrap=' + f for f in HW_MATH_WRAPS] +
         # (A heap trace's: operator new says whose its block is.)
         (['-Wl,--wrap=_Znwj', '-Wl,--wrap=_Znaj'] if trace else []) +
+        # (A profiling build's: every read of the card's sectors timed, FatFs's
+        # own -- its tables, a seek's walk -- told apart: source/DebugLog.cpp.)
+        (['-Wl,--wrap=libnds_disk_read', '-Wl,--wrap=libnds_disk_write'] if os.environ.get('HLDS_PROFILE') else []) +
         ['-Wl,--undefined=calloc'] +
         # What the online library (below) calls of the program that nothing
         # of the program's own calls: kept, or it would not load.

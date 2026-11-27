@@ -7,6 +7,7 @@
 #include "Global.hpp"
 #include "net/NetLink.hpp"
 #include "Achievements.hpp"
+#include "DebugLog.hpp"
 
 Settings settings;
 
@@ -181,6 +182,7 @@ void Settings::reset(int category)
 
 bool Settings::save() const
 {
+    const hlrt::DebugLog::Perf::CardWho cardWho("settings");
 #ifdef HLDS_SETTINGS_IN_MEMORY
     return false;
 #else

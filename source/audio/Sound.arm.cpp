@@ -126,6 +126,7 @@ namespace hlrt
 
     bool Sound::readClip(const char *name, Clip &clip, std::size_t most, bool *tooBig)
     {
+        const DebugLog::Perf::CardWho cardWho("sound");
         clip = Clip();
         if (tooBig != nullptr)
             *tooBig = false;
@@ -348,6 +349,7 @@ namespace hlrt
 
     void Sound::keepInPak()
     {
+        const DebugLog::Perf::CardWho cardWho("pak");
         // Every sound of the map that is not in memory -- those read when
         // first played, the words of its lines, those there was no room for
         // -- with an Expansion Pak, read into it now, once.
@@ -436,6 +438,7 @@ namespace hlrt
 
     bool Sound::stemOf(int index, char *stem)
     {
+        const DebugLog::Perf::CardWho cardWho("stems");
         // (Open, a window of records -- a map's sounds are asked for in
         // order; not, the one record, the file opened for it.)
         const bool once = stemsFile_ == nullptr;
@@ -490,6 +493,7 @@ namespace hlrt
 
     bool Sound::readLate(int index, Clip &clip)
     {
+        const DebugLog::Perf::CardWho cardWho("speech");
         if (pak_ == nullptr || index < 0 || index >= pakCount_ || pak_[index] == nullptr)
             return readClip(refOf(index).name, clip);
         clip = Clip();
@@ -1769,6 +1773,7 @@ namespace hlrt
 
     void Sound::startMusic(int track, std::uint32_t skip)
     {
+        const DebugLog::Perf::CardWho cardWho("music");
         if (track == musicTrack_ && music_ != nullptr)
             return;
         stopMusic();
@@ -1869,6 +1874,7 @@ namespace hlrt
 
     void Sound::musicTick()
     {
+        const DebugLog::Perf::CardWho cardWho("music");
         if (music_ == nullptr)
             return;
         // The ring kept full: a block may be written over once the ARM7 has

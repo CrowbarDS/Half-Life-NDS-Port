@@ -180,6 +180,17 @@ namespace hlrt::DebugLog
             Section section;
             std::uint32_t start;
         };
+        /// Who is reading or writing the card now (the slowest reads say so:
+        /// perf.txt's "cardslow:"); null, none that said.
+        inline const char *cardWho = nullptr;
+        struct CardWho
+        {
+            explicit CardWho(const char *who) : was(cardWho) { cardWho = who; }
+            ~CardWho() { cardWho = was; }
+            CardWho(const CardWho &) = delete;
+            CardWho &operator=(const CardWho &) = delete;
+            const char *was;
+        };
     } // namespace Perf
 #else
     namespace Perf
@@ -212,6 +223,10 @@ namespace hlrt::DebugLog
         struct Aside
         {
             explicit Aside(Section) {}
+        };
+        struct CardWho
+        {
+            explicit CardWho(const char *) {}
         };
     } // namespace Perf
 #endif

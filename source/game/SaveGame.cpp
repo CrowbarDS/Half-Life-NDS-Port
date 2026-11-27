@@ -2,6 +2,8 @@
 
 #include "game/SaveGame.hpp"
 
+#include "DebugLog.hpp"
+
 #ifdef HLDS_CHILD
 // A console that was sent the game has no card to save on, and keeps no map
 // it left: every match begins its map afresh. In a demo its progress is the
@@ -185,19 +187,28 @@ namespace hlrt::SaveGame
 #include "Overlay.hpp"
 #include "game/SaveGameCard.hpp"
 
+// (Profiling: the card's reads and writes made here said to be the saves':
+// perf.txt's slowest reads -- the overlay's own read in among them.)
+#ifdef HLDS_PROFILE
+#define HL_SAVE_WHO const ::hlrt::DebugLog::Perf::CardWho cardWho("save")
+#else
+#define HL_SAVE_WHO ((void)0)
+#endif
+
 // The saves' work is in the save overlay (SaveGameBody.cpp): each call here
 // reads it in, a halt naming it if a match's screens hold its memory -- a
 // match keeps no saves. What is asked every frame, or at every map's load,
 // is answered here when there is nothing to do.
 #if HL_OVL_COUNT > 0
 #define HL_SAVE_WORK()                                                                                                 \
+    HL_SAVE_WHO;                                                                                                       \
     do                                                                                                                 \
     {                                                                                                                  \
         ::hlrt::ovl::load(::hlrt::ovl::Id::Save);                                                                      \
         HL_OVL_GATE(Save);                                                                                             \
     } while (0)
 #else
-#define HL_SAVE_WORK() ((void)0)
+#define HL_SAVE_WORK() HL_SAVE_WHO
 #endif
 
 namespace hlrt::SaveGame

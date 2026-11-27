@@ -13,6 +13,7 @@
 #include "net/NetGame.hpp"
 #include "render/TopText.hpp"
 #include "ui/UiText.hpp"
+#include "DebugLog.hpp"
 
 Achievements achievements;
 
@@ -70,6 +71,7 @@ void Achievements::load()
 
 bool Achievements::save()
 {
+    const hlrt::DebugLog::Perf::CardWho cardWho("achievements");
     tracker.unsaved = tracker.counted = false;
     if (!global.hasFat)
         return false;
