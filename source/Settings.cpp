@@ -19,6 +19,22 @@ Settings settings;
 #define HLDS_SETTINGS_IN_MEMORY 1
 #endif
 
+#ifndef HLDS_SETTINGS_IN_MEMORY
+#include <fcntl.h>
+#include <unistd.h>
+
+namespace
+{
+    // What the card's file holds, as last read or written: a save that would
+    // write the same is not made. Each write of the file is several of the
+    // card's -- some 200 ms each on a DSpico (2026-11-27) -- and the settings
+    // are saved on every way out of the pause menu.
+    std::uint8_t onCard[hldata::kSettingsMostBytes];
+    std::size_t onCardBytes = 0;
+    bool onCardKnown = false;
+} // namespace
+#endif
+
 void Settings::load()
 {
 #ifndef HLDS_SETTINGS_IN_MEMORY
@@ -30,6 +46,9 @@ void Settings::load()
     std::uint8_t bytes[hldata::kSettingsMostBytes];
     const std::size_t size = std::fread(bytes, 1, sizeof(bytes), file);
     std::fclose(file);
+    std::memcpy(onCard, bytes, size);
+    onCardBytes = size;
+    onCardKnown = true;
 
     hldata::SettingsData data;
     if (hldata::readSettings(bytes, size, data))
@@ -256,11 +275,29 @@ bool Settings::save() const
         data.rotation[i] = rotation[i];
     const std::vector<std::uint8_t> bytes = hldata::writeSettings(data);
 
-    std::FILE *file = std::fopen(global.dataPath("settings.dat").c_str(), "wb");
-    if (file == nullptr)
+    if (onCardKnown && bytes.size() == onCardBytes && std::memcmp(bytes.data(), onCard, onCardBytes) == 0)
+        return true;
+    // (Written over where it is, in one call: made anew, the card's table of
+    // its pieces would be written twice more.)
+    const std::string path = global.dataPath("settings.dat");
+    int fd = ::open(path.c_str(), O_RDWR);
+    if (fd < 0)
+        fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (fd < 0)
         return false;
-    const bool ok = std::fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size();
-    return std::fclose(file) == 0 && ok;
+    const long was = ::lseek(fd, 0, SEEK_END);
+    bool ok = was >= 0 && ::lseek(fd, 0, SEEK_SET) == 0 &&
+              ::write(fd, bytes.data(), bytes.size()) == static_cast<ssize_t>(bytes.size());
+    if (ok && was > static_cast<long>(bytes.size()))
+        ok = ftruncate(fd, static_cast<off_t>(bytes.size())) == 0;
+    ok = ::close(fd) == 0 && ok;
+    onCardKnown = ok && bytes.size() <= sizeof(onCard);
+    if (onCardKnown)
+    {
+        std::memcpy(onCard, bytes.data(), bytes.size());
+        onCardBytes = bytes.size();
+    }
+    return ok;
 #endif
 }
 
