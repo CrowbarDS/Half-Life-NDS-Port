@@ -572,18 +572,13 @@ namespace hlrt
             }
             else
             {
-                // Two directions across the wall.
-                const fx size[3] = {n[0] < 0 ? -n[0] : n[0], n[1] < 0 ? -n[1] : n[1], n[2] < 0 ? -n[2] : n[2]};
-                const int least = size[0] <= size[1] && size[0] <= size[2] ? 0 : (size[1] <= size[2] ? 1 : 2);
-                fx axis[3] = {0, 0, 0};
-                axis[least] = kFxOne;
-                fx across[3] = {(n[1] * axis[2] - n[2] * axis[1]) >> 12, (n[2] * axis[0] - n[0] * axis[2]) >> 12,
-                                (n[0] * axis[1] - n[1] * axis[0]) >> 12};
-                const fx length = fxLength(across);
-                if (length < 64)
+                // Two directions across the wall (as markOn looks for its
+                // corners).
+                fx across[3];
+                if (!markAcross(n, across))
                     return false;
                 for (int i = 0; i < 3; ++i)
-                    u[i] = static_cast<fx>((static_cast<std::int64_t>(across[i]) << 12) / length);
+                    u[i] = across[i];
             }
             v[0] = (n[1] * u[2] - n[2] * u[1]) >> 12;
             v[1] = (n[2] * u[0] - n[0] * u[2]) >> 12;

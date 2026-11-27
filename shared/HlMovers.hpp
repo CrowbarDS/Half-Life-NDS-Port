@@ -1143,6 +1143,39 @@ namespace hldata
             fx a[3], b[3];
             detail::toMoverSpace(mover, start, a);
             detail::toMoverSpace(mover, end, b);
+            // A mark goes where the round went (`asShot`): where the line
+            // meets the brush's own faces, through its own tree, as the
+            // world's (its point hull). Its clip hull is a hand's breadth
+            // out: brought back along its normal, a point on it is on the
+            // face's plane but not where the line is -- up to that breadth
+            // aside at a slant, past the brush's edge, or on a bevel's slant
+            // at a corner -- and a line begun within that breadth (a mark's
+            // corner looked for, markFit) is in it from the start. A line
+            // through its box but not through it (an L of a brush, a hollow
+            // one) has not met it. (A turned brush, a box -- its space is its
+            // box's, not its tree's -- or one with no tree: its hull, below.)
+            if (asShot && !mover.turned && !moverIsBox(mover) && world.nodes != nullptr && world.models != nullptr &&
+                world.brushes != nullptr)
+            {
+                const std::int32_t head = world.models[world.brushes[m].model].headNode;
+                if (head >= 0)
+                {
+                    std::int32_t exact = kFractionOne;
+                    int face = -1;
+                    if (detail::lineThrough(world, head, 0, kFractionOne, a, b, exact, 0, -1, &face) || face < 0 ||
+                        exact >= fraction)
+                        continue;
+                    fraction = exact;
+                    on = metMover != nullptr ? m : -1;
+                    back = 0;
+                    const Plane &plane = world.standing.planes[face >> 1];
+                    for (int i = 0; i < 3; ++i)
+                        normal[i] = (face & 1) ? -(plane.normal[i] >> 18) : (plane.normal[i] >> 18);
+                    found = true;
+                    byWorld = false;
+                    continue;
+                }
+            }
             const Trace t = traceHull(mover.crouched, a, b);
             if (t.startSolid || t.allSolid || !t.hit || t.fraction >= fraction)
                 continue;
@@ -1160,42 +1193,6 @@ namespace hldata
             }
             if (asShot && into < 0)
                 continue;
-            // Where the line meets the brush's own faces: through its own
-            // tree, as the world's (its point hull). The clip hull is a
-            // hand's breadth out, and brought back along its normal it is
-            // on the face's plane but not where the line is -- up to that
-            // breadth aside at a slant, past the brush's edge, or on a
-            // bevel's slant at a corner. A mark goes where the round went
-            // (`asShot`). (A turned brush, a box -- its space is its box's,
-            // not its tree's -- or one with no tree: its hull, brought back.)
-            if (asShot && !mover.turned && !moverIsBox(mover) && world.nodes != nullptr && world.models != nullptr &&
-                world.brushes != nullptr)
-            {
-                const std::int32_t head = world.models[world.brushes[m].model].headNode;
-                std::int32_t exact = kFractionOne;
-                int face = -1;
-                if (head >= 0)
-                {
-                    // (Through its box and its hull, but not through it: an
-                    // L of a brush, a hollow one. Not what the round hit.)
-                    if (detail::lineThrough(world, head, 0, kFractionOne, a, b, exact, 0, -1, &face))
-                        continue;
-                    if (face >= 0)
-                    {
-                        if (exact >= fraction)
-                            continue;
-                        fraction = exact;
-                        on = metMover != nullptr ? into : -1;
-                        back = 0;
-                        const Plane &plane = world.standing.planes[face >> 1];
-                        for (int i = 0; i < 3; ++i)
-                            normal[i] = (face & 1) ? -(plane.normal[i] >> 18) : (plane.normal[i] >> 18);
-                        found = true;
-                        byWorld = false;
-                        continue;
-                    }
-                }
-            }
             fraction = t.fraction;
             on = metMover != nullptr ? into : -1;
             back = 0;

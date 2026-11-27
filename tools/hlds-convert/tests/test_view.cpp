@@ -1014,6 +1014,8 @@ void testMarksOnMovers(const char *dir)
     Game &g = *game;
     ActorWorld &a = g.actors;
     int sliding = -1, turning = -1;
+    // (One whose top is flat and wide, met by a line down onto its middle.)
+    fx at[3] = {0, 0, 0}, up[3] = {0, 0, kFxOne};
     for (int m = 0; m < g.move.moverCount; ++m)
     {
         const bool pivot = (g.move.brushes[m].flags & kBrushHasPivot) != 0;
@@ -1021,14 +1023,20 @@ void testMarksOnMovers(const char *dir)
             continue;
         if (pivot && turning < 0)
             turning = m;
-        if (!pivot && !moverIsBox(g.move.movers[m]) && sliding < 0)
+        const MoverHull &hull = g.move.movers[m];
+        if (pivot || moverIsBox(hull) || sliding >= 0 || hull.maxs[0] - hull.mins[0] < fxFromInt(40) ||
+            hull.maxs[1] - hull.mins[1] < fxFromInt(40))
+            continue;
+        const fx middle[2] = {(hull.mins[0] + hull.maxs[0]) / 2, (hull.mins[1] + hull.maxs[1]) / 2};
+        const fx from[3] = {middle[0], middle[1], hull.maxs[2] + fxFromInt(8)};
+        const fx to[3] = {middle[0], middle[1], hull.maxs[2] - fxFromInt(8)};
+        int on = -1;
+        if (traceShotWall(g.move, from, to, at, up, &on, true) && on == m && up[2] > 4000)
             sliding = m;
     }
-    check(sliding >= 0, "c1a0 has a brush that moves without turning");
+    check(sliding >= 0, "c1a0 has a brush that moves without turning, flat on top");
     if (sliding < 0)
         return;
-    const fx at[3] = {fxFromInt(100), fxFromInt(-40), fxFromInt(20)};
-    const fx up[3] = {0, 0, kFxOne};
     markOn(a, g.move, sliding, kDecalShot, at, up, 8, kMarkShot);
     const Decal *mark = nullptr;
     for (const Decal &decal : a.decals)
@@ -1039,11 +1047,15 @@ void testMarksOnMovers(const char *dir)
           "a mark on a brush that moves is kept from where the brush is");
     if (mark == nullptr)
         return;
-    fx moved[3];
+    fx moved[3], was[3];
     for (int k = 0; k < 3; ++k)
+    {
+        was[k] = g.brushStates[sliding].pos[k];
         moved[k] = g.brushStates[sliding].pos[k] + (k == 2 ? fxFromInt(64) : 0);
+    }
     logicPlaceBrush(g.logic, sliding, moved);
     check(mark->at[2] + g.brushStates[sliding].pos[2] == at[2] + fxFromInt(64), "... and goes up with it");
+    logicPlaceBrush(g.logic, sliding, was);
     if (turning >= 0)
     {
         int before = 0, after = 0;
@@ -1053,6 +1065,49 @@ void testMarksOnMovers(const char *dir)
         for (const Decal &decal : a.decals)
             after += decal.active;
         check(before == after, "a brush that turns takes no mark");
+    }
+    // A mark near its edge is made smaller, to lie on it: none hangs past
+    // the edge, where it would be seen in the air. (Its top at its edge, x
+    // the brush's own: 5 units in, a hole 8 across each way is 4; 2 units
+    // in, there is room for none.)
+    {
+        for (Decal &decal : a.decals)
+            decal.active = false;
+        const MoverHull &hull = g.move.movers[sliding];
+        const fx middleY = (hull.mins[1] + hull.maxs[1]) / 2;
+        // (Where its top ends along x: the last whole unit a line down from
+        // above it meets it, out from its middle.)
+        const fx top = at[2];
+        fx edgeX = (hull.mins[0] + hull.maxs[0]) / 2;
+        for (fx x = edgeX; x <= hull.maxs[0] + fxFromInt(32); x += kFxOne)
+        {
+            const fx from[3] = {x, middleY, top + fxFromInt(8)}, to[3] = {x, middleY, top - fxFromInt(8)};
+            fx on[3], facing[3];
+            int met = -1;
+            if (!traceShotWall(g.move, from, to, on, facing, &met, true) || met != sliding || facing[2] < 4000 ||
+                std::abs(on[2] - top) > kFxOne / 8)
+                break;
+            edgeX = x;
+        }
+        auto lastHalf = [&](int inside) {
+            const fx from[3] = {edgeX - fxFromInt(inside), middleY, top + fxFromInt(8)};
+            const fx to[3] = {from[0], middleY, top - fxFromInt(8)};
+            fx on[3], facing[3];
+            int met = -1;
+            if (!traceShotWall(g.move, from, to, on, facing, &met, true) || met != sliding)
+                return -1;
+            for (Decal &decal : a.decals)
+                decal.active = false;
+            markOn(a, g.move, sliding, kDecalShot, on, facing, 8, kMarkShot);
+            for (const Decal &decal : a.decals)
+                if (decal.active)
+                    return static_cast<int>(decal.half);
+            return 0;
+        };
+        const int roomy = lastHalf(20), near = lastHalf(5), edge = lastHalf(2);
+        std::printf("  marks near a brush's edge (x %.0f): 20 in %d, 5 in %d, 2 in %d\n", edgeX / 4096.0, roomy, near,
+                    edge);
+        check(roomy == 8 && near == 4 && edge == 0, "a mark near an edge is made smaller to lie on it, or not made");
     }
 }
 

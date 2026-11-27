@@ -1521,6 +1521,26 @@ namespace hldata
         return family == 0 || family == 4 || family >= 21 ? 0 : (family == 10 ? 2 : 1);
     }
 
+    /// A mark's direction across its wall (Q12, unit), as it is drawn
+    /// (EffectDraw's shapeMake) and as its corners are looked for (markOn):
+    /// square to `normal` and to the axis it is least along. Its other
+    /// direction is normal x across. False if the normal has no length.
+    inline bool markAcross(const fx *n, fx *across)
+    {
+        const fx size[3] = {n[0] < 0 ? -n[0] : n[0], n[1] < 0 ? -n[1] : n[1], n[2] < 0 ? -n[2] : n[2]};
+        const int least = size[0] <= size[1] && size[0] <= size[2] ? 0 : (size[1] <= size[2] ? 1 : 2);
+        fx axis[3] = {0, 0, 0};
+        axis[least] = kFxOne;
+        const fx cross[3] = {(n[1] * axis[2] - n[2] * axis[1]) >> 12, (n[2] * axis[0] - n[0] * axis[2]) >> 12,
+                             (n[0] * axis[1] - n[1] * axis[0]) >> 12};
+        const fx length = fxLength(cross);
+        if (length < 64)
+            return false;
+        for (int i = 0; i < 3; ++i)
+            across[i] = static_cast<fx>((static_cast<std::int64_t>(cross[i]) << 12) / length);
+        return true;
+    }
+
     /// The marks on brush entity `brush` go: it is gone for good (broken,
     /// taken away), and they were on its faces. (One only hidden for a time
     /// -- a func_wall_toggle -- keeps them, unseen while it is: the game's

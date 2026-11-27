@@ -90,17 +90,69 @@ namespace hldata
         return true;
     }
 
+    /// How large a mark at `at`, facing `normal`, on `mover` (-1 the world),
+    /// can be and still lie on what it is on: `half`, three quarters of it
+    /// or half of it, the first whose four corners are all on that surface;
+    /// 0 if none is. A mark is one square, never cut to the faces under it:
+    /// one hanging past an edge would be seen in the air beside it, where a
+    /// low look draws it without the depth test (drawDecals).
+    inline int markFit(const MoveWorld &world, int mover, const fx *at, const fx *normal, int half)
+    {
+        fx u[3];
+        if (!markAcross(normal, u))
+            return 0;
+        const fx v[3] = {(normal[1] * u[2] - normal[2] * u[1]) >> 12, (normal[2] * u[0] - normal[0] * u[2]) >> 12,
+                         (normal[0] * u[1] - normal[1] * u[0]) >> 12};
+        const int sizes[3] = {half, half * 3 >> 2, half >> 1};
+        for (const int size : sizes)
+        {
+            if (size < 1)
+                break;
+            bool fits = true;
+            for (int corner = 0; corner < 4 && fits; ++corner)
+            {
+                const int su = corner & 1 ? size : -size;
+                const int sv = corner & 2 ? size : -size;
+                fx c[3], from[3], to[3];
+                for (int i = 0; i < 3; ++i)
+                {
+                    c[i] = at[i] + u[i] * su + v[i] * sv;
+                    from[i] = c[i] + normal[i] * 2;
+                    to[i] = c[i] - normal[i] * 2;
+                }
+                // On it: the same thing met, facing the same way (to within
+                // 8 degrees), within a unit of its plane.
+                fx hit[3], facing[3];
+                int on = -1;
+                if (!traceShotWall(world, from, to, hit, facing, &on, true, true) || on != mover)
+                {
+                    fits = false;
+                    break;
+                }
+                const fx along = (facing[0] * normal[0] + facing[1] * normal[1] + facing[2] * normal[2]) >> 12;
+                const fx off = ((hit[0] - at[0]) * (normal[0] >> 4) + (hit[1] - at[1]) * (normal[1] >> 4) +
+                                (hit[2] - at[2]) * (normal[2] >> 4)) >> 8;
+                fits = along >= 4056 && off <= kFxOne && off >= -kFxOne;
+            }
+            if (fits)
+                return size;
+        }
+        return 0;
+    }
+
     [[gnu::noinline]] inline void markOn(ActorWorld &a, const MoveWorld &world, int mover, std::uint8_t picture,
                                          const fx *at, const fx *normal, int half, std::uint16_t colour)
     {
-        if (mover < 0 || world.brushes == nullptr || world.movers == nullptr || mover >= world.moverCount)
-        {
-            decalAdd(a, picture, at, normal, half, colour);
-            return;
-        }
+        const bool onBrush = mover >= 0 && world.brushes != nullptr && world.movers != nullptr && mover < world.moverCount;
         fx local[3];
-        if (markLocal(world, mover, at, local))
-            decalAdd(a, picture, local, normal, half, colour, mover);
+        if (onBrush && !markLocal(world, mover, at, local))
+            return;
+        // (As large as what it is on has room for; none, on what has room
+        // for none of it.)
+        const int fit = markFit(world, onBrush ? mover : -1, at, normal, half);
+        if (fit == 0)
+            return;
+        decalAdd(a, picture, onBrush ? local : at, normal, fit, colour, onBrush ? mover : -1);
     }
 
     /// A shot (or, with `blow`, a swing) has landed on the world at the end
