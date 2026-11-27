@@ -270,6 +270,21 @@ namespace
         markBlast(a, g.move, feet, 48);
         check(marks() == 5 && a.decals[4].picture == kDecalScorch && a.decals[4].half >= 32 && a.decals[4].normal[2] > 3900,
               "a blast scorches the floor under it");
+        // A brush met at a slant: the mark is where the line meets its face
+        // (c1a0's pane, x 226 to 232, y -1154 to -1054), not where its clip
+        // hull met it brought back onto that face's plane (16 units aside).
+        {
+            const fx from[3] = {fxFromInt(150), fxFromInt(-1150), fxFromInt(-150)};
+            const fx to[3] = {fxFromInt(300), fxFromInt(-1000), fxFromInt(-150)};
+            fx at[3], normal[3];
+            int on = -1;
+            const bool met = traceShotWall(g.move, from, to, at, normal, &on, true);
+            std::printf("  slanted pane: met %d on %d at %.2f %.2f %.2f normal %d %d %d\n", met, on,
+                        at[0] / 4096.0, at[1] / 4096.0, at[2] / 4096.0, normal[0], normal[1], normal[2]);
+            check(met && on >= 0 && normal[0] < -4000 && std::abs(at[0] - fxFromInt(226)) <= kFxOne / 4 &&
+                      std::abs(at[1] - fxFromInt(-1074)) <= kFxOne / 4,
+                  "a mark on a brush met at a slant is where the line meets its face");
+        }
         // One spot, hit again and again, is one mark: not a pile of them.
         const int before = marks();
         for (int n = 0; n < 20; ++n)
