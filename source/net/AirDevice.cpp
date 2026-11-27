@@ -121,6 +121,15 @@ namespace hlrt::air
                     keepPacked();
                     continue;
                 }
+                // (What a card's archive has that nothing here reads -- a DS's
+                // cut, a DSi's finer runs, models' keys, sent by a converter
+                // that put them in: gone past, else it would stand in the way
+                // of everything after it.)
+                if (hldata::guestNeverReads(cursor->name()))
+                {
+                    memberOpen = false;
+                    continue;
+                }
                 const hldata::GuestKind kind = static_cast<hldata::GuestKind>(cursor->member().kind);
                 if (std::strcmp(cursor->name(), name) == 0)
                     return true;

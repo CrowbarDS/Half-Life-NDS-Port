@@ -24,6 +24,8 @@
 #include <cstdint>
 #include <cstring>
 
+#include "HlDsCut.hpp"
+#include "HlDsiGx.hpp"
 #include "HlLz77Stream.hpp"
 
 namespace hldata
@@ -343,5 +345,20 @@ namespace hldata
         if (starts("snd/"))
             return GuestKind::Sound;
         return GuestKind::Ui;
+    }
+
+    /// What a map's archive holds for a console with the card that a console
+    /// sent the game never reads: a DS's cut of a level too big for it and
+    /// its sections (HlDsCut.hpp), a DSi's finer runs (HlDsiGx.hpp), a
+    /// model's keys kept apart (HlModel.hpp's .hmk). Never sent to one: in
+    /// its stream, read in the loaders' order, one would stand in the way of
+    /// all that comes after it -- never asked for, and of a kind no loader's
+    /// question goes past.
+    inline bool guestNeverReads(const char *name)
+    {
+        const std::size_t length = std::strlen(name);
+        return std::strcmp(name, kDsCutMember) == 0 || std::strcmp(name, kDsVisMember) == 0 ||
+               std::strcmp(name, kDsGxMember) == 0 || std::strcmp(name, kDsiGxMember) == 0 ||
+               (length > 4 && std::strcmp(name + length - 4, ".hmk") == 0);
     }
 } // namespace hldata

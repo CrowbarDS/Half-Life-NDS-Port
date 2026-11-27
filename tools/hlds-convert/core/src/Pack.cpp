@@ -915,6 +915,12 @@ namespace hlds
         packing.report = &report;
         if (!collectMap(stage, map, false, packing, error))
             return false;
+        // (Not what a console sent the game never reads -- the card's own DS
+        // cut, a DSi's finer runs, models' keys: in the stream, read in the
+        // loaders' order, it would stand in the way of all that is after it.)
+        packing.members.erase(std::remove_if(packing.members.begin(), packing.members.end(),
+                                             [](const NpacMember &m) { return hldata::guestNeverReads(m.path.c_str()); }),
+                              packing.members.end());
         std::vector<NpacMember> asked; // (what is left out of the stream, for the bank)
         std::vector<std::uint8_t> level;
         hldata::LevelView view;
