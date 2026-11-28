@@ -1659,7 +1659,13 @@ videoGL, never uses `divf32`, `sqrtf32` or any inline divide or root of
 libnds's (its roots go through `source/HwMath.s`), never allocates or frees
 (`malloc`, `new`, `free`) and never prints or touches a file (stdio).
 `tools/irq-divider.py` walks what `thinkRunOne` and the worker's loop reach
-and fails the build on any of these. It stays under the frame and shares
+and fails the build on any of these. At each pause the frame may run a
+whole frame, so nothing held over one may go stale: a question is worked
+out from where its asker was when it began (a copy, not the actor, who
+walks on); the walks look again at what moves near their way after a
+stop; a place given to a new actor puts its old question away
+(`aiForget`), so no answer reaches the wrong one; and the door a plan
+goes through is read again once its way is found. It stays under the frame and shares
 no slices with it: a time slice only alternates threads of one priority,
 and at the frame's level or above the worker could cut into the frame in
 the middle of a Nitro Engine divide, and would only wait for the world

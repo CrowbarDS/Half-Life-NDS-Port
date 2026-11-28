@@ -847,6 +847,14 @@ namespace hldata
     /// Its monster forgotten (a monstermaker makes a new one in its place).
     inline void aiForget(ActorWorld &a, int index)
     {
+        // (Its question to the worker too: a new actor in its place takes up
+        // no answer of the old one's, and one being worked out is thrown
+        // away -- thinkRunOne gives no answer to a question put away.)
+#ifndef HLDS_CHILD
+        // (The Download Play child asks no worker: it has no questions out.)
+        if (a.think != nullptr && a.think->slots != nullptr && index >= 0 && index < a.think->count)
+            a.think->slots[index] = ThinkSlot();
+#endif
         if (a.ai == nullptr || index < 0 || index >= a.ai->actorCount || a.ai->slotOf[index] < 0)
             return;
         aiSquadLeave(a, index);

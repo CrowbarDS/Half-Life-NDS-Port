@@ -738,7 +738,12 @@ namespace hldata
             int pause = 0;
             for (int n = 0; n <= steps; ++n)
             {
-                thinkPoint(pause, 5); // (three hull traces a step, and its footing)
+                // (Three hull traces a step, and its footing: a stop every
+                // two, half a millisecond each on a DS. Over a stop the
+                // frame moves the movers and the actors: what is near the
+                // way is looked at again after it. The walk's own place,
+                // `at`, and its ends are its own.)
+                thinkPoint(pause, 2);
                 if (look != nullptr && pause == 0 && n > 0 && thinkYield != nullptr)
                     walkLookAt(whole, at, to, steps - n, *look);
                 const fx d[3] = {to[0] - at[0], to[1] - at[1], 0};
@@ -871,7 +876,10 @@ namespace hldata
         int pause = 0;
         while (gone + kWalkStep <= look)
         {
-            thinkPoint(pause, 5);
+            // (A stop every two steps: these ask every mover, not only those
+            // near. Nothing of the world is kept over it -- `bare` asks the
+            // movers as they are -- only how far it has got.)
+            thinkPoint(pause, 2);
             // (Each step towards `to` from where the last left it, as
             // walkClear goes: what that finds clear, this does.)
             const fx d[3] = {to[0] - at[0], to[1] - at[1], 0};
@@ -948,10 +956,16 @@ namespace hldata
         // reached); failing that, one that can be seen.
         const fx eye[3] = {feet[0], feet[1], feet[2] + fxFromInt(20)};
         int seen = -1;
+        int pause = 0;
         for (int k = 0; k < tries; ++k)
         {
             if (best[k] < 0)
                 break;
+            // (A stop for the frame before each: a walk there that fails in
+            // its first steps never stops of itself. What is held over it --
+            // the nodes, which do not move, and `feet`, the asker's place as
+            // it asked -- cannot go stale; the walk asks the world afresh.)
+            thinkPoint(pause, 1);
             const fx *p = a.nodes[best[k]].pos;
             const fx to[3] = {p[0], p[1], p[2] + fxFromInt(20)};
             if (!lineClear(world, eye, to))

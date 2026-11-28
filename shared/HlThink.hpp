@@ -74,17 +74,19 @@ namespace hldata
         case kThinkDetour:
         {
             // (From where it stands: it waits, stopped, for the answer.)
-            const ActorState &walker = a.states[index];
-            answer.found = walkTriangulate(*w.world, &a, index, asked.small, walker.pos, asked.at,
+            const fx from[3] = {a.states[index].pos[0], a.states[index].pos[1], a.states[index].pos[2]};
+            answer.found = walkTriangulate(*w.world, &a, index, asked.small, from, asked.at,
                                            fxFromInt(asked.reach), fxFromInt(asked.least), answer.out);
             break;
         }
 #ifndef HLDS_CHILD
         case kThinkLook:
         {
-            // (From where it is now: it goes on walking meanwhile.)
-            const ActorState &walker = a.states[index];
-            answer.found = walkLookRound(*w.world, &a, index, asked.small, walker.pos, asked.at, fxFromInt(asked.reach),
+            // (From where it is now: it goes on walking meanwhile -- from
+            // where it was as this began, all through: the frame moves it at
+            // each stop.)
+            const fx from[3] = {a.states[index].pos[0], a.states[index].pos[1], a.states[index].pos[2]};
+            answer.found = walkLookRound(*w.world, &a, index, asked.small, from, asked.at, fxFromInt(asked.reach),
                                          fxFromInt(asked.least), answer.out);
             break;
         }
@@ -95,12 +97,13 @@ namespace hldata
             // it is -- is the asker's, when it takes the answer up.)
             const ActorState &me = a.states[index];
             const bool opens = opensDoors(me.kind);
+            const fx from[3] = {me.pos[0], me.pos[1], me.pos[2]};
             int next = asked.basis;
             const int node = asked.kind == kThinkCover
-                                 ? aiCoverNode(a, *w.world, index, asked.small, opens, me.pos, asked.at, asked.out[0],
+                                 ? aiCoverNode(a, *w.world, index, asked.small, opens, from, asked.at, asked.out[0],
                                                asked.least, asked.reach, asked.basis, next,
                                                [](const fx *) { return true; })
-                                 : aiNearRouteNode(a, *w.world, index, asked.small, opens, me.pos, asked.at,
+                                 : aiNearRouteNode(a, *w.world, index, asked.small, opens, from, asked.at,
                                                    asked.out[0], asked.out[1], asked.least, asked.reach, asked.basis,
                                                    next);
             answer.found = node >= 0;

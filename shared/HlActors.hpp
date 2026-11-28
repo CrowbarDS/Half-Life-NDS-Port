@@ -590,11 +590,16 @@ namespace hldata
     /// Called every so often in a long loop: every `every` calls, a stop.
     inline void thinkPoint(int &counter, int every)
     {
+#ifdef HLDS_CHILD
+        // (The Download Play child has no worker: nothing ever stops.)
+        (void)counter, (void)every;
+#else
         if (thinkYield != nullptr && ++counter >= every)
         {
             counter = 0;
             thinkYield();
         }
+#endif
     }
 
     struct AiWorld; // (HlAi.hpp)
