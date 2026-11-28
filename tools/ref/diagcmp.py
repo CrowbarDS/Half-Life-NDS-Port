@@ -441,27 +441,70 @@ def lamps(pc, ds, pl_pc, pl_ds, frames):
               f'({l_pc[kinds[0]]["hit"]} / {l_ds[kinds[0]]["hit"]})')
 
 
+def pair_monsters(pc, ds):
+    """Each of the game's monsters with the port's of its class that started
+    nearest it (mstart rows: those there at the start, and those a maker
+    made, as each came)."""
+    starts_pc, starts_ds = pc.get('mstart', []), ds.get('mstart', [])
+    pairs, used = [], set()
+    for m in starts_pc:
+        best, best_d = None, 64.0
+        for n in starts_ds:
+            if (n['id'], n['frame']) in used or n['cls'] != m['cls']:
+                continue
+            d = math.dist(vec(m, ('sx', 'sy', 'sz')), vec(n, ('sx', 'sy', 'sz')))
+            if d < best_d:
+                best, best_d = n, d
+        if best is not None:
+            used.add((best['id'], best['frame']))
+            pairs.append((m, best))
+    return pairs
+
+
+def speech(pc, ds):
+    """The spoken lines, both sides': who says which, and when -- a
+    monster's by the pairing (its class and the port's id), anything
+    else's as nobody's -- aligned in order as monsters() aligns events."""
+    rows_pc, rows_ds = pc.get('say', []), ds.get('say', [])
+    if not rows_pc and not rows_ds:
+        return
+    to_port = {m['id']: n['id'] for m, n in pair_monsters(pc, ds)}
+    def who(r, mapping):
+        if r['id'] == '-1':
+            return '-'
+        return r['cls'] + ' ' + (mapping.get(r['id'], '?' + r['id']) if mapping is not None else r['id'])
+    # (Names as the map wrote them on the game's side, as the book has them
+    # on the port's: compared without their case.)
+    seq_pc = [(int(r['frame']), who(r, to_port) + ': ' + r['name'].upper()) for r in rows_pc]
+    seq_ds = [(int(r['frame']), who(r, None) + ': ' + r['name'].upper()) for r in rows_ds]
+    print(f' lines said (real game / port): {len(seq_pc)} / {len(seq_ds)}')
+    ops = difflib.SequenceMatcher(None, [e[1] for e in seq_pc], [e[1] for e in seq_ds], autojunk=False).get_opcodes()
+    late = [seq_ds[j1 + i][0] - seq_pc[i1 + i][0] for tag, i1, i2, j1, j2 in ops if tag == 'equal' for i in range(i2 - i1)]
+    if late:
+        print(f'  {"paired":<14}{len(late)}, the port later by {min(late)}..{max(late)} frames')
+    apart = [op for op in ops if op[0] != 'equal']
+    for tag, i1, i2, j1, j2 in apart[:8]:
+        def show(seq, a, b):
+            if a == b:
+                return 'none'
+            more = f' (+{b - a - 1})' if b - a > 1 else ''
+            return f'frame {seq[a][0]} {seq[a][1]}{more}'
+        print(f'  {"apart":<14}{show(seq_pc, i1, i2)} / {show(seq_ds, j1, j2)}')
+    if len(apart) > 8:
+        print(f'  {"":<14}... and {len(apart) - 8} more')
+    if not apart:
+        print(f'  {"apart":<14}none')
+
+
 def monsters(pc, ds, pos):
     """The monsters, each paired with the port's of its class that started
     nearest (mstart rows): their AI's events as two sequences, aligned in
     order (a frame or so apart is the same event: the game's monsters think
     after the player's move, the port's before it), the first that differs;
     and where they are at each think, on the frames both thought."""
-    starts_pc, starts_ds = pc.get('mstart', []), ds.get('mstart', [])
-    if not starts_pc or not starts_ds:
+    pairs = pair_monsters(pc, ds)
+    if not pairs:
         return
-    pairs, used = [], set()
-    for m in starts_pc:
-        best, best_d = None, 64.0
-        for n in starts_ds:
-            if n['id'] in used or n['cls'] != m['cls']:
-                continue
-            d = math.dist(vec(m, ('sx', 'sy', 'sz')), vec(n, ('sx', 'sy', 'sz')))
-            if d < best_d:
-                best, best_d = n, d
-        if best is not None:
-            used.add(best['id'])
-            pairs.append((m, best))
 
     def events(rows, mid):
         # (A monster's thinking: its schedules, tasks, failures, and the
@@ -674,6 +717,7 @@ def main():
     lamps(pc, ds, pl_pc, pl_ds, frames)
     turning(pc, ds)
     monsters(pc, ds, a.pos)
+    speech(pc, ds)
 
     box_pc, box_ds = boxes_per_frame(pc.get('box', [])), boxes_per_frame(ds.get('box', []))
     moved = []

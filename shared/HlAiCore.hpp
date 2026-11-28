@@ -4246,6 +4246,23 @@ namespace hldata
         // nothing breaks, is ended by its own half-health trigger.
         if (c.me.script >= 0)
         {
+            HL_DIAG_ONLY({
+                // (The diagnostic log's rows while a script has it, as the
+                // game's SCRIPT state shows them: its schedule by the
+                // script's way to the mark, logged as it is taken and then
+                // as the frames go -- diag_replay writes one a tenth of a
+                // second, as the game's thinks do.)
+                const std::uint32_t way = c.me.script < c.w.recordCount ? c.w.records[c.me.script].extra[3] : 0;
+                const char *name = way == kScriptMoveWalk   ? "WalkToScript"
+                                   : way == kScriptMoveRun  ? "RunToScript"
+                                   : way == kScriptMoveTurn ? "FaceScript"
+                                                            : "WaitForScript";
+                if (!m->scripted)
+                    HL_DIAG(aiEvent, index, "sched", name, 0, 0);
+                HL_DIAG(monster, diag::Monster{index, c.me.pos, aiYaw(c), kStateScript, kStateScript, name, -1, -1,
+                                               c.m.conditions, c.m.enemy, c.m.activity, c.me.clip, c.me.health,
+                                               m->thinkMs});
+            })
             m->scripted = true;
             aiCheckTrigger(c);
             return;

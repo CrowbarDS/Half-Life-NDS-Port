@@ -37,6 +37,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <iterator>
+#include <cctype>
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
@@ -54,6 +56,7 @@
 #include "HlLamp.hpp"
 #include "HlView.hpp"
 #include "TestGame.hpp"
+#include "hlds/SoundCook.hpp"
 #include "hlds/AtomicWrite.hpp"
 
 using namespace hldstest;
@@ -395,7 +398,14 @@ namespace
             if (static_cast<std::uint8_t>(k.kind) == kind && std::strncmp(k.name, "monster_", 8) == 0)
                 return k.name;
         }
-        return "-";
+        // (The people killall does not know, as the game's log names them.)
+        switch (static_cast<ActorKind>(kind))
+        {
+        case ActorKind::Gman: return "monster_gman";
+        case ActorKind::Sitter: return "monster_sitting_scientist";
+        case ActorKind::Generic: return "monster_generic";
+        default: return "-";
+        }
     }
 } // namespace
 
@@ -675,18 +685,21 @@ int main(int argc, char **argv)
     std::fprintf(out, "#cols mstart frame seq t id cls sx sy sz start first\n");
     std::fprintf(out, "#cols mon frame seq t id ox oy oz yaw state ideal sched ti tid cond enemy act seq hp next\n");
     std::fprintf(out, "#cols aiev frame seq t id what name a b\n");
+    std::fprintf(out, "#cols say frame seq t id cls name\n");
     std::fprintf(out, "#cols rnd frame seq t id kind lo hi value\n");
     std::fprintf(out, "#cols cam frame seq t name ox oy oz ax ay az wx wy\n");
     // The monsters: each matched to the game's of its class that started
-    // nearest (ids in the port's rows are its own actors').
-    for (int i = 0; i < g.actors.count; ++i)
-    {
+    // nearest (ids in the port's rows are its own actors') -- those there
+    // at the start, and those that come later (a monstermaker's, in a place
+    // of its own or one a dead child left), as each comes.
+    std::vector<char> started(static_cast<std::size_t>(g.actors.count), 0);
+    auto startActor = [&](int i, int frame, double t) {
         const ActorState &actor = g.actorStates[i];
-        if (!actor.active || aiKindOf(actor.kind) == nullptr)
-            continue;
         const char *cls = className(actor.kind);
-        std::fprintf(out, "mstart,0,0,0.0000,%d,%s,%.3f,%.3f,%.3f,0.0000,0.0000\n", i, cls, units(actor.pos[0]),
-                     units(actor.pos[1]), units(actor.pos[2]));
+        std::fprintf(out, "mstart,%d,%d,%.4f,%d,%s,%.3f,%.3f,%.3f,0.0000,0.0000\n", frame, frame, t, i, cls,
+                     units(actor.pos[0]), units(actor.pos[1]), units(actor.pos[2]));
+        started[static_cast<std::size_t>(i)] = 1;
+        mons.byActor.erase(i);
         int best = -1;
         double bestD = 64.0 * 64.0;
         for (std::size_t n = 0; n < mons.game.size(); ++n)
@@ -707,7 +720,56 @@ int main(int argc, char **argv)
             mons.game[best].actor = i;
             mons.byActor[i] = best;
         }
+    };
+    // (Come into play: active, thinking, not dead. A place a dead one
+    // leaves is free to be counted again when someone new is in it.)
+    auto comes = [&](int frame, double t) {
+        for (int i = 0; i < g.actors.count; ++i)
+        {
+            const ActorState &actor = g.actorStates[i];
+            const bool here = actor.active && aiKindOf(actor.kind) != nullptr && actor.ai < kAiDying;
+            if (here && !started[static_cast<std::size_t>(i)])
+                startActor(i, frame, t);
+            else if (!here && started[static_cast<std::size_t>(i)] && (!actor.active || actor.ai >= kAiDead))
+                started[static_cast<std::size_t>(i)] = 0;
+        }
+    };
+    comes(0, 0.0);
+    // The lines the map's people say, by the game's names: each cooked line
+    // known by its words (the game's sentences.txt), as the game's log has
+    // them ("say" rows: who, and which line).
+    std::vector<std::string> lineName(g.view.sentenceCount, "?");
+    {
+        auto plain = [](std::string word) {
+            for (char &ch : word)
+                ch = ch == '/' ? '_' : static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            const std::size_t dot = word.find('.');
+            return dot == std::string::npos ? word : word.substr(0, dot);
+        };
+        std::ifstream file(std::string(std::getenv("HLDS_VALVE_DIR") != nullptr ? std::getenv("HLDS_VALVE_DIR") : ".") +
+                               "/sound/sentences.txt",
+                           std::ios::binary);
+        const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        std::map<std::string, std::string> byWords;
+        for (const auto &[name, line] : hlds::parseSentences(text).lines)
+        {
+            std::string key;
+            for (const std::string &word : line.words)
+                key += plain(word) + " ";
+            byWords.emplace(key, name);
+        }
+        for (std::uint32_t i = 0; i < g.view.sentenceCount; ++i)
+        {
+            const SentenceRecord &record = g.view.sentences[i];
+            std::string key;
+            for (int w = 0; w < record.wordCount; ++w)
+                key += plain(g.view.sound(g.view.sentenceWords[record.firstWord + w].sound).name) + " ";
+            const auto found = byWords.find(key);
+            if (found != byWords.end())
+                lineName[i] = found->second;
+        }
     }
+    std::size_t saidSoFar = 0;
     diag::random = [](int actor, diag::RandomKind kind, int low, int high, int drawn) {
         if (now.frame < 1)
             return drawn;
@@ -738,6 +800,17 @@ int main(int argc, char **argv)
     diag::monster = [](const diag::Monster &m) {
         if (now.frame < 1)
             return;
+        // (A script's rows come every frame it holds the actor: one a tenth
+        // of a second is written, as the game's thinks write theirs.)
+        static std::map<int, int> scriptRow;
+        const std::size_t named = m.schedule != nullptr ? std::strlen(m.schedule) : 0;
+        if (named > 6 && std::strcmp(m.schedule + named - 6, "Script") == 0)
+        {
+            auto last = scriptRow.find(m.index);
+            if (last != scriptRow.end() && now.frame - last->second < 6)
+                return;
+            scriptRow[m.index] = now.frame;
+        }
         // (The player is the game's entity 1.)
         const int enemy = m.enemy == kAiPlayer ? 1 : m.enemy;
         std::fprintf(now.out, "mon,%d,%d,%.4f,%d,%.3f,%.3f,%.3f,%.3f,%d,%d,%s,%d,%d,%08x,%d,%d,%d,%.2f,%.4f\n", now.frame,
@@ -1059,17 +1132,25 @@ int main(int argc, char **argv)
         itemsTouch(g.logic, g.player);
         logicTick(g.logic, g.player, ms);
         g.logic.viewTurn = 0;
+        if (f >= 1)
+            comes(f, t);
         const fx eye[3] = {g.player.origin[0], g.player.origin[1], g.player.origin[2] + g.player.viewHeight};
         int pulled = -1; // (pulled after the move, as Game::frame does)
         if (useHeld && g.player.health > 0)
         {
             const int target = logicFindUsable(g.logic, eye, forward);
-            if (target >= 0 && g.logic.records[target].kind == static_cast<std::uint8_t>(LogicKind::Pushable))
-                pulled = target;
+            const bool box =
+                target >= 0 && g.logic.records[target].kind == static_cast<std::uint8_t>(LogicKind::Pushable);
             // The press itself (Game::frame's usePressed): a button, a door,
-            // a lift's call -- what is not pulled is used, once.
-            else if (target >= 0 && !useWas)
+            // a lift's call, used once; else a scientist or a guard (follow,
+            // or stay: personUse); else a box, pulled while it is held.
+            if (!useWas && target >= 0 && !box)
                 logicUse(g.logic, g.player, target, -1, kUseSet);
+            else if (!useWas && personUse(g.logic, g.player, eye, forward))
+            {
+            }
+            else if (box)
+                pulled = target;
         }
         useWas = useHeld;
         MoveCommand cmd;
@@ -1146,6 +1227,15 @@ int main(int argc, char **argv)
             }
         }
         g.drain();
+        for (; saidSoFar < g.said.size(); ++saidSoFar)
+        {
+            const std::uint16_t line = g.said[saidSoFar], by = g.saidBy[saidSoFar];
+            const int actor = (by & kSoundTagActor) ? (by & 0x7FFF) : -1;
+            if (f >= 1)
+                std::fprintf(out, "say,%d,%d,%.4f,%d,%s,%s\n", f, f, t, actor,
+                             actor >= 0 && actor < g.actors.count ? className(g.actorStates[actor].kind) : "-",
+                             line < lineName.size() ? lineName[line].c_str() : "?");
+        }
 
         lampTick(lamp, ms, &lampRest);
         if (f < 1)
