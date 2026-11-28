@@ -12,7 +12,9 @@ in a linked ELF from every handler:
     tools/irq-divider.py build/arm9/arm9.elf child/build/arm9/arm9.elf
 
 Exit status 1 if one can, with the way there, or if something new installs a
-handler. What a crash prints is allowed: it never returns to whatever was
+handler. The think worker has a rule of its own on top (THINK_BANNED): what
+its loop and thinkRunOne reach may not call Nitro Engine, videoGL, the heap or
+stdio, nor touch the 3D hardware's registers. What a crash prints is allowed: it never returns to whatever was
 interrupted.
 
 What it can see: direct calls, the linker's Thumb veneers, and the registers
@@ -89,6 +91,21 @@ UNITS = ("hlHwSqrt64",)
 # thread: SaveGame.cpp.)
 THREADS = ["hlrt::(anonymous namespace)::work(void*)", "hlrt::SaveGame::(anonymous namespace)::saveWork(void*)"]
 THREAD_PATTERN = re.compile(r"^hldata::thinkRunOne\(")
+# The think worker's own rule (docs/TECHNICAL.md): what it runs touches the
+# world and nothing else -- no 3D hardware, Nitro Engine or videoGL (nor their
+# registers), no heap, no stdio. (Not the save thread: its work is the card.)
+# Its loop, its pause (given to the game by a pointer), and thinkRunOne.
+THINK_ROOTS = ["hlrt::(anonymous namespace)::work(void*)", "hlrt::(anonymous namespace)::pause()"]
+THINK_BANNED = re.compile(
+    r"^(NEA_|ne_|gl[A-Z])"
+    r"|^(__wrap_)?(malloc|free|calloc|realloc|memalign|aligned_alloc|posix_memalign|"
+    r"_malloc_r|_free_r|_calloc_r|_realloc_r|_memalign_r)$"
+    r"|^operator (new|delete)|^(__wrap_)?_Z(nw|na|dl|da)"
+    r"|^_*(v|f|s|sn|vf|vs|vsn|as|vas|i|fi|si|sni|vfi|vsi|vsni)?printf(_r)?$|^_*sv?f?i?printf_r$"
+    r"|^_*(puts|fputs|fputc|putc|putchar|fopen|fclose|fread|fwrite|fseek|fseeko|ftell|ftello|fflush|"
+    r"fgets|fgetc|getc|setvbuf|remove|rename)(_r)?$|^__sfvwrite_r$|^__srefill_r$|^__swsetup_r$|^__sflush_r$")
+# The 3D hardware's registers (GXSTAT, the geometry FIFO and its commands).
+GX_REGISTERS = range(0x04000320, 0x040006A4)
 CRASH = "__assert_func"
 REGISTERS = range(0x04000280, 0x040002C0)
 BRANCH = re.compile(r"^(bl|blx|b)(eq|ne|cs|cc|mi|pl|vs|vc|hi|ls|ge|lt|gt|le)?(\.n|\.w)?$")
@@ -143,6 +160,7 @@ def check(elf):
 
     calls = collections.defaultdict(set)
     uses = set()
+    gx_uses = set()
     evidence = {}  # the first instruction that says so
     indirect = collections.defaultdict(set)
     known = {}  # what each register is known to hold, within a function
@@ -189,9 +207,15 @@ def check(elf):
         elif block and block[1] in known and known[block[1]] in REGISTERS:
             uses.add(where)
             evidence.setdefault(where, at)
+        elif memory and memory[1] in known and known[memory[1]] + int(memory[2], 0) in GX_REGISTERS:
+            gx_uses.add(where)
+        elif block and block[1] in known and known[block[1]] in GX_REGISTERS:
+            gx_uses.add(where)
         if value is not None and value in REGISTERS:
             uses.add(where)
             evidence.setdefault(where, at)
+        if value is not None and value in GX_REGISTERS:
+            gx_uses.add(where)
         # Anything else that writes a register: what it held is gone.
         if written is None and not op.startswith(("str", "cmp", "cmn", "tst", "teq", "push", "stm")):
             first = REGISTER.match(rest)
@@ -227,6 +251,21 @@ def check(elf):
         thread_from[name] = parent
         stack += [(callee, name) for callee in calls.get(name, ())]
 
+    # The think worker: the same walk again, from its roots, to what it may not
+    # reach. (Not past a banned name: the first is the one to read.)
+    think_roots = [name for name in THINK_ROOTS if name in names]
+    think_roots += [name for name in names if THREAD_PATTERN.search(name)]
+    think_from = {}
+    stack = [(root, None) for root in think_roots]
+    while stack:
+        name, parent = stack.pop()
+        if name in think_from or name == CRASH or name in UNITS:
+            continue
+        think_from[name] = parent
+        if THINK_BANNED.search(name):
+            continue
+        stack += [(callee, name) for callee in calls.get(name, ())]
+
     if "--uses" in FLAGS:
         for name in sorted(uses):
             print("  uses: %08x %s%s" % (evidence[name], name, "  (reached by a handler)" if name in came_from else ""))
@@ -234,6 +273,9 @@ def check(elf):
         for name in sorted(came_from):
             for call in sorted(indirect.get(name, ())):
                 print("  through a pointer: %s: %s" % (name, call))
+        for name in sorted(think_from):
+            for call in sorted(indirect.get(name, ())):
+                print("  through a pointer, think worker: %s: %s" % (name, call))
     bad = 0
     for name in missing:
         if name not in OPTIONAL:
@@ -283,8 +325,18 @@ def check(elf):
             path.append(thread_from[path[-1]])
         print("%s: a thread, not through HwMath.s: %s" % (elf, " <- ".join(path)))
         bad += 1
-    print("%s: %d handlers, %d functions they reach; %d thread roots, %d functions; %d problems%s" % (
-        elf, len(roots), len(came_from), len(thread_roots), len(thread_from), bad,
+    for name in sorted(think_from):
+        if not THINK_BANNED.search(name) and name not in gx_uses:
+            continue
+        path = [name]
+        while think_from[path[-1]] is not None:
+            path.append(think_from[path[-1]])
+        print("%s: the think worker reaches %s: %s" % (
+            elf, "the 3D hardware" if name in gx_uses else "what it may not", " <- ".join(path)))
+        bad += 1
+    print("%s: %d handlers, %d functions they reach; %d thread roots, %d functions; %d think roots, %d functions; "
+          "%d problems%s" % (
+        elf, len(roots), len(came_from), len(thread_roots), len(thread_from), len(think_roots), len(think_from), bad,
         "; not in this program: " + ", ".join(missing) if missing else ""))
     return bad == 0
 
