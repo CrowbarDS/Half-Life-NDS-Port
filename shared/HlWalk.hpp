@@ -825,11 +825,15 @@ namespace hldata
             return walkClear(world, a, index, small, from, p, (fxLength(e) >> (kFxShift + 4)) + 2) &&
                    walkClear(world, a, index, small, p, far, (fxLength(g) >> (kFxShift + 4)) + 2);
         };
-        // (Eight times, as the game's: a DSi too.)
+        // (Eight times, as the game's: a DSi too. A stop for the frame at each
+        // place tried: a walk to one that fails in its first steps never
+        // stops of itself, and sixteen of them held a DS's frame 11 ms.)
+        int pause = 0;
         for (int round = 0; round < 8; ++round, out += size * 2)
         {
             for (int side = 0; side < 2; ++side)
             {
+                thinkPoint(pause, 1);
                 const fx across = side == 0 ? out : -out;
                 const fx p[3] = {from[0] + fxMul(forward[0], ahead) + fxMul(right[0], across),
                                  from[1] + fxMul(forward[1], ahead) + fxMul(right[1], across), from[2]};
