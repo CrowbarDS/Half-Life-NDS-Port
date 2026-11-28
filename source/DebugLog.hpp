@@ -36,7 +36,7 @@ namespace hlrt::DebugLog
         Stream, ///< TextureStream::update: what is in view read off the card
         Vblank, ///< the VBlank interrupt (video memory written, sprites)
         Hblank, ///< the HBlank interrupt, every line (Nitro Engine's)
-        Radio,  ///< the wireless's word from the ARM7, in the FIFO interrupt (local play)
+        Radio,  ///< the wireless library's thread: Wifi_Update (local play; online, not lwIP's)
         Card,   ///< reads off the card (data/CardRead.hpp), wherever they are made
         Lamp,   ///< the lamp's light on the walls (WorldDraw::lampPass: inside Emit)
         Tree,   ///< WorldDraw::walk alone: the tree and its culling (inside Walk)
@@ -57,6 +57,9 @@ namespace hlrt::DebugLog
         void begin();
         std::uint32_t now();
         void add(Section section, std::uint32_t ticks);
+        /// The wireless library's thread's time so far (Section::Radio's, never
+        /// cleared): what of a stretch was the radio's, by the difference.
+        std::uint32_t radioTicks();
         /// One read of a clip's keys off the card, `ticks` long: added to
         /// Section::Keys and counted, for the line's reads, its longest
         /// read, and what of the window's worst frame was reading keys.

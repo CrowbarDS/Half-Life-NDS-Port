@@ -58,6 +58,31 @@ namespace hlrt
             std::uint32_t longestOf[hldata::kThinkKinds] = {}, waitingOf[hldata::kThinkKinds] = {};
         };
         Waits takeWaits();
+        /// How long the frame, woken by the screen, waited for the world to
+        /// be let go (the worker in the middle of a question), in the
+        /// profiler's ticks (HLDS_PROFILE; all 0 without it).
+        struct Holdup
+        {
+            std::uint32_t worst = 0;  ///< the longest wait
+            std::uint32_t radio = 0;  ///< ... of which the wireless library's thread had the CPU
+            std::int16_t actor = -1;  ///< ... whose question the worker was in (-1: none)
+            std::uint8_t kind = 0;    ///< ... and of what kind (hldata::kThink*; 0: none)
+            std::uint32_t over = 0;   ///< waits longer than a millisecond
+        };
+        struct Holdups
+        {
+            Holdup window; ///< since perf.txt last asked (cleared)
+            Holdup map;    ///< since the map was set up
+            Holdup match;  ///< ... the radio on (a match, Download Play, online)
+            /// The worker's longest stretch between two of its pauses, by
+            /// kind of question, the wireless library's time in it taken out:
+            /// what the frame would wait at worst, had the screen woken it at
+            /// its start. Since perf.txt last asked, and since the map was
+            /// set up.
+            std::uint32_t stretchOf[hldata::kThinkKinds] = {};
+            std::uint32_t mapStretchOf[hldata::kThinkKinds] = {};
+        };
+        Holdups takeHoldups();
         /// The deepest the worker's stack has been (perf.txt; 0 unless
         /// profiling).
         std::uint32_t stackPeak() const;

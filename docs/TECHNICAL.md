@@ -2362,7 +2362,19 @@ the costliest ten: each one's mean over every pass, then over the slow and
 the quick given no more than the pace; and the one record that took
 longest. The worker's answers are given by kind of question too (`plan`,
 `detour`, `look`, `cover`, `route`): how many were taken up, their mean and
-longest wait, and the oldest still waiting, in passes.
+longest wait, and the oldest still waiting, in passes. `world back` is
+how long the frame, woken by the screen, waited for the worker's next
+pause, in microseconds: the worst in the window and since the map was set
+up, with the kind of question and the actor that kept it, and how many
+waits were over a millisecond. `stretch` is the worker's longest run
+between two pauses by kind, wall time, in the window and on the map: what
+the frame would wait had the screen woken it at the start of one. A kind
+whose stretch is long wants another `thinkPoint`. The `radio` section is
+the wireless library's thread (`Wifi_Update`, wrapped in a profiling
+build; online, lwIP's turn is not in it). It is above the frame and cuts
+into the worker too, so each wait gives the radio's share of it, and
+`radio on world back` is the worst wait while the radio is on (a match,
+Download Play). The stretches leave the radio's time out.
 
 **Timed jobs, one a pass.** Four things are looked at every so often
 rather than every pass: the map's own marks (every 500 ms) and the ways

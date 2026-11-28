@@ -8,8 +8,10 @@
 #include <nds.h>
 #include <nds/cothread.h>
 
+#include "DebugLog.hpp"
 #include "game/GameApi.hpp"
 #include "HlTraceCount.hpp"
+#include "net/NetLink.hpp"
 
 namespace hlrt
 {
@@ -72,6 +74,66 @@ namespace hlrt
 #ifndef HLDS_CHILD
         cothread_t mainThread = -1;
 
+#ifdef HLDS_PROFILE
+        // How long the frame waits for the world, woken by the screen, and
+        // the worker's stretches between its pauses (Think::takeHoldups).
+        Think::Holdups held;
+        constexpr std::uint32_t kMillisecond = 33514; // (bus ticks: DebugLog's clock)
+        std::uint32_t stretchFrom = 0, stretchRadio = 0;
+        int stretchKind = -1; // the question the worker is in, once known
+
+        // The question being worked out, if there is one: its slot's kind
+        // and its actor. (The worker under the frame: while this runs, it
+        // stands where it was cut off, and its slot with it.)
+        int workingSlot()
+        {
+            if (queue.slots == nullptr)
+                return -1;
+            // (thinkRunOne sets `next` past the one it took before it starts.)
+            const int guess = queue.next - 1;
+            if (guess >= 0 && guess < queue.count && queue.slots[guess].state == hldata::kThinkWorking)
+                return guess;
+            for (int i = 0; i < queue.count; ++i)
+            {
+                if (queue.slots[i].state == hldata::kThinkWorking)
+                    return i;
+            }
+            return -1;
+        }
+
+        void noteHoldup(Think::Holdup &h, std::uint32_t ticks, std::uint32_t radio, int slot)
+        {
+            if (ticks > kMillisecond)
+                ++h.over;
+            if (ticks <= h.worst)
+                return;
+            h.worst = ticks;
+            h.radio = radio;
+            h.actor = static_cast<std::int16_t>(slot);
+            const std::uint8_t kind = slot >= 0 ? queue.slots[slot].kind : 0;
+            h.kind = kind < hldata::kThinkKinds ? kind : 0;
+        }
+
+        // A stretch of the worker's, from its start (or a pause) to its end
+        // (or the next pause).
+        void stretchEnd()
+        {
+            if (stretchKind < 0)
+            {
+                const int slot = workingSlot();
+                const std::uint8_t kind = slot >= 0 ? queue.slots[slot].kind : 0;
+                stretchKind = kind < hldata::kThinkKinds ? kind : 0;
+            }
+            const std::uint32_t radio = DebugLog::Perf::radioTicks() - stretchRadio;
+            const std::uint32_t wall = DebugLog::Perf::now() - stretchFrom;
+            const std::uint32_t ticks = wall > radio ? wall - radio : 0;
+            if (ticks > held.stretchOf[stretchKind])
+                held.stretchOf[stretchKind] = ticks;
+            if (ticks > held.mapStretchOf[stretchKind])
+                held.mapStretchOf[stretchKind] = ticks;
+        }
+#endif
+
         // Where long work stops a moment, the world let go: the frame, if
         // the screen has woken it, has it then -- and the CPU, being above
         // -- and gives it back as it waits for the screen again; if not, the
@@ -83,6 +145,7 @@ namespace hlrt
             if (!queue.abort && cothread_get_current() != mainThread)
             {
 #if defined(HLDS_PROFILE)
+                stretchEnd();
                 // (Its time away, not the trace's it stopped in: HlTraceCount.hpp.)
                 const std::uint32_t left = hlProfileNow();
 #endif
@@ -91,6 +154,8 @@ namespace hlrt
                 comutex_acquire(&thinking);
 #if defined(HLDS_PROFILE)
                 hlProfileAway += hlProfileNow() - left;
+                stretchFrom = DebugLog::Perf::now();
+                stretchRadio = DebugLog::Perf::radioTicks();
 #endif
             }
         }
@@ -116,7 +181,25 @@ namespace hlrt
                 {
                     comutex_acquire(&thinking);
                     busy = true;
+#ifdef HLDS_PROFILE
+                    stretchFrom = DebugLog::Perf::now();
+                    stretchRadio = DebugLog::Perf::radioTicks();
+                    stretchKind = -1;
+#endif
                     const bool did = world != nullptr && !queue.abort && gameApi.thinkRunOne(*world, pause);
+#ifdef HLDS_PROFILE
+                    // (Its last stretch; none if there was no question.)
+                    if (did)
+                    {
+                        if (stretchKind < 0 && queue.slots != nullptr && queue.next > 0 &&
+                            queue.next <= queue.count)
+                        {
+                            const std::uint8_t kind = queue.slots[queue.next - 1].kind;
+                            stretchKind = kind < hldata::kThinkKinds ? kind : 0;
+                        }
+                        stretchEnd();
+                    }
+#endif
                     busy = false;
                     comutex_release(&thinking);
                     cosema_signal(&questionOver);
@@ -177,9 +260,24 @@ namespace hlrt
         frameHolds_ = false;
         comutex_release(&thinking);
         wait();
+#ifdef HLDS_PROFILE
+        // (How long the world takes to come back, and whose question kept
+        // it: the worker, cut off where it was, still in it now.)
+        const std::uint32_t woke = DebugLog::Perf::now();
+        const std::uint32_t radioWas = DebugLog::Perf::radioTicks();
+        const int slot = workingSlot();
+#endif
         // (Woken in the middle of a question: back at its next pause.)
         comutex_acquire(&thinking);
         frameHolds_ = true;
+#ifdef HLDS_PROFILE
+        const std::uint32_t ticks = DebugLog::Perf::now() - woke;
+        const std::uint32_t radio = DebugLog::Perf::radioTicks() - radioWas;
+        noteHoldup(held.window, ticks, radio, slot);
+        noteHoldup(held.map, ticks, radio, slot);
+        if (netlink::radioOn())
+            noteHoldup(held.match, ticks, radio, slot);
+#endif
 #else
         wait();
 #endif
@@ -244,6 +342,26 @@ namespace hlrt
 #endif
         w.actors->think = &queue;
         world = &w;
+#if defined(HLDS_PROFILE) && !defined(HLDS_CHILD)
+        // (A map's worst is its own.)
+        held.map = Holdup();
+        held.match = Holdup();
+        for (std::uint32_t &t : held.mapStretchOf)
+            t = 0;
+#endif
+    }
+
+    Think::Holdups Think::takeHoldups()
+    {
+#if defined(HLDS_PROFILE) && !defined(HLDS_CHILD)
+        const Holdups h = held;
+        held.window = Holdup();
+        for (std::uint32_t &t : held.stretchOf)
+            t = 0;
+        return h;
+#else
+        return Holdups();
+#endif
     }
 
     Think::Waits Think::takeWaits()

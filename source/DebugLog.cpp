@@ -440,6 +440,34 @@ namespace hlrt::DebugLog::Perf
                              static_cast<unsigned long>(waits.takenOf[k] != 0 ? waits.framesOf[k] / waits.takenOf[k] : 0),
                              static_cast<unsigned long>(waits.longestOf[k]), static_cast<unsigned long>(waits.waitingOf[k]));
             }
+            // (How long the frame, woken by the screen, waited for the world
+            // the worker held: its worst in the window and since the map was
+            // set up, the question it was kept by, and the waits over 1 ms;
+            // then the worker's longest stretches between pauses, by kind.)
+            if (think.running())
+            {
+                const Think::Holdups held = think.takeHoldups();
+                std::fprintf(log,
+                             ", world back %lu/%lu us (%s #%d radio %lu, map's %s #%d radio %lu), over 1 ms %lu (map %lu)",
+                             static_cast<unsigned long>(toMicros(held.window.worst)),
+                             static_cast<unsigned long>(toMicros(held.map.worst)), kQuestionNames[held.window.kind],
+                             held.window.actor, static_cast<unsigned long>(toMicros(held.window.radio)),
+                             kQuestionNames[held.map.kind], held.map.actor,
+                             static_cast<unsigned long>(toMicros(held.map.radio)),
+                             static_cast<unsigned long>(held.window.over), static_cast<unsigned long>(held.map.over));
+                // (... and with the radio on: a match, Download Play.)
+                if (held.match.worst != 0)
+                    std::fprintf(log, ", radio on world back %lu us (%s #%d radio %lu), over 1 ms %lu",
+                                 static_cast<unsigned long>(toMicros(held.match.worst)),
+                                 kQuestionNames[held.match.kind], held.match.actor,
+                                 static_cast<unsigned long>(toMicros(held.match.radio)),
+                                 static_cast<unsigned long>(held.match.over));
+                std::fprintf(log, ", stretch");
+                for (int k = 1; k < hldata::kThinkKinds; ++k)
+                    std::fprintf(log, " %s %lu/%lu", kQuestionNames[k],
+                                 static_cast<unsigned long>(toMicros(held.stretchOf[k])),
+                                 static_cast<unsigned long>(toMicros(held.mapStretchOf[k])));
+            }
             // (The card: reads a pass, mean; its sectors as KB a pass; time a
             // pass, mean and most; reads in the pass with most; the longest
             // read; and of the reads, FatFs's own -- a seek's walk, a folder --
@@ -863,6 +891,31 @@ extern "C" void hlProfileSite(std::uint32_t at, int kind, std::uint32_t wide)
         }
     }
     ++(kind == 2 ? div32Lost : sitesLost);
+}
+
+// The wireless library's work on its thread (dswifi's Wifi_Update, above the
+// frame: it cuts into the frame and the think worker as an interrupt does),
+// wrapped in a profiling build (build.py): timed into Section::Radio, and
+// counted up for radioTicks() -- how much of the frame's wait for the world
+// was the radio's (game/Think.cpp). (Online, lwIP's turn on the same thread
+// is the online library's, reached by a pointer: not timed.)
+namespace
+{
+    volatile std::uint32_t radioSoFar = 0;
+}
+std::uint32_t hlrt::DebugLog::Perf::radioTicks()
+{
+    return radioSoFar;
+}
+extern "C" void __real_Wifi_Update();
+extern "C" void __wrap_Wifi_Update()
+{
+    using namespace hlrt::DebugLog::Perf;
+    const std::uint32_t from = now();
+    __real_Wifi_Update();
+    const std::uint32_t ticks = now() - from;
+    add(hlrt::DebugLog::Section::Radio, ticks);
+    radioSoFar = radioSoFar + ticks;
 }
 
 // libnds's disk_read (FatFs's read of the card's sectors), wrapped in a

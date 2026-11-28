@@ -228,6 +228,8 @@ arm9 = Arm9Binary(
         # (A profiling build's: every read of the card's sectors timed, FatFs's
         # own -- its tables, a seek's walk -- told apart: source/DebugLog.cpp.)
         (['-Wl,--wrap=libnds_disk_read', '-Wl,--wrap=libnds_disk_write'] if os.environ.get('HLDS_PROFILE') else []) +
+        # (... and the wireless library's thread's work timed: Section::Radio.)
+        (['-Wl,--wrap=Wifi_Update'] if os.environ.get('HLDS_PROFILE') else []) +
         ['-Wl,--undefined=calloc'] +
         # What the online library (below) calls of the program that nothing
         # of the program's own calls: kept, or it would not load.
