@@ -50,10 +50,12 @@ namespace hldata
     inline constexpr int kAttnStatic = kRadiusMedium;
     inline constexpr int kAttnNorm = kRadiusLarge;
 
-    // Their tasks, after the shared ones.
+    // Their tasks, after the shared ones -- numbered as the game's are
+    // (TASK_CANT_FOLLOW is LAST_COMMON_TASK + 1), as the diagnostic logs
+    // compare them.
     enum : std::uint8_t
     {
-        kTaskCantFollow = kTaskLastCommon,
+        kTaskCantFollow = kTaskLastCommon + 1,
         kTaskMoveAwayPath,
         kTaskWalkPathForUnits,
         kTaskTlkRespond,

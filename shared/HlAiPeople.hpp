@@ -32,7 +32,7 @@ namespace hldata
 
         enum : std::uint8_t
         {
-            kTaskSayHeal = kTaskTlkLast,
+            kTaskSayHeal = kTaskTlkLast + 1, ///< (TASK_SAY_HEAL: LAST_TALKMONSTER_TASK + 1)
             kTaskHeal,
             kTaskSayFear,
             kTaskRunPathScared,
