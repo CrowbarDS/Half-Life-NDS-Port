@@ -1,0 +1,13 @@
+# c1a0, Black Mesa's lobby: the entry's timers fired by name (entrymm: the
+# doors, the scientist with the gizmo, the walker), the player at the
+# map's start; then into the lobby: Barney's line at the desk and the
+# seated scientists' greetings (their trigger_onces). The map's own
+# trigger_auto timers are left out: the two sides' starts are apart.
+# map c1a0
+# start 484 318 -204 180
+# keep func_.*|monster_.*|scripted_.*|multi_manager|multisource|trigger_relay|trigger_once|trigger_multiple|ambient_generic|env_.*|info_node.*
+30 0 0 180 0      # half a second
+cmd diag_fire entrymm
+660 0 0 180 0     # eleven seconds: the doors, the gizmo, the walker
+150 400 0 180 0   # into the lobby
+900 0 0 180 0     # fifteen seconds

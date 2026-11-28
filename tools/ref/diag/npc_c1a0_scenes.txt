@@ -1,0 +1,11 @@
+# c1a0's scenes away from the player: the pondering scientist's loop
+# (lg1..lg10) and the argument (argument, argument_mm: the G-Man and a
+# scientist, and their lines), fired by name from the map's start.
+# map c1a0
+# start 484 318 -204 180
+# keep func_.*|monster_.*|scripted_.*|multi_manager|multisource|trigger_relay|trigger_once|trigger_multiple|ambient_generic|env_.*|info_node.*
+30 0 0 180 0
+cmd diag_fire lg1
+cmd diag_fire argument
+cmd diag_fire argument_mm
+1800 0 0 180 0    # thirty seconds

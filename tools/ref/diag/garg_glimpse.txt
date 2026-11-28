@@ -1,0 +1,11 @@
+# hldemo1's first gargantua: glimpse_garg, sent by its script (walk) to
+# its mark at 792 29 and removed there (the script's killtarget). The
+# player stands where the trigger that sets it off is, and the script is
+# fired by name. What the two sides do with a scripted walk -- the game's
+# routed by the nodes, the port's straight at the mark -- and the sound.
+# map hldemo1
+# start 532 -112 36 90
+# keep func_.*|monster_gargantua|scripted_sequence|ambient_generic|info_node.*
+30 0 0 90 0       # half a second
+cmd diag_fire glimpse_garg_script_1
+900 0 0 90 0      # fifteen seconds

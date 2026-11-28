@@ -1,0 +1,14 @@
+# c1a1, after the disaster: one of the three scientists standing about
+# (no names: their own AI), told to follow by USE, the player backing away
+# (he follows), then told to stay. What he says, where he goes.
+# map c1a1
+# start 730 1960 610 90
+# keep func_.*|monster_scientist|info_node.*
+60 0 0 90 0       # a second
+40 400 0 90 0     # up to them
+1 0 0 90 0 u      # USE: follow me
+120 0 0 90 0
+90 -400 0 90 0    # back away: he follows
+240 0 0 90 0
+1 0 0 90 0 u      # USE: stay
+240 0 0 90 0

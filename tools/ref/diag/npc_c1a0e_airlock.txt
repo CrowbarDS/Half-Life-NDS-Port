@@ -1,0 +1,9 @@
+# c1a0e, the test chamber's airlock: its two scientists' forty seconds of
+# lines, their walk to the retinal scanners and the door
+# (test_lab_entry_start, as walking in sets it off), from the map's start.
+# map c1a0e
+# start 1500 -160 -320 44
+# keep func_.*|monster_.*|scripted_.*|multi_manager|multisource|trigger_relay|trigger_once|trigger_multiple|ambient_generic|env_.*|info_node.*
+30 0 0 44 0
+cmd diag_fire test_lab_entry_start
+3300 0 0 44 0     # fifty-five seconds

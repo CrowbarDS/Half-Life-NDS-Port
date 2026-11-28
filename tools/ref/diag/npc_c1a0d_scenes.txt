@@ -1,0 +1,11 @@
+# c1a0d: the airlock's Barney (airlockbarneymm1: his walk to the retinal
+# scanner and the door), the pondering scientist (pond1) and the cart's
+# (cartstudy), fired by name from the map's start.
+# map c1a0d
+# start -1744 304 -188 169
+# keep func_.*|monster_.*|scripted_.*|multi_manager|multisource|trigger_relay|trigger_once|trigger_multiple|ambient_generic|env_.*|info_node.*
+30 0 0 169 0
+cmd diag_fire airlockbarneymm1
+cmd diag_fire pond1
+cmd diag_fire cartstudy
+1800 0 0 169 0    # thirty seconds

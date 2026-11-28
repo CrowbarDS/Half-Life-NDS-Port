@@ -1,0 +1,13 @@
+# hldemo1's finale: the gargantua made by its monstermaker, the scientist
+# who runs and dies by the computers, Barney's scripts, the catwalk, the
+# kicked and rolled cars and the end of it -- set off by name
+# (spawn_garg_sci_mm, as the vent's breaking does), the player on the
+# platform at the map's own start. Left out: the map's timers
+# (trigger_auto), its end (trigger_endsection), the teleport and the
+# weapon strip, which would end the game's log early.
+# map hldemo1
+# start 1896 -8 356 96
+# keep func_.*|monster_scientist|monster_barney|monster_gman|monstermaker|scripted_.*|multi_manager|multisource|trigger_relay|trigger_hurt|env_explosion|env_shake|ambient_generic|info_node.*
+30 0 0 135 0      # half a second
+cmd diag_fire spawn_garg_sci_mm
+2700 0 0 135 0    # forty-five seconds
