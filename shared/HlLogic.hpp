@@ -1347,15 +1347,31 @@ namespace hldata
                 if (w.records[i].brush < brushes && recordOf[w.records[i].brush] < 0)
                     recordOf[w.records[i].brush] = static_cast<std::int16_t>(i);
             }
+            // The doors the walkers have come up to on their ways (the game's
+            // OpenDoorAndWait): each opened, and the others of its name and
+            // class with it -- not one the monsters may not open, which they
+            // find shut. (One held shut by its master: doorActivate says so.)
             for (int n = 0; n < a.doorsWanted; ++n)
             {
                 const int brush = a.doorWanted[n];
                 const int index = brush < brushes ? recordOf[brush] : -1;
-                if (index < 0 || w.states[index].dead || w.states[index].move != MoveState::AtBottom)
+                if (index < 0 || w.states[index].dead)
                     continue;
-                const auto kind = static_cast<LogicKind>(w.records[index].kind);
-                if (kind == LogicKind::Door || kind == LogicKind::DoorRotating)
+                const LogicRecord &wanted = w.records[index];
+                const auto kind = static_cast<LogicKind>(wanted.kind);
+                if ((kind != LogicKind::Door && kind != LogicKind::DoorRotating) ||
+                    (wanted.flags & kLogicNoMonsters))
+                    continue;
+                if (w.states[index].move == MoveState::AtBottom)
                     doorActivate(w, player, index);
+                if (wanted.name == 0)
+                    continue;
+                for (int i = 0; i < w.recordCount; ++i)
+                {
+                    if (i != index && w.records[i].name == wanted.name && w.records[i].kind == wanted.kind &&
+                        !w.states[i].dead && w.states[i].move == MoveState::AtBottom)
+                        doorActivate(w, player, i);
+                }
             }
             a.doorsWanted = 0;
             if (a.linkShut == nullptr || a.links == nullptr)
@@ -1372,21 +1388,28 @@ namespace hldata
                     if (kind == LogicKind::Door || kind == LogicKind::DoorRotating)
                     {
                         const MoveState move = w.states[index].move;
-                        // (One that works by being walked up to or used, and
-                        // is not held shut by a master: that opens. One that
-                        // waits for a button somewhere does not.)
+                        // (A shut door is a way for those who open doors, as
+                        // in the game's routing tables -- one that waits for
+                        // a button too, which a monster opens when it comes
+                        // to it, and one the monsters may not open, which it
+                        // then finds shut. Not one held shut by a master.)
                         if (move == MoveState::AtTop || move == MoveState::GoingUp)
                             shut = kLinkOpen;
-                        else if (logicMasterAllows(w, index) &&
-                                 (record.name == 0 || (record.flags & (kLogicUseOnly | kLogicTouch))))
+                        else if (logicMasterAllows(w, index))
                             shut = kLinkDoor;
                         else
                             shut = kLinkNoWay;
                     }
+                    else if (kind == LogicKind::Breakable)
+                    {
+                        // Something to be broken: a way, as the game's tables
+                        // have it -- whoever takes it comes up against it.
+                        shut = kLinkOpen;
+                    }
                     else
                     {
-                        // Something to be broken first, or a wall that is
-                        // there for now.
+                        // A wall that is there for now (or a box to push:
+                        // never a way of the game's).
                         shut = (w.movers != nullptr && w.movers[brush].solid) ? kLinkNoWay : kLinkOpen;
                     }
                 }

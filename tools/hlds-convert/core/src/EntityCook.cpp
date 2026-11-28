@@ -50,6 +50,7 @@ namespace hlds
         constexpr int kDoorStartOpen = 1;
         constexpr int kDoorNoAutoReturn = 32;
         constexpr int kDoorUseOnly = 256;
+        constexpr int kDoorNoMonsters = 512;
         constexpr int kButtonDontMove = 1;
         constexpr int kButtonToggle = 32;
         constexpr int kButtonTouchOnly = 256;
@@ -1937,6 +1938,8 @@ namespace hlds
                     record.flags |= kLogicStartOpen;
                 if (spawnflags & kDoorNoAutoReturn)
                     record.flags |= kLogicToggle;
+                if (spawnflags & kDoorNoMonsters)
+                    record.flags |= kLogicNoMonsters;
                 if (spawnflags & kDoorUseOnly)
                     record.flags |= kLogicUseOnly;
                 // Walking into a door opens it only if nothing else is meant
@@ -1975,6 +1978,8 @@ namespace hlds
                     record.flags |= kLogicToggle;
                 if (spawnflags & 16)
                     record.flags |= kLogicOneWay;
+                if (spawnflags & kDoorNoMonsters)
+                    record.flags |= kLogicNoMonsters;
                 if (spawnflags & kDoorUseOnly)
                     record.flags |= kLogicUseOnly;
                 else if (!named)

@@ -2630,8 +2630,16 @@ adds ways DOWN from ledges as well; with the game's graph there are none
 of those, as its monsters have none. There is no table
 of routes on the card: the console finds a route when it needs one
 (`shared/HlWalk.hpp`, `pathStep`), over the links as they are at that
-moment -- a door shut costs a little and is opened by whoever opens doors,
-a locked one or something not yet broken is no way. Monsters go to where
+moment, read as the game's routing tables read them: a shut door is a way
+for whoever opens doors (the SDK's bits_CAP_OPEN_DOORS: barney, the
+scientist, the zombie, the vortigaunt, the soldier and the assassin), at
+a small cost -- one a button opens too, and one the monsters may not open
+(SF_DOOR_NOMONSTERS). Whoever comes up to it on its way opens it and the
+others of its name, as the game's OpenDoorAndWait does, unless the
+monsters may not open it: then it finds it shut, as it finds a crate (a
+func_breakable is a way in the tables, too), and its task fails and it
+routes again (`tools/ref/diag/route_*.txt`, `tools/ref/nodroutes.py`).
+A door held shut by its master, or a box to push, is no way. Monsters go to where
 they last saw the player, give up after a while and go home; soldiers take
 cover they can reach. Scientists and guards follow the player on USE and
 stay on USE again; a scientist runs out of sight of what would kill him.

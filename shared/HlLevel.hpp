@@ -938,6 +938,10 @@ namespace hldata
     inline constexpr std::uint16_t kLogicUseOnly = 4;   ///< a door the player opens with USE
     inline constexpr std::uint16_t kLogicTouch = 8;     ///< works by being walked into
     inline constexpr std::uint16_t kLogicFireOnce = 16; ///< a relay that removes itself
+    /// (The same bit on a door: the monsters may not open it -- the game's
+    /// SF_DOOR_NOMONSTERS. Their ways still go through it, as the game's
+    /// routing tables do; one that comes up to it finds it shut.)
+    inline constexpr std::uint16_t kLogicNoMonsters = 16;
     inline constexpr std::uint16_t kLogicThread = 32;   ///< a multi_manager that can overlap itself
     /// (The same bit on a Breakable, or a Pushable that breaks: its pieces
     /// fly the way the blow that broke it went -- the game's "explosion" 1.)

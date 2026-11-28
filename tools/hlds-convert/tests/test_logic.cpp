@@ -904,6 +904,82 @@ namespace
     }
 
     /// Doors and the player: touch, names, being in the way, being carried.
+    /// The ways between the nodes through the brushes that stand in them,
+    /// as the game's routing tables have them for the monsters: a shut door
+    /// is a way for those who open doors -- a named one too, and one the
+    /// monsters may not open -- but not one held shut by its master; a
+    /// crate is a way (whoever takes it comes up against it); a box to push
+    /// is none. And a door a walker comes up to is opened with the others
+    /// of its name, unless the monsters may not open it.
+    void testDoorsOnTheWays()
+    {
+        BoxRoom room;
+        const char *door = "\"angle\" \"-1\"\n\"speed\" \"200\"\n\"wait\" \"-1\"\n";
+        room.brushes = {
+            brush("func_door", door, 40, -64, 0, 48, -40, 100),                                         // 1: no name
+            brush("func_door", (std::string("\"targetname\" \"pair\"\n") + door).c_str(), 40, -32, 0, 48, -8, 100), // 2: a pair...
+            brush("func_door", (std::string("\"targetname\" \"pair\"\n") + door).c_str(), 40, 0, 0, 48, 24, 100),  // 3: ...of halves
+            brush("func_door", (std::string("\"targetname\" \"shy\"\n\"spawnflags\" \"512\"\n") + door).c_str(), 40, 32, 0, 48,
+                  56, 100),                                                                         // 4: no monsters
+            brush("func_door", (std::string("\"targetname\" \"held\"\n\"master\" \"ms\"\n") + door).c_str(), 40, 64, 0, 48,
+                  88, 100),                                                                         // 5: its master off
+            brush("func_breakable", "\"health\" \"20\"\n", -48, -64, 0, -40, -40, 40),            // 6: a crate
+            brush("func_pushable", "\"health\" \"0\"\n", -48, 0, 0, -16, 32, 32),                  // 7: a box to push
+        };
+        // (A master with an input not yet fired is off; one with none is on.)
+        room.extraEntities = "{\n\"classname\" \"multisource\"\n\"targetname\" \"ms\"\n}\n"
+                             "{\n\"classname\" \"trigger_relay\"\n\"targetname\" \"r\"\n\"target\" \"ms\"\n}\n";
+        Game g;
+        build(g, room);
+        check(g.ok, "doors-on-the-ways room");
+        if (!g.ok)
+            return;
+        const int records[7] = {g.recordOfModel(1), g.recordOfModel(2), g.recordOfModel(3), g.recordOfModel(4),
+                                g.recordOfModel(5), g.recordOfModel(6), g.recordOfModel(7)};
+        bool all = true;
+        for (int r : records)
+            all = all && r >= 0;
+        check(all, "every brush has its record");
+        if (!all)
+            return;
+        check((g.view.logic[records[3]].flags & kLogicNoMonsters) && !(g.view.logic[records[1]].flags & kLogicNoMonsters) &&
+                  !(g.view.logic[records[0]].flags & kLogicNoMonsters),
+              "the door the monsters may not open says so, and only it");
+
+        // One link through each brush, between two nodes.
+        PathNode nodes[2]{};
+        PathLink links[7]{};
+        std::uint8_t shut[7]{};
+        nodes[0].linkCount = 7;
+        for (int i = 0; i < 7; ++i)
+            links[i] = PathLink{1, kPathLinkHuman, 100 << kPathLinkShift, g.view.logic[records[i]].brush, 0};
+        ActorWorld a;
+        a.nodes = nodes;
+        a.links = links;
+        a.nodeCount = 2;
+        a.linkCount = 7;
+        a.linkShut = shut;
+        g.logic.actors = &a;
+        hldata::detail::linksTick(g.logic, g.player);
+        check(shut[0] == kLinkDoor && shut[1] == kLinkDoor && shut[2] == kLinkDoor,
+              "a shut door is a way for those who open doors, named or not");
+        check(shut[3] == kLinkDoor, "... one the monsters may not open too: the game's tables go through it");
+        check(shut[4] == kLinkNoWay, "... not one held shut by its master");
+        check(shut[5] == kLinkOpen, "a crate is a way, as the game's tables have it");
+        check(shut[6] == kLinkNoWay, "a box to push is none");
+
+        // A walker comes up to one half of the pair, and to the shy door.
+        a.doorWanted[0] = g.view.logic[records[1]].brush;
+        a.doorWanted[1] = g.view.logic[records[3]].brush;
+        a.doorsWanted = 2;
+        hldata::detail::linksTick(g.logic, g.player);
+        check(g.states[records[1]].move == MoveState::GoingUp && g.states[records[2]].move == MoveState::GoingUp,
+              "a named door a walker comes to opens, and the other of its name with it");
+        check(g.states[records[3]].move == MoveState::AtBottom, "one the monsters may not open stays shut");
+        check(g.states[records[0]].move == MoveState::AtBottom, "a door nobody came to stays shut");
+        g.logic.actors = nullptr;
+    }
+
     void testDoorsAndThePlayer()
     {
         BoxRoom room;
@@ -3045,6 +3121,7 @@ int main()
     testMoverSounding();
     testTrainSetsOffHeard();
     testDoorsAndThePlayer();
+    testDoorsOnTheWays();
     testTriggersAndWiring();
     testTrains();
     testLadders();
