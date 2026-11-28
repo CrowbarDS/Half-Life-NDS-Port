@@ -241,6 +241,76 @@ namespace
         return names;
     }
 
+    /// The keys of the map's entity whose model is `model` ("*N"), from its
+    /// text: what a door is called, its master, its flags.
+    std::map<std::string, std::string> entityOfModel(const Game &g, const std::string &model)
+    {
+        const std::string &text = g.bsp.entities;
+        const std::string want = "\"model\" \"" + model + "\"";
+        std::size_t at = 0;
+        while ((at = text.find('{', at)) != std::string::npos)
+        {
+            const std::size_t end = text.find('}', at);
+            const std::string entity = text.substr(at, end - at);
+            at = end;
+            if (entity.find(want) == std::string::npos)
+                continue;
+            std::map<std::string, std::string> keys;
+            std::size_t k = 0;
+            while ((k = entity.find('"', k)) != std::string::npos)
+            {
+                const std::size_t ke = entity.find('"', k + 1);
+                const std::size_t v = entity.find('"', ke + 1);
+                const std::size_t ve = entity.find('"', v + 1);
+                if (ke == std::string::npos || v == std::string::npos || ve == std::string::npos)
+                    break;
+                keys[entity.substr(k + 1, ke - k - 1)] = entity.substr(v + 1, ve - v - 1);
+                k = ve + 1;
+            }
+            return keys;
+        }
+        return {};
+    }
+
+    /// The nodes a walker would go by from where it stands to `goal`, as its
+    /// plan (walkPlanInto) takes them: the node nearest it, pathStep after
+    /// pathStep, to the node nearest the goal. Each point is "x y z", and
+    /// after the first, "/s": how shut the link into it was (kLink*: 0 open,
+    /// 1 a door it may open, 2 no way). Empty if there is no way.
+    std::string nodeChain(const Game &g, int index, const fx *goal)
+    {
+        const ActorWorld &a = g.actors;
+        if (index < 0 || index >= a.count || a.nodeCount == 0)
+            return "";
+        const ActorState &me = a.states[index];
+        const int hull = monsterHull(me.kind);
+        const int mine = pathNearest(a, g.move, me.pos, hull, index);
+        const int theirs = pathNearest(a, g.move, goal);
+        if (mine < 0 || theirs < 0)
+            return "";
+        const std::uint8_t size = pathSizeOf(hull);
+        const bool opens = opensDoors(me.kind);
+        char at[64];
+        auto point = [&](int n) {
+            const PathNode &node = a.nodes[n];
+            std::snprintf(at, sizeof(at), "%.1f %.1f %.1f", units(node.pos[0]), units(node.pos[1]), units(node.pos[2]));
+            return std::string(at);
+        };
+        std::string chain = point(mine);
+        int now = mine;
+        for (int guard = 0; guard < kMaxPathNodes && now != theirs; ++guard)
+        {
+            const int next = pathStep(a, now, theirs, size, opens);
+            if (next == kNoPathNode)
+                return chain + ";none";
+            const int link = pathLinkBetween(a, now, next);
+            const int shut = link >= 0 && a.linkShut != nullptr ? a.linkShut[link] : 0;
+            chain += ";" + point(next) + "/" + std::to_string(shut);
+            now = next;
+        }
+        return chain;
+    }
+
     /// Ladder `i`'s BSP model ("*N"), found by its bounds (the converter's
     /// are the model's, rounded out to whole units).
     std::string ladderName(const Game &g, int i)
@@ -683,6 +753,18 @@ int main(int argc, char **argv)
             return;
         std::fprintf(now.out, "aiev,%d,%d,%.4f,%d,route,>%.1f %.1f %.1f,0,%d\n", now.frame, now.frame, now.t, index,
                      units(goal[0]), units(goal[1]), units(goal[2]), goalType);
+        // (... and the nodes it would go by, as the game's "path" row: the
+        // game's are its route's node steps, the port's those its plan
+        // takes a step at a time. Whether it walks straight instead is the
+        // port's to say: a, 1 if a straight walk would be tried first.)
+        const Game &g = *now.game;
+        const ActorState &me = g.actors.states[index];
+        const fx d[3] = {goal[0] - me.pos[0], goal[1] - me.pos[1], 0};
+        const bool shortWay = fxLength(d) < fxFromInt(256);
+        const std::string chain = nodeChain(g, index, goal);
+        if (!chain.empty())
+            std::fprintf(now.out, "aiev,%d,%d,%.4f,%d,path,%s,%d,%d\n", now.frame, now.frame, now.t, index, chain.c_str(),
+                         shortWay ? 1 : 0, goalType);
     };
     diag::aiEvent = [](int index, const char *what, const char *name, int a, int b) {
         if (now.frame < 1)
@@ -798,6 +880,7 @@ int main(int argc, char **argv)
     // DIAG_VBLANKS=2: the console's pace (about 30 a second), the real
     // game's frames taken two at a time -- their lengths added, their
     // buttons both -- and only every second frame logged.
+    const int linksAt = std::getenv("DIAG_LINKS") != nullptr ? std::atoi(std::getenv("DIAG_LINKS")) : 0;
     const char *pace = std::getenv("DIAG_VBLANKS");
     const int step = pace != nullptr && std::atoi(pace) > 1 ? std::atoi(pace) : 1;
     int heldButtons = 0, heldMs = 0;
@@ -855,6 +938,50 @@ int main(int argc, char **argv)
         now.frame = f;
         now.t = t;
         now.seed = f >= 1 && f < static_cast<int>(gameSeed.size()) ? gameSeed[f] : 0;
+        // DIAG_LINKS=<frame>: the node links that have a brush in them, as
+        // the port has them then (after a few of the logic's link looks):
+        // the two nodes, the brush's entity, and how shut the link is.
+        if (linksAt != 0 && f == linksAt)
+        {
+            const ActorWorld &a = g.actors;
+            for (int n = 0; n < a.nodeCount; ++n)
+            {
+                const PathNode &node = a.nodes[n];
+                for (int l = node.firstLink; l < node.firstLink + node.linkCount && l < a.linkCount; ++l)
+                {
+                    const PathLink &link = a.links[l];
+                    if (link.brush == kNoBrush || link.to < n)
+                        continue;
+                    const PathNode &to = a.nodes[link.to];
+                    const std::string &model = link.brush < names.size() ? names[link.brush] : std::string("?");
+                    auto keys = entityOfModel(g, model);
+                    std::printf("link %d>%d %.0f %.0f %.0f > %.0f %.0f %.0f size %d brush %s %s name '%s' master '%s' "
+                                "flags %s shut %d\n",
+                                n, link.to, units(node.pos[0]), units(node.pos[1]), units(node.pos[2]), units(to.pos[0]),
+                                units(to.pos[1]), units(to.pos[2]), link.flags, model.c_str(), keys["classname"].c_str(),
+                                keys["targetname"].c_str(), keys["master"].c_str(), keys["spawnflags"].c_str(),
+                                a.linkShut != nullptr ? a.linkShut[l] : -1);
+                }
+            }
+            // DIAG_ROUTES=1 too: every node, and the first step pathStep
+            // takes from each to each, for a person's size, by one that
+            // opens doors and by one that does not (tools/ref/nodroutes.py
+            // holds them to the game's routing tables).
+            if (std::getenv("DIAG_ROUTES") != nullptr)
+            {
+                for (int n = 0; n < a.nodeCount; ++n)
+                    std::printf("node %d %.1f %.1f %.1f\n", n, units(a.nodes[n].pos[0]), units(a.nodes[n].pos[1]),
+                                units(a.nodes[n].pos[2]));
+                for (int opens = 0; opens < 2; ++opens)
+                    for (int from = 0; from < a.nodeCount; ++from)
+                        for (int to = 0; to < a.nodeCount; ++to)
+                            std::printf("next %d %d %d %d\n", opens, from, to,
+                                        from == to ? from : pathStep(a, from, to, kPathLinkHuman, opens != 0));
+            }
+            for (int i = 0; i < a.count; ++i)
+                std::printf("actor %d %s %.0f %.0f %.0f\n", i, className(a.states[i].kind),
+                            units(a.states[i].pos[0]), units(a.states[i].pos[1]), units(a.states[i].pos[2]));
+        }
         if (f >= 1)
         {
             std::fprintf(out, "cmd,%d,%d,%.4f,%d,%d,%.1f,%.1f,0.0,%.4f,%.4f,%d,0,%u\n", f, f, t, frameAll, ms,

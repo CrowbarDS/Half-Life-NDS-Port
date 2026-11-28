@@ -518,6 +518,99 @@ def monsters(pc, ds, pos):
         draws_pc = sum(1 for r in pc.get('rnd', []) if r['id'] == m['id'])
         draws_ds = sum(1 for r in ds.get('rnd', []) if r['id'] == n['id'])
         print(f'  {"random draws":<14}{draws_pc} / {draws_ds}')
+        routes(pc.get('aiev', []), ds.get('aiev', []), m['id'], n['id'])
+
+
+# A route step's type in the game's log: to a node (schedule.h's
+# bits_MF_TO_NODE).
+TO_NODE = 1 << 5
+TO_DETOUR = 1 << 3
+SHUT = {0: 'open', 1: 'a door', 2: 'no way'}
+
+
+def path_points(text):
+    """A "path" row's points: (x, y, z) and what follows the '/' -- the
+    game's step type, the port's link state -- or None for the port's "none"
+    (no way on from there)."""
+    out = []
+    for piece in text.split(';'):
+        if piece == 'none':
+            out.append((None, None))
+            continue
+        head, _, tail = piece.partition('/')
+        try:
+            out.append((tuple(float(v) for v in head.split()), int(tail) if tail else None))
+        except ValueError:
+            pass
+    return out
+
+
+def routes(ev_pc, ev_ds, mid_pc, mid_ds, near=2.0, frames=40):
+    """The routes by the nodes, each of the game's paired with the port's
+    made nearest it in time (within `frames`). The game's are its route's
+    node steps -- simplified (nodes passed over) and with ways round put in
+    (bits_MF_TO_DETOUR: not nodes) -- the port's every node its plan would
+    take one by one; so each of the game's nodes is looked for further
+    along the port's, within `near` units, and where one is not, the two
+    have gone different ways. A route the game walks straight is not held
+    to anything: the port's plan walks straight too when it can
+    (walkPlanInto), whatever nodes its row lists."""
+    p_pc = [r for r in ev_pc if r['id'] == mid_pc and r['what'] == 'path']
+    p_ds = [r for r in ev_ds if r['id'] == mid_ds and r['what'] == 'path']
+    if not p_pc and not p_ds:
+        return
+    straight, same, unpaired, apart = 0, 0, 0, []
+    used = set()
+    seen = set()
+    for g in p_pc:
+        key = (g['frame'], g['name'])
+        if key in seen:  # (the same route logged twice in a frame)
+            continue
+        seen.add(key)
+        nodes = [pt for pt, t in path_points(g['name'])
+                 if pt is not None and t is not None and t & TO_NODE and not t & TO_DETOUR]
+        if not nodes:
+            straight += 1
+            continue
+        best = None
+        for j, d in enumerate(p_ds):
+            gap = abs(int(d['frame']) - int(g['frame']))
+            if j not in used and gap <= frames and (best is None or gap < best[0]):
+                best = (gap, j)
+        if best is None:
+            unpaired += 1
+            continue
+        used.add(best[1])
+        d = p_ds[best[1]]
+        d_all = path_points(d['name'])
+        d_nodes = [(pt, t) for pt, t in d_all if pt is not None]
+        blocked = any(pt is None for pt, _ in d_all)
+        at, miss = 0, None
+        for k, pt in enumerate(nodes):
+            j = next((j for j in range(at, len(d_nodes)) if math.dist(pt, d_nodes[j][0]) <= near), None)
+            if j is None:
+                miss = k
+                break
+            at = j + 1
+        if miss is None:
+            same += 1
+            continue
+        last = d_nodes[at - 1][0] if at > 0 else None
+        nxt = d_nodes[at] if at < len(d_nodes) else None
+        if nxt is None:
+            port = 'no way on' if blocked else 'its end'
+        elif at == 0:
+            port = '%.0f %.0f %.0f (its first node)' % nxt[0]
+        else:
+            port = '%.0f %.0f %.0f (link %s)' % (nxt[0] + (SHUT.get(nxt[1], str(nxt[1])),))
+        apart.append(f'frame {g["frame"]} / {d["frame"]}: after {"%.0f %.0f %.0f" % last if last else "the start"} '
+                     f'the game to {"%.0f %.0f %.0f" % nodes[miss]}, the port to {port}')
+    print(f'  {"routes":<14}{len(p_pc)} / {len(p_ds)} rows; by the nodes: {same} the same, {len(apart)} apart, '
+          f'{unpaired} not paired; {straight} the game walks straight')
+    for line in apart[:8]:
+        print(f'  {"apart":<14}{line}')
+    if len(apart) > 8:
+        print(f'  {"":<14}... and {len(apart) - 8} more')
 
 
 def main():
