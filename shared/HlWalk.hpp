@@ -970,16 +970,17 @@ namespace hldata
     /// monsters that have hands for it (the game's own list).
     inline bool opensDoors(std::uint8_t kind)
     {
+        // (The game's monsters with bits_CAP_OPEN_DOORS: barney, the
+        // scientist, the zombie, the vortigaunt, the soldier and the
+        // assassin. Not the one who sits.)
         switch (static_cast<ActorKind>(kind))
         {
         case ActorKind::Scientist:
         case ActorKind::Guard:
-        case ActorKind::Gman:
-        case ActorKind::Generic:
         case ActorKind::Grunt:
         case ActorKind::Zombie:
         case ActorKind::Slave:
-        case ActorKind::Bullsquid:
+        case ActorKind::Assassin:
             return true;
         default:
             return false;
