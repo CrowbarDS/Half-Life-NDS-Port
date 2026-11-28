@@ -2,6 +2,7 @@
 // layer's own share whatever the others want; the quietest and oldest giving
 // way; a new line cutting in on the last; each layer's own volume.
 
+#include <array>
 #include <cstdio>
 
 #include "HlMixer.hpp"
@@ -93,14 +94,14 @@ int main()
         const int louder = mixer.take(SoundLayer::Player, 60);
         check(louder >= 0 && mixer.voices[louder].layer == SoundLayer::Player,
               "... and a louder one takes the place of its own quietest, nobody else's");
-        // Two spoken lines and the menu get theirs too; ambience its three.
+        // Three spoken lines and the menu get theirs too; ambience its two.
         check(play(mixer, SoundLayer::Voice, 1) >= 0 && play(mixer, SoundLayer::Voice, 1) >= 0 &&
-                  play(mixer, SoundLayer::Ui, 1) >= 0,
-              "two voices may speak at once, and the menu has its one");
-        for (int n = 0; n < 3; ++n)
+                  play(mixer, SoundLayer::Voice, 1) >= 0 && play(mixer, SoundLayer::Ui, 1) >= 0,
+              "three voices may speak at once, and the menu has its one");
+        for (int n = 0; n < 2; ++n)
             play(mixer, SoundLayer::Ambience, 20);
-        check(mixer.count(SoundLayer::Ambience) == 3 && mixer.count(SoundLayer::World) == 4 &&
-                  mixer.count(SoundLayer::Player) == 3 && mixer.count(SoundLayer::Voice) == 2,
+        check(mixer.count(SoundLayer::Ambience) == 2 && mixer.count(SoundLayer::World) == 4 &&
+                  mixer.count(SoundLayer::Player) == 3 && mixer.count(SoundLayer::Voice) == 3,
               "with every layer wanting all it can have, each has exactly its share");
         // Now nobody is over: the world's own quietest gives way to louder.
         int quietest = 127;
@@ -118,10 +119,10 @@ int main()
         // A new line cuts in on the last, however loud that was.
         Mixer mixer;
         for (int n = 0; n < Mixer::kVoices; ++n)
-            play(mixer, n < 2 ? SoundLayer::Voice : SoundLayer::World, 100);
+            play(mixer, n < 3 ? SoundLayer::Voice : SoundLayer::World, 100);
         const int v = mixer.take(SoundLayer::Voice, 1);
         check(v >= 0 && mixer.voices[v].layer == SoundLayer::Voice,
-              "with two speaking, a new line takes the voice from one of them");
+              "with three speaking, a new line takes the voice from one of them");
         // When the hardware itself has no room: what matters least of all.
         const int least = mixer.weakest();
         check(least >= 0 && mixer.voices[least].layer == SoundLayer::World,
@@ -148,19 +149,19 @@ int main()
         }
         for (int n = 0; n < 3; ++n)
             mixer.start(mixer.take(SoundLayer::Player, 1), SoundLayer::Player, 1, 5000);
-        mixer.start(mixer.take(SoundLayer::Voice, 1), SoundLayer::Voice, 1, 5000);
-        mixer.start(mixer.take(SoundLayer::Voice, 1), SoundLayer::Voice, 1, 5000);
-        mixer.start(mixer.take(SoundLayer::Ui, 1), SoundLayer::Ui, 1, 5000);
         for (int n = 0; n < 3; ++n)
+            mixer.start(mixer.take(SoundLayer::Voice, 1), SoundLayer::Voice, 1, 5000);
+        mixer.start(mixer.take(SoundLayer::Ui, 1), SoundLayer::Ui, 1, 5000);
+        for (int n = 0; n < 2; ++n)
             mixer.start(mixer.take(SoundLayer::Ambience, 1), SoundLayer::Ambience, 1, -1);
         check(mixer.count(SoundLayer::World) == 4, "(the world is back to its four)");
         const std::uint32_t ended = mixer.tick(150);
         int gone = 0;
         for (int v = 0; v < Mixer::kVoices; ++v)
             gone += (ended >> v) & 1;
-        check(gone <= 1 && mixer.count(SoundLayer::Ambience) == 3, "a sound that has run its time is over; a loop goes on");
+        check(gone <= 1 && mixer.count(SoundLayer::Ambience) == 2, "a sound that has run its time is over; a loop goes on");
         mixer.tick(100000);
-        check(mixer.count(SoundLayer::World) == 0 && mixer.count(SoundLayer::Ambience) == 3,
+        check(mixer.count(SoundLayer::World) == 0 && mixer.count(SoundLayer::Ambience) == 2,
               "... however long: only stopping it stops it");
     }
     {
@@ -194,6 +195,46 @@ int main()
         check(mixer.movingOf(7) == ((1u << 0) | (1u << 1) | (1u << 6)),
               "a mover's sounds are its own, played once or going round, and nothing else");
         check(mixer.movingOf(-1) == 0, "what has no maker is nobody's to stop");
+    }
+    {
+        // Each speaker has one voice: a panel's line said beside someone
+        // talking does not cut them off (the game's CHAN_VOICE is each
+        // entity's own).
+        const std::int32_t near = 96 << 12;
+        auto at = [](std::int32_t x) { return std::array<std::int32_t, 3>{x << 12, 0, 0}; };
+        SpeakerSlot slots[3];
+        auto say = [&](int i, std::int16_t actor, std::int32_t x, std::uint32_t born, bool placed = true)
+        {
+            slots[i].busy = true;
+            slots[i].placed = placed;
+            slots[i].actor = actor;
+            slots[i].born = born;
+            const auto p = at(x);
+            for (int k = 0; k < 3; ++k)
+                slots[i].pos[k] = p[k];
+        };
+        say(0, 5, 0, 1); // a scientist, talking at the panel
+        const auto panel = at(10);
+        check(speechSlotFor(slots, 3, true, panel.data(), -1, near) == 1,
+              "a panel's line beside a scientist talking takes a silent voice, not his");
+        say(1, -1, 10, 2);
+        check(speechSlotFor(slots, 3, true, panel.data(), -1, near) == 1,
+              "a second line of the panel's cuts in on its first");
+        const auto far = at(2000);
+        check(speechSlotFor(slots, 3, true, far.data(), 5, near) == 0, "the scientist's next line cuts in on his last");
+        check(speechSlotFor(slots, 3, true, far.data(), 7, near) == 2, "another's line takes the silent voice");
+        say(2, 7, 2000, 3);
+        check(speechSlotFor(slots, 3, true, far.data(), 9, near) == 1,
+              "with every voice taken, someone's line takes the panel's, not a person's");
+        say(1, 9, 3000, 4);
+        check(speechSlotFor(slots, 3, true, panel.data(), -1, near) < 0,
+              "with every voice a person's, the panel's line is the one not heard");
+        check(speechSlotFor(slots, 3, true, far.data(), 11, near) == 0,
+              "... and a fourth person's takes the oldest person's");
+        SpeakerSlot suit[3];
+        suit[0].busy = true;
+        suit[0].placed = false;
+        check(speechSlotFor(suit, 3, false, panel.data(), -1, near) == 0, "the suit's next line cuts in on its last");
     }
     if (g_failures == 0)
         std::printf("test_mixer: ok\n");

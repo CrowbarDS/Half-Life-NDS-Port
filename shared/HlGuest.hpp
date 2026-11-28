@@ -139,7 +139,10 @@ namespace hldata
     // Raised 512 bytes, with the child 400 over after the monsters' ways
     // went through doors a button opens and through crates, as the game's
     // routing tables do (28 Nov 2026).
-    inline constexpr std::uint32_t kGuestImageBytes = 0x1646C8 + 19 * 1024 + 640;
+    // Raised 1,408 bytes, with the child 976 over after a third voice for
+    // speech, so that a panel's line said beside someone talking does not
+    // cut them off (28 Nov 2026): no map drops by the cook's own figures.
+    inline constexpr std::uint32_t kGuestImageBytes = 0x1646C8 + 20 * 1024 + 1024;
     /// The heap's end: the end of main RAM less what the start-up code keeps.
     inline constexpr std::uint32_t kGuestRamBytes = 0x3F4000;
     /// What the engine holds beside a map's data -- its tables, the world's

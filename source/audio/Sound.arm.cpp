@@ -950,6 +950,38 @@ namespace hlrt
         lazyPlayed_[place] = now;
     }
 
+    bool Sound::lazyLetGo()
+    {
+        if (lazy_ == nullptr || global.twlChild)
+            return false;
+        // (The one played longest ago that is over: at the slowest it may be
+        // played, twice as long, and a half second more -- as lazyTouch
+        // weighs them.)
+        const std::uint32_t now = Global::vblanks();
+        int place = -1;
+        std::uint32_t oldest = 0;
+        for (int k = 0; k < lazySlots(); ++k)
+        {
+            if (lazyClip_[k] < 0)
+                continue;
+            const std::uint32_t ago = now - lazyPlayed_[k];
+            const std::uint32_t lasts = clips_[lazyClip_[k]].ms * 2 * 60 / 1000 + 30;
+            if (ago > lasts && ago >= oldest)
+            {
+                oldest = ago;
+                place = k;
+            }
+        }
+        if (place < 0)
+            return false;
+        const int gone = lazyClip_[place];
+        if (!clips_[gone].shared)
+            std::free(clips_[gone].data);
+        clips_[gone] = Clip();
+        lazyClip_[place] = -1;
+        return true;
+    }
+
     void Sound::playOnce(const SoundEvent &event, int tag)
     {
         lazyTouch(event.sound);
@@ -1066,28 +1098,29 @@ namespace hlrt
         const int sentence = event.sound;
         if (sentence < 0 || sentence >= static_cast<int>(view.sentenceCount))
             return;
-        // Whose voice: the one that is already this speaker's (a line cuts
-        // in on the same speaker's last, as on the game's own voice
-        // channel); else one that is silent; else the one that has been
-        // speaking longest. The same speaker is the same place -- or no
-        // place at all, which is the voice that is heard everywhere.
+        // Whose voice (hldata::speechSlotFor): this speaker's own, as each
+        // of the game's has its own voice channel -- a new line cuts in on
+        // their last, and on nobody else's; else a silent one; else the
+        // oldest line of nobody's (a panel's, a speaker's). A line of
+        // nobody's never cuts anyone off: with every voice someone's, it is
+        // not said.
         const bool placed = !(event.flags & kSoundHere);
-        Speech *speech = nullptr;
-        for (Speech &other : speech_)
+        const std::int16_t actor =
+            (event.tag & kSoundTagActor) ? static_cast<std::int16_t>(event.tag & 0x7FFF) : std::int16_t(-1);
+        SpeakerSlot slots[kSpeakers];
+        for (int i = 0; i < kSpeakers; ++i)
         {
-            if (!other.busy() || other.placed != placed)
-                continue;
-            const fx d[3] = {other.pos[0] - event.pos[0], other.pos[1] - event.pos[1], other.pos[2] - event.pos[2]};
-            if (!placed || fxLengthBelow(d, fxFromInt(96)))
-                speech = &other;
+            slots[i].busy = speech_[i].busy();
+            slots[i].placed = speech_[i].placed;
+            slots[i].actor = speech_[i].actor;
+            slots[i].born = speech_[i].born;
+            for (int k = 0; k < 3; ++k)
+                slots[i].pos[k] = speech_[i].pos[k];
         }
-        for (Speech &other : speech_)
-        {
-            if (speech == nullptr && !other.busy())
-                speech = &other;
-        }
-        if (speech == nullptr)
-            speech = speech_[0].born < speech_[1].born ? &speech_[0] : &speech_[1];
+        const int slot = speechSlotFor(slots, kSpeakers, placed, event.pos, actor, fxFromInt(96));
+        if (slot < 0)
+            return;
+        Speech *speech = &speech_[slot];
 
         const SentenceRecord &record = view.sentences[sentence];
         speech->count = 0;
@@ -1104,7 +1137,7 @@ namespace hlrt
             speech->pos[k] = event.pos[k];
         speech->born = ++speechClock_;
         // (Whose line it is, if anybody's: their mouth moves as it is said.)
-        speech->actor = (event.tag & kSoundTagActor) ? static_cast<std::int16_t>(event.tag & 0x7FFF) : std::int16_t(-1);
+        speech->actor = actor;
         speech->mouth.stop();
         speech->leftMs = 1; // (the word in the air is cut short at the next tick)
         speech->cutMs = 0;
@@ -1129,7 +1162,12 @@ namespace hlrt
         if (index >= static_cast<int>(level.view.soundCount) || !level.view.soundThere(index) ||
             (index < count_ && clips_[index].data != nullptr))
             return;
-        if (!lateRoom(index))
+        // (No room for it: the effects read lazily, and over, give way to
+        // the voice, one at a time, before the word is left out.)
+        bool room = lateRoom(index);
+        while (!room && lazyLetGo())
+            room = lateRoom(index);
+        if (!room)
         {
             ++stats_.lateSkippedRoom;
             return;

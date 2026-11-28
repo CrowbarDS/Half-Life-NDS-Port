@@ -417,7 +417,13 @@ Milestone 11, "levels of detail".
   plays by itself. Weapons, monsters, doors, buttons, breakage, footsteps and
   pick-ups; the maps' ambient sounds, louder and to one side as the player
   nears them; the announcer and the scripted lines of scientists and guards
-  (from the game's sentences.txt), read off the card as they are spoken; and
+  (from the game's sentences.txt), read off the card as they are spoken --
+  three lines at once, each speaker with one voice as each of the game's
+  entities has its own voice channel, so a panel's "access denied" said
+  beside someone talking leaves them to finish; a line of nobody's (a
+  panel's, a speaker's) is the one not heard if all three are people's,
+  and a word short of memory first lets go a weapon sound read on demand
+  (`hldata::speechSlotFor`, `shared/HlMixer.hpp`); and
   the music, decoded from the game's MP3s and streamed from the card. A map's
   sounds have an allowance of memory (350 KB); the longest are cooked at half
   the rate where a map has more than that.

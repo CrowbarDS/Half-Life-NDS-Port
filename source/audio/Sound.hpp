@@ -165,7 +165,7 @@ namespace hlrt
         };
         /// Someone speaking: the words of their line still to come, the one
         /// in the air, and the next, read off the card while that one is
-        /// said. Two may speak at once.
+        /// said. Three may speak at once (Mixer's voice share).
         struct Speech
         {
             std::uint16_t words[32]; ///< into the level's SentenceWords
@@ -204,7 +204,7 @@ namespace hlrt
             std::uint32_t speed = 0;
             bool busy() const { return leftMs > 0 || at < count; }
         };
-        static constexpr int kSpeakers = 2;
+        static constexpr int kSpeakers = 3;
         static constexpr int kMaxSounds = 1012; ///< of a map's, at most (no map has near as many)
         static constexpr int kMaxSpoken = 32;
         static constexpr int kLoops = 8; ///< loops of a place at once, where there are voices
@@ -274,6 +274,10 @@ namespace hlrt
         std::uint32_t lazyPlayed_[kLazyClips] = {};
         void lazyTouch(int sound);
         int lazySlots() const { return pak_ != nullptr ? kLazyClips : kLazyClips / 2; }
+        /// A word to be said and no room to read it in: the lazily read
+        /// clip played longest ago, and over, let go (a voice comes before
+        /// an effect). False if there was none to let go.
+        bool lazyLetGo();
         /// With an Expansion Pak (a DS's GBA slot): where in it each of the
         /// map's sounds not in memory is kept -- its SoundHeader, then its
         /// samples -- or null. Taken from it when played instead of off the

@@ -9,8 +9,9 @@
 // what actually makes the noise is the caller's.
 //
 //  * Each layer has a SHARE of the voices that is its own: the player's own
-//    sounds 3, the world's 4, the voice 2 (two people may speak at once),
-//    the loops of a place 3, the menu 1. A layer is never left with fewer
+//    sounds 3, the world's 4, the voice 3 (three may speak at once: a
+//    panel's line said beside someone talking does not cut them off), the
+//    loops of a place 2, the menu 1. A layer is never left with fewer
 //    than its share because another wanted more.
 //  * While voices are free, any layer may have them, over its share or not.
 //  * With none free, a layer still under its share takes one back from a
@@ -21,7 +22,7 @@
 //    if the new sound is at least as loud; otherwise the new sound is not
 //    heard. The voice and the menu always take their own: a new line cuts in
 //    on the last (which of two lines gives way is the speaker's business:
-//    whoever plays them stops that one first).
+//    whoever plays them stops that one first -- speechSlotFor, below).
 //
 // Each layer has a volume of its own, 0 to 10, set by the player.
 //
@@ -96,7 +97,7 @@ namespace hldata
 
         static constexpr int share(SoundLayer layer)
         {
-            constexpr int kShares[] = {3, 4, 2, 3, 1};
+            constexpr int kShares[] = {3, 4, 3, 2, 1};
             return kShares[static_cast<int>(layer)];
         }
         /// Who gives way first: the lowest.
@@ -240,4 +241,77 @@ namespace hldata
             return ended;
         }
     };
+
+    /// A line being said, as the one who has a new line to say weighs it
+    /// (speechSlotFor).
+    struct SpeakerSlot
+    {
+        bool busy = false;
+        bool placed = false;       ///< said from a place (not the suit's, heard everywhere)
+        std::int32_t pos[3] = {0, 0, 0};
+        std::int16_t actor = -1;   ///< whose (an actor's number), -1 nobody's: a panel, a speaker, the suit
+        std::uint32_t born = 0;    ///< when it began: the older, the lower
+    };
+
+    /// Which of `count` lines being said a new line takes the place of, or
+    /// -1: it is not said. Each speaker has one voice, as each of the game's
+    /// entities has its own CHAN_VOICE: a new line of someone's cuts in on
+    /// their last, and on nobody else's -- a panel's "access denied" said
+    /// beside a scientist talking leaves him to finish.
+    ///  * The same speaker's line: the same actor's; for a line of nobody's,
+    ///    another of nobody's from the same place (within `near`, in the
+    ///    caller's units), or, unplaced, another unplaced one.
+    ///  * Else a voice that is silent.
+    ///  * Else the oldest line of nobody's: a panel's or a speaker's gives
+    ///    way before anyone's.
+    ///  * Else, for someone's line, the oldest of all; for nobody's, none --
+    ///    it is the one not heard.
+    inline int speechSlotFor(const SpeakerSlot *slots, int count, bool placed, const std::int32_t *pos,
+                             std::int16_t actor, std::int32_t near)
+    {
+        const std::int64_t nearSq = static_cast<std::int64_t>(near) * near;
+        for (int i = 0; i < count; ++i)
+        {
+            const SpeakerSlot &s = slots[i];
+            if (!s.busy)
+                continue;
+            if (actor >= 0)
+            {
+                if (s.actor == actor)
+                    return i;
+                continue;
+            }
+            if (s.actor >= 0 || s.placed != placed)
+                continue;
+            if (!placed)
+                return i;
+            std::int64_t d = 0;
+            for (int k = 0; k < 3; ++k)
+            {
+                const std::int64_t e = static_cast<std::int64_t>(s.pos[k]) - pos[k];
+                d += e * e;
+            }
+            if (d < nearSq)
+                return i;
+        }
+        for (int i = 0; i < count; ++i)
+        {
+            if (!slots[i].busy)
+                return i;
+        }
+        int oldest = -1;
+        for (int i = 0; i < count; ++i)
+        {
+            if (slots[i].actor < 0 && (oldest < 0 || slots[i].born < slots[oldest].born))
+                oldest = i;
+        }
+        if (oldest >= 0 || actor < 0)
+            return oldest;
+        for (int i = 0; i < count; ++i)
+        {
+            if (oldest < 0 || slots[i].born < slots[oldest].born)
+                oldest = i;
+        }
+        return oldest;
+    }
 } // namespace hldata
