@@ -52,8 +52,10 @@ namespace hlrt
 
         /// Under the frame: the scheduler runs the highest of the threads
         /// that are not waiting, so the worker only has the CPU while the
-        /// frame waits for the screen (and the wireless threads, at the
-        /// frame's own level, for what they have to do).
+        /// frame waits for the screen (and the wireless library's thread,
+        /// above the frame, has nothing to do). No higher, and no slices
+        /// shared: the frame would be cut off in the middle of Nitro
+        /// Engine's divides, and wait for the world all the same.
         constexpr int kWorkerPriority = -1;
 
 #ifndef HLDS_CHILD

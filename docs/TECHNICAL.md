@@ -1652,7 +1652,19 @@ held with the interrupts off first. Of the ways measured for libnds issue
 #413 (`tools/hwtest/divsafe/`), that one costs least: 2 to 6 bus ticks a
 sum, the interrupts off 107 ticks at most (a divide of 64 bits).
 libnds's comutex and cosema are not used with the interrupts held off, nor
-from an interrupt, where only `cothread_send_signal` is. The frame's wait
+from an interrupt, where only `cothread_send_signal` is. What the worker
+runs touches the world and nothing else: the `LogicWorld` and what it
+points to. It never calls the 3D hardware, Nitro Engine or libnds's
+videoGL, never uses `divf32`, `sqrtf32` or any inline divide or root of
+libnds's (its roots go through `source/HwMath.s`), never allocates or frees
+(`malloc`, `new`, `free`) and never prints or touches a file (stdio).
+`tools/irq-divider.py` walks what `thinkRunOne` and the worker's loop reach
+and fails the build on any of these. It stays under the frame and shares
+no slices with it: a time slice only alternates threads of one priority,
+and at the frame's level or above the worker could cut into the frame in
+the middle of a Nitro Engine divide, and would only wait for the world
+anyway. The wireless library's thread is above the frame (priority 32)
+and cuts into it, and into the worker, as an interrupt does. The frame's wait
 is for the next VBlank, as ever: libnds remembers a VBlank no thread waited
 for and would not sleep for it after, so a thread of the program's does
 nothing but wait for VBlank (`Global.cpp`) and there never is one. In a fight its answers are taken up 2 or 3 frames after they are
