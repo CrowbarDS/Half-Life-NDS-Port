@@ -1,0 +1,23 @@
+# The same chase (route_door_named) with c2a4e's lab4doors1 made two crates
+# (func_breakable, *1 and *2) let down 80 units by their origins: 48 units
+# of crate fill the doorway, the soldier sees the player over them, and no
+# one walks across. The game's routing tables go through a crate; the
+# soldier comes up against it.
+# map c2a4e
+# start 64 672 292 180
+# keep func_.*|info_node.*|multisource|env_global
+# set *1 classname func_breakable
+# set *1 origin 0 0 -80
+# set *1 health 500
+# set *1 material 1
+# set *1 targetname crate1
+# set *2 classname func_breakable
+# set *2 origin 0 0 -80
+# set *2 health 500
+# set *2 material 1
+# set *2 targetname crate2
+# add {"classname" "monster_human_grunt" "origin" "-300 672 256" "angle" "0"}
+120 0 0 180 0     # two seconds: the soldier sees the player over the crates
+40 400 0 0 0      # east, out of the doorway's line
+60 400 0 270 0    # and south, out of sight
+1200 0 0 270 0    # twenty seconds: the chase

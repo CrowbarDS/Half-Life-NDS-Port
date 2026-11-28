@@ -1,0 +1,18 @@
+# A soldier chasing the player through a door a button opens (c2a4e's
+# lab4doors1, *1 and *2, which a monster may open). The map's monsters are
+# taken out and one soldier is put west of the door (with no name: a
+# named one waits to be triggered, and the two sides' waits end apart); the player stands east
+# of it. The door is opened by name: the soldier sees the player through it
+# and fires; the player walks out of sight, and the door shuts behind. The
+# soldier's way to where it last saw the player goes through the door: the
+# game's opens it on the way (OpenDoorAndWait), and goes on.
+# map c2a4e
+# start 64 672 292 180
+# keep func_.*|info_node.*|multisource|env_global
+# add {"classname" "monster_human_grunt" "origin" "-300 672 256" "angle" "0"}
+30 0 0 180 0      # half a second
+cmd diag_fire lab4doors1
+90 0 0 180 0      # the door opens; the soldier sees the player
+40 400 0 0 0      # east, out of the doorway's line
+60 400 0 270 0    # and south, out of sight
+1200 0 0 270 0    # twenty seconds: the chase

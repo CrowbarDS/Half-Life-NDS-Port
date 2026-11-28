@@ -19,6 +19,13 @@
 #                          the fork's bshift-diag build, beside it)
 #   # unarmed              the player is given nothing (no impulse 101, which
 #                          gives the suit), only god
+#   # name <x y z> <name>  the monster standing there is given that name
+#                          (one line each; place.py's REF_NAME)
+#   # add { ... }          entity text added to the map, on one line (one
+#                          line each): a scripted_sequence that sends a
+#                          monster somewhere, set off by a "cmd diag_fire"
+#   # set *N <key> <value> a key of the brush entity *N changed (one line
+#                          each; place.py's REF_SET)
 # and its lines are the inputs, one span of frames each (cl_dll/diag_input.cpp
 # in the SDK fork says how they read).
 #
@@ -71,6 +78,10 @@ LOG="$REFDIR/diag/$NAME.csv"
 rm -f "$LOG" "$OUT/${NAME}_pc.csv"
 
 export REF_DIAG=1 REF_BARE=1 REF_KEEP="${KEEP:-func_.*}"
+REF_NAME="$(sed -n 's/^# *name \+//p' "$SCEN" | paste -sd';')"
+REF_ADD="$(sed -n 's/^# *add \+//p' "$SCEN")"
+REF_SET="$(sed -n 's/^# *set \+//p' "$SCEN" | paste -sd';')"
+export REF_NAME REF_ADD REF_SET
 # The same map copy for the port.
 # shellcheck disable=SC2086
 python3 "$ROOT/tools/ref/place.py" "$HL/$GAME/maps/$MAP.bsp" "$OUT/$NAME.bsp" $AT || exit 1

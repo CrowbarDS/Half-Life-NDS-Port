@@ -2,6 +2,10 @@
 """The game's monster routes against the port's, for every pair of nodes.
 
 usage: nodroutes.py <map.nod> <diag_replay output with DIAG_LINKS and DIAG_ROUTES>
+       nodroutes.py <map.nod> <the same> --route x y z x y z
+                    (one way: the game's by its table from the node nearest
+                    the first place to the one nearest the second, for a
+                    soldier, and the brushes on it; for aiming a scenario)
 
 The real game routes its monsters by the tables its node graph keeps
 (the .nod's routing info: the first step from each node to each other,
@@ -90,7 +94,7 @@ def main():
             m = link_line.match(line)
             if m:
                 a, b = int(m[1]), int(m[2])
-                info = (m[4], m[3], m[5], m[6], int(m[8]))
+                info = (m[4], m[3], m[5], m[6], int(m[8]), m[7])
                 links[(a, b)] = links[(b, a)] = info
     # Game node -> port node, by place.
     to_port = {}
@@ -100,6 +104,21 @@ def main():
             to_port[g] = best
     print(f'{nod}: {len(origins)} nodes in the game\'s graph, {len(port_pos)} in the port\'s, {len(to_port)} matched')
     from_port = {p: g for g, p in to_port.items()}
+    if '--route' in sys.argv:
+        v = [float(x) for x in sys.argv[sys.argv.index('--route') + 1:][:6]]
+        near = lambda p: min(range(len(origins)), key=lambda n: math.dist(p, origins[n]))
+        a, b = near(v[:3]), near(v[3:])
+        for cap in (1, 0):
+            way = walk(lambda c, d: next_in_route(table, offsets, len(origins), c, d, HUMAN_HULL, cap), a, b)
+            print(f'  {"opens doors" if cap else "does not"}: ' + ('no way' if way is None else ''))
+            for x, y in zip(way or [], (way or [])[1:]):
+                px, py = to_port.get(x), to_port.get(y)
+                brush = links.get((px, py))
+                o = origins[y]
+                print(f'    -> {o[0]:.0f} {o[1]:.0f} {o[2]:.0f}' +
+                      (f'   through {brush[0]} {brush[1]} ({brush[2]}) flags {brush[5] or "-"} port {SHUT.get(brush[4])}'
+                       if brush else ''))
+        return
     for cap in (1, 0):
         who = 'opens doors (a soldier)' if cap else 'does not open doors'
         same_first = same_way = 0

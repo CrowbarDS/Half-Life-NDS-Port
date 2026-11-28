@@ -14,6 +14,14 @@ end of the file and the pair pointed at it.)
 With REF_BARE set in the environment, only the world and the start are kept,
 so that nothing is heard but the player (the map's machinery and voices would
 drown a footstep); REF_KEEP, a pattern, keeps the classes that match it too.
+
+REF_NAME="x y z name; ..." gives the monster standing there (within two
+units) a name, for a script to call it by -- the game takes the first of a
+class it finds, the port the nearest. REF_ADD is entity text added as it is
+("{ ... }" each): a scripted_sequence that sends a monster somewhere, a
+trigger to set it off. REF_SET="*N key value; ..." changes (or adds) a key of
+the brush entity of model *N: a door made one the monsters may not open, a
+door made a crate (and moved down, by its origin, to be seen over).
 """
 import os
 import re
@@ -55,10 +63,32 @@ def main():
         keep = 'worldspawn|info_player_start'
         if os.environ.get('REF_KEEP'):
             keep += '|' + os.environ['REF_KEEP']
+    names = []
+    for item in os.environ.get('REF_NAME', '').split(';'):
+        if item.strip():
+            *at, name = item.split()
+            names.append(([float(v) for v in at], name))
+    named = 0
     for block in blocks:
         kind = re.search(r'"classname" "([^"]*)"', block)
         if keep and not (kind and re.fullmatch(keep, kind[1])):
             continue
+        model = re.search(r'"model" "(\*\d+)"', block)
+        for item in os.environ.get('REF_SET', '').split(';'):
+            if model and item.split()[:1] == [model[1]]:
+                key, value = item.split()[1], ' '.join(item.split()[2:])
+                if re.search(r'"%s" "[^"]*"' % re.escape(key), block):
+                    block = re.sub(r'"%s" "[^"]*"' % re.escape(key), '"%s" "%s"' % (key, value), block)
+                else:
+                    block = block.replace('{', '{\n"%s" "%s"' % (key, value), 1)
+        origin = re.search(r'"origin" "([^"]*)"', block)
+        if names and kind and kind[1].startswith('monster_') and origin:
+            o = [float(v) for v in origin[1].split()]
+            for at, name in names:
+                if all(abs(o[i] - at[i]) <= 2 for i in range(3)):
+                    block = re.sub(r'"targetname" "[^"]*"\s*', '', block)
+                    block = block.replace('{', '{\n"targetname" "%s"' % name, 1)
+                    named += 1
         if '"classname" "info_player_start"' in block:
             block = re.sub(r'"(origin|angle|angles)" "[^"]*"\s*', '', block)
             block = block.replace('{', '{\n"origin" "%g %g %g"\n"angles" "0 %g 0"\n' % (x, y, z, yaw), 1)
@@ -68,6 +98,10 @@ def main():
         # (A map the game only ever comes into from another has none: one
         # is added, where the player is to be.)
         out.append('{\n"classname" "info_player_start"\n"origin" "%g %g %g"\n"angles" "0 %g 0"\n}' % (x, y, z, yaw))
+    if named != len(names):
+        sys.exit('REF_NAME: %d of %d monsters found' % (named, len(names)))
+    if os.environ.get('REF_ADD'):
+        out.append(os.environ['REF_ADD'])
     lump = ('\n'.join(out) + '\n').encode('latin-1') + b'\0'
     while len(data) % 4:
         data.append(0)
